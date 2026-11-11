@@ -2,11 +2,13 @@ import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { loadAppGraph } from "../../data/app-graph-load";
+import { loadAppConnectorToken } from "../../data/clusters/app-tunnel";
+import { withAppConnector } from "../app-connector";
 import { basicAuthUsersValue } from "../../data/basic-auth";
 import { primaryDomainName } from "../../data/domains/primary-domain";
 import { withKeyedLock } from "../../data/keyed-mutex";
 import { connectAgent } from "../../infra/agent-client/connect";
-import type { AppStatus } from "../../types/app";
+import type { App, AppStatus } from "../../types/app";
 import { mapLimit, usesComposeStack, usesPastedCompose } from "../../utils";
 import { ensureFileBinds } from "../agent-deploy";
 import { parseComposeUpArgs } from "../compose-args";
@@ -19,10 +21,12 @@ import { composeFilesDir, takenNamesForApp } from "./compose-stack-deploy";
 import { anchorSourcePaths, sourceComposeDir } from "./source-compose";
 import { appEnv, appEnvKeys } from "./deploy-env";
 import { routableForDeploy } from "./deploy-routes";
-import { owningServerIdForDeployKey } from "./stack-lifecycle";
+import { owningServerIdsForDeployKey } from "./stack-lifecycle";
 import {
   parseStackHealthCheck,
   parseStackPorts,
+  parseStackReplicas,
+  parseStackScaled,
   parseStackResources,
   readStackEnvFromYaml,
   readStackImageFromYaml,
@@ -46,17 +50,37 @@ export async function rerouteApp(
   return withKeyedLock(`app-lifecycle:${appId}`, () => rerouteAppLocked(appId));
 }
 
-async function rerouteAppLocked(
-  appId: string,
-): Promise<"rerouted" | "unchanged" | "deferred"> {
+type Rerouted = "rerouted" | "unchanged" | "deferred";
+
+// Each server that runs replicas has its own render of the stack; all are tried before a failure is reported.
+async function rerouteAppLocked(appId: string): Promise<Rerouted> {
   // Re-applying would start a stack a copy of this Deplo is reading (ADR-0035); the next deploy applies it.
   if (await isPausedForMove("app", appId)) return "deferred";
   const project = await loadAppGraph(appId);
   if (!project) return "deferred";
+  const serverIds = await owningServerIdsForDeployKey(project.slug);
+  if (serverIds.length === 0) return "deferred";
+  const results: Rerouted[] = [];
+  let failed: unknown = null;
+  for (const serverId of serverIds)
+    try {
+      results.push(await rerouteOn(project, serverId, serverIds.length > 1));
+    } catch (e) {
+      failed ??= e;
+    }
+  if (failed) throw failed;
+  if (results.includes("rerouted")) return "rerouted";
+  return results.every((r) => r === "unchanged") ? "unchanged" : "deferred";
+}
+
+async function rerouteOn(
+  project: App,
+  serverId: string,
+  spread: boolean,
+): Promise<Rerouted> {
+  const appId = project.id;
   const deployKey = project.slug;
   const name = stackName(deployKey);
-  const serverId = await owningServerIdForDeployKey(deployKey);
-  if (!serverId) return "deferred";
 
   const primary = await primaryDomainName(appId);
   const routes = await routableForDeploy(appId, "production", primary);
@@ -99,6 +123,7 @@ async function rerouteAppLocked(
         // Omitting these would silently unmount storage or lift limits: a compose stack is re-rendered, not read back.
         envKeys: await appEnvKeys(appId),
         volumes: project.volumes,
+        stickySessions: project.stickySessions,
         resources: project.resources,
       });
       mounts = (project.mounts ?? []).map((m) => ({
@@ -128,8 +153,16 @@ async function rerouteAppLocked(
         ports: parseStackPorts(current.yaml, name),
         healthCheckKeys: parseStackHealthCheck(current.yaml, name),
         resourceKeys: parseStackResources(current.yaml, name),
+        replicas: parseStackReplicas(current.yaml, name),
+        // Routing is what a reroute renders again, and the cookie is routing.
+        stickySessions: project.stickySessions,
+        scaled: spread || parseStackScaled(current.yaml, name),
       });
     }
+
+    // The App's tunnel connector is part of its stack, so a re-render keeps it.
+    const connector = await loadAppConnectorToken(appId);
+    if (connector) rendered = withAppConnector(rendered, deployKey, connector);
 
     if (current.yaml === rendered) return "unchanged";
 

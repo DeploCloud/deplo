@@ -74,11 +74,3 @@ const DOCKER_LEVEL_STDERR =
 export function isDockerLevelStderr(stderr: string): boolean {
   return DOCKER_LEVEL_STDERR.test(stderr ?? "");
 }
-
-export interface AttachHandle {
-  onData(cb: (chunk: Buffer) => void): () => void;
-  onExit(cb: (error?: string) => void): void;
-  write(data: string): void;
-  resize?(cols: number, rows: number): void;
-  close(): void;
-}

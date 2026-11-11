@@ -13,6 +13,8 @@ import { DatabaseImageSettings } from "@/components/storage/database-image-setti
 import { DatabaseConfigFiles } from "@/components/storage/database-config-files";
 import { DB_DATA_DIRS } from "@/lib/deploy/database-compose";
 import { DatabaseDanger } from "@/components/storage/database-danger";
+import { DatabaseStandbyForm } from "@/components/storage/database-standby-form";
+import { getDatabaseStandby } from "@/lib/data/databases/standby";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { Button } from "@/components/ui/button";
@@ -25,11 +27,15 @@ export default async function DatabaseAdvancedSettingsPage(
   const { id } = await props.params;
   const db = await getDatabase(id);
   if (!db) notFound();
-  const [canConsole, canCron, canMove] = await Promise.all([
-    hasCapability("open_database_console"),
-    hasCapability("manage_crons"),
-    hasCapability("move_databases"),
-  ]);
+  const [canConsole, canCron, canMove, canConfigure, standby] =
+    await Promise.all([
+      hasCapability("open_database_console"),
+      hasCapability("manage_crons"),
+      hasCapability("move_databases"),
+      hasCapability("configure_databases"),
+      // Expert only: a database on a cluster. An engine that keeps no copy says why instead.
+      db.clusterId ? getDatabaseStandby(db.id) : null,
+    ]);
   const cron = canConsole && canCron ? await listDatabaseCronJobs(db.id) : null;
 
   return (
@@ -83,6 +89,14 @@ export default async function DatabaseAdvancedSettingsPage(
           targetId={db.id}
           enabled={db.restartLoopGuard}
         />
+
+        {standby && (
+          <DatabaseStandbyForm
+            databaseId={db.id}
+            standby={standby}
+            disabled={!canConfigure}
+          />
+        )}
       </RowsCard>
 
       <DatabaseImageSettings db={db} />

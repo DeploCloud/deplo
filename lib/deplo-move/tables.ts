@@ -74,6 +74,20 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cron_job_env: { kind: "copy", rekey: { value_enc: SECRET } },
   cron_jobs: COPY,
   cron_runs: COPY,
+  // A cluster's leader runs on a server of the old map (null is the machine itself).
+  cluster_teams: COPY,
+  clusters: COPY,
+  cluster_members: { kind: "copy", needsServer: ["server_id"] },
+  // Sealed to the old machine's leader; the new one makes its own key.
+  cluster_leader_keys: { kind: "skip", clear: true },
+  // The leader's placement, mirrored; a member left out of the server map reads as waiting.
+  workload_placements: COPY,
+  // Which member holds which release image of a cluster App.
+  cluster_image_copies: { kind: "copy", needsServer: ["server_id"] },
+  // Re-keyed with the rest; the new machine's leader has its own key, so every bundle is sealed to it again.
+  failover_bundle_pushes: { kind: "copy", rekey: { bundle_enc: SECRET } },
+  // Updates of this Deplo's own leaders against its own pin.
+  cluster_binary_updates: { kind: "local" },
   database_mounts: COPY,
   databases: {
     kind: "copy",
@@ -90,6 +104,9 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   // Derived: the next deploy on the new Deplo takes them again.
   deployment_screenshots: { kind: "skip" },
   deployments: { kind: "copy", nullOnCopy: ["preview_id"] },
+  // The tunnel and its connectors live on, so the copy keeps the run token the connectors hold.
+  app_tunnels: { kind: "copy", rekey: { token_enc: SECRET } },
+  app_tunnel_domains: COPY,
   dns_provider_teams: COPY,
   // A tunnel's connector runs in a server's proxy stack the old Deplo wrote; the new one makes its own.
   dns_provider_tunnels: { kind: "skip" },
@@ -127,6 +144,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
     kind: "copy",
     rekey: { token_enc: SECRET, refresh_token_enc: SECRET },
   },
+  // What a registry said about a pulled image; copied so a mixed cluster fails over as before.
+  image_architectures: COPY,
   // Read again from the new Deplo's own servers (ADR-0038).
   image_inventories: { kind: "skip" },
   image_inventory_packages: { kind: "skip" },

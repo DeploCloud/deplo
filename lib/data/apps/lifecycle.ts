@@ -69,7 +69,12 @@ export async function startApp(id: string): Promise<void> {
   await assertNotPausedForMove("app", id);
   await getDb()
     .update(appsTable)
-    .set({ restartLoopStoppedAt: null })
+    // A start by hand settles what Deplo's own restarts left open, the recovery it owed included.
+    .set({
+      restartLoopStoppedAt: null,
+      restartsPausedAt: null,
+      recoveryAlertOwed: false,
+    })
     .where(eq(appsTable.id, id));
   await setAppStatus(id, "starting");
   try {

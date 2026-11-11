@@ -1,5 +1,11 @@
 import yaml from "../../yaml";
 
+import {
+  REPLICAS_DATA_MESSAGE,
+  composeReplicasBesideOneCopy,
+  composeReplicasConflicts,
+  oneCopyServiceReason,
+} from "../replicas";
 import { deploImageClaim, deploImageMessage } from "../deplo-image";
 import { interpolates } from "./document";
 import { isValidPortMapping, unboundDnsPort } from "./host-ports";
@@ -495,6 +501,25 @@ export function lintCompose(source: string): LintDiagnostic[] {
       line: 1,
     });
   }
+
+  for (const name of composeReplicasConflicts(source)) {
+    diags.push({
+      severity: "error",
+      rule: "replicas-storage",
+      message: REPLICAS_DATA_MESSAGE,
+      line: lineOfServiceField(lines, lineOfAppKey(lines, name), "deploy"),
+    });
+  }
+
+  // Said at save time, not only in the deploy log: this stack's replicas stop together on every deploy.
+  const held = composeReplicasBesideOneCopy(source);
+  if (held)
+    diags.push({
+      severity: "info",
+      rule: "replicas-offline-deploy",
+      message: `${oneCopyServiceReason(held)}, so every deploy takes this stack offline briefly, its replicas included.`,
+      line: lineOfAppKey(lines, held),
+    });
 
   return sortDiags(diags);
 }

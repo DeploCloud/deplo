@@ -97,6 +97,12 @@ export const APPS_CONFIG: McpToolDef[] = [
         .optional()
         .describe("The new App name. Omit to use the template name."),
       serverId: z.string().optional(),
+      clusterId: z
+        .string()
+        .optional()
+        .describe(
+          "Place the app on a cluster (an id from list_clusters) instead of a server: its leader picks the member. Not together with serverId.",
+        ),
       projectId: z.string().optional(),
       environmentId: z.string().optional(),
       folderId: z.string().optional(),
@@ -119,6 +125,7 @@ export const APPS_CONFIG: McpToolDef[] = [
         variantSlug: a.variantSlug,
         name: a.name,
         serverId: a.serverId,
+        clusterId: a.clusterId,
         projectId: a.projectId,
         environmentId: a.environmentId,
         folderId: a.folderId,
@@ -143,6 +150,12 @@ export const APPS_CONFIG: McpToolDef[] = [
       dockerImage: z.string().optional().describe("For DOCKER_IMAGE."),
       compose: z.string().optional().describe("Compose YAML, for COMPOSE."),
       serverId: z.string().optional(),
+      clusterId: z
+        .string()
+        .optional()
+        .describe(
+          "Place the app on a cluster (an id from list_clusters) instead of a server: its leader picks the member. Not together with serverId.",
+        ),
       projectId: z.string().optional(),
       environmentId: z.string().optional(),
       folderId: z.string().optional(),
@@ -160,6 +173,7 @@ export const APPS_CONFIG: McpToolDef[] = [
         dockerImage: a.dockerImage,
         compose: a.compose,
         serverId: a.serverId,
+        clusterId: a.clusterId,
         projectId: a.projectId,
         environmentId: a.environmentId,
         folderId: a.folderId,
@@ -262,6 +276,28 @@ export const APPS_CONFIG: McpToolDef[] = [
       }
     `,
     variables: (a) => ({ id: a.appId, serverId: a.serverId }),
+  }),
+  tool({
+    name: "move_app_to_cluster",
+    title: "Place an app on a cluster",
+    description:
+      "Redeploy the app on the member its cluster's leader picks, copying its data. With no room the answer says what to change and nothing stops. Leaving a cluster is move_app_to_server.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    destructive: true,
+    input: z.object({
+      appId,
+      clusterId: z
+        .string()
+        .describe("The cluster's id, as returned by list_clusters."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpMoveAppToCluster($id: String!, $clusterId: String!) {
+        moveAppToCluster(id: $id, clusterId: $clusterId) { ${APP_FIELDS} }
+      }
+    `,
+    variables: (a) => ({ id: a.appId, clusterId: a.clusterId }),
   }),
   tool({
     name: "update_app_compose",

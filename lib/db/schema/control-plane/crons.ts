@@ -14,6 +14,7 @@ import { isoTimestamptz } from "../columns";
 import { apps } from "./apps";
 import { databases } from "./databases";
 import { teams, users } from "./identity";
+import { servers } from "./servers";
 
 export const cronJobs = pgTable(
   "cron_jobs",
@@ -102,6 +103,10 @@ export const cronRuns = pgTable(
     attempt: integer("attempt").notNull().default(0),
     nextAttemptAt: isoTimestamptz("next_attempt_at"),
     agentJobId: text("agent_job_id"),
+    // Where the attempt in flight was launched; the App may have moved since.
+    serverId: text("server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
     exitCode: integer("exit_code"),
     stdout: text("stdout"),
     stderr: text("stderr"),

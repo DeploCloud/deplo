@@ -18,6 +18,12 @@ export const RESTORE_DEADLINE_MS = 2 * BACKUP_DEADLINE_MS;
 export const RESTORE_RUN_MAX_MS = RESTORE_DEADLINE_MS + 30 * 60_000;
 export const S3_OP_DEADLINE_MS = 60_000;
 export const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000;
+export const CLUSTER_INSTALL_TIMEOUT_MS = 2 * 60_000;
+export const CLUSTER_CALL_TIMEOUT_MS = 2 * 60_000;
+// Deplo's beat to a leader: given up on well inside the 5 s between two beats.
+export const CLUSTER_BEAT_TIMEOUT_MS = 4_000;
+// The agent gives a copy 30 minutes; the margin covers the answer after it.
+export const CLUSTER_IMAGE_COPY_TIMEOUT_MS = 35 * 60_000;
 export const SELF_UNINSTALL_TIMEOUT_MS = 60_000;
 export const STACK_DEADLINE_MS = 3 * 60_000;
 export const VOLUME_COPY_DEADLINE_MS = 7 * 60 * 60_000;

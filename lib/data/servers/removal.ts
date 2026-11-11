@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { backupDestination as destinationTable } from "../../db/schema/control-plane/backups";
+import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
@@ -14,6 +15,8 @@ import { recordActivity } from "../activity";
 import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
+import { clustersOfServer, pushClusterRosters } from "../clusters/relay";
+import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById, serverRole } from "./roster";
 
 export interface ServerRemoval {
@@ -67,6 +70,14 @@ export async function assertNoWorkloads(id: string): Promise<void> {
 
 async function assertServerRemovable(id: string): Promise<void> {
   await assertNoWorkloads(id);
+  const leads = await getDb()
+    .select({ name: clustersTable.name })
+    .from(clustersTable)
+    .where(eq(clustersTable.leaderServerId, id));
+  if (leads.length > 0)
+    throw new Error(
+      `Move the leader of cluster ${nameList(leads.map((c) => c.name))} to another server first.`,
+    );
   const destinations = await getDb()
     .select({ name: destinationTable.name, teamId: destinationTable.teamId })
     .from(destinationTable)
@@ -110,6 +121,10 @@ async function removeServerRow(
 
   const abandoned = await pendingTeardownsForServer(id);
 
+  const clusterIds = await clustersOfServer(id);
+  // A preview that ran here is gone with it; the next push or a redeploy places it again (#212).
+  // ponytail: marked before the delete, which clears the column; a refused delete leaves them offline until redeployed.
+  await markPreviewsOffline(id);
   const pinned = server.agent?.certFingerprint ?? "";
   await getDb()
     .update(serversTable)
@@ -129,6 +144,8 @@ async function removeServerRow(
     );
   }
   dropAgentChannel(id);
+  // A removed server's certificate leaves every cluster relay's roster at once.
+  await pushClusterRosters(clusterIds);
   await recordActivity(
     "server",
     `Removed server ${server.name}`,

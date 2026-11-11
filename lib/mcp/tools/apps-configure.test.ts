@@ -123,3 +123,22 @@ test("update_app_build offers the live build methods and no retired one", () => 
   for (const m of ["nixpacks", "static", "heroku"])
     assert.equal(takes(m), false, m);
 });
+
+test("create_app_from_template places the App on a cluster, as create_app does", async () => {
+  const tool = APPS_CONFIG.find((t) => t.name === "create_app_from_template")!;
+  const args = tool.input.parse({ templateSlug: "ghost", clusterId: "clu_1" });
+  const variables = tool.variables!(args) as { input: { clusterId?: string } };
+  assert.equal(variables.input.clusterId, "clu_1");
+  const result = await execute({
+    schema: buildSchema(readFileSync("schema.graphql", "utf8")),
+    document: parse(tool.query!),
+    variableValues: variables,
+    contextValue: {},
+  });
+  assert.deepEqual(
+    (result.errors ?? [])
+      .map((e) => e.message)
+      .filter((m) => /got invalid value|not defined by type/i.test(m)),
+    [],
+  );
+});

@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import type { ContainerStat } from "../agent/gen/agent";
-import { aggregateContainerStats } from "./container-metrics";
+import {
+  aggregateContainerStats,
+  tagReplicaMetrics,
+} from "./container-metrics";
 
 const HOST = { memTotal: 23.42 * 1024 ** 3, cpuCores: 8 };
 
@@ -27,6 +30,7 @@ function stat(name: string, over: Partial<ContainerStat> = {}): ContainerStat {
     netNsId: 0,
     netNsHost: false,
     oomKills: 0,
+    answer: "",
     ...over,
   };
 }
@@ -143,4 +147,55 @@ test("a stack with nothing running measures zero, not a fabricated ceiling", () 
   assert.equal(agg.running, 0);
   assert.equal(agg.memUsed, 0);
   assert.equal(agg.memPct, 0);
+});
+
+test("the breakdown names each replica and the total still counts them all", () => {
+  const stats = [3, 1, 2].map((n) =>
+    stat(`deplo-web-deplo-web-${n}`, { memUsed: 100 * n, cpuPct: n }),
+  );
+  const agg = aggregateContainerStats("prj_1", stats, 1, HOST);
+  assert.equal(agg.memUsed, 600, "the App's total");
+  assert.equal(agg.running, 3);
+  assert.deepEqual(
+    tagReplicaMetrics(agg.instances, "web").map((i) => [i.replica, i.memUsed]),
+    [
+      ["web-1", 100],
+      ["web-2", 200],
+      ["web-3", 300],
+    ],
+  );
+});
+
+test("a stack of single containers has no replica names and keeps its order", () => {
+  const agg = aggregateContainerStats(
+    "prj_1",
+    [stat("deplo-shop-db-1"), stat("deplo-shop-api-1")],
+    1,
+    HOST,
+  );
+  assert.deepEqual(
+    tagReplicaMetrics(agg.instances, "shop").map((i) => [i.name, i.replica]),
+    [
+      ["deplo-shop-db-1", null],
+      ["deplo-shop-api-1", null],
+    ],
+  );
+});
+
+test("a container the server agent's check calls not answering reads unhealthy", () => {
+  const agg = aggregateContainerStats(
+    "prj_1",
+    [
+      stat("web-1", { health: "healthy", answer: "not_answering" }),
+      stat("web-2", { health: "", answer: "answering" }),
+      stat("web-3", { health: "unhealthy", answer: "answering" }),
+      stat("worker", { health: "healthy" }),
+    ],
+    1,
+    HOST,
+  );
+  assert.deepEqual(
+    agg.instances.map((i) => i.health),
+    ["unhealthy", "healthy", "unhealthy", "healthy"],
+  );
 });

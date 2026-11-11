@@ -44,7 +44,16 @@ export const AppPreviewRef = builder
       }),
       approvedSha: t.exposeString("approvedSha", { nullable: true }),
       status: t.exposeString("status", {
-        description: "blocked | queued | building | active | error | idle.",
+        description:
+          "blocked | queued | building | active | error | idle | evicted | offline. " +
+          "`offline`: its server, a member of the App's cluster, stopped or was " +
+          "emptied; the next push or a redeploy places it again.",
+      }),
+      offlineReason: t.exposeString("offlineReason", {
+        nullable: true,
+        description:
+          "Why an `offline` preview is not running: server_stopped | server_emptied " +
+          "(no other server of the cluster could take it). Null in every other status.",
       }),
       url: t.exposeString("url"),
       host: t.exposeString("host"),
@@ -81,6 +90,14 @@ export const AppPreviewsViewRef = builder
       ttlDays: t.exposeInt("ttlDays"),
       forkPolicy: t.exposeString("forkPolicy"),
       serverId: t.exposeString("serverId", { nullable: true }),
+      clusterId: t.exposeString("clusterId", {
+        nullable: true,
+        description:
+          "The App's cluster, where previews are placed while `serverId` is null: " +
+          "its leader picks a server for each. Null off a cluster, or on one this " +
+          "team cannot see.",
+      }),
+      clusterName: t.exposeString("clusterName", { nullable: true }),
       https: t.exposeBoolean("https"),
       autoDeploy: t.exposeBoolean("autoDeploy"),
       port: t.exposeInt("port", { nullable: true }),
@@ -171,7 +188,9 @@ const PreviewSettingsInput = builder.inputType("AppPreviewSettingsInput", {
     }),
     serverId: t.string({
       required: false,
-      description: "Where previews run. Empty ⇒ the app's own server.",
+      description:
+        "Where previews run. Empty ⇒ the app's own server, or its cluster when it " +
+        "runs on one. Never a server that is a member of a cluster.",
     }),
     https: t.boolean({
       required: false,

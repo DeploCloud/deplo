@@ -108,6 +108,7 @@ networks:
         githubToken: "",
         pullBaseImages: false,
         standInComposeYaml: "",
+        startAfterReady: [],
       })) {
         if (ev.result && !ev.result.ready)
           throw new Error("deploy failed: " + ev.result.error);

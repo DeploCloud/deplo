@@ -7,8 +7,29 @@ export function artifactExt(
   kind: BackupTargetKind,
   dbType?: DatabaseType | null,
   encrypted?: boolean,
+  baseBackup = false,
 ): string {
-  return baseArtifactExt(kind, dbType) + (encrypted ? ".age" : "");
+  return (
+    (baseBackup ? BASE_BACKUP_EXT : baseArtifactExt(kind, dbType)) +
+    (encrypted ? ".age" : "")
+  );
+}
+
+const BASE_BACKUP_EXT = "base.tar.gz";
+
+/** A Postgres base backup, which the change log is replayed onto; every other artifact is a dump. */
+export function isBaseBackupKey(key: string): boolean {
+  return /\.base\.tar\.gz(\.age)?$/.test(key);
+}
+
+/** The folder beside a base backup that holds the change log archived after it. */
+export function changeLogPrefix(baseKey: string): string {
+  return `${baseKey}.wal`;
+}
+
+/** One shipment of the change log: its time sorts it, its ending says whether it is encrypted like its base. */
+export function changeLogKey(baseKey: string, at: Date): string {
+  return `${changeLogPrefix(baseKey)}/${objectStamp(at)}.tar.gz${baseKey.endsWith(".age") ? ".age" : ""}`;
 }
 
 function baseArtifactExt(

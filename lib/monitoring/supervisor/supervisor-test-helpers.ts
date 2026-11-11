@@ -156,6 +156,7 @@ export function containerStat(
     netNsId: 0,
     netNsHost: false,
     oomKills: 0,
+    answer: "",
     ...over,
   };
 }
@@ -184,6 +185,7 @@ export function frame(containers: ContainerStat[] = []): MetricsSample {
     containers,
     sampledAtUnixMs: 0,
     source: "cgroup2",
+    restartEvents: [],
   };
 }
 

@@ -21,7 +21,7 @@ import {
   recordSourceCompose,
 } from "../../data/apps/build-outcome";
 import type { SourceCompose } from "../../agent/gen/agent";
-import { findComposeFile, resolveUploadMethod } from "../agent-deploy";
+import { findComposeFile, resolveUploadMethod } from "../agent-deploy-request";
 import {
   autoComposeSkip,
   composeBuildsFromSource,
@@ -57,6 +57,7 @@ import {
   deploySourceComposeStack,
 } from "./compose-stack-deploy";
 import { readyCheckFor } from "./ready-check";
+import { deployOtherMembers, planDeployReplicas } from "./spread-deploy";
 import { rerouteApp } from "./reroute";
 import type { PreviewEnvContext } from "./deploy-env";
 import { previewRouteTarget, routableForDeploy } from "./deploy-routes";
@@ -208,7 +209,9 @@ async function runDeployment(depId: string): Promise<void> {
     let commitSha = "";
     // "stack": the source's compose file was deployed, and that path committed the outcome itself.
     let agentOutcome: "agent" | "failed" | "stack" | null = null;
-    const serverId = runServerId;
+    const replicaPlan = await planDeployReplicas(project, dep, preview);
+    const spreadOn = replicaPlan?.spread ? replicaPlan.members[0] : undefined;
+    const serverId = replicaPlan?.members[0]?.serverId ?? runServerId;
     const agentProject = {
       id: project.id,
       deployKey,
@@ -338,8 +341,9 @@ async function runDeployment(depId: string): Promise<void> {
       );
     };
 
-    const renderStack = async (image: string) => {
+    const renderStack = async (image: string, member = spreadOn) => {
       const rendered = await renderDeployStack({
+        member,
         project,
         name,
         deployKey,
@@ -350,10 +354,15 @@ async function runDeployment(depId: string): Promise<void> {
         routes: routeDomains,
         image,
       });
-      // Beta, opt-in per app: off keeps the in-place swap.
+      // Beta, opt-in per app: off keeps the in-place swap. Replicas always overlap.
       return {
         ...rendered,
-        overlap: project.zeroDowntimeDeploys ? rendered.overlap : undefined,
+        overlap:
+          project.zeroDowntimeDeploys ||
+          rendered.overlap.replicas > 1 ||
+          rendered.overlap.scaled
+            ? rendered.overlap
+            : undefined,
       };
     };
 
@@ -721,6 +730,19 @@ async function runDeployment(depId: string): Promise<void> {
     }
 
     if (agentOutcome === "stack") return;
+    if (agentOutcome === "agent" && replicaPlan) {
+      const rest = await deployOtherMembers({
+        depId,
+        teamId: project.teamId,
+        project: { ...agentProject, name: project.name },
+        plan: replicaPlan,
+        imageRef,
+        render: (m) => renderStack(imageRef, spreadOn && m),
+        ready,
+        forceRecreate,
+      });
+      if (!rest) agentOutcome = "failed";
+    }
     const buildDurationMs = Date.now() - started;
     if (agentOutcome === "agent") {
       const applied = await commitOutcome(

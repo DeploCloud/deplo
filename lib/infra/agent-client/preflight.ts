@@ -21,6 +21,8 @@ import {
   BACKUP_CAPABILITY,
   BACKUP_ENCRYPT_S3_CAPABILITY,
   BACKUP_S3_ARGS_CAPABILITY,
+  BACKUP_REDIS_AOF_CAPABILITY,
+  POSTGRES_ARCHIVE_CAPABILITY,
   BACKUP_S3_READ_CAPABILITY,
   BACKUP_STORE_CAPABILITY,
   BACKUP_UNTRUSTED_CONFIG_CAPABILITY,
@@ -37,6 +39,24 @@ export async function serverSupports(
     try {
       const hello = await conn.hello();
       return hello.capabilities?.includes(capability) === true;
+    } finally {
+      conn.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+// True only when the agent answered and does not know the capability; an unreachable one is not "too old".
+export async function serverLacks(
+  serverId: string,
+  capability: string,
+): Promise<boolean> {
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      const hello = await conn.hello();
+      return hello.capabilities?.includes(capability) !== true;
     } finally {
       conn.close();
     }
@@ -113,6 +133,8 @@ export async function connectBackupAgent(
     s3Args?: boolean;
     s3Read?: boolean;
     untrustedConfig?: boolean;
+    redisAof?: boolean;
+    postgresArchive?: boolean;
   } = {},
 ): Promise<AgentConnection> {
   const conn = await connectAgent(serverId);
@@ -158,6 +180,24 @@ export async function connectBackupAgent(
         `The agent on this server is too old to restore from an uploaded file ` +
           `safely: it would take the stack configuration out of the file itself. ` +
           `Update the agent on this server, then try again.`,
+      );
+    }
+    if (
+      opts.redisAof &&
+      !hello.capabilities?.includes(BACKUP_REDIS_AOF_CAPABILITY)
+    ) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old to restore a Redis database: ` +
+          `it would come back empty. Update the agent on this server, then try again.`,
+      );
+    }
+    if (
+      opts.postgresArchive &&
+      !hello.capabilities?.includes(POSTGRES_ARCHIVE_CAPABILITY)
+    ) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old for a Postgres base backup or its ` +
+          `change log. Update the agent on this server, then try again.`,
       );
     }
     if (

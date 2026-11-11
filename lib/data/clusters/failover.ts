@@ -1,0 +1,530 @@
+import "server-only";
+
+import { and, eq, inArray } from "drizzle-orm";
+import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import {
+  backupRuns as runsTable,
+  backups as backupsTable,
+} from "../../db/schema/control-plane/backups";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { moveRefusal } from "../../apps/failover-copy";
+import { encryptSecret } from "../../crypto";
+import {
+  promotedSentence,
+  restoredSentence,
+} from "../../databases/failover-copy";
+import { buildConnectionString } from "../../deploy/database-compose";
+import { publishDatabaseChanged } from "../../graphql/pubsub";
+import { dispatchAlert } from "../../notify/dispatch";
+import type { Cluster } from "../../types/cluster";
+import { recordActivity } from "../activity";
+import { isBaseBackupKey } from "../backup-objectkey";
+import { assembleDatabase } from "../backup-rows";
+import { markLinkedAppsPending } from "../database-links";
+import { failoverOnly } from "./architectures";
+import { changeLogBroken } from "./change-log";
+import { rehomeFailoverBackups } from "../databases/failover";
+import { syncStandbySoon } from "../databases/standby";
+import { databasePassword } from "../databases/stack";
+import { getServerById } from "../servers/roster";
+import { pushDatabaseBundle } from "./database-bundles";
+import { rehostClusterApp } from "./failover-address";
+import { syncNameForwarders } from "./forwarders";
+import type { LeaderEntry, LeaderMove } from "./leader-sync";
+import {
+  appReplicasWaiting,
+  listWorkloadPlacements,
+  recordPlacement,
+} from "./placement";
+import { messageOf } from "../../utils";
+
+// What the control plane does with a failover the leader reports (spec #176): words for the user, a new address
+// for an App on a generated one, and one alert when something is left waiting. The leader has already moved it.
+// https://deplo.build/docs/operations/clusters/failover
+
+const ACTOR = "Deplo";
+
+const REASONS: Record<string, string> = {
+  stopped_answering: "stopped answering",
+};
+
+async function serverName(id: string): Promise<string> {
+  return (await getServerById(id))?.name ?? "A server";
+}
+
+async function ownApp(clusterId: string, id: string) {
+  const [app] = await getDb()
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      teamId: appsTable.teamId,
+      slug: appsTable.slug,
+    })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, id), eq(appsTable.clusterId, clusterId)))
+    .limit(1);
+  return app ?? null;
+}
+
+/** When one of the workload's own backups was taken, and the timezone its schedule is read in. */
+export async function backupClock(
+  teamId: string,
+  targetId: string,
+  backupId: unknown,
+): Promise<{
+  startedAt: string;
+  timezone: string;
+  objectKey: string;
+  sizeBytes: number;
+} | null> {
+  if (typeof backupId !== "string") return null;
+  const [run] = await getDb()
+    .select({
+      startedAt: runsTable.startedAt,
+      timezone: backupsTable.timezone,
+      objectKey: runsTable.objectKey,
+      sizeBytes: runsTable.sizeBytes,
+    })
+    .from(runsTable)
+    .leftJoin(backupsTable, eq(backupsTable.id, runsTable.backupId))
+    .where(
+      and(
+        eq(runsTable.id, backupId),
+        eq(runsTable.teamId, teamId),
+        eq(runsTable.targetId, targetId),
+      ),
+    )
+    .limit(1);
+  return run ? { ...run, timezone: run.timezone ?? "UTC" } : null;
+}
+
+const quietly = (what: string) => (e: unknown) =>
+  console.warn(`[cluster-failover] ${what}: ${messageOf(e)}`);
+
+/**
+ * One database was restored on its new member: say from which backup, point a published address at the new
+ * server, hand the leader a bundle for where it runs now, and move its name on the other members (#202).
+ */
+async function databaseFailedOver(
+  cluster: Cluster,
+  d: {
+    workloadId: string;
+    from: string;
+    to: string;
+    backupId?: unknown;
+    backupAt?: unknown;
+    restoreMs?: unknown;
+    promoted?: unknown;
+  },
+): Promise<void> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(databasesTable)
+    .where(
+      and(
+        eq(databasesTable.id, d.workloadId),
+        eq(databasesTable.clusterId, cluster.id),
+      ),
+    )
+    .limit(1);
+  if (!row) return;
+  const target = await getServerById(d.to);
+  // The backup is read from this database's own runs; the event's time is only what is left when it is gone.
+  const run = await backupClock(row.teamId, row.id, d.backupId);
+  await recordActivity(
+    "database",
+    d.promoted === true
+      ? promotedSentence(
+          row.name,
+          target?.name ?? "another server",
+          await serverName(d.from),
+        )
+      : restoredSentence(
+          row.name,
+          target?.name ?? "another server",
+          run?.startedAt ??
+            (typeof d.backupAt === "string" ? d.backupAt : null),
+          run?.timezone ?? "UTC",
+          undefined,
+          // ponytail: when Deplo last collected the change log, not what Postgres replayed; have the member report it if they ever differ.
+          run && isBaseBackupKey(run.objectKey) ? row.walArchivedAt : null,
+        ),
+    ACTOR,
+    null,
+    row.teamId,
+    null,
+    row.id,
+    { serverChange: true },
+  );
+  // Restored from a dump, Postgres is a new one: what it archives follows no base backup taken before.
+  if (!run || !isBaseBackupKey(run.objectKey)) await changeLogBroken(row.id);
+  const took = Number(d.restoreMs);
+  if (run && took > 0)
+    // The whole recovery, start to restored, is what the next estimate should promise.
+    await db
+      .update(databasesTable)
+      .set({
+        restoreBytesPerSec: Math.max(
+          1,
+          Math.round((run.sizeBytes * 1000) / took),
+        ),
+      })
+      .where(eq(databasesTable.id, row.id));
+  if (target && row.exposedPublicly && row.exposedPort != null) {
+    // A published database is reached on its server's own address, which just changed.
+    const cur = assembleDatabase(row);
+    await db
+      .update(databasesTable)
+      .set({
+        connectionStringEnc: encryptSecret(
+          buildConnectionString({
+            type: cur.type,
+            username: cur.username,
+            password: databasePassword(cur),
+            host: target.host,
+            port: row.exposedPort,
+            dbName: cur.dbName,
+          }),
+        ),
+      })
+      .where(eq(databasesTable.id, row.id));
+    await markLinkedAppsPending(row.id).catch(quietly(row.id));
+  }
+  publishDatabaseChanged(row.id);
+  // It may now sit on the server its own backups are kept on: the bundle below names where they go next.
+  await rehomeFailoverBackups(cluster.id).catch(quietly(row.id));
+  await pushDatabaseBundle(row.id).catch(quietly(row.id));
+  await syncNameForwarders(cluster.id).catch(quietly(cluster.id));
+  // A promoted copy is the database now: another server gets a new one when there is one.
+  if (row.standby) syncStandbySoon(row.id);
+}
+
+/** One workload has run on its new member: say so, and give an App's generated address its new host. */
+export async function applyFailedOver(
+  cluster: Cluster,
+  d: Record<string, unknown>,
+): Promise<void> {
+  if (typeof d.workloadId !== "string") return;
+  if (typeof d.from !== "string" || typeof d.to !== "string") return;
+  if (d.kind === "database")
+    return databaseFailedOver(cluster, {
+      workloadId: d.workloadId,
+      from: d.from,
+      to: d.to,
+      backupId: d.backupId,
+      backupAt: d.backupAt,
+      restoreMs: d.restoreMs,
+      promoted: d.promoted,
+    });
+  if (d.kind !== "app") return;
+  const app = await ownApp(cluster.id, d.workloadId);
+  if (!app) return;
+  const why = REASONS[String(d.reason)] ?? "stopped answering";
+  const [from, to] = await Promise.all([serverName(d.from), serverName(d.to)]);
+  // An App with a Volume came back from a backup: the entry names it, as a database's does (#204).
+  const run = await backupClock(app.teamId, app.id, d.backupId);
+  const restored = run || typeof d.backupId === "string";
+  // An App spread over several servers lost one replica, not its only copy.
+  const on = ((await listWorkloadPlacements("app", [app.id])).get(app.id) ?? [])
+    .map((p) => p.serverId)
+    .filter((m) => m && m !== d.from);
+  const replica = on.length > 1;
+  await recordActivity(
+    "app",
+    restored
+      ? restoredSentence(
+          app.name,
+          to,
+          run?.startedAt ??
+            (typeof d.backupAt === "string" ? d.backupAt : null),
+          run?.timezone ?? "UTC",
+        )
+      : replica
+        ? `Started a replica of ${app.name} on ${to}: ${from} ${why}`
+        : `Moved ${app.name} to ${to}: ${from} ${why}`,
+    ACTOR,
+    app.id,
+    app.teamId,
+    null,
+    null,
+    { serverChange: true },
+  );
+  try {
+    await rehostClusterApp(app.id);
+  } catch (e) {
+    // The sweep tries again; until then the App runs but its generated address still names the old server.
+    await recordActivity(
+      "app",
+      `${app.name} runs on ${to}, but its generated address could not be updated yet: ${messageOf(e)}`,
+      ACTOR,
+      app.id,
+      app.teamId,
+    );
+  }
+}
+
+/** A move a person asked for that the leader could not make: the App stays with its server, and Activity says why. */
+export async function applyMoveFailed(
+  cluster: Cluster,
+  d: Record<string, unknown>,
+): Promise<void> {
+  if (d.kind !== "app" || typeof d.workloadId !== "string") return;
+  const app = await ownApp(cluster.id, d.workloadId);
+  if (!app) return;
+  await recordActivity(
+    "app",
+    `Could not bring ${app.name} back on another server. ${moveRefusal(String(d.reason), app.name)}`,
+    ACTOR,
+    app.id,
+    app.teamId,
+  );
+}
+
+interface Left {
+  kind: string;
+  workloadId: string;
+  /** Why the leader placed it nowhere: no_room unless it says otherwise. */
+  reason: string;
+}
+
+const NO_ROOM = "no_room";
+// No server of its kind is the same wait to a reader: `other` already names the kind ("no other x86 server").
+const ROOM = new Set([NO_ROOM, "no_architecture"]);
+// A wait read back after a reconnect from a leader too old to say why.
+const UNKNOWN = "unknown";
+
+// What stopped it, after "<server> stopped answering and"; `other` is "no other server" or "no other x86 server".
+function waitingWhy(reason: string, other: string, rest = ""): string {
+  switch (reason) {
+    case "start_failed":
+      return `${rest ? "the rest" : "it"} did not start on another server`;
+    case "no_image":
+      return `${other} has its image yet`;
+    case "no_member_online":
+      return `${other} is online and ready`;
+    case UNKNOWN:
+      return `${other} has taken ${rest ? "the rest" : "it"} yet`;
+    default:
+      return `${other} has room${rest} yet`;
+  }
+}
+
+// The alert's line for the Apps and databases one reason left waiting.
+function waitingLine(reason: string, other: string, names: string): string {
+  const Other = `${other[0]!.toUpperCase()}${other.slice(1)}`;
+  switch (reason) {
+    case "start_failed":
+      return `${names} did not start on another server.`;
+    case "no_image":
+      return `${Other} has the image of ${names} yet.`;
+    case "no_member_online":
+      return `${Other} is online and ready for ${names}.`;
+    case UNKNOWN:
+      return `${Other} has taken ${names} yet.`;
+    default:
+      return `${Other} has room for ${names} yet.`;
+  }
+}
+
+/** The end of one failover: an Activity line for each App or database left waiting, and one alert per team that has some. */
+export async function applyFailoverSummary(
+  cluster: Cluster,
+  seq: number,
+  d: Record<string, unknown>,
+): Promise<void> {
+  const left: Left[] = Array.isArray(d.waiting)
+    ? d.waiting
+        .filter(
+          (w): w is Record<string, unknown> =>
+            Boolean(w) && typeof w === "object",
+        )
+        .map((w) => ({
+          kind: String(w.kind),
+          workloadId: String(w.workloadId),
+          reason: typeof w.reason === "string" && w.reason ? w.reason : NO_ROOM,
+        }))
+        .filter((w) => w.workloadId)
+    : [];
+  if (left.length === 0 || typeof d.member !== "string") return;
+  const idsOf = (kind: string) =>
+    left.filter((w) => w.kind === kind).map((w) => w.workloadId);
+  const db = getDb();
+  const [apps, dbs] = await Promise.all([
+    idsOf("app").length === 0
+      ? []
+      : db
+          .select({
+            id: appsTable.id,
+            name: appsTable.name,
+            teamId: appsTable.teamId,
+            slug: appsTable.slug,
+          })
+          .from(appsTable)
+          .where(
+            and(
+              eq(appsTable.clusterId, cluster.id),
+              inArray(appsTable.id, idsOf("app")),
+            ),
+          ),
+    idsOf("database").length === 0
+      ? []
+      : db
+          .select({
+            id: databasesTable.id,
+            name: databasesTable.name,
+            teamId: databasesTable.teamId,
+          })
+          .from(databasesTable)
+          .where(
+            and(
+              eq(databasesTable.clusterId, cluster.id),
+              inArray(databasesTable.id, idsOf("database")),
+            ),
+          ),
+  ]);
+  // Databases first, as the leader tried them.
+  const rows = [
+    ...dbs.map((r) => ({ ...r, kind: "database" as const, slug: "" })),
+    ...apps.map((r) => ({ ...r, kind: "app" as const })),
+  ];
+  if (rows.length === 0) return;
+  const from = await serverName(d.member);
+  const byTeam = new Map<string, typeof rows>();
+  const partial = new Map<string, string>();
+  const others = new Map<string, string>();
+  const reasons = new Map(left.map((w) => [w.workloadId, w.reason]));
+  const reasonOf = (id: string) => reasons.get(id) ?? NO_ROOM;
+  for (const r of rows) {
+    // An App whose other replicas still run says how many, so nobody reads it as down.
+    const some =
+      r.kind === "app"
+        ? await appReplicasWaiting({ id: r.id, clusterId: cluster.id })
+        : null;
+    if (some) partial.set(r.id, some);
+    // On a mixed cluster: the kind of server it waits for.
+    const only = await failoverOnly(r.kind, r.id, cluster.id);
+    const other = only ? `no other ${only} server` : "no other server";
+    others.set(r.id, other);
+    const reason = reasonOf(r.id);
+    const room = ROOM.has(reason);
+    await recordActivity(
+      r.kind,
+      some
+        ? `${r.name}: ${room ? some : some.replace(" · waiting for room", "")}. ${from} stopped answering and ${waitingWhy(reason, other, " for the rest")}`
+        : `${r.name} is waiting ${room ? "for room " : ""}in ${cluster.name}: ${from} stopped answering and ${waitingWhy(reason, other)}`,
+      ACTOR,
+      r.kind === "app" ? r.id : null,
+      r.teamId,
+      null,
+      r.kind === "database" ? r.id : null,
+    );
+    byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r]);
+  }
+  for (const [teamId, waiting] of byTeam) {
+    const names = waiting.map((a) => a.name).join(", ");
+    const only = waiting.length === 1 ? waiting[0]! : null;
+    // One sentence per reason and kind of server waited for, as Activity names it.
+    const keyOf = (w: { id: string }) =>
+      `${ROOM.has(reasonOf(w.id)) ? NO_ROOM : reasonOf(w.id)}\n${others.get(w.id)!}`;
+    const room = [...new Set(waiting.map(keyOf))].map((key) => {
+      const [reason, other] = key.split("\n") as [string, string];
+      return waitingLine(
+        reason,
+        other,
+        waiting
+          .filter((w) => keyOf(w) === key)
+          .map((w) => w.name)
+          .join(", "),
+      );
+    });
+    const forRoom = waiting.every((w) => ROOM.has(reasonOf(w.id)));
+    const many = waiting.every((w) => w.kind === "app")
+      ? `${waiting.length} Apps`
+      : `${waiting.length} Apps and databases`;
+    dispatchAlert({
+      teamId,
+      key: "cluster_failover_waiting",
+      // Per team: one id for all would let the first team's alert silence the others'.
+      dedupe: {
+        id: `failover:${cluster.id}:${seq}:${teamId}`,
+        state: "waiting",
+      },
+      title:
+        only && partial.has(only.id)
+          ? `${only.name}: ${partial.get(only.id)}`
+          : `${only ? names : many} waiting ${forRoom ? "for room" : "to move"} in ${cluster.name}`,
+      body: `${from} stopped answering. ${room.join(" ")} Deplo tries again every 30 seconds.`,
+      path: !only
+        ? undefined
+        : only.kind === "app"
+          ? `/apps/${only.slug}`
+          : "/storage",
+      appId: only?.kind === "app" ? only.id : null,
+    });
+  }
+}
+
+/**
+ * After a reconnect: what the leader moved on its own becomes the mirror, before any roster goes back to it.
+ * A move whose event fell in `lost` (the watch said events were dropped) also gets its words, address and alert.
+ */
+export async function adoptLeaderMoves(
+  cluster: Cluster,
+  view: { epoch: number; placement?: LeaderEntry[]; moves?: LeaderMove[] },
+  lost: { after: number; before: number } | null,
+): Promise<void> {
+  // In the order the leader made them: a database was restored before any App started.
+  const moves = (view.moves ?? [])
+    .filter((m) => (m.kind === "app" || m.kind === "database") && m.id)
+    .sort((a, b) => a.seq - b.seq);
+  const waiting = new Map<string, { seq: number; left: Left[] }>();
+  for (const key of new Set(moves.map((m) => `${m.kind}/${m.id}`))) {
+    const [kind, id] = key.split("/") as ["app" | "database", string];
+    const members = (view.placement ?? [])
+      .filter((e) => e.kind === kind && e.id === id)
+      .sort((a, b) => a.replica - b.replica)
+      .map((e) => e.member || null);
+    if (members.length === 0) continue;
+    const mirror = (await listWorkloadPlacements(kind, [id])).get(id) ?? [];
+    if (mirror.map((p) => p.serverId).join() !== members.join())
+      try {
+        await recordPlacement({
+          clusterId: cluster.id,
+          kind,
+          workloadId: id,
+          members,
+          epoch: view.epoch || cluster.leaderEpoch,
+        });
+      } catch (e) {
+        console.warn(`[cluster-watch] ${cluster.id}: ${messageOf(e)}`);
+        continue;
+      }
+    for (const m of moves) {
+      if (m.kind !== kind || m.id !== id) continue;
+      if (!lost || m.seq <= lost.after || m.seq >= lost.before) continue;
+      if (m.member)
+        await applyFailedOver(cluster, {
+          kind,
+          workloadId: id,
+          from: m.from,
+          to: m.member,
+          reason: m.reason,
+          backupId: m.backupId,
+          backupAt: m.backupAt,
+          restoreMs: m.restoreMs,
+          promoted: m.promoted,
+        });
+      else {
+        const w = waiting.get(m.from) ?? { seq: 0, left: [] };
+        if (!w.left.some((l) => l.workloadId === id))
+          w.left.push({ kind, workloadId: id, reason: m.wait || UNKNOWN });
+        w.seq = Math.max(w.seq, m.seq);
+        waiting.set(m.from, w);
+      }
+    }
+  }
+  for (const [member, w] of waiting)
+    await applyFailoverSummary(cluster, w.seq, { member, waiting: w.left });
+}

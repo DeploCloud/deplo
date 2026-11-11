@@ -8,11 +8,15 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability } from "../../membership";
 import { recordActivity } from "../activity";
+import { dropFailoverBundle } from "../clusters/bundles";
+import { clearPlacement } from "../clusters/placement";
+import { dropStandbyCopy } from "./standby";
 import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { withKeyedLock } from "../keyed-mutex";
 import { enqueueTeardowns } from "../teardown-queue";
 import { assertDataCopyIntact, clearDataCopyError } from "../data-copy";
+import { changeLogBroken } from "../clusters/change-log";
 import { assertNotPausedForMove } from "../deplo-move/source-guard";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { assertNotProvisioning, databaseExists, requireDatabase } from "./rows";
@@ -199,6 +203,7 @@ export async function rebuildDatabase(id: string): Promise<void> {
       .set({ status: "running" })
       .where(eq(databasesTable.id, id));
     await clearDataCopyError({ kind: "database", id });
+    await changeLogBroken(id);
     publishDatabaseChanged(id);
   });
   await recordActivity(
@@ -230,6 +235,18 @@ export async function deleteDatabase(
   await withKeyedLock(id, async () => {
     if (!(await databaseExists(id))) return;
     let failure: { why: string; retry: string } | null = null;
+    // Delete means all of it: the standby copy on another server goes too, or is queued until that server answers.
+    const copyLeftOn = await dropStandbyCopy(db).catch(() => null);
+    if (copyLeftOn)
+      await enqueueTeardowns([
+        {
+          serverId: copyLeftOn,
+          deployKey: db.host,
+          projectLabel: db.id,
+          label: `${db.name} (standby copy)`,
+          teamId: db.teamId,
+        },
+      ]);
     try {
       const reason = await teardownDatabaseStack(db);
       if (reason)
@@ -264,6 +281,10 @@ export async function deleteDatabase(
       ]);
     }
     await getDb().delete(databasesTable).where(eq(databasesTable.id, id));
+    if (db.clusterId) {
+      await clearPlacement("database", id).catch(() => {});
+      await dropFailoverBundle(id, db.clusterId, "database").catch(() => {});
+    }
     publishDatabaseChanged(id);
     await recordActivity(
       "database",

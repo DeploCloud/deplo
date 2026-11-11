@@ -32,10 +32,21 @@ import {
   setAppFramework,
   setAppComposeUpArgs,
   setAppRestartLoopGuard,
+  setAppReplicas,
+  setAppStickySessions,
   setAppZeroDowntimeDeploys,
+  setAppRestartWhenUnresponsive,
   setAppScreenshots,
 } from "@/lib/data/apps/settings";
-import { moveAppToServer, updateAppSource } from "@/lib/data/apps/source";
+import {
+  bringAppBack,
+  setAppFailoverFromBackup,
+} from "@/lib/data/apps/failover";
+import {
+  moveAppToCluster,
+  moveAppToServer,
+  updateAppSource,
+} from "@/lib/data/apps/source";
 import { setAppVolumes } from "@/lib/data/apps/volumes";
 import {
   revealDeployHook,
@@ -77,6 +88,7 @@ builder.mutationFields((t) => ({
         logoFromTemplate: input.logoFromTemplate ?? false,
         compose: input.compose ?? null,
         serverId: input.serverId ?? undefined,
+        clusterId: input.clusterId ?? undefined,
         buildServerId: input.buildServerId ?? null,
         composeUpArgs: input.composeUpArgs ?? null,
         sharedVarIds: input.sharedVarIds ?? null,
@@ -260,13 +272,27 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
     description:
-      "Move an app to another server and redeploy it there, copying its data. Its source is unchanged.",
+      "Move an app to another server and redeploy it there, copying its data. Its source is unchanged. An app on a cluster leaves it this way and also needs move_apps.",
     args: {
       id: t.arg.string({ required: true }),
       serverId: t.arg.string({ required: true }),
     },
     resolve: async (_r, { id, serverId }) => {
       await moveAppToServer(id, serverId);
+      return reloadApp(id);
+    },
+  }),
+  moveAppToCluster: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Place an app on a cluster and redeploy it on the member its leader picks, copying its data. A cluster with no room answers with the sentence that says what to change, and nothing stops. To take it off a cluster again use moveAppToServer, which also needs move_apps.",
+    args: {
+      id: t.arg.string({ required: true }),
+      clusterId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { id, clusterId }) => {
+      await moveAppToCluster(id, clusterId);
       return reloadApp(id);
     },
   }),
@@ -339,6 +365,50 @@ builder.mutationFields((t) => ({
       return reloadApp(id);
     },
   }),
+  setAppRestartWhenUnresponsive: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Turn automatic restart on or off for one app: on, the server agent restarts " +
+      "it when it stops answering. Applies from the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppRestartWhenUnresponsive(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppFailoverFromBackup: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Fail over automatically from the latest backup: on, a cluster app with a Volume moves to " +
+      "another server on its own when its server stops, restored from its latest backup; off " +
+      "(the default) it waits for its server. Refused for an app with a Bind.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppFailoverFromBackup(id, value);
+      return reloadApp(id);
+    },
+  }),
+  bringAppBack: t.field({
+    type: AppRef,
+    authScopes: { capability: "restore_backups" },
+    description:
+      "Bring a cluster app that waits for its stopped server back on another server, from its " +
+      "latest backup. Anything written after that backup is lost. Refused while its own server " +
+      "may still be running it.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await bringAppBack(id);
+      return reloadApp(id);
+    },
+  }),
   setAppZeroDowntimeDeploys: t.field({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
@@ -352,6 +422,36 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAppZeroDowntimeDeploys(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppReplicas: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Run a single-image app as 1 to 10 replicas on its server. Refused with a Volume, " +
+      "a Bind or a published host port. Applies from the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.int({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppReplicas(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppStickySessions: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Keep each visitor on the same replica with a cookie. Needs more than one " +
+      "replica, set on the App or in a compose stack's own YAML. Applies from the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppStickySessions(id, value);
       return reloadApp(id);
     },
   }),

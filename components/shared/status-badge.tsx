@@ -23,6 +23,7 @@ type AnyStatus =
   | "running"
   | "restarting"
   | "unhealthy"
+  | "unresponsive"
   | "down"
   | "not_deployed"
   | "blocked"
@@ -49,6 +50,7 @@ const COLORS: Record<string, string> = {
   cloudflare: "bg-[var(--warning)]",
   restarting: "bg-[var(--warning)]",
   unhealthy: "bg-[var(--warning)]",
+  unresponsive: "bg-[var(--warning)]",
   warning: "bg-[var(--warning)]",
   never: "bg-muted-foreground",
   error: "bg-destructive",
@@ -95,6 +97,7 @@ const VARIANTS: Record<
   warning: "warning",
   restarting: "warning",
   unhealthy: "warning",
+  unresponsive: "warning",
   error: "destructive",
   failed: "destructive",
   misconfigured: "destructive",
@@ -137,6 +140,7 @@ export function StatusDot({
 const LABELS: Record<string, string> = {
   idle: "Stopped",
   not_deployed: "Not deployed",
+  unresponsive: "Not answering · restarts paused",
   blocked: "Needs approval",
   evicted: "Over the limit",
   active: "Running",

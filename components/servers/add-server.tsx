@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Loader2, Plus, ServerCog } from "lucide-react";
+import { Loader2, Network, Plus, ServerCog } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,9 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
+import { DocsLink } from "@/components/ui/docs-link";
 import {
+  AccessOption,
   ServerTeamAccess,
   accessIsComplete,
   type ServerAccess,
@@ -39,6 +41,7 @@ export function AddServer({
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen);
   const [pending, startTransition] = React.useTransition();
+  const [kind, setKind] = React.useState<"server" | "cluster">("server");
   const [name, setName] = React.useState("");
   const [host, setHost] = React.useState("");
   const [access, setAccess] = React.useState<ServerAccess>({
@@ -56,6 +59,7 @@ export function AddServer({
   }, []);
 
   function reset() {
+    setKind("server");
     setName("");
     setHost("");
     setAccess({ allTeams: true, teamIds: [] });
@@ -69,7 +73,40 @@ export function AddServer({
     submit();
   }
 
+  function submitCluster() {
+    startTransition(async () => {
+      const res = await gqlAction<{ createCluster: { id: string } }>(
+        /* GraphQL */ `
+          mutation CreateCluster(
+            $name: String!
+            $sharing: ClusterSharingInput!
+          ) {
+            createCluster(name: $name, sharing: $sharing) {
+              id
+            }
+          }
+        `,
+        {
+          name,
+          sharing: {
+            allTeams: access.allTeams,
+            teamIds: access.allTeams ? [] : access.teamIds,
+          },
+        },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`Cluster ${name.trim()} created`);
+      setOpen(false);
+      reset();
+      router.refresh();
+    });
+  }
+
   function submit() {
+    if (kind === "cluster") return submitCluster();
     startTransition(async () => {
       const res = await gqlAction<{
         addServer: { server: { id: string }; installCommand: string };
@@ -122,12 +159,20 @@ export function AddServer({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ServerCog className="size-4" />
-            Add a server
+            {kind === "cluster" ? "Add a cluster" : "Add a server"}
           </DialogTitle>
           <DialogDescription>
-            {command
-              ? "Run this once on the server. The agent installs itself and calls home."
-              : "Add a remote server: name it, then run the install command on it. Deplo never SSHes in."}
+            {command ? (
+              "Run this once on the server. The agent installs itself and calls home."
+            ) : kind === "cluster" ? (
+              <>
+                Several servers that act as one. If one stops, its Apps move to
+                another. Nothing of Kubernetes is involved.{" "}
+                <DocsLink topic="clusters.overview" />
+              </>
+            ) : (
+              "Add a remote server: name it, then run the install command on it. Deplo never SSHes in."
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -151,8 +196,30 @@ export function AddServer({
                   </p>
                 ) : null}
               </div>
+            ) : kind === "cluster" ? (
+              <div className="space-y-4">
+                <KindPicker kind={kind} onChange={setKind} disabled={pending} />
+                <div className="space-y-2">
+                  <Label htmlFor="clu-name">Name</Label>
+                  <Input
+                    id="clu-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="eu"
+                  />
+                </div>
+                <ServerTeamAccess
+                  value={access}
+                  teams={teams}
+                  onChange={setAccess}
+                  disabled={pending}
+                  info="Which teams are allowed to place Apps and databases on this cluster."
+                  docs="clusters.teams"
+                />
+              </div>
             ) : (
               <div className="space-y-4">
+                <KindPicker kind={kind} onChange={setKind} disabled={pending} />
                 <div className="space-y-2">
                   <Label htmlFor="srv-name">Display name</Label>
                   <Input
@@ -215,7 +282,11 @@ export function AddServer({
               </Button>
               <Button
                 type="submit"
-                disabled={pending || !host.trim() || !accessIsComplete(access)}
+                disabled={
+                  pending ||
+                  !accessIsComplete(access) ||
+                  (kind === "cluster" ? !name.trim() : !host.trim())
+                }
               >
                 <span className="grid place-items-center">
                   <span
@@ -224,7 +295,7 @@ export function AddServer({
                       pending && "invisible",
                     )}
                   >
-                    Add server
+                    {kind === "cluster" ? "Add cluster" : "Add server"}
                   </span>
                   {pending && (
                     <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
@@ -236,5 +307,36 @@ export function AddServer({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function KindPicker({
+  kind,
+  onChange,
+  disabled,
+}: {
+  kind: "server" | "cluster";
+  onChange: (k: "server" | "cluster") => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div role="radiogroup" className="grid grid-cols-2 gap-2">
+      <AccessOption
+        icon={ServerCog}
+        title="Server"
+        description="One machine"
+        selected={kind === "server"}
+        disabled={disabled}
+        onSelect={() => onChange("server")}
+      />
+      <AccessOption
+        icon={Network}
+        title="Cluster"
+        description="Several servers as one"
+        selected={kind === "cluster"}
+        disabled={disabled}
+        onSelect={() => onChange("cluster")}
+      />
+    </div>
   );
 }

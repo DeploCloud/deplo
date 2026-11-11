@@ -99,6 +99,8 @@ export const backups = pgTable(
     lastRunAt: isoTimestamptz("last_run_at"),
     lastStatus: text("last_status").notNull(),
     enabled: boolean("enabled").notNull(),
+    // Its runs are Postgres base backups, which the archived change log is replayed onto.
+    baseBackup: boolean("base_backup").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -138,8 +140,15 @@ export const backupRuns = pgTable(
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     decryptedSizeBytes: bigint("decrypted_size_bytes", { mode: "number" }),
+    // How long the App was paused for a consistent volume copy; NULL when it was not.
+    heldMs: bigint("held_ms", { mode: "number" }),
     sha256: text("sha256"),
     orphanedAt: isoTimestamptz("orphaned_at"),
+    // Data a returning cluster member had left (spec #176): the server it was on, and when the failover happened.
+    leftOnServerId: text("left_on_server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    leftAt: isoTimestamptz("left_at"),
     status: text("status").notNull(),
     error: text("error"),
     startedAt: isoTimestamptz("started_at").notNull(),

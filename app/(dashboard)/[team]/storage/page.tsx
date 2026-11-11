@@ -10,6 +10,10 @@ import { listDestinations } from "@/lib/data/destinations/listing";
 import { listBackups } from "@/lib/data/backups/schedules";
 import { listServersForCurrentTeam } from "@/lib/data/servers/roster";
 import {
+  listPlacementChoices,
+  placementOption,
+} from "@/lib/data/clusters/choices";
+import {
   deploHostSelfAddresses,
   isDeploHostServer,
 } from "@/lib/deploy/domains";
@@ -113,16 +117,12 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
   const dbSecurity = await databaseSecurityCounts(databases.map((d) => d.id));
 
   const selfAddrs = deploHostSelfAddresses();
-  const dbServers = servers
-    .filter(
-      (s) =>
-        Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly,
-    )
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      isDeploHost: isDeploHostServer(s, selfAddrs),
-    }));
+  const provisioned = new Set(
+    servers.filter((s) => s.agent?.certFingerprint).map((s) => s.id),
+  );
+  const dbServers = (await listPlacementChoices())
+    .filter((c) => c.kind === "cluster" || provisioned.has(c.id))
+    .map(placementOption);
   const dbEnvironments = (await listAllEnvironmentsForTeam()).map((e) => ({
     id: e.id,
     name: e.name,

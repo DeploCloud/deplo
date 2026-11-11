@@ -307,6 +307,45 @@ export function backupKindToJSON(object: BackupKind): string {
   }
 }
 
+export enum PostgresArchive {
+  POSTGRES_ARCHIVE_NONE = 0,
+  POSTGRES_ARCHIVE_BASE = 1,
+  POSTGRES_ARCHIVE_LOG = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function postgresArchiveFromJSON(object: any): PostgresArchive {
+  switch (object) {
+    case 0:
+    case "POSTGRES_ARCHIVE_NONE":
+      return PostgresArchive.POSTGRES_ARCHIVE_NONE;
+    case 1:
+    case "POSTGRES_ARCHIVE_BASE":
+      return PostgresArchive.POSTGRES_ARCHIVE_BASE;
+    case 2:
+    case "POSTGRES_ARCHIVE_LOG":
+      return PostgresArchive.POSTGRES_ARCHIVE_LOG;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return PostgresArchive.UNRECOGNIZED;
+  }
+}
+
+export function postgresArchiveToJSON(object: PostgresArchive): string {
+  switch (object) {
+    case PostgresArchive.POSTGRES_ARCHIVE_NONE:
+      return "POSTGRES_ARCHIVE_NONE";
+    case PostgresArchive.POSTGRES_ARCHIVE_BASE:
+      return "POSTGRES_ARCHIVE_BASE";
+    case PostgresArchive.POSTGRES_ARCHIVE_LOG:
+      return "POSTGRES_ARCHIVE_LOG";
+    case PostgresArchive.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 /**
  * Which classes of object a cleanup may reclaim. Adding one would turn a disk-reclaim
  * button into a data-loss button.
@@ -962,13 +1001,157 @@ export interface DeployRequest {
    * removes it. A stand-in that never gets ready is removed and the live container is never
    * touched, unless the live container mounts storage (which may refuse a second copy): then
    * the agent swaps in place instead. Empty => the in-place swap. Advertised as `deploy.overlap`.
+   * A compose stack (`deploy.overlap.stack`) is copied whole, each service `<name>_next`: the
+   * deploy's `ready` check judges the copy, and one that never gets ready always fails the deploy.
    */
   standInComposeYaml: string;
+  /**
+   * When the app stops answering, restart it. The agent keeps the rule on disk and probes on its
+   * own, so it works while the control plane is down. Unset => none, and a stored rule is removed.
+   * Advertised as `health.restart`.
+   */
+  restartRule?:
+    | RestartRule
+    | undefined;
+  /**
+   * Compose services to start only once the deploy is ready: the stack comes up without them, and a
+   * deploy that is not ready never starts them. Advertised as `deploy.start-after-ready`.
+   */
+  startAfterReady: string[];
 }
 
 export interface DeployRequest_EnvEntry {
   key: string;
   value: string;
+}
+
+/** How the agent decides an app has stopped answering, and when it restarts it. */
+export interface RestartRule {
+  probe: RestartRule_Probe;
+  port: number;
+  path: string;
+  intervalS: number;
+  timeoutS: number;
+  /** Failures in a row before a restart. Ignored for PROBE_DOCKER_HEALTH, where Docker already counted. */
+  retries: number;
+  /** Nothing counts this long after a container starts. */
+  startPeriodS: number;
+  /** Compose stacks: the service to watch. Empty => the app's single container. */
+  service: string;
+  /**
+   * The App's own http check: a status of 400 or more is a failure. Unset (the default GET /)
+   * counts any HTTP status as alive.
+   */
+  failOnErrorStatus: boolean;
+}
+
+export enum RestartRule_Probe {
+  PROBE_UNSPECIFIED = 0,
+  /** PROBE_HTTP - GET port+path from the host; see fail_on_error_status. */
+  PROBE_HTTP = 1,
+  /** PROBE_DOCKER_HEALTH - Docker's own health verdict (the app's command check); `unhealthy` is a failure. */
+  PROBE_DOCKER_HEALTH = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function restartRule_ProbeFromJSON(object: any): RestartRule_Probe {
+  switch (object) {
+    case 0:
+    case "PROBE_UNSPECIFIED":
+      return RestartRule_Probe.PROBE_UNSPECIFIED;
+    case 1:
+    case "PROBE_HTTP":
+      return RestartRule_Probe.PROBE_HTTP;
+    case 2:
+    case "PROBE_DOCKER_HEALTH":
+      return RestartRule_Probe.PROBE_DOCKER_HEALTH;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return RestartRule_Probe.UNRECOGNIZED;
+  }
+}
+
+export function restartRule_ProbeToJSON(object: RestartRule_Probe): string {
+  switch (object) {
+    case RestartRule_Probe.PROBE_UNSPECIFIED:
+      return "PROBE_UNSPECIFIED";
+    case RestartRule_Probe.PROBE_HTTP:
+      return "PROBE_HTTP";
+    case RestartRule_Probe.PROBE_DOCKER_HEALTH:
+      return "PROBE_DOCKER_HEALTH";
+    case RestartRule_Probe.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+/** Something the restart rule did, reported on the metrics stream (buffered while none is open). */
+export interface RestartEvent {
+  kind: RestartEvent_Kind;
+  slug: string;
+  container: string;
+  /** KIND_RESTARTED: how long it had not answered. Otherwise 0. */
+  unansweredS: number;
+  /** Restarts in the last 30 minutes, this one included. */
+  restarts: number;
+  /** KIND_RESUMED: "deploy" | "restart" | "quiet". */
+  reason: string;
+  atUnixMs: number;
+}
+
+export enum RestartEvent_Kind {
+  KIND_UNSPECIFIED = 0,
+  KIND_RESTARTED = 1,
+  /** KIND_PAUSED - Too many restarts in 30 minutes: restarting stops, the app keeps running. */
+  KIND_PAUSED = 2,
+  /** KIND_RESUMED - Restarting is back on (a deploy, a manual restart or 30 quiet minutes). */
+  KIND_RESUMED = 3,
+  /** KIND_RECOVERED - A restarted container answers again. */
+  KIND_RECOVERED = 4,
+  UNRECOGNIZED = -1,
+}
+
+export function restartEvent_KindFromJSON(object: any): RestartEvent_Kind {
+  switch (object) {
+    case 0:
+    case "KIND_UNSPECIFIED":
+      return RestartEvent_Kind.KIND_UNSPECIFIED;
+    case 1:
+    case "KIND_RESTARTED":
+      return RestartEvent_Kind.KIND_RESTARTED;
+    case 2:
+    case "KIND_PAUSED":
+      return RestartEvent_Kind.KIND_PAUSED;
+    case 3:
+    case "KIND_RESUMED":
+      return RestartEvent_Kind.KIND_RESUMED;
+    case 4:
+    case "KIND_RECOVERED":
+      return RestartEvent_Kind.KIND_RECOVERED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return RestartEvent_Kind.UNRECOGNIZED;
+  }
+}
+
+export function restartEvent_KindToJSON(object: RestartEvent_Kind): string {
+  switch (object) {
+    case RestartEvent_Kind.KIND_UNSPECIFIED:
+      return "KIND_UNSPECIFIED";
+    case RestartEvent_Kind.KIND_RESTARTED:
+      return "KIND_RESTARTED";
+    case RestartEvent_Kind.KIND_PAUSED:
+      return "KIND_PAUSED";
+    case RestartEvent_Kind.KIND_RESUMED:
+      return "KIND_RESUMED";
+    case RestartEvent_Kind.KIND_RECOVERED:
+      return "KIND_RECOVERED";
+    case RestartEvent_Kind.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
 }
 
 /**
@@ -1643,6 +1826,12 @@ export interface BackupRequest {
    * destination's StoreResult.bytes_written.
    */
   streamOut: boolean;
+  /**
+   * Postgres only. BASE writes a physical base backup instead of a dump; LOG writes the change-log
+   * segments Postgres archived into <PGDATA>/deplo-wal since the last LOG, then removes them there.
+   * A LOG with nothing waiting succeeds with an empty object_key and writes no artifact.
+   */
+  archive: PostgresArchive;
 }
 
 /**
@@ -1678,6 +1867,11 @@ export interface BackupResult {
    * browser.
    */
   decryptedSizeBytes: number;
+  /**
+   * How long the app's containers were paused so its volumes could be copied
+   * consistently, in milliseconds. 0 when nothing was held.
+   */
+  heldMs: number;
 }
 
 export interface RestoreRequest {
@@ -1703,6 +1897,11 @@ export interface RestoreRequest {
    * can prove the bytes it is about to act on are that artifact.
    */
   expectedSha256: string;
+  /**
+   * Postgres base backups only: the folder, at the same destination, of the change-log artifacts
+   * (BackupRequest.archive LOG) to replay after the base backup, in name order.
+   */
+  logPrefix: string;
 }
 
 export interface RestoreEvent {
@@ -1995,6 +2194,11 @@ export interface ConsoleInstance {
    * agent too old to send it - both mean "no uptime to show", never 1970.
    */
   startedAtUnix: number;
+  /**
+   * What the restart rule's last probe said (health.restart): "starting" | "answering" |
+   * "not_answering". Empty when no rule watches this container or none has probed yet.
+   */
+  answer: string;
 }
 
 export interface ListInstancesResponse {
@@ -2104,6 +2308,11 @@ export interface PollJobResponse {
   startedAtUnix: number;
   /** 0 while running */
   finishedAtUnix: number;
+  /**
+   * The agent stopped the job itself because this member's cluster lease ran out.
+   * The control plane records the run as lost with its server and never retries it.
+   */
+  fenced: boolean;
 }
 
 export interface KillJobRequest {
@@ -2511,6 +2720,11 @@ export interface ContainerStat {
    * started. Keyed by container_id, so it never goes down for the same id.
    */
   oomKills: number;
+  /**
+   * ADDITIVE. What the restart rule's last check said about this container: "starting",
+   * "answering" or "not_answering", as InstanceInfo.answer. Empty when no rule watches it.
+   */
+  answer: string;
 }
 
 export interface ContainerStatsResponse {
@@ -2551,6 +2765,8 @@ export interface MetricsSample {
    * RPC, and makes an automatic demotion visible instead of silent.
    */
   source: string;
+  /** Restart-rule events since the last frame that carried them. */
+  restartEvents: RestartEvent[];
 }
 
 export interface HostInfoRequest {
@@ -2785,6 +3001,170 @@ export interface CaptureScreenshotResponse {
 export interface ReuseImage {
   imageRef: string;
   commitSha: string;
+}
+
+export interface InstallClusterRequest {
+  /** The target version, normalized without a leading v. Never older than the one installed. */
+  version: string;
+  /** The published binaries, keyed by Go arch, as in SelfUpdateRequest. */
+  binaries: { [key: string]: ArchBinary };
+  /** Also run the cluster relay beside the leader (a host that answers on 443). */
+  relay: boolean;
+}
+
+export interface InstallClusterRequest_BinariesEntry {
+  key: string;
+  value?: ArchBinary | undefined;
+}
+
+export interface InstallClusterResponse {
+  /** The version now installed and running. */
+  version: string;
+  running: boolean;
+}
+
+export interface RemoveClusterRequest {
+}
+
+export interface RemoveClusterResponse {
+  /** True when something was installed and is now gone. */
+  removed: boolean;
+}
+
+export interface ClusterStatusRequest {
+}
+
+export interface ClusterStatusResponse {
+  installed: boolean;
+  running: boolean;
+  /** The installed version; empty when nothing is installed. */
+  version: string;
+  relay: boolean;
+  /** Whether this agent is a cluster member, and how many relays hold its connection now. */
+  member: boolean;
+  relayLinks: number;
+}
+
+export interface SetClusterMemberRequest {
+  member: boolean;
+  /**
+   * Relay addresses (http or https origin, no path) to dial in addition to the one on this
+   * host and the panel's own. Only read when member is true.
+   */
+  relays: string[];
+  /** The cluster this server is a member of. */
+  clusterId: string;
+  /**
+   * Certificates (sha256 hex of the DER) that may lead that cluster. An order from any other
+   * certificate, or naming another cluster, is refused whatever the relay says.
+   */
+  leaderFingerprints: string[];
+}
+
+export interface SetClusterMemberResponse {
+  member: boolean;
+  /** Relays this agent is connected to at the moment of the answer. */
+  relayLinks: number;
+}
+
+export interface ClusterCallRequest {
+  /**
+   * The leader's method name, e.g. "place". A name starting "relay." goes to the relay on this host
+   * instead, which is where the control plane pushes a cluster's roster. Opaque otherwise.
+   */
+  method: string;
+  /** The request body, forwarded as is. */
+  payload: Uint8Array;
+}
+
+export interface ClusterCallResponse {
+  /** The leader's answer body, returned as is. */
+  payload: Uint8Array;
+}
+
+export interface ClusterWatchRequest {
+  /** The last sequence the caller applied; 0 asks for everything the leader still holds. */
+  since: number;
+}
+
+export interface ClusterWatchLine {
+  /** One line of the leader's watch, forwarded as is (no trailing newline). */
+  line: Uint8Array;
+}
+
+export interface CopyClusterImageRequest {
+  /** A deplo/<key>:<tag> image this host holds. */
+  imageRef: string;
+  /** The target member's certificate fingerprint (sha256 hex of its DER). */
+  targetFingerprint: string;
+  /** How many releases of the App the target keeps, this one included. 0 means 2. */
+  keep: number;
+}
+
+export interface CopyClusterImageResponse {
+  /** The target already held the image, so nothing was sent. */
+  alreadyPresent: boolean;
+  bytes: number;
+  /** Releases the target removed to stay within keep. */
+  pruned: string[];
+}
+
+export interface ExpectClusterImageRequest {
+  /** The deplo/<key>:<tag> image the source is about to send. */
+  imageRef: string;
+  /** The sending member's certificate fingerprint (sha256 hex of its DER). */
+  sourceFingerprint: string;
+  /** How many releases of the App this member keeps, this one included. 0 means 2. */
+  keep: number;
+}
+
+export interface ExpectClusterImageResponse {
+}
+
+/** A cluster member's certificate, by the server id the leader's placement names it with. */
+export interface ClusterForwarderMember {
+  serverId: string;
+  /** sha256 hex of the member's certificate DER. */
+  fingerprint: string;
+}
+
+/**
+ * The public name of a workload that runs on ANOTHER member, held on this member's network for
+ * the Environment. The workload is addressed by id: the leader's placement says where it runs.
+ */
+export interface ClusterHeldName {
+  /** The Environment's network (deplo-env-<id>, or deplo-team-<id> for an App with none). */
+  network: string;
+  /** "app" | "database". */
+  kind: string;
+  /** The workload's id, which is also the deplo.project label of its containers. */
+  workloadId: string;
+  /** The public name (db-<slug>, or the App's name). */
+  name: string;
+  /** The port the workload answers on. */
+  port: number;
+}
+
+/** A workload placed on THIS member that other members of its Environment may reach over the relay. */
+export interface ClusterServedName {
+  network: string;
+  kind: string;
+  workloadId: string;
+  port: number;
+  /** Certificate fingerprints of the other members of the same Environment, and no one else. */
+  sourceFingerprints: string[];
+}
+
+export interface SetClusterForwardersRequest {
+  clusterId: string;
+  members: ClusterForwarderMember[];
+  hold: ClusterHeldName[];
+  serve: ClusterServedName[];
+}
+
+export interface SetClusterForwardersResponse {
+  held: number;
+  served: number;
 }
 
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
@@ -4848,6 +5228,8 @@ function createBaseDeployRequest(): DeployRequest {
     pullBaseImages: false,
     reuseImage: undefined,
     standInComposeYaml: "",
+    restartRule: undefined,
+    startAfterReady: [],
   };
 }
 
@@ -4936,6 +5318,12 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.standInComposeYaml !== "") {
       writer.uint32(226).string(message.standInComposeYaml);
+    }
+    if (message.restartRule !== undefined) {
+      RestartRule.encode(message.restartRule, writer.uint32(234).fork()).join();
+    }
+    for (const v of message.startAfterReady) {
+      writer.uint32(242).string(v!);
     }
     return writer;
   },
@@ -5180,6 +5568,22 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.standInComposeYaml = reader.string();
             continue;
           }
+          case 29: {
+            if (tag !== 234) {
+              break;
+            }
+
+            message.restartRule = RestartRule.decode(reader, reader.uint32());
+            continue;
+          }
+          case 30: {
+            if (tag !== 242) {
+              break;
+            }
+
+            message.startAfterReady.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5321,6 +5725,16 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.stand_in_compose_yaml)
         ? globalThis.String(object.stand_in_compose_yaml)
         : "",
+      restartRule: isSet(object.restartRule)
+        ? RestartRule.fromJSON(object.restartRule)
+        : isSet(object.restart_rule)
+        ? RestartRule.fromJSON(object.restart_rule)
+        : undefined,
+      startAfterReady: globalThis.Array.isArray(object?.startAfterReady)
+        ? object.startAfterReady.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.start_after_ready)
+        ? object.start_after_ready.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -5416,6 +5830,12 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.standInComposeYaml !== "") {
       obj.standInComposeYaml = message.standInComposeYaml;
     }
+    if (message.restartRule !== undefined) {
+      obj.restartRule = RestartRule.toJSON(message.restartRule);
+    }
+    if (message.startAfterReady?.length) {
+      obj.startAfterReady = message.startAfterReady;
+    }
     return obj;
   },
 
@@ -5468,6 +5888,10 @@ export const DeployRequest: MessageFns<DeployRequest> = {
       ? ReuseImage.fromPartial(object.reuseImage)
       : undefined;
     message.standInComposeYaml = object.standInComposeYaml ?? "";
+    message.restartRule = (object.restartRule !== undefined && object.restartRule !== null)
+      ? RestartRule.fromPartial(object.restartRule)
+      : undefined;
+    message.startAfterReady = object.startAfterReady?.map((e) => e) || [];
     return message;
   },
 };
@@ -5553,6 +5977,402 @@ export const DeployRequest_EnvEntry: MessageFns<DeployRequest_EnvEntry> = {
     const message = createBaseDeployRequest_EnvEntry();
     message.key = object.key ?? "";
     message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseRestartRule(): RestartRule {
+  return {
+    probe: 0,
+    port: 0,
+    path: "",
+    intervalS: 0,
+    timeoutS: 0,
+    retries: 0,
+    startPeriodS: 0,
+    service: "",
+    failOnErrorStatus: false,
+  };
+}
+
+export const RestartRule: MessageFns<RestartRule> = {
+  encode(message: RestartRule, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.probe !== 0) {
+      writer.uint32(8).int32(message.probe);
+    }
+    if (message.port !== 0) {
+      writer.uint32(16).int32(message.port);
+    }
+    if (message.path !== "") {
+      writer.uint32(26).string(message.path);
+    }
+    if (message.intervalS !== 0) {
+      writer.uint32(32).int32(message.intervalS);
+    }
+    if (message.timeoutS !== 0) {
+      writer.uint32(40).int32(message.timeoutS);
+    }
+    if (message.retries !== 0) {
+      writer.uint32(48).int32(message.retries);
+    }
+    if (message.startPeriodS !== 0) {
+      writer.uint32(56).int32(message.startPeriodS);
+    }
+    if (message.service !== "") {
+      writer.uint32(66).string(message.service);
+    }
+    if (message.failOnErrorStatus !== false) {
+      writer.uint32(72).bool(message.failOnErrorStatus);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestartRule {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRestartRule();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.probe = reader.int32() as any;
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.port = reader.int32();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.path = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.intervalS = reader.int32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.timeoutS = reader.int32();
+            continue;
+          }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.retries = reader.int32();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.startPeriodS = reader.int32();
+            continue;
+          }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.service = reader.string();
+            continue;
+          }
+          case 9: {
+            if (tag !== 72) {
+              break;
+            }
+
+            message.failOnErrorStatus = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RestartRule {
+    return {
+      probe: isSet(object.probe) ? restartRule_ProbeFromJSON(object.probe) : 0,
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      intervalS: isSet(object.intervalS)
+        ? globalThis.Number(object.intervalS)
+        : isSet(object.interval_s)
+        ? globalThis.Number(object.interval_s)
+        : 0,
+      timeoutS: isSet(object.timeoutS)
+        ? globalThis.Number(object.timeoutS)
+        : isSet(object.timeout_s)
+        ? globalThis.Number(object.timeout_s)
+        : 0,
+      retries: isSet(object.retries) ? globalThis.Number(object.retries) : 0,
+      startPeriodS: isSet(object.startPeriodS)
+        ? globalThis.Number(object.startPeriodS)
+        : isSet(object.start_period_s)
+        ? globalThis.Number(object.start_period_s)
+        : 0,
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
+      failOnErrorStatus: isSet(object.failOnErrorStatus)
+        ? globalThis.Boolean(object.failOnErrorStatus)
+        : isSet(object.fail_on_error_status)
+        ? globalThis.Boolean(object.fail_on_error_status)
+        : false,
+    };
+  },
+
+  toJSON(message: RestartRule): unknown {
+    const obj: any = {};
+    if (message.probe !== 0) {
+      obj.probe = restartRule_ProbeToJSON(message.probe);
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.intervalS !== 0) {
+      obj.intervalS = Math.round(message.intervalS);
+    }
+    if (message.timeoutS !== 0) {
+      obj.timeoutS = Math.round(message.timeoutS);
+    }
+    if (message.retries !== 0) {
+      obj.retries = Math.round(message.retries);
+    }
+    if (message.startPeriodS !== 0) {
+      obj.startPeriodS = Math.round(message.startPeriodS);
+    }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
+    if (message.failOnErrorStatus !== false) {
+      obj.failOnErrorStatus = message.failOnErrorStatus;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestartRule>, I>>(base?: I): RestartRule {
+    return RestartRule.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestartRule>, I>>(object: I): RestartRule {
+    const message = createBaseRestartRule();
+    message.probe = object.probe ?? 0;
+    message.port = object.port ?? 0;
+    message.path = object.path ?? "";
+    message.intervalS = object.intervalS ?? 0;
+    message.timeoutS = object.timeoutS ?? 0;
+    message.retries = object.retries ?? 0;
+    message.startPeriodS = object.startPeriodS ?? 0;
+    message.service = object.service ?? "";
+    message.failOnErrorStatus = object.failOnErrorStatus ?? false;
+    return message;
+  },
+};
+
+function createBaseRestartEvent(): RestartEvent {
+  return { kind: 0, slug: "", container: "", unansweredS: 0, restarts: 0, reason: "", atUnixMs: 0 };
+}
+
+export const RestartEvent: MessageFns<RestartEvent> = {
+  encode(message: RestartEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.kind !== 0) {
+      writer.uint32(8).int32(message.kind);
+    }
+    if (message.slug !== "") {
+      writer.uint32(18).string(message.slug);
+    }
+    if (message.container !== "") {
+      writer.uint32(26).string(message.container);
+    }
+    if (message.unansweredS !== 0) {
+      writer.uint32(32).int32(message.unansweredS);
+    }
+    if (message.restarts !== 0) {
+      writer.uint32(40).int32(message.restarts);
+    }
+    if (message.reason !== "") {
+      writer.uint32(50).string(message.reason);
+    }
+    if (message.atUnixMs !== 0) {
+      writer.uint32(56).int64(message.atUnixMs);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestartEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRestartEvent();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.kind = reader.int32() as any;
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.slug = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.container = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.unansweredS = reader.int32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.restarts = reader.int32();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.reason = reader.string();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.atUnixMs = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RestartEvent {
+    return {
+      kind: isSet(object.kind) ? restartEvent_KindFromJSON(object.kind) : 0,
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      unansweredS: isSet(object.unansweredS)
+        ? globalThis.Number(object.unansweredS)
+        : isSet(object.unanswered_s)
+        ? globalThis.Number(object.unanswered_s)
+        : 0,
+      restarts: isSet(object.restarts) ? globalThis.Number(object.restarts) : 0,
+      reason: isSet(object.reason) ? globalThis.String(object.reason) : "",
+      atUnixMs: isSet(object.atUnixMs)
+        ? globalThis.Number(object.atUnixMs)
+        : isSet(object.at_unix_ms)
+        ? globalThis.Number(object.at_unix_ms)
+        : 0,
+    };
+  },
+
+  toJSON(message: RestartEvent): unknown {
+    const obj: any = {};
+    if (message.kind !== 0) {
+      obj.kind = restartEvent_KindToJSON(message.kind);
+    }
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.unansweredS !== 0) {
+      obj.unansweredS = Math.round(message.unansweredS);
+    }
+    if (message.restarts !== 0) {
+      obj.restarts = Math.round(message.restarts);
+    }
+    if (message.reason !== "") {
+      obj.reason = message.reason;
+    }
+    if (message.atUnixMs !== 0) {
+      obj.atUnixMs = Math.round(message.atUnixMs);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestartEvent>, I>>(base?: I): RestartEvent {
+    return RestartEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestartEvent>, I>>(object: I): RestartEvent {
+    const message = createBaseRestartEvent();
+    message.kind = object.kind ?? 0;
+    message.slug = object.slug ?? "";
+    message.container = object.container ?? "";
+    message.unansweredS = object.unansweredS ?? 0;
+    message.restarts = object.restarts ?? 0;
+    message.reason = object.reason ?? "";
+    message.atUnixMs = object.atUnixMs ?? 0;
     return message;
   },
 };
@@ -10328,6 +11148,7 @@ function createBaseBackupRequest(): BackupRequest {
     store: undefined,
     ageRecipient: "",
     streamOut: false,
+    archive: 0,
   };
 }
 
@@ -10353,6 +11174,9 @@ export const BackupRequest: MessageFns<BackupRequest> = {
     }
     if (message.streamOut !== false) {
       writer.uint32(56).bool(message.streamOut);
+    }
+    if (message.archive !== 0) {
+      writer.uint32(64).int32(message.archive);
     }
     return writer;
   },
@@ -10426,6 +11250,14 @@ export const BackupRequest: MessageFns<BackupRequest> = {
             message.streamOut = reader.bool();
             continue;
           }
+          case 8: {
+            if (tag !== 64) {
+              break;
+            }
+
+            message.archive = reader.int32() as any;
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -10455,6 +11287,7 @@ export const BackupRequest: MessageFns<BackupRequest> = {
         : isSet(object.stream_out)
         ? globalThis.Boolean(object.stream_out)
         : false,
+      archive: isSet(object.archive) ? postgresArchiveFromJSON(object.archive) : 0,
     };
   },
 
@@ -10481,6 +11314,9 @@ export const BackupRequest: MessageFns<BackupRequest> = {
     if (message.streamOut !== false) {
       obj.streamOut = message.streamOut;
     }
+    if (message.archive !== 0) {
+      obj.archive = postgresArchiveToJSON(message.archive);
+    }
     return obj;
   },
 
@@ -10502,6 +11338,7 @@ export const BackupRequest: MessageFns<BackupRequest> = {
       : undefined;
     message.ageRecipient = object.ageRecipient ?? "";
     message.streamOut = object.streamOut ?? false;
+    message.archive = object.archive ?? 0;
     return message;
   },
 };
@@ -10610,7 +11447,7 @@ export const BackupEvent: MessageFns<BackupEvent> = {
 };
 
 function createBaseBackupResult(): BackupResult {
-  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "", decryptedSizeBytes: 0 };
+  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "", decryptedSizeBytes: 0, heldMs: 0 };
 }
 
 export const BackupResult: MessageFns<BackupResult> = {
@@ -10632,6 +11469,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     }
     if (message.decryptedSizeBytes !== 0) {
       writer.uint32(48).int64(message.decryptedSizeBytes);
+    }
+    if (message.heldMs !== 0) {
+      writer.uint32(56).int64(message.heldMs);
     }
     return writer;
   },
@@ -10697,6 +11537,14 @@ export const BackupResult: MessageFns<BackupResult> = {
             message.decryptedSizeBytes = longToNumber(reader.int64());
             continue;
           }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.heldMs = longToNumber(reader.int64());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -10729,6 +11577,11 @@ export const BackupResult: MessageFns<BackupResult> = {
         : isSet(object.decrypted_size_bytes)
         ? globalThis.Number(object.decrypted_size_bytes)
         : 0,
+      heldMs: isSet(object.heldMs)
+        ? globalThis.Number(object.heldMs)
+        : isSet(object.held_ms)
+        ? globalThis.Number(object.held_ms)
+        : 0,
     };
   },
 
@@ -10752,6 +11605,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     if (message.decryptedSizeBytes !== 0) {
       obj.decryptedSizeBytes = Math.round(message.decryptedSizeBytes);
     }
+    if (message.heldMs !== 0) {
+      obj.heldMs = Math.round(message.heldMs);
+    }
     return obj;
   },
 
@@ -10766,6 +11622,7 @@ export const BackupResult: MessageFns<BackupResult> = {
     message.sizeBytes = object.sizeBytes ?? 0;
     message.sha256 = object.sha256 ?? "";
     message.decryptedSizeBytes = object.decryptedSizeBytes ?? 0;
+    message.heldMs = object.heldMs ?? 0;
     return message;
   },
 };
@@ -10779,6 +11636,7 @@ function createBaseRestoreRequest(): RestoreRequest {
     store: undefined,
     ageIdentity: "",
     expectedSha256: "",
+    logPrefix: "",
   };
 }
 
@@ -10804,6 +11662,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     }
     if (message.expectedSha256 !== "") {
       writer.uint32(58).string(message.expectedSha256);
+    }
+    if (message.logPrefix !== "") {
+      writer.uint32(66).string(message.logPrefix);
     }
     return writer;
   },
@@ -10877,6 +11738,14 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
             message.expectedSha256 = reader.string();
             continue;
           }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.logPrefix = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -10906,6 +11775,11 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
         : isSet(object.expected_sha256)
         ? globalThis.String(object.expected_sha256)
         : "",
+      logPrefix: isSet(object.logPrefix)
+        ? globalThis.String(object.logPrefix)
+        : isSet(object.log_prefix)
+        ? globalThis.String(object.log_prefix)
+        : "",
     };
   },
 
@@ -10932,6 +11806,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     if (message.expectedSha256 !== "") {
       obj.expectedSha256 = message.expectedSha256;
     }
+    if (message.logPrefix !== "") {
+      obj.logPrefix = message.logPrefix;
+    }
     return obj;
   },
 
@@ -10953,6 +11830,7 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
     message.expectedSha256 = object.expectedSha256 ?? "";
+    message.logPrefix = object.logPrefix ?? "";
     return message;
   },
 };
@@ -13075,6 +13953,7 @@ function createBaseConsoleInstance(): ConsoleInstance {
     health: "",
     restartCount: 0,
     startedAtUnix: 0,
+    answer: "",
   };
 }
 
@@ -13118,6 +13997,9 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     }
     if (message.startedAtUnix !== 0) {
       writer.uint32(104).int64(message.startedAtUnix);
+    }
+    if (message.answer !== "") {
+      writer.uint32(114).string(message.answer);
     }
     return writer;
   },
@@ -13239,6 +14121,14 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
             message.startedAtUnix = longToNumber(reader.int64());
             continue;
           }
+          case 14: {
+            if (tag !== 114) {
+              break;
+            }
+
+            message.answer = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -13278,6 +14168,7 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
         : isSet(object.started_at_unix)
         ? globalThis.Number(object.started_at_unix)
         : 0,
+      answer: isSet(object.answer) ? globalThis.String(object.answer) : "",
     };
   },
 
@@ -13322,6 +14213,9 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     if (message.startedAtUnix !== 0) {
       obj.startedAtUnix = Math.round(message.startedAtUnix);
     }
+    if (message.answer !== "") {
+      obj.answer = message.answer;
+    }
     return obj;
   },
 
@@ -13343,6 +14237,7 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     message.health = object.health ?? "";
     message.restartCount = object.restartCount ?? 0;
     message.startedAtUnix = object.startedAtUnix ?? 0;
+    message.answer = object.answer ?? "";
     return message;
   },
 };
@@ -14288,6 +15183,7 @@ function createBasePollJobResponse(): PollJobResponse {
     timedOut: false,
     startedAtUnix: 0,
     finishedAtUnix: 0,
+    fenced: false,
   };
 }
 
@@ -14316,6 +15212,9 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
     }
     if (message.finishedAtUnix !== 0) {
       writer.uint32(64).int64(message.finishedAtUnix);
+    }
+    if (message.fenced !== false) {
+      writer.uint32(72).bool(message.fenced);
     }
     return writer;
   },
@@ -14397,6 +15296,14 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
             message.finishedAtUnix = longToNumber(reader.int64());
             continue;
           }
+          case 9: {
+            if (tag !== 72) {
+              break;
+            }
+
+            message.fenced = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -14435,6 +15342,7 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
         : isSet(object.finished_at_unix)
         ? globalThis.Number(object.finished_at_unix)
         : 0,
+      fenced: isSet(object.fenced) ? globalThis.Boolean(object.fenced) : false,
     };
   },
 
@@ -14464,6 +15372,9 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
     if (message.finishedAtUnix !== 0) {
       obj.finishedAtUnix = Math.round(message.finishedAtUnix);
     }
+    if (message.fenced !== false) {
+      obj.fenced = message.fenced;
+    }
     return obj;
   },
 
@@ -14480,6 +15391,7 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
     message.timedOut = object.timedOut ?? false;
     message.startedAtUnix = object.startedAtUnix ?? 0;
     message.finishedAtUnix = object.finishedAtUnix ?? 0;
+    message.fenced = object.fenced ?? false;
     return message;
   },
 };
@@ -17650,6 +18562,7 @@ function createBaseContainerStat(): ContainerStat {
     netNsId: 0,
     netNsHost: false,
     oomKills: 0,
+    answer: "",
   };
 }
 
@@ -17711,6 +18624,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     }
     if (message.oomKills !== 0) {
       writer.uint32(152).int32(message.oomKills);
+    }
+    if (message.answer !== "") {
+      writer.uint32(162).string(message.answer);
     }
     return writer;
   },
@@ -17880,6 +18796,14 @@ export const ContainerStat: MessageFns<ContainerStat> = {
             message.oomKills = reader.int32();
             continue;
           }
+          case 20: {
+            if (tag !== 162) {
+              break;
+            }
+
+            message.answer = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -17969,6 +18893,7 @@ export const ContainerStat: MessageFns<ContainerStat> = {
         : isSet(object.oom_kills)
         ? globalThis.Number(object.oom_kills)
         : 0,
+      answer: isSet(object.answer) ? globalThis.String(object.answer) : "",
     };
   },
 
@@ -18031,6 +18956,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     if (message.oomKills !== 0) {
       obj.oomKills = Math.round(message.oomKills);
     }
+    if (message.answer !== "") {
+      obj.answer = message.answer;
+    }
     return obj;
   },
 
@@ -18058,6 +18986,7 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     message.netNsId = object.netNsId ?? 0;
     message.netNsHost = object.netNsHost ?? false;
     message.oomKills = object.oomKills ?? 0;
+    message.answer = object.answer ?? "";
     return message;
   },
 };
@@ -18245,7 +19174,7 @@ export const MetricsStreamRequest: MessageFns<MetricsStreamRequest> = {
 };
 
 function createBaseMetricsSample(): MetricsSample {
-  return { host: undefined, containers: [], sampledAtUnixMs: 0, source: "" };
+  return { host: undefined, containers: [], sampledAtUnixMs: 0, source: "", restartEvents: [] };
 }
 
 export const MetricsSample: MessageFns<MetricsSample> = {
@@ -18261,6 +19190,9 @@ export const MetricsSample: MessageFns<MetricsSample> = {
     }
     if (message.source !== "") {
       writer.uint32(34).string(message.source);
+    }
+    for (const v of message.restartEvents) {
+      RestartEvent.encode(v!, writer.uint32(42).fork()).join();
     }
     return writer;
   },
@@ -18310,6 +19242,14 @@ export const MetricsSample: MessageFns<MetricsSample> = {
             message.source = reader.string();
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.restartEvents.push(RestartEvent.decode(reader, reader.uint32()));
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -18334,6 +19274,11 @@ export const MetricsSample: MessageFns<MetricsSample> = {
         ? globalThis.Number(object.sampled_at_unix_ms)
         : 0,
       source: isSet(object.source) ? globalThis.String(object.source) : "",
+      restartEvents: globalThis.Array.isArray(object?.restartEvents)
+        ? object.restartEvents.map((e: any) => RestartEvent.fromJSON(e))
+        : globalThis.Array.isArray(object?.restart_events)
+        ? object.restart_events.map((e: any) => RestartEvent.fromJSON(e))
+        : [],
     };
   },
 
@@ -18351,6 +19296,9 @@ export const MetricsSample: MessageFns<MetricsSample> = {
     if (message.source !== "") {
       obj.source = message.source;
     }
+    if (message.restartEvents?.length) {
+      obj.restartEvents = message.restartEvents.map((e) => RestartEvent.toJSON(e));
+    }
     return obj;
   },
 
@@ -18365,6 +19313,7 @@ export const MetricsSample: MessageFns<MetricsSample> = {
     message.containers = object.containers?.map((e) => ContainerStat.fromPartial(e)) || [];
     message.sampledAtUnixMs = object.sampledAtUnixMs ?? 0;
     message.source = object.source ?? "";
+    message.restartEvents = object.restartEvents?.map((e) => RestartEvent.fromPartial(e)) || [];
     return message;
   },
 };
@@ -20843,6 +21792,2087 @@ export const ReuseImage: MessageFns<ReuseImage> = {
   },
 };
 
+function createBaseInstallClusterRequest(): InstallClusterRequest {
+  return { version: "", binaries: {}, relay: false };
+}
+
+export const InstallClusterRequest: MessageFns<InstallClusterRequest> = {
+  encode(message: InstallClusterRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.version !== "") {
+      writer.uint32(10).string(message.version);
+    }
+    globalThis.Object.entries(message.binaries).forEach(([key, value]: [string, ArchBinary]) => {
+      InstallClusterRequest_BinariesEntry.encode({ key: key as any, value }, writer.uint32(18).fork()).join();
+    });
+    if (message.relay !== false) {
+      writer.uint32(24).bool(message.relay);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InstallClusterRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInstallClusterRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.version = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            const entry2 = InstallClusterRequest_BinariesEntry.decode(reader, reader.uint32());
+            if (entry2.value !== undefined) {
+              message.binaries[entry2.key] = entry2.value;
+            }
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.relay = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InstallClusterRequest {
+    return {
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      binaries: isObject(object.binaries)
+        ? (globalThis.Object.entries(object.binaries) as [string, any][]).reduce(
+          (acc: { [key: string]: ArchBinary }, [key, value]: [string, any]) => {
+            globalThis.Object.defineProperty(acc, key, {
+              value: ArchBinary.fromJSON(value),
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return acc;
+          },
+          {},
+        )
+        : {},
+      relay: isSet(object.relay) ? globalThis.Boolean(object.relay) : false,
+    };
+  },
+
+  toJSON(message: InstallClusterRequest): unknown {
+    const obj: any = {};
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.binaries) {
+      const entries = globalThis.Object.entries(message.binaries) as [string, ArchBinary][];
+      if (entries.length > 0) {
+        obj.binaries = {};
+        entries.forEach(([k, v]) => {
+          obj.binaries[k] = ArchBinary.toJSON(v);
+        });
+      }
+    }
+    if (message.relay !== false) {
+      obj.relay = message.relay;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InstallClusterRequest>, I>>(base?: I): InstallClusterRequest {
+    return InstallClusterRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InstallClusterRequest>, I>>(object: I): InstallClusterRequest {
+    const message = createBaseInstallClusterRequest();
+    message.version = object.version ?? "";
+    message.binaries = (globalThis.Object.entries(object.binaries ?? {}) as [string, ArchBinary][]).reduce(
+      (acc: { [key: string]: ArchBinary }, [key, value]: [string, ArchBinary]) => {
+        if (value !== undefined) {
+          acc[key] = ArchBinary.fromPartial(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    message.relay = object.relay ?? false;
+    return message;
+  },
+};
+
+function createBaseInstallClusterRequest_BinariesEntry(): InstallClusterRequest_BinariesEntry {
+  return { key: "", value: undefined };
+}
+
+export const InstallClusterRequest_BinariesEntry: MessageFns<InstallClusterRequest_BinariesEntry> = {
+  encode(message: InstallClusterRequest_BinariesEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== undefined) {
+      ArchBinary.encode(message.value, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InstallClusterRequest_BinariesEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInstallClusterRequest_BinariesEntry();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.key = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.value = ArchBinary.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InstallClusterRequest_BinariesEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? ArchBinary.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: InstallClusterRequest_BinariesEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== undefined) {
+      obj.value = ArchBinary.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InstallClusterRequest_BinariesEntry>, I>>(
+    base?: I,
+  ): InstallClusterRequest_BinariesEntry {
+    return InstallClusterRequest_BinariesEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InstallClusterRequest_BinariesEntry>, I>>(
+    object: I,
+  ): InstallClusterRequest_BinariesEntry {
+    const message = createBaseInstallClusterRequest_BinariesEntry();
+    message.key = object.key ?? "";
+    message.value = (object.value !== undefined && object.value !== null)
+      ? ArchBinary.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseInstallClusterResponse(): InstallClusterResponse {
+  return { version: "", running: false };
+}
+
+export const InstallClusterResponse: MessageFns<InstallClusterResponse> = {
+  encode(message: InstallClusterResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.version !== "") {
+      writer.uint32(10).string(message.version);
+    }
+    if (message.running !== false) {
+      writer.uint32(16).bool(message.running);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InstallClusterResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInstallClusterResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.version = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.running = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InstallClusterResponse {
+    return {
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+    };
+  },
+
+  toJSON(message: InstallClusterResponse): unknown {
+    const obj: any = {};
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InstallClusterResponse>, I>>(base?: I): InstallClusterResponse {
+    return InstallClusterResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InstallClusterResponse>, I>>(object: I): InstallClusterResponse {
+    const message = createBaseInstallClusterResponse();
+    message.version = object.version ?? "";
+    message.running = object.running ?? false;
+    return message;
+  },
+};
+
+function createBaseRemoveClusterRequest(): RemoveClusterRequest {
+  return {};
+}
+
+export const RemoveClusterRequest: MessageFns<RemoveClusterRequest> = {
+  encode(_: RemoveClusterRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveClusterRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRemoveClusterRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): RemoveClusterRequest {
+    return {};
+  },
+
+  toJSON(_: RemoveClusterRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RemoveClusterRequest>, I>>(base?: I): RemoveClusterRequest {
+    return RemoveClusterRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RemoveClusterRequest>, I>>(_: I): RemoveClusterRequest {
+    const message = createBaseRemoveClusterRequest();
+    return message;
+  },
+};
+
+function createBaseRemoveClusterResponse(): RemoveClusterResponse {
+  return { removed: false };
+}
+
+export const RemoveClusterResponse: MessageFns<RemoveClusterResponse> = {
+  encode(message: RemoveClusterResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.removed !== false) {
+      writer.uint32(8).bool(message.removed);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveClusterResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRemoveClusterResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.removed = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RemoveClusterResponse {
+    return { removed: isSet(object.removed) ? globalThis.Boolean(object.removed) : false };
+  },
+
+  toJSON(message: RemoveClusterResponse): unknown {
+    const obj: any = {};
+    if (message.removed !== false) {
+      obj.removed = message.removed;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RemoveClusterResponse>, I>>(base?: I): RemoveClusterResponse {
+    return RemoveClusterResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RemoveClusterResponse>, I>>(object: I): RemoveClusterResponse {
+    const message = createBaseRemoveClusterResponse();
+    message.removed = object.removed ?? false;
+    return message;
+  },
+};
+
+function createBaseClusterStatusRequest(): ClusterStatusRequest {
+  return {};
+}
+
+export const ClusterStatusRequest: MessageFns<ClusterStatusRequest> = {
+  encode(_: ClusterStatusRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterStatusRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterStatusRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ClusterStatusRequest {
+    return {};
+  },
+
+  toJSON(_: ClusterStatusRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterStatusRequest>, I>>(base?: I): ClusterStatusRequest {
+    return ClusterStatusRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterStatusRequest>, I>>(_: I): ClusterStatusRequest {
+    const message = createBaseClusterStatusRequest();
+    return message;
+  },
+};
+
+function createBaseClusterStatusResponse(): ClusterStatusResponse {
+  return { installed: false, running: false, version: "", relay: false, member: false, relayLinks: 0 };
+}
+
+export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
+  encode(message: ClusterStatusResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.installed !== false) {
+      writer.uint32(8).bool(message.installed);
+    }
+    if (message.running !== false) {
+      writer.uint32(16).bool(message.running);
+    }
+    if (message.version !== "") {
+      writer.uint32(26).string(message.version);
+    }
+    if (message.relay !== false) {
+      writer.uint32(32).bool(message.relay);
+    }
+    if (message.member !== false) {
+      writer.uint32(40).bool(message.member);
+    }
+    if (message.relayLinks !== 0) {
+      writer.uint32(48).int32(message.relayLinks);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterStatusResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterStatusResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.installed = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.running = reader.bool();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.version = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.relay = reader.bool();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.member = reader.bool();
+            continue;
+          }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.relayLinks = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterStatusResponse {
+    return {
+      installed: isSet(object.installed) ? globalThis.Boolean(object.installed) : false,
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      relay: isSet(object.relay) ? globalThis.Boolean(object.relay) : false,
+      member: isSet(object.member) ? globalThis.Boolean(object.member) : false,
+      relayLinks: isSet(object.relayLinks)
+        ? globalThis.Number(object.relayLinks)
+        : isSet(object.relay_links)
+        ? globalThis.Number(object.relay_links)
+        : 0,
+    };
+  },
+
+  toJSON(message: ClusterStatusResponse): unknown {
+    const obj: any = {};
+    if (message.installed !== false) {
+      obj.installed = message.installed;
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.relay !== false) {
+      obj.relay = message.relay;
+    }
+    if (message.member !== false) {
+      obj.member = message.member;
+    }
+    if (message.relayLinks !== 0) {
+      obj.relayLinks = Math.round(message.relayLinks);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterStatusResponse>, I>>(base?: I): ClusterStatusResponse {
+    return ClusterStatusResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterStatusResponse>, I>>(object: I): ClusterStatusResponse {
+    const message = createBaseClusterStatusResponse();
+    message.installed = object.installed ?? false;
+    message.running = object.running ?? false;
+    message.version = object.version ?? "";
+    message.relay = object.relay ?? false;
+    message.member = object.member ?? false;
+    message.relayLinks = object.relayLinks ?? 0;
+    return message;
+  },
+};
+
+function createBaseSetClusterMemberRequest(): SetClusterMemberRequest {
+  return { member: false, relays: [], clusterId: "", leaderFingerprints: [] };
+}
+
+export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
+  encode(message: SetClusterMemberRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.member !== false) {
+      writer.uint32(8).bool(message.member);
+    }
+    for (const v of message.relays) {
+      writer.uint32(18).string(v!);
+    }
+    if (message.clusterId !== "") {
+      writer.uint32(26).string(message.clusterId);
+    }
+    for (const v of message.leaderFingerprints) {
+      writer.uint32(34).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterMemberRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterMemberRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.member = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.relays.push(reader.string());
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.leaderFingerprints.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterMemberRequest {
+    return {
+      member: isSet(object.member) ? globalThis.Boolean(object.member) : false,
+      relays: globalThis.Array.isArray(object?.relays) ? object.relays.map((e: any) => globalThis.String(e)) : [],
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      leaderFingerprints: globalThis.Array.isArray(object?.leaderFingerprints)
+        ? object.leaderFingerprints.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.leader_fingerprints)
+        ? object.leader_fingerprints.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: SetClusterMemberRequest): unknown {
+    const obj: any = {};
+    if (message.member !== false) {
+      obj.member = message.member;
+    }
+    if (message.relays?.length) {
+      obj.relays = message.relays;
+    }
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.leaderFingerprints?.length) {
+      obj.leaderFingerprints = message.leaderFingerprints;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterMemberRequest>, I>>(base?: I): SetClusterMemberRequest {
+    return SetClusterMemberRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterMemberRequest>, I>>(object: I): SetClusterMemberRequest {
+    const message = createBaseSetClusterMemberRequest();
+    message.member = object.member ?? false;
+    message.relays = object.relays?.map((e) => e) || [];
+    message.clusterId = object.clusterId ?? "";
+    message.leaderFingerprints = object.leaderFingerprints?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterMemberResponse(): SetClusterMemberResponse {
+  return { member: false, relayLinks: 0 };
+}
+
+export const SetClusterMemberResponse: MessageFns<SetClusterMemberResponse> = {
+  encode(message: SetClusterMemberResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.member !== false) {
+      writer.uint32(8).bool(message.member);
+    }
+    if (message.relayLinks !== 0) {
+      writer.uint32(16).int32(message.relayLinks);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterMemberResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterMemberResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.member = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.relayLinks = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterMemberResponse {
+    return {
+      member: isSet(object.member) ? globalThis.Boolean(object.member) : false,
+      relayLinks: isSet(object.relayLinks)
+        ? globalThis.Number(object.relayLinks)
+        : isSet(object.relay_links)
+        ? globalThis.Number(object.relay_links)
+        : 0,
+    };
+  },
+
+  toJSON(message: SetClusterMemberResponse): unknown {
+    const obj: any = {};
+    if (message.member !== false) {
+      obj.member = message.member;
+    }
+    if (message.relayLinks !== 0) {
+      obj.relayLinks = Math.round(message.relayLinks);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterMemberResponse>, I>>(base?: I): SetClusterMemberResponse {
+    return SetClusterMemberResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterMemberResponse>, I>>(object: I): SetClusterMemberResponse {
+    const message = createBaseSetClusterMemberResponse();
+    message.member = object.member ?? false;
+    message.relayLinks = object.relayLinks ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterCallRequest(): ClusterCallRequest {
+  return { method: "", payload: new Uint8Array(0) };
+}
+
+export const ClusterCallRequest: MessageFns<ClusterCallRequest> = {
+  encode(message: ClusterCallRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.method !== "") {
+      writer.uint32(10).string(message.method);
+    }
+    if (message.payload.length !== 0) {
+      writer.uint32(18).bytes(message.payload);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterCallRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterCallRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.method = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.payload = reader.bytes();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterCallRequest {
+    return {
+      method: isSet(object.method) ? globalThis.String(object.method) : "",
+      payload: isSet(object.payload) ? bytesFromBase64(object.payload) : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: ClusterCallRequest): unknown {
+    const obj: any = {};
+    if (message.method !== "") {
+      obj.method = message.method;
+    }
+    if (message.payload.length !== 0) {
+      obj.payload = base64FromBytes(message.payload);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterCallRequest>, I>>(base?: I): ClusterCallRequest {
+    return ClusterCallRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterCallRequest>, I>>(object: I): ClusterCallRequest {
+    const message = createBaseClusterCallRequest();
+    message.method = object.method ?? "";
+    message.payload = object.payload ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseClusterCallResponse(): ClusterCallResponse {
+  return { payload: new Uint8Array(0) };
+}
+
+export const ClusterCallResponse: MessageFns<ClusterCallResponse> = {
+  encode(message: ClusterCallResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.payload.length !== 0) {
+      writer.uint32(10).bytes(message.payload);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterCallResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterCallResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.payload = reader.bytes();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterCallResponse {
+    return { payload: isSet(object.payload) ? bytesFromBase64(object.payload) : new Uint8Array(0) };
+  },
+
+  toJSON(message: ClusterCallResponse): unknown {
+    const obj: any = {};
+    if (message.payload.length !== 0) {
+      obj.payload = base64FromBytes(message.payload);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterCallResponse>, I>>(base?: I): ClusterCallResponse {
+    return ClusterCallResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterCallResponse>, I>>(object: I): ClusterCallResponse {
+    const message = createBaseClusterCallResponse();
+    message.payload = object.payload ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseClusterWatchRequest(): ClusterWatchRequest {
+  return { since: 0 };
+}
+
+export const ClusterWatchRequest: MessageFns<ClusterWatchRequest> = {
+  encode(message: ClusterWatchRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.since !== 0) {
+      writer.uint32(8).uint64(message.since);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterWatchRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterWatchRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.since = longToNumber(reader.uint64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterWatchRequest {
+    return { since: isSet(object.since) ? globalThis.Number(object.since) : 0 };
+  },
+
+  toJSON(message: ClusterWatchRequest): unknown {
+    const obj: any = {};
+    if (message.since !== 0) {
+      obj.since = Math.round(message.since);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterWatchRequest>, I>>(base?: I): ClusterWatchRequest {
+    return ClusterWatchRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterWatchRequest>, I>>(object: I): ClusterWatchRequest {
+    const message = createBaseClusterWatchRequest();
+    message.since = object.since ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterWatchLine(): ClusterWatchLine {
+  return { line: new Uint8Array(0) };
+}
+
+export const ClusterWatchLine: MessageFns<ClusterWatchLine> = {
+  encode(message: ClusterWatchLine, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.line.length !== 0) {
+      writer.uint32(10).bytes(message.line);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterWatchLine {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterWatchLine();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.line = reader.bytes();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterWatchLine {
+    return { line: isSet(object.line) ? bytesFromBase64(object.line) : new Uint8Array(0) };
+  },
+
+  toJSON(message: ClusterWatchLine): unknown {
+    const obj: any = {};
+    if (message.line.length !== 0) {
+      obj.line = base64FromBytes(message.line);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterWatchLine>, I>>(base?: I): ClusterWatchLine {
+    return ClusterWatchLine.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterWatchLine>, I>>(object: I): ClusterWatchLine {
+    const message = createBaseClusterWatchLine();
+    message.line = object.line ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseCopyClusterImageRequest(): CopyClusterImageRequest {
+  return { imageRef: "", targetFingerprint: "", keep: 0 };
+}
+
+export const CopyClusterImageRequest: MessageFns<CopyClusterImageRequest> = {
+  encode(message: CopyClusterImageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.targetFingerprint !== "") {
+      writer.uint32(18).string(message.targetFingerprint);
+    }
+    if (message.keep !== 0) {
+      writer.uint32(24).int32(message.keep);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CopyClusterImageRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCopyClusterImageRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.targetFingerprint = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.keep = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CopyClusterImageRequest {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      targetFingerprint: isSet(object.targetFingerprint)
+        ? globalThis.String(object.targetFingerprint)
+        : isSet(object.target_fingerprint)
+        ? globalThis.String(object.target_fingerprint)
+        : "",
+      keep: isSet(object.keep) ? globalThis.Number(object.keep) : 0,
+    };
+  },
+
+  toJSON(message: CopyClusterImageRequest): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.targetFingerprint !== "") {
+      obj.targetFingerprint = message.targetFingerprint;
+    }
+    if (message.keep !== 0) {
+      obj.keep = Math.round(message.keep);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CopyClusterImageRequest>, I>>(base?: I): CopyClusterImageRequest {
+    return CopyClusterImageRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CopyClusterImageRequest>, I>>(object: I): CopyClusterImageRequest {
+    const message = createBaseCopyClusterImageRequest();
+    message.imageRef = object.imageRef ?? "";
+    message.targetFingerprint = object.targetFingerprint ?? "";
+    message.keep = object.keep ?? 0;
+    return message;
+  },
+};
+
+function createBaseCopyClusterImageResponse(): CopyClusterImageResponse {
+  return { alreadyPresent: false, bytes: 0, pruned: [] };
+}
+
+export const CopyClusterImageResponse: MessageFns<CopyClusterImageResponse> = {
+  encode(message: CopyClusterImageResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.alreadyPresent !== false) {
+      writer.uint32(8).bool(message.alreadyPresent);
+    }
+    if (message.bytes !== 0) {
+      writer.uint32(16).int64(message.bytes);
+    }
+    for (const v of message.pruned) {
+      writer.uint32(26).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CopyClusterImageResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCopyClusterImageResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.alreadyPresent = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.bytes = longToNumber(reader.int64());
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.pruned.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CopyClusterImageResponse {
+    return {
+      alreadyPresent: isSet(object.alreadyPresent)
+        ? globalThis.Boolean(object.alreadyPresent)
+        : isSet(object.already_present)
+        ? globalThis.Boolean(object.already_present)
+        : false,
+      bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0,
+      pruned: globalThis.Array.isArray(object?.pruned) ? object.pruned.map((e: any) => globalThis.String(e)) : [],
+    };
+  },
+
+  toJSON(message: CopyClusterImageResponse): unknown {
+    const obj: any = {};
+    if (message.alreadyPresent !== false) {
+      obj.alreadyPresent = message.alreadyPresent;
+    }
+    if (message.bytes !== 0) {
+      obj.bytes = Math.round(message.bytes);
+    }
+    if (message.pruned?.length) {
+      obj.pruned = message.pruned;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CopyClusterImageResponse>, I>>(base?: I): CopyClusterImageResponse {
+    return CopyClusterImageResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CopyClusterImageResponse>, I>>(object: I): CopyClusterImageResponse {
+    const message = createBaseCopyClusterImageResponse();
+    message.alreadyPresent = object.alreadyPresent ?? false;
+    message.bytes = object.bytes ?? 0;
+    message.pruned = object.pruned?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseExpectClusterImageRequest(): ExpectClusterImageRequest {
+  return { imageRef: "", sourceFingerprint: "", keep: 0 };
+}
+
+export const ExpectClusterImageRequest: MessageFns<ExpectClusterImageRequest> = {
+  encode(message: ExpectClusterImageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.sourceFingerprint !== "") {
+      writer.uint32(18).string(message.sourceFingerprint);
+    }
+    if (message.keep !== 0) {
+      writer.uint32(24).int32(message.keep);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterImageRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterImageRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.sourceFingerprint = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.keep = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ExpectClusterImageRequest {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      sourceFingerprint: isSet(object.sourceFingerprint)
+        ? globalThis.String(object.sourceFingerprint)
+        : isSet(object.source_fingerprint)
+        ? globalThis.String(object.source_fingerprint)
+        : "",
+      keep: isSet(object.keep) ? globalThis.Number(object.keep) : 0,
+    };
+  },
+
+  toJSON(message: ExpectClusterImageRequest): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.sourceFingerprint !== "") {
+      obj.sourceFingerprint = message.sourceFingerprint;
+    }
+    if (message.keep !== 0) {
+      obj.keep = Math.round(message.keep);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterImageRequest>, I>>(base?: I): ExpectClusterImageRequest {
+    return ExpectClusterImageRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterImageRequest>, I>>(object: I): ExpectClusterImageRequest {
+    const message = createBaseExpectClusterImageRequest();
+    message.imageRef = object.imageRef ?? "";
+    message.sourceFingerprint = object.sourceFingerprint ?? "";
+    message.keep = object.keep ?? 0;
+    return message;
+  },
+};
+
+function createBaseExpectClusterImageResponse(): ExpectClusterImageResponse {
+  return {};
+}
+
+export const ExpectClusterImageResponse: MessageFns<ExpectClusterImageResponse> = {
+  encode(_: ExpectClusterImageResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterImageResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterImageResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ExpectClusterImageResponse {
+    return {};
+  },
+
+  toJSON(_: ExpectClusterImageResponse): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterImageResponse>, I>>(base?: I): ExpectClusterImageResponse {
+    return ExpectClusterImageResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterImageResponse>, I>>(_: I): ExpectClusterImageResponse {
+    const message = createBaseExpectClusterImageResponse();
+    return message;
+  },
+};
+
+function createBaseClusterForwarderMember(): ClusterForwarderMember {
+  return { serverId: "", fingerprint: "" };
+}
+
+export const ClusterForwarderMember: MessageFns<ClusterForwarderMember> = {
+  encode(message: ClusterForwarderMember, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.serverId !== "") {
+      writer.uint32(10).string(message.serverId);
+    }
+    if (message.fingerprint !== "") {
+      writer.uint32(18).string(message.fingerprint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterForwarderMember {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterForwarderMember();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.serverId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.fingerprint = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterForwarderMember {
+    return {
+      serverId: isSet(object.serverId)
+        ? globalThis.String(object.serverId)
+        : isSet(object.server_id)
+        ? globalThis.String(object.server_id)
+        : "",
+      fingerprint: isSet(object.fingerprint) ? globalThis.String(object.fingerprint) : "",
+    };
+  },
+
+  toJSON(message: ClusterForwarderMember): unknown {
+    const obj: any = {};
+    if (message.serverId !== "") {
+      obj.serverId = message.serverId;
+    }
+    if (message.fingerprint !== "") {
+      obj.fingerprint = message.fingerprint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterForwarderMember>, I>>(base?: I): ClusterForwarderMember {
+    return ClusterForwarderMember.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterForwarderMember>, I>>(object: I): ClusterForwarderMember {
+    const message = createBaseClusterForwarderMember();
+    message.serverId = object.serverId ?? "";
+    message.fingerprint = object.fingerprint ?? "";
+    return message;
+  },
+};
+
+function createBaseClusterHeldName(): ClusterHeldName {
+  return { network: "", kind: "", workloadId: "", name: "", port: 0 };
+}
+
+export const ClusterHeldName: MessageFns<ClusterHeldName> = {
+  encode(message: ClusterHeldName, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.network !== "") {
+      writer.uint32(10).string(message.network);
+    }
+    if (message.kind !== "") {
+      writer.uint32(18).string(message.kind);
+    }
+    if (message.workloadId !== "") {
+      writer.uint32(26).string(message.workloadId);
+    }
+    if (message.name !== "") {
+      writer.uint32(34).string(message.name);
+    }
+    if (message.port !== 0) {
+      writer.uint32(40).uint32(message.port);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterHeldName {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterHeldName();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.network = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.kind = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.workloadId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.port = reader.uint32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterHeldName {
+    return {
+      network: isSet(object.network) ? globalThis.String(object.network) : "",
+      kind: isSet(object.kind) ? globalThis.String(object.kind) : "",
+      workloadId: isSet(object.workloadId)
+        ? globalThis.String(object.workloadId)
+        : isSet(object.workload_id)
+        ? globalThis.String(object.workload_id)
+        : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+    };
+  },
+
+  toJSON(message: ClusterHeldName): unknown {
+    const obj: any = {};
+    if (message.network !== "") {
+      obj.network = message.network;
+    }
+    if (message.kind !== "") {
+      obj.kind = message.kind;
+    }
+    if (message.workloadId !== "") {
+      obj.workloadId = message.workloadId;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterHeldName>, I>>(base?: I): ClusterHeldName {
+    return ClusterHeldName.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterHeldName>, I>>(object: I): ClusterHeldName {
+    const message = createBaseClusterHeldName();
+    message.network = object.network ?? "";
+    message.kind = object.kind ?? "";
+    message.workloadId = object.workloadId ?? "";
+    message.name = object.name ?? "";
+    message.port = object.port ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterServedName(): ClusterServedName {
+  return { network: "", kind: "", workloadId: "", port: 0, sourceFingerprints: [] };
+}
+
+export const ClusterServedName: MessageFns<ClusterServedName> = {
+  encode(message: ClusterServedName, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.network !== "") {
+      writer.uint32(10).string(message.network);
+    }
+    if (message.kind !== "") {
+      writer.uint32(18).string(message.kind);
+    }
+    if (message.workloadId !== "") {
+      writer.uint32(26).string(message.workloadId);
+    }
+    if (message.port !== 0) {
+      writer.uint32(32).uint32(message.port);
+    }
+    for (const v of message.sourceFingerprints) {
+      writer.uint32(42).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterServedName {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterServedName();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.network = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.kind = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.workloadId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.port = reader.uint32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.sourceFingerprints.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterServedName {
+    return {
+      network: isSet(object.network) ? globalThis.String(object.network) : "",
+      kind: isSet(object.kind) ? globalThis.String(object.kind) : "",
+      workloadId: isSet(object.workloadId)
+        ? globalThis.String(object.workloadId)
+        : isSet(object.workload_id)
+        ? globalThis.String(object.workload_id)
+        : "",
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      sourceFingerprints: globalThis.Array.isArray(object?.sourceFingerprints)
+        ? object.sourceFingerprints.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.source_fingerprints)
+        ? object.source_fingerprints.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ClusterServedName): unknown {
+    const obj: any = {};
+    if (message.network !== "") {
+      obj.network = message.network;
+    }
+    if (message.kind !== "") {
+      obj.kind = message.kind;
+    }
+    if (message.workloadId !== "") {
+      obj.workloadId = message.workloadId;
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.sourceFingerprints?.length) {
+      obj.sourceFingerprints = message.sourceFingerprints;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterServedName>, I>>(base?: I): ClusterServedName {
+    return ClusterServedName.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterServedName>, I>>(object: I): ClusterServedName {
+    const message = createBaseClusterServedName();
+    message.network = object.network ?? "";
+    message.kind = object.kind ?? "";
+    message.workloadId = object.workloadId ?? "";
+    message.port = object.port ?? 0;
+    message.sourceFingerprints = object.sourceFingerprints?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterForwardersRequest(): SetClusterForwardersRequest {
+  return { clusterId: "", members: [], hold: [], serve: [] };
+}
+
+export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest> = {
+  encode(message: SetClusterForwardersRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.clusterId !== "") {
+      writer.uint32(10).string(message.clusterId);
+    }
+    for (const v of message.members) {
+      ClusterForwarderMember.encode(v!, writer.uint32(18).fork()).join();
+    }
+    for (const v of message.hold) {
+      ClusterHeldName.encode(v!, writer.uint32(26).fork()).join();
+    }
+    for (const v of message.serve) {
+      ClusterServedName.encode(v!, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterForwardersRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterForwardersRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.members.push(ClusterForwarderMember.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.hold.push(ClusterHeldName.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.serve.push(ClusterServedName.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterForwardersRequest {
+    return {
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      members: globalThis.Array.isArray(object?.members)
+        ? object.members.map((e: any) => ClusterForwarderMember.fromJSON(e))
+        : [],
+      hold: globalThis.Array.isArray(object?.hold) ? object.hold.map((e: any) => ClusterHeldName.fromJSON(e)) : [],
+      serve: globalThis.Array.isArray(object?.serve) ? object.serve.map((e: any) => ClusterServedName.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: SetClusterForwardersRequest): unknown {
+    const obj: any = {};
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.members?.length) {
+      obj.members = message.members.map((e) => ClusterForwarderMember.toJSON(e));
+    }
+    if (message.hold?.length) {
+      obj.hold = message.hold.map((e) => ClusterHeldName.toJSON(e));
+    }
+    if (message.serve?.length) {
+      obj.serve = message.serve.map((e) => ClusterServedName.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterForwardersRequest>, I>>(base?: I): SetClusterForwardersRequest {
+    return SetClusterForwardersRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterForwardersRequest>, I>>(object: I): SetClusterForwardersRequest {
+    const message = createBaseSetClusterForwardersRequest();
+    message.clusterId = object.clusterId ?? "";
+    message.members = object.members?.map((e) => ClusterForwarderMember.fromPartial(e)) || [];
+    message.hold = object.hold?.map((e) => ClusterHeldName.fromPartial(e)) || [];
+    message.serve = object.serve?.map((e) => ClusterServedName.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterForwardersResponse(): SetClusterForwardersResponse {
+  return { held: 0, served: 0 };
+}
+
+export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersResponse> = {
+  encode(message: SetClusterForwardersResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.held !== 0) {
+      writer.uint32(8).int32(message.held);
+    }
+    if (message.served !== 0) {
+      writer.uint32(16).int32(message.served);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterForwardersResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterForwardersResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.held = reader.int32();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.served = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterForwardersResponse {
+    return {
+      held: isSet(object.held) ? globalThis.Number(object.held) : 0,
+      served: isSet(object.served) ? globalThis.Number(object.served) : 0,
+    };
+  },
+
+  toJSON(message: SetClusterForwardersResponse): unknown {
+    const obj: any = {};
+    if (message.held !== 0) {
+      obj.held = Math.round(message.held);
+    }
+    if (message.served !== 0) {
+      obj.served = Math.round(message.served);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterForwardersResponse>, I>>(base?: I): SetClusterForwardersResponse {
+    return SetClusterForwardersResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterForwardersResponse>, I>>(object: I): SetClusterForwardersResponse {
+    const message = createBaseSetClusterForwardersResponse();
+    message.held = object.held ?? 0;
+    message.served = object.served ?? 0;
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -21200,6 +24230,131 @@ export const AgentService = {
     responseSerialize: (value: SelfUninstallResponse): Buffer =>
       Buffer.from(SelfUninstallResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): SelfUninstallResponse => SelfUninstallResponse.decode(value),
+  },
+  /**
+   * Install the pinned deplo-cluster binary (checksum verified, forward-only) and run it as
+   * the cluster leader, or as the relay too. Calling it again with a newer version updates it.
+   */
+  installCluster: {
+    path: "/deplo.agent.v1.Agent/InstallCluster" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: InstallClusterRequest): Buffer =>
+      Buffer.from(InstallClusterRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): InstallClusterRequest => InstallClusterRequest.decode(value),
+    responseSerialize: (value: InstallClusterResponse): Buffer =>
+      Buffer.from(InstallClusterResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): InstallClusterResponse => InstallClusterResponse.decode(value),
+  },
+  /** Stop the supervised leader and delete its binary and state. Idempotent. */
+  removeCluster: {
+    path: "/deplo.agent.v1.Agent/RemoveCluster" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RemoveClusterRequest): Buffer => Buffer.from(RemoveClusterRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RemoveClusterRequest => RemoveClusterRequest.decode(value),
+    responseSerialize: (value: RemoveClusterResponse): Buffer =>
+      Buffer.from(RemoveClusterResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RemoveClusterResponse => RemoveClusterResponse.decode(value),
+  },
+  /** What this host runs: installed or not, running or not, which version. */
+  clusterStatus: {
+    path: "/deplo.agent.v1.Agent/ClusterStatus" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ClusterStatusRequest): Buffer => Buffer.from(ClusterStatusRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClusterStatusRequest => ClusterStatusRequest.decode(value),
+    responseSerialize: (value: ClusterStatusResponse): Buffer =>
+      Buffer.from(ClusterStatusResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClusterStatusResponse => ClusterStatusResponse.decode(value),
+  },
+  /**
+   * Forward one call to the leader process on this host and return its answer verbatim.
+   * The agent does not read the payload; an unreachable leader is UNAVAILABLE.
+   */
+  clusterCall: {
+    path: "/deplo.agent.v1.Agent/ClusterCall" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ClusterCallRequest): Buffer => Buffer.from(ClusterCallRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClusterCallRequest => ClusterCallRequest.decode(value),
+    responseSerialize: (value: ClusterCallResponse): Buffer => Buffer.from(ClusterCallResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClusterCallResponse => ClusterCallResponse.decode(value),
+  },
+  /**
+   * Make this agent a cluster member (or stop being one) and name the relays to dial besides
+   * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
+   */
+  setClusterMember: {
+    path: "/deplo.agent.v1.Agent/SetClusterMember" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterMemberRequest): Buffer =>
+      Buffer.from(SetClusterMemberRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterMemberRequest => SetClusterMemberRequest.decode(value),
+    responseSerialize: (value: SetClusterMemberResponse): Buffer =>
+      Buffer.from(SetClusterMemberResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterMemberResponse => SetClusterMemberResponse.decode(value),
+  },
+  /**
+   * Stream the leader's events after `since`, one JSON line each, until the caller cancels. The
+   * first line is the leader's hello (newest sequence, whether the buffer dropped events). The
+   * agent does not read the lines. A leader that is not running is UNAVAILABLE.
+   */
+  clusterWatch: {
+    path: "/deplo.agent.v1.Agent/ClusterWatch" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: ClusterWatchRequest): Buffer => Buffer.from(ClusterWatchRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClusterWatchRequest => ClusterWatchRequest.decode(value),
+    responseSerialize: (value: ClusterWatchLine): Buffer => Buffer.from(ClusterWatchLine.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClusterWatchLine => ClusterWatchLine.decode(value),
+  },
+  /**
+   * Send a locally built image to one member, which keeps the App's last releases and prunes
+   * older ones. A member that already holds the ref answers without a transfer.
+   */
+  copyClusterImage: {
+    path: "/deplo.agent.v1.Agent/CopyClusterImage" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CopyClusterImageRequest): Buffer =>
+      Buffer.from(CopyClusterImageRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CopyClusterImageRequest => CopyClusterImageRequest.decode(value),
+    responseSerialize: (value: CopyClusterImageResponse): Buffer =>
+      Buffer.from(CopyClusterImageResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CopyClusterImageResponse => CopyClusterImageResponse.decode(value),
+  },
+  /**
+   * Tell this member to accept one image from one member, once, within the copy's time limit.
+   * An image stream that matches no such entry is refused.
+   */
+  expectClusterImage: {
+    path: "/deplo.agent.v1.Agent/ExpectClusterImage" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ExpectClusterImageRequest): Buffer =>
+      Buffer.from(ExpectClusterImageRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExpectClusterImageRequest => ExpectClusterImageRequest.decode(value),
+    responseSerialize: (value: ExpectClusterImageResponse): Buffer =>
+      Buffer.from(ExpectClusterImageResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ExpectClusterImageResponse => ExpectClusterImageResponse.decode(value),
+  },
+  /**
+   * Hand this member the names it holds on its Environments' networks and the streams it accepts
+   * for its own workloads. The full set each time; one not listed is removed. Never sent to a
+   * member that is not in a cluster.
+   */
+  setClusterForwarders: {
+    path: "/deplo.agent.v1.Agent/SetClusterForwarders" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterForwardersRequest): Buffer =>
+      Buffer.from(SetClusterForwardersRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterForwardersRequest => SetClusterForwardersRequest.decode(value),
+    responseSerialize: (value: SetClusterForwardersResponse): Buffer =>
+      Buffer.from(SetClusterForwardersResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterForwardersResponse => SetClusterForwardersResponse.decode(value),
   },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
@@ -21908,6 +25063,47 @@ export interface AgentServer extends UntypedServiceImplementation {
    * of SelfUpdate, and the ONLY RPC that ends the agent's own life.
    */
   selfUninstall: handleUnaryCall<SelfUninstallRequest, SelfUninstallResponse>;
+  /**
+   * Install the pinned deplo-cluster binary (checksum verified, forward-only) and run it as
+   * the cluster leader, or as the relay too. Calling it again with a newer version updates it.
+   */
+  installCluster: handleUnaryCall<InstallClusterRequest, InstallClusterResponse>;
+  /** Stop the supervised leader and delete its binary and state. Idempotent. */
+  removeCluster: handleUnaryCall<RemoveClusterRequest, RemoveClusterResponse>;
+  /** What this host runs: installed or not, running or not, which version. */
+  clusterStatus: handleUnaryCall<ClusterStatusRequest, ClusterStatusResponse>;
+  /**
+   * Forward one call to the leader process on this host and return its answer verbatim.
+   * The agent does not read the payload; an unreachable leader is UNAVAILABLE.
+   */
+  clusterCall: handleUnaryCall<ClusterCallRequest, ClusterCallResponse>;
+  /**
+   * Make this agent a cluster member (or stop being one) and name the relays to dial besides
+   * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
+   */
+  setClusterMember: handleUnaryCall<SetClusterMemberRequest, SetClusterMemberResponse>;
+  /**
+   * Stream the leader's events after `since`, one JSON line each, until the caller cancels. The
+   * first line is the leader's hello (newest sequence, whether the buffer dropped events). The
+   * agent does not read the lines. A leader that is not running is UNAVAILABLE.
+   */
+  clusterWatch: handleServerStreamingCall<ClusterWatchRequest, ClusterWatchLine>;
+  /**
+   * Send a locally built image to one member, which keeps the App's last releases and prunes
+   * older ones. A member that already holds the ref answers without a transfer.
+   */
+  copyClusterImage: handleUnaryCall<CopyClusterImageRequest, CopyClusterImageResponse>;
+  /**
+   * Tell this member to accept one image from one member, once, within the copy's time limit.
+   * An image stream that matches no such entry is refused.
+   */
+  expectClusterImage: handleUnaryCall<ExpectClusterImageRequest, ExpectClusterImageResponse>;
+  /**
+   * Hand this member the names it holds on its Environments' networks and the streams it accepts
+   * for its own workloads. The full set each time; one not listed is removed. Never sent to a
+   * member that is not in a cluster.
+   */
+  setClusterForwarders: handleUnaryCall<SetClusterForwardersRequest, SetClusterForwardersResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -22525,6 +25721,164 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SelfUninstallResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Install the pinned deplo-cluster binary (checksum verified, forward-only) and run it as
+   * the cluster leader, or as the relay too. Calling it again with a newer version updates it.
+   */
+  installCluster(
+    request: InstallClusterRequest,
+    callback: (error: ServiceError | null, response: InstallClusterResponse) => void,
+  ): ClientUnaryCall;
+  installCluster(
+    request: InstallClusterRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: InstallClusterResponse) => void,
+  ): ClientUnaryCall;
+  installCluster(
+    request: InstallClusterRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: InstallClusterResponse) => void,
+  ): ClientUnaryCall;
+  /** Stop the supervised leader and delete its binary and state. Idempotent. */
+  removeCluster(
+    request: RemoveClusterRequest,
+    callback: (error: ServiceError | null, response: RemoveClusterResponse) => void,
+  ): ClientUnaryCall;
+  removeCluster(
+    request: RemoveClusterRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: RemoveClusterResponse) => void,
+  ): ClientUnaryCall;
+  removeCluster(
+    request: RemoveClusterRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: RemoveClusterResponse) => void,
+  ): ClientUnaryCall;
+  /** What this host runs: installed or not, running or not, which version. */
+  clusterStatus(
+    request: ClusterStatusRequest,
+    callback: (error: ServiceError | null, response: ClusterStatusResponse) => void,
+  ): ClientUnaryCall;
+  clusterStatus(
+    request: ClusterStatusRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ClusterStatusResponse) => void,
+  ): ClientUnaryCall;
+  clusterStatus(
+    request: ClusterStatusRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ClusterStatusResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Forward one call to the leader process on this host and return its answer verbatim.
+   * The agent does not read the payload; an unreachable leader is UNAVAILABLE.
+   */
+  clusterCall(
+    request: ClusterCallRequest,
+    callback: (error: ServiceError | null, response: ClusterCallResponse) => void,
+  ): ClientUnaryCall;
+  clusterCall(
+    request: ClusterCallRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ClusterCallResponse) => void,
+  ): ClientUnaryCall;
+  clusterCall(
+    request: ClusterCallRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ClusterCallResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Make this agent a cluster member (or stop being one) and name the relays to dial besides
+   * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
+   */
+  setClusterMember(
+    request: SetClusterMemberRequest,
+    callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
+  ): ClientUnaryCall;
+  setClusterMember(
+    request: SetClusterMemberRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
+  ): ClientUnaryCall;
+  setClusterMember(
+    request: SetClusterMemberRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Stream the leader's events after `since`, one JSON line each, until the caller cancels. The
+   * first line is the leader's hello (newest sequence, whether the buffer dropped events). The
+   * agent does not read the lines. A leader that is not running is UNAVAILABLE.
+   */
+  clusterWatch(request: ClusterWatchRequest, options?: Partial<CallOptions>): ClientReadableStream<ClusterWatchLine>;
+  clusterWatch(
+    request: ClusterWatchRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<ClusterWatchLine>;
+  /**
+   * Send a locally built image to one member, which keeps the App's last releases and prunes
+   * older ones. A member that already holds the ref answers without a transfer.
+   */
+  copyClusterImage(
+    request: CopyClusterImageRequest,
+    callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  copyClusterImage(
+    request: CopyClusterImageRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  copyClusterImage(
+    request: CopyClusterImageRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Tell this member to accept one image from one member, once, within the copy's time limit.
+   * An image stream that matches no such entry is refused.
+   */
+  expectClusterImage(
+    request: ExpectClusterImageRequest,
+    callback: (error: ServiceError | null, response: ExpectClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterImage(
+    request: ExpectClusterImageRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ExpectClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterImage(
+    request: ExpectClusterImageRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ExpectClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Hand this member the names it holds on its Environments' networks and the streams it accepts
+   * for its own workloads. The full set each time; one not listed is removed. Never sent to a
+   * member that is not in a cluster.
+   */
+  setClusterForwarders(
+    request: SetClusterForwardersRequest,
+    callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
+  ): ClientUnaryCall;
+  setClusterForwarders(
+    request: SetClusterForwardersRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
+  ): ClientUnaryCall;
+  setClusterForwarders(
+    request: SetClusterForwardersRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

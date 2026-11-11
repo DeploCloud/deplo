@@ -20,12 +20,11 @@ import type { App } from "../../types/app";
 import type { LogLine } from "../../types/deployment";
 import { formatBytes } from "../../utils";
 import type { ReadyCheck, SourceCompose } from "../../agent/gen/agent";
+import { runAgentDeploy, AgentUnavailableError } from "../agent-deploy";
 import {
   agentCapabilityForMethod,
-  runAgentDeploy,
-  AgentUnavailableError,
   type AgentBuildPlan,
-} from "../agent-deploy";
+} from "../agent-deploy-request";
 import { resolveBuildPlan, buildPlanLines } from "../build-server";
 import { parseComposeUpArgs } from "../compose-args";
 import type { OverlapStacks } from "../overlap";

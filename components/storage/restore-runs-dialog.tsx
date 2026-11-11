@@ -25,6 +25,10 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
+import {
+  leftBehindLabel,
+  leftBehindRestoreCost,
+} from "@/lib/backups/left-behind";
 
 type BackupRunLite = {
   id: string;
@@ -33,6 +37,8 @@ type BackupRunLite = {
   startedAt: string;
   error: string | null;
   verified: boolean;
+  leftAt: string | null;
+  leftOnServer: string | null;
 };
 
 export function RestoreRunsDialog({
@@ -59,7 +65,7 @@ export function RestoreRunsDialog({
     gql<{ backupRuns: BackupRunLite[] }>(
       `query($id: String) {
         backupRuns(${arg}: $id) {
-          id status sizeBytes startedAt error verified
+          id status sizeBytes startedAt error verified leftAt leftOnServer
         }
       }`,
       { id: targetId },
@@ -154,7 +160,18 @@ function RestoreRunRow({
 
   return (
     <TableRow>
-      <TableCell className="text-sm">{timeAgo(run.startedAt)}</TableCell>
+      <TableCell className="text-sm">
+        {timeAgo(run.startedAt)}
+        {run.leftAt && (
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {leftBehindLabel(
+              run.leftOnServer,
+              run.leftAt,
+              Intl.DateTimeFormat().resolvedOptions().timeZone,
+            )}
+          </span>
+        )}
+      </TableCell>
       <TableCell className="text-muted-foreground">
         {formatBytes(run.sizeBytes)}
       </TableCell>
@@ -190,12 +207,24 @@ function RestoreRunRow({
           successMessage="Restore started"
           confirmText={targetName}
           description={
-            <>
-              This overwrites <strong>{targetName}</strong> in place with the
-              backup from {timeAgo(run.startedAt)}.
-            </>
+            run.leftAt ? (
+              <>
+                This overwrites <strong>{targetName}</strong> in place with what{" "}
+                {run.leftOnServer || "its old server"} still held when it came
+                back.
+              </>
+            ) : (
+              <>
+                This overwrites <strong>{targetName}</strong> in place with the
+                backup from {timeAgo(run.startedAt)}.
+              </>
+            )
           }
-          consequence={`The ${targetKind} is taken offline while it restores, and its current state is not recoverable.`}
+          consequence={
+            run.leftAt
+              ? leftBehindRestoreCost(targetKind)
+              : `The ${targetKind} is taken offline while it restores, and its current state is not recoverable.`
+          }
           onConfirm={async () => {
             const res = await gqlAction(
               `mutation($runId: String!) { restoreBackup(runId: $runId) }`,

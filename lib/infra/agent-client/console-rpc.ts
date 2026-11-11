@@ -11,7 +11,7 @@ import type {
   ConsoleInstance as PbConsoleInstance,
   LogChunk,
 } from "../../agent/gen/agent";
-import type { AttachHandle } from "../docker";
+import type { AttachHandle } from "../../attach/types";
 import type {
   AgentConnection,
   AgentConsoleInstance,
@@ -149,6 +149,7 @@ export function consoleRpc(
     health: i.health,
     restartCount: i.restartCount,
     startedAtUnix: Number(i.startedAtUnix ?? 0),
+    answer: i.answer ?? "",
   });
 
   return {

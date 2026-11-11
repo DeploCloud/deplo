@@ -12,6 +12,7 @@ export const DOCS = {
   "deploy.screenshot": "concepts/what-happens-on-a-deploy#a-picture-is-taken",
   "deploy.zeroDowntime":
     "concepts/what-happens-on-a-deploy#zero-downtime-deploys",
+  "deploy.replicas": "advanced/replicas",
   "deploy.fromGit": "guides/deploy/from-git",
   "deploy.newRepos": "guides/deploy/from-git#new-repositories-on-the-overview",
   "deploy.dockerImage": "guides/deploy/docker-image",
@@ -178,6 +179,23 @@ export const DOCS = {
   "servers.advanced": "operations/servers/maintenance-and-advanced#advanced",
   "servers.generatedAddresses":
     "operations/servers/maintenance-and-advanced#generated-addresses",
+  "clusters.emptying": "operations/clusters/manage-servers#empty-a-server",
+  "clusters.removing": "operations/clusters/manage-servers#remove-a-server",
+  "clusters.deleting": "operations/clusters/manage-servers#delete-a-cluster",
+  "clusters.overview": "operations/clusters",
+  "clusters.teams": "operations/clusters#let-teams-use-it",
+  "clusters.failover": "operations/clusters/failover",
+  "clusters.leader":
+    "operations/clusters/leader#run-the-leader-on-another-server",
+  "clusters.databases": "operations/clusters/databases",
+  "clusters.appData": "operations/clusters/apps-with-stored-data",
+  "clusters.standby": "operations/clusters/standby-copy",
+  "clusters.addresses": "operations/clusters/addresses",
+  "clusters.replicas":
+    "operations/clusters/replicas-and-architectures#replicas-across-servers",
+  "clusters.updates": "operations/clusters/leader#updates",
+  "clusters.architectures":
+    "operations/clusters/replicas-and-architectures#mix-arm-and-x86-servers",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",
 

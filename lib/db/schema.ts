@@ -18,6 +18,7 @@ export * from "./schema/control-plane/activity";
 export * from "./schema/control-plane/api-tokens";
 export * from "./schema/control-plane/apps";
 export * from "./schema/control-plane/backups";
+export * from "./schema/control-plane/clusters";
 export * from "./schema/control-plane/crons";
 export * from "./schema/control-plane/databases";
 export * from "./schema/control-plane/deplo-move";
@@ -56,6 +57,7 @@ import * as cpActivity from "./schema/control-plane/activity";
 import * as cpApiTokens from "./schema/control-plane/api-tokens";
 import * as cpApps from "./schema/control-plane/apps";
 import * as cpBackups from "./schema/control-plane/backups";
+import * as cpClusters from "./schema/control-plane/clusters";
 import * as cpCrons from "./schema/control-plane/crons";
 import * as cpDatabases from "./schema/control-plane/databases";
 import * as cpDeploMove from "./schema/control-plane/deplo-move";
@@ -94,6 +96,7 @@ export const schema = {
   ...cpApiTokens,
   ...cpApps,
   ...cpBackups,
+  ...cpClusters,
   ...cpCrons,
   ...cpDatabases,
   ...cpDeploMove,

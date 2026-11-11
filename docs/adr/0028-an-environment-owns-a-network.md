@@ -91,3 +91,7 @@ name (`api`, `db`, `gamewatcher-db`), and those are not enumerable.
 - **Upgrading is a one-time sweep at boot**, serial per host. A stack it cannot move stays
   where it is and keeps running; the count is on the Overview and the reasons are in
   Activity.
+
+## Amendment: Environments on a cluster (November 2026)
+
+On a **cluster** an Environment's network exists on every member that runs one of its workloads, and still nothing routes container addresses between members. A workload is reached by name through a name forwarder: a forwarder on `deplo-env-<id>` that holds the workload's name on every member and carries each TCP connection to the member running it, over the cluster relay ([ADR-0044](0044-cluster-members-meet-through-a-relay-over-tcp.md)). The receiving server agent connects a stream only to a workload of that same Environment, so the boundary is checked in one place. The control plane renders this wiring; the agent only runs it.

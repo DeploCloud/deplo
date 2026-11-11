@@ -192,6 +192,12 @@ type App {
   """
   buildServerId: ID
 
+  """The cluster the app is placed on; null for an app on one server."""
+  clusterId: ID
+
+  """The name of that cluster, for the line "Runs on eu, now on server-b"."""
+  clusterName: String
+
   """
   The authored compose file. Its inline values are masked unless you can configure the app.
   """
@@ -219,6 +225,21 @@ type App {
   deployments: [Deployment!]
   dockerImage: String
   domainCount: Int
+
+  """
+  How this app fails over when it keeps data on a cluster member; null for an app that keeps none or runs on one server.
+  """
+  failover: AppFailover
+
+  """
+  On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.
+  """
+  failoverFromBackup: Boolean
+
+  """
+  On a cluster of ARM and x86 servers, which ones this app can fail over to; null when every server can take it or it runs on one server.
+  """
+  failoverReach: FailoverReach
   folderId: ID
 
   """
@@ -246,6 +267,11 @@ type App {
   name: String
 
   """
+  Set to "Waiting for room in eu" while the leader of its cluster has nowhere to run this app, or "2 of 3 replicas running · waiting for room" while only some replicas found a server; null otherwise.
+  """
+  placementNote: String
+
+  """
   Host ports this app publishes. Empty for a compose stack, which publishes its own in its compose file.
   """
   ports: [PublishedPort!]
@@ -253,6 +279,11 @@ type App {
 
   """The Project container this app belongs to, if any."""
   projectId: ID
+
+  """
+  How many replicas of this single-image app run on its server (1 to 10).
+  """
+  replicas: Int
 
   """
   Per-app resource caps applied at deploy time, or null when the app has no limits set.
@@ -270,6 +301,16 @@ type App {
   restartLoopStoppedAt: String
 
   """
+  Whether the server agent restarts this app when it stops answering. On by default.
+  """
+  restartWhenUnresponsive: Boolean
+
+  """
+  When the server agent paused those restarts because the app kept failing; null while they are on.
+  """
+  restartsPausedAt: String
+
+  """
   How many previous deployments this app can be rolled back to (0-20, default 3). Retention: its server keeps this many of the app's images behind the running one. 0 means there is nothing to go back to.
   """
   rollbackKeep: Int
@@ -278,10 +319,19 @@ type App {
   Whether Deplo takes a light and a dark picture of the site after each deploy. On by default; off deletes the saved pictures.
   """
   screenshotsEnabled: Boolean
+
+  """
+  The server the app runs on now. For an app on a cluster, the member the leader placed it on.
+  """
   serverId: ID
   slug: String
   source: DeploySource
   status: AppStatus
+
+  """
+  Whether a cookie keeps each visitor on the same replica. Only applies with more than one.
+  """
+  stickySessions: Boolean
   teamId: ID
   updatedAt: String
 
@@ -315,6 +365,37 @@ input AppEnvInput {
   """
   type: String
   value: String!
+}
+
+"""
+How an app that keeps data on a cluster member fails over: a Volume waits for its server or comes back from a backup, a Bind never moves.
+"""
+type AppFailover {
+  """
+  Whether it moves on its own from its latest backup (failoverFromBackup).
+  """
+  automatic: Boolean
+
+  """
+  The one click bringAppBack offers, naming the backup it restores; null when it is not waiting or no other server can read a backup.
+  """
+  bringBack: String
+  cluster: String
+
+  """`volume` or `bind`: what ties it to that server."""
+  disk: String
+
+  """What its page says about how it fails over."""
+  sentence: String
+
+  """The member it runs on now."""
+  serverName: String
+
+  """Its server stopped answering and it waits for it."""
+  waiting: Boolean
+
+  """Why nothing can bring it back, while it waits."""
+  why: String
 }
 
 """An app the viewer may connect a database to."""
@@ -352,10 +433,17 @@ type AppPreview {
   """
   isFork: Boolean
   latestDeploymentId: ID
+
+  """
+  Why an `offline` preview is not running: server_stopped | server_emptied (no other server of the cluster could take it). Null in every other status.
+  """
+  offlineReason: String
   prNumber: Int
   pullRequestUrl: String
 
-  """blocked | queued | building | active | error | idle."""
+  """
+  blocked | queued | building | active | error | idle | evicted | offline. `offline`: its server, a member of the App's cluster, stopped or was emptied; the next push or a redeploy places it again.
+  """
   status: String
   title: String
   updatedAt: String
@@ -391,7 +479,9 @@ input AppPreviewSettingsInput {
   """Newline-separated labels a pull request must carry. Empty ⇒ no filter."""
   requiredLabels: String
 
-  """Where previews run. Empty ⇒ the app's own server."""
+  """
+  Where previews run. Empty ⇒ the app's own server, or its cluster when it runs on one. Never a server that is a member of a cluster.
+  """
   serverId: String
   ttlDays: Int
 }
@@ -407,6 +497,12 @@ type AppPreviewsView {
   """Pull requests must target this branch to get a preview."""
   branch: String
   buildDrafts: Boolean
+
+  """
+  The App's cluster, where previews are placed while `serverId` is null: its leader picks a server for each. Null off a cluster, or on one this team cannot see.
+  """
+  clusterId: String
+  clusterName: String
   comment: Boolean
   enabled: Boolean
   forkPolicy: String
@@ -446,6 +542,11 @@ type AppRuntime {
 
   """The agent did not answer: the counts are unknown, not zero."""
   unreachable: Boolean
+
+  """
+  For an app on several servers: the ones that did not answer, by name. The counts cover the others.
+  """
+  unreachableServers: [String!]
 }
 
 """
@@ -741,7 +842,22 @@ type BackupRun {
   destinationId: ID
   error: String
   finishedAt: String
+
+  """
+  How long the App was paused so its data could be copied consistently, in milliseconds. Null when it was not paused.
+  """
+  heldMs: Float
   id: ID
+
+  """
+  Set on data a server of a cluster still held when it came back after a failover: when that failover happened. Such a run is never pruned and never restored by Deplo on its own; restoring it loses everything written since.
+  """
+  leftAt: String
+
+  """
+  The name of the server that data was left on. Null for an ordinary backup, or once that server is gone.
+  """
+  leftOnServer: String
 
   """Object key of the stored artifact."""
   objectKey: String
@@ -1018,6 +1134,287 @@ type ClonedRepository {
   url: String
 }
 
+"""
+Several servers that act as one. A cluster is shared across teams like a server: `allTeams` or the teams in `teams`.
+"""
+type Cluster {
+  """
+  True (the default) when every team may use this cluster. False restricts it to `teams`.
+  """
+  allTeams: Boolean
+  createdAt: String
+
+  """
+  Failover is on from two members: with one there is nowhere to move an App to.
+  """
+  failoverOn: Boolean
+  id: ID
+
+  """
+  The active team's Apps on this cluster whose newest release has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere.
+  """
+  imageCopies: [ClusterImageProgress!]
+
+  """
+  Every server, with what stops it joining this cluster right now. Requires instanceAdmin.
+  """
+  joinCandidates: [ClusterJoinCandidate!]
+
+  """
+  Where the leader runs and whether it answers. Live, so select it on one cluster at a time. Requires instanceAdmin.
+  """
+  leader: ClusterLeader
+
+  """
+  Every server the leader can run on, Deplo's own machine first. Requires instanceAdmin.
+  """
+  leaderChoices: [ClusterLeaderChoice!]
+
+  """The leader epoch Deplo last heard of; 0 before a leader has reported."""
+  leaderEpoch: Int
+
+  """
+  The servers in this cluster, in the order they joined. Anyone the cluster is shared with sees them.
+  """
+  members: [ClusterMember!]
+  name: String
+
+  """
+  Teams granted access when `allTeams` is false. Only an instance admin sees every team; anyone else sees the active team at most.
+  """
+  teams: [Team!]
+
+  """
+  The names of the active team's Apps on this cluster that found no room after a server stopped. They are tried again every 30 seconds; empty when everything runs.
+  """
+  waiting: [String!]
+}
+
+"""
+What deleting a cluster does, for the confirmation: the active team's Apps and databases by name, every other team's as a count.
+"""
+type ClusterDeletion {
+  """
+  True when the cluster fails work over today, so deleting it takes that away.
+  """
+  failoverOn: Boolean
+  otherTeams: [ClusterDeletionTeam!]
+  workloads: [ClusterReleasedWorkload!]
+}
+
+"""
+How much of another team's work a cluster holds: a count, never the names.
+"""
+type ClusterDeletionTeam {
+  apps: Int
+  databases: Int
+  teamName: String
+}
+
+"""
+How far emptying a server has got. Its Apps and databases move to the other servers of the cluster, one at a time.
+"""
+type ClusterEmptying {
+  """
+  Why it stopped, in one sentence, until emptyClusterMember is called again; empty while it runs.
+  """
+  error: String
+
+  """How many it still holds; 0 means it is empty."""
+  left: Int
+
+  """The App or database moving now; empty between two moves."""
+  moving: String
+  since: String
+
+  """How many Apps and databases it held at the start."""
+  total: Int
+}
+
+"""
+An App whose newest release is still being copied to the servers of the cluster.
+"""
+type ClusterImageProgress {
+  appId: ID
+  appName: String
+
+  """Servers that hold the release now."""
+  held: Int
+
+  """Servers that will hold it when the copies finish."""
+  total: Int
+}
+
+type ClusterJoin {
+  """Apps that came along, where they run."""
+  apps: Int
+  databases: Int
+  member: ClusterMember
+
+  """One plain line while the cluster has a single member."""
+  note: String
+}
+
+"""A server the join picker offers; an empty `reasons` means it can join."""
+type ClusterJoinCandidate {
+  reasons: [ClusterJoinReason!]
+  serverId: ID
+  serverName: String
+}
+
+"""One thing that stops a server joining a cluster."""
+type ClusterJoinReason {
+  code: ClusterJoinReasonCode
+  message: String
+}
+
+enum ClusterJoinReasonCode {
+  agent_too_old
+  cannot_host
+  in_cluster
+  offline
+  other_teams
+}
+
+"""
+Where a cluster's leader runs and whether it answers, asked live of the server that runs it.
+"""
+type ClusterLeader {
+  """
+  Whether a failover would work right now: the leader answers and enough servers answer it. Null with fewer than two servers, or while Deplo's machine stands in for the leader.
+  """
+  failoverReady: Boolean
+
+  """
+  One plain sentence on why it is not running, or that it hears too few servers to move anything; empty otherwise.
+  """
+  message: String
+
+  """It runs on the machine Deplo itself runs on."""
+  onDeploHost: Boolean
+
+  """
+  The warning while Deplo's own server is a member of the cluster and the leader runs on it; empty otherwise. moveClusterLeader fixes it.
+  """
+  ownServerWarning: String
+
+  """The server it runs on; null when Deplo's machine has no server entry."""
+  serverId: ID
+  serverName: String
+  state: ClusterLeaderState
+
+  """
+  Since when Deplo's own machine leads the cluster because this leader does not answer; null while this leader leads. It leads again once it answers.
+  """
+  takenOverAt: String
+
+  """
+  One plain sentence while Deplo cannot update a leader this cluster relies on; empty otherwise. Deplo retries on its own.
+  """
+  updateMessage: String
+  version: String
+}
+
+"""
+A server the leader can run on; an empty `blocked` means moveClusterLeader takes it.
+"""
+type ClusterLeaderChoice {
+  """Why the leader cannot run there right now; empty when it can."""
+  blocked: String
+
+  """The leader runs here now."""
+  current: Boolean
+
+  """
+  What a leader there cannot do; empty when nothing. A server with no proxy still needs Deplo's machine up to move anything.
+  """
+  note: String
+
+  """Deplo's own machine, where the leader runs unless it is moved."""
+  onDeploHost: Boolean
+  serverId: ID
+  serverName: String
+}
+
+enum ClusterLeaderState {
+  not_installed
+  outdated
+  running
+  stopped
+  unavailable
+  unreachable
+}
+
+enum ClusterLeaseState {
+  fenced
+  not_responding
+  ok
+}
+
+"""
+A server in a cluster. Nothing is ever placed on a member directly: the cluster decides.
+"""
+type ClusterMember {
+  """
+  Progress while the server is being emptied; null otherwise. It takes no new work in the meantime.
+  """
+  emptying: ClusterEmptying
+
+  """Set while the member is being emptied."""
+  emptyingSince: String
+
+  """
+  How many Apps and databases it holds. Removing it needs 0, except for the last member, which may keep them.
+  """
+  held: Int
+  joinedAt: String
+
+  """
+  What the cluster's leader last said: answering, not responding (15 seconds without an answer), or fenced (a minute: it has stopped its databases and Apps with files).
+  """
+  leaseState: ClusterLeaseState
+  serverId: ID
+  serverName: String
+  status: ServerStatus
+}
+
+"""
+An App or database a cluster lets go of when it is deleted. It stays on the server it runs on.
+"""
+type ClusterReleasedWorkload {
+  kind: ClusterWorkloadKind
+
+  """
+  For an App: the Apps and databases of its Environment on another server, which it reaches by name today and no longer will once the cluster is gone.
+  """
+  losesReach: [String!]
+  name: String
+
+  """The server it stays on."""
+  serverName: String
+
+  """The other servers a spread App also runs on. Its replicas there stop."""
+  stopsOn: [String!]
+
+  """
+  It found no room after a server stopped, so it is not running now and stays stopped.
+  """
+  waiting: Boolean
+}
+
+"""
+Which teams may use a cluster. allTeams: true opens it to every team; false restricts it to teamIds.
+"""
+input ClusterSharingInput {
+  allTeams: Boolean!
+  teamIds: [String!]
+}
+
+enum ClusterWorkloadKind {
+  app
+  database
+}
+
 enum CommitSignature {
   unverified
   verified
@@ -1074,6 +1471,11 @@ type ConsoleInfo {
   image: String
   instances: [ConsoleInstance!]
   running: Boolean
+
+  """
+  The servers running this app that could not be asked for their replicas, by name. Empty unless its replicas are spread over a cluster.
+  """
+  unavailable: [String!]
 }
 
 """A single attachable container in an app's stack."""
@@ -1082,6 +1484,11 @@ type ConsoleInstance {
   image: String
   name: String
   openStdin: Boolean
+
+  """
+  `web-2` when this is one of several replicas of its service; null for a lone container. Read from the container name, never stored.
+  """
+  replica: String
   running: Boolean
   service: String
   tty: Boolean
@@ -1120,10 +1527,20 @@ type ContainerInstanceMetrics {
   pids: Int
 
   """
+  `web-2` when this is one of several replicas, `web-2 · server-b` when the app runs on several servers; else null.
+  """
+  replica: String
+
+  """
   How many times docker has restarted this container - what tells a container that is starting from one that has been dying for an hour.
   """
   restartCount: Int
   running: Boolean
+
+  """
+  The server this container is on, by name, when the app runs on several; else null.
+  """
+  server: String
 
   """
   Raw docker state: running | restarting | exited | created | paused | dead | removing. Empty from an agent too old to report it.
@@ -1155,6 +1572,11 @@ type ContainerMetrics {
   pids: Int
   running: Int
   ts: Float
+
+  """
+  The servers running this workload whose readings are missing from the total, by name. Empty unless it runs on several servers.
+  """
+  unavailable: [String!]
   unsupported: Boolean
 }
 
@@ -1175,6 +1597,11 @@ type ContainerMetricsSample {
   memLimit: Float
   memPct: Float
   memUsed: Float
+
+  """
+  Each server's share of this sample, when the history spans several servers (replicas spread over a cluster, a move, a failover); else empty.
+  """
+  members: [ContainerMetricsShare!]
   netRx: Float
   netTx: Float
   online: Boolean
@@ -1183,7 +1610,22 @@ type ContainerMetricsSample {
   ts: Float
 }
 
+"""One server's part of a sample that totals several servers."""
+type ContainerMetricsShare {
+  cpu: Float
+  memUsed: Float
+  running: Int
+
+  """The server's name."""
+  server: String
+}
+
 input CreateAppFromTemplateInput {
+  """
+  Place the App on a cluster instead of a server: its leader picks the server. Not together with serverId.
+  """
+  clusterId: String
+
   """
   Request the first deployment. Defaults to false; a token also needs deploy_apps.
   """
@@ -1217,6 +1659,11 @@ input CreateAppInput {
   Where the app COMPILES, when that is not where it runs. Omitted is Automatic - a build-only server if the fleet has one.
   """
   buildServerId: String
+
+  """
+  Place the app on a cluster instead of a server: the cluster's leader picks the member. Not together with serverId.
+  """
+  clusterId: String
   compose: String
   composePort: Int
   composeService: String
@@ -1269,6 +1716,10 @@ input CreateBackupInput {
 }
 
 input CreateDatabaseInput {
+  """
+  Place the database on this cluster instead of a server: its leader picks the member, and Deplo backs it up every 15 minutes to another server. Not together with serverId.
+  """
+  clusterId: ID
   dbName: String
   environmentId: ID
   exposedPort: Int
@@ -1490,7 +1941,7 @@ type CronRun {
   startedAt: String
 
   """
-  running | succeeded | failed | timedout | skipped | lost. `skipped` never started (the container was stopped, or the previous run was still going) and `lost` means the outcome is unknown - the agent restarted mid-run. Neither is a failure.
+  running | succeeded | failed | timedout | skipped | lost | server_lost. `skipped` never started (the container was stopped, or the previous run was still going), `lost` means the outcome is unknown - the agent restarted mid-run - and `server_lost` means the server running it stopped. None of the three is retried; run a lost one again with runCronJobNow.
   """
   status: String
   stderr: String
@@ -1506,6 +1957,13 @@ type CronRun {
 A provisioned database container owned by a team. The connection string is masked; reveal it with the revealConnection mutation.
 """
 type Database {
+  """
+  The cluster the database is placed on; null for a database on one server.
+  """
+  clusterId: ID
+
+  """The name of that cluster, for the line "Runs on eu, now on server-b"."""
+  clusterName: String
   connectionStringMasked: String
   createdAt: String
 
@@ -1531,6 +1989,11 @@ type Database {
   environmentId: ID
   exposedPort: Int
   exposedPublicly: Boolean
+
+  """
+  On a cluster of ARM and x86 servers, which ones this database can fail over to; null when every server can take it or it runs on one server.
+  """
+  failoverReach: FailoverReach
   host: String
   id: ID
 
@@ -1564,8 +2027,22 @@ type Database {
   When restart loop protection last stopped this database, or null. Cleared by a start or a restart.
   """
   restartLoopStoppedAt: String
+
+  """
+  The server the database runs on now. For a database on a cluster, the member the leader placed it on.
+  """
   serverId: ID
   sizeMb: Int
+
+  """
+  Whether this database keeps a standby copy on another server of its cluster. A failover promotes the copy and loses about a second of writes instead of everything since the last backup.
+  """
+  standby: Boolean
+
+  """
+  The server holding the standby copy; null when the switch is off or there is no copy right now.
+  """
+  standbyServerName: String
   status: DatabaseStatus
   teamId: ID
   type: DatabaseType
@@ -2643,6 +3120,19 @@ input ExtraDomainInput {
   service: String!
 }
 
+"""
+On a cluster of ARM and x86 servers: which of them an app or database can fail over to.
+"""
+type FailoverReach {
+  """"Fails over to x86 servers only (2 of 3)"."""
+  line: String
+
+  """
+  Set instead of the line when a single server can run it, so it has nowhere to go if that one stops.
+  """
+  warning: String
+}
+
 """One server whose agent is older than the fleet version."""
 type FleetAgent {
   id: ID
@@ -3150,6 +3640,17 @@ type Member {
   roleName: String
   userId: ID
   username: String
+}
+
+"""
+A moment an app or a database changed servers (a move or a failover), read from Activity.
+"""
+type MetricsMarker {
+  """The Activity entry, as written."""
+  label: String
+
+  """Epoch ms."""
+  ts: Float
 }
 
 type MigrationDataMoveResult {
@@ -3664,6 +4165,11 @@ type Mutation {
   Add a basic-auth user to an app. The login is required on every one of its domains within seconds - the routing is re-applied to the running container, no redeploy needed.
   """
   addBasicAuthUser(appId: String!, password: String!, username: String!): BasicAuthUser
+
+  """
+  Add an existing server to a cluster. Its Apps and databases come along where they run: nothing restarts and no address changes. Refused with every blocking reason listed.
+  """
+  addClusterMember(clusterId: String!, serverId: String!): ClusterJoin
   addDomain(appId: String!, config: DomainConfigInput, name: String!): Domain
 
   """Add an already-registered user to the active team."""
@@ -3712,6 +4218,11 @@ type Mutation {
   Open an import run and return its id. Any run this team left open (a closed tab) is closed as failed first, so the history never shows two live imports.
   """
   beginMigration(kind: MigrationPlatform, orgName: String, url: String!): String
+
+  """
+  Bring a cluster app that waits for its stopped server back on another server, from its latest backup. Anything written after that backup is lost. Refused while its own server may still be running it.
+  """
+  bringAppBack(id: String!): App
 
   """
   Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
@@ -3838,6 +4349,11 @@ type Mutation {
 
   """Create a backup schedule. Returns true."""
   createBackup(input: CreateBackupInput!): Boolean
+
+  """
+  Create a cluster and ask the machine that leads it to start its leader. A leader that cannot start does not undo the cluster: read `leader` for why.
+  """
+  createCluster(name: String!, sharing: ClusterSharingInput!): Cluster
   createCronJob(
     input: CronJobInput!
     targetId: ID!
@@ -3904,6 +4420,11 @@ type Mutation {
   Permanently delete ONE backup: the artifact at its destination and the run record together. Not the schedule (see deleteBackup) and not the target's whole history (see deleteBackupArtifacts). Returns true.
   """
   deleteBackupRun(runId: String!): Boolean
+
+  """
+  Delete a cluster. Every App and database stays on the server it runs on, as an ordinary one that nothing fails over; its servers stay connected. Read `clusterDeletion` first for what that covers. Refused while a server that still runs work does not answer.
+  """
+  deleteCluster(id: String!): Boolean
 
   """Delete a job and its run history."""
   deleteCronJob(id: ID!): Boolean
@@ -4034,6 +4555,11 @@ type Mutation {
   dismissPendingChanges(appId: String!): Boolean
 
   """
+  Empty a server of a cluster: it takes no new work, and its Apps and databases move to the other servers one at a time, in the background. Refused before anything moves when the others lack the room. Call it again to continue after it stopped; read `members.emptying` for progress.
+  """
+  emptyClusterMember(clusterId: String!, serverId: String!): Cluster
+
+  """
   Run a command in the app's live container (docker exec). Gated on the deploy capability - this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
@@ -4148,6 +4674,11 @@ type Mutation {
   mintRegistrationLink(input: MintRegistrationLinkInput!): String
 
   """
+  Place an app on a cluster and redeploy it on the member its leader picks, copying its data. A cluster with no room answers with the sentence that says what to change, and nothing stops. To take it off a cluster again use moveAppToServer, which also needs move_apps.
+  """
+  moveAppToCluster(clusterId: String!, id: String!): App
+
+  """
   Move an app into a specific environment of a Project (ADR-0009: each environment holds its own apps). The app's project follows the environment.
   """
   moveAppToEnvironment(appId: ID!, environmentId: ID!): Boolean
@@ -4163,7 +4694,7 @@ type Mutation {
   moveAppToProject(appId: ID!, projectId: ID): Boolean
 
   """
-  Move an app to another server and redeploy it there, copying its data. Its source is unchanged.
+  Move an app to another server and redeploy it there, copying its data. Its source is unchanged. An app on a cluster leaves it this way and also needs move_apps.
   """
   moveAppToServer(id: String!, serverId: String!): App
 
@@ -4171,6 +4702,16 @@ type Mutation {
   Bulk-move several apps into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.
   """
   moveAppsToFolder(appIds: [ID!]!, folderId: ID): Int
+
+  """
+  Run the cluster's leader on another server, so failover keeps working while Deplo's own machine is down. That server installs the leader and leads from the next epoch; while it does not answer, Deplo's machine leads in its place. Pass the server of Deplo's own machine to move it back.
+  """
+  moveClusterLeader(id: String!, serverId: String!): Cluster
+
+  """
+  Place a database on a cluster: it restarts on the member the leader picks and its data is copied there. A cluster with no room answers with the sentence that says what to change, and nothing stops. Deplo then backs it up every 15 minutes to another server, unless it has a schedule already. To take it off a cluster again use updateDatabase with a serverId.
+  """
+  moveDatabaseToCluster(clusterId: String!, id: String!): Database
 
   """
   Move a database into an Environment, or out to the team's top level (null). The placement is also the network it answers on, so the container is brought up again on the new one before this returns - an app reaches `db-<slug>` only from the same Environment.
@@ -4271,6 +4812,11 @@ type Mutation {
   removeBasicAuthUser(id: String!): Boolean
 
   """
+  Remove a server from a cluster. It is cut off at once and is an ordinary server again. It must hold nothing (empty it first), except the last member: pass keepWorkloads to leave its Apps and databases on it as ordinary ones.
+  """
+  removeClusterMember(clusterId: String!, keepWorkloads: Boolean, serverId: String!): Cluster
+
+  """
   Disconnect a domain from automatic DNS. Its Cloudflare Tunnels are torn down; returns what Deplo could not clean up, or null.
   """
   removeDnsProvider(id: String!): String
@@ -4309,6 +4855,7 @@ type Mutation {
   """
   removeUserFromTeam(input: UserTeamInput!): [UserTeamAccess!]
   renameApp(id: String!, name: String!): App
+  renameCluster(id: String!, name: String!): Cluster
 
   """
   Rename a database - its DISPLAY name only. The container's identity (compose project, data volume, DNS name and therefore the connection string) is fixed at creation and is untouched, so nothing restarts. The name must be unique within the team.
@@ -4582,6 +5129,11 @@ type Mutation {
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
 
   """
+  Fail over automatically from the latest backup: on, a cluster app with a Volume moves to another server on its own when its server stops, restored from its latest backup; off (the default) it waits for its server. Refused for an app with a Bind.
+  """
+  setAppFailoverFromBackup(id: String!, value: Boolean!): App
+
+  """
   Correct the framework Deplo recognised in this app's source (a catalog id such as "vite"), or pass null to go back to trusting detection. The correction survives every later deploy's re-detection.
   """
   setAppFramework(framework: String, id: String!): App
@@ -4595,9 +5147,19 @@ type Mutation {
   setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
 
   """
+  Run a single-image app as 1 to 10 replicas on its server. Refused with a Volume, a Bind or a published host port. Applies from the next deploy.
+  """
+  setAppReplicas(id: String!, value: Int!): App
+
+  """
   Turn restart loop protection on or off for one app. Applies at once - there is nothing to redeploy.
   """
   setAppRestartLoopGuard(id: String!, value: Boolean!): App
+
+  """
+  Turn automatic restart on or off for one app: on, the server agent restarts it when it stops answering. Applies from the next deploy.
+  """
+  setAppRestartWhenUnresponsive(id: String!, value: Boolean!): App
 
   """
   How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
@@ -4608,6 +5170,11 @@ type Mutation {
   Turn deployment screenshots on or off for one app. Off stops taking them and deletes every saved one; on takes the next at the next deploy.
   """
   setAppScreenshots(id: String!, value: Boolean!): App
+
+  """
+  Keep each visitor on the same replica with a cookie. Needs more than one replica, set on the App or in a compose stack's own YAML. Applies from the next deploy.
+  """
+  setAppStickySessions(id: String!, value: Boolean!): App
   setAppTraefikLabels(id: String!, labels: [TraefikLabelInput!]!): App
 
   """
@@ -4643,6 +5210,9 @@ type Mutation {
   """
   setCertificateEmail(email: String!): [CertificateAccount!]
 
+  """Change which teams may use a cluster, with the same rules as a server."""
+  setClusterTeams(id: String!, sharing: ClusterSharingInput!): Cluster
+
   """
   Turn the container console on or off for one app. Off closes the attach sessions already open and hides the console everywhere.
   """
@@ -4669,6 +5239,11 @@ type Mutation {
   """
   setDatabaseRestartLoopGuard(id: String!, value: Boolean!): Boolean
   setDatabaseRunning(id: String!, running: Boolean!): Database
+
+  """
+  Keep a standby copy of a database on another server of its cluster, or stop keeping one: PostgreSQL, MySQL, MariaDB and Redis, MongoDB on a cluster of three servers or more, never ClickHouse. The copy uses as much memory as the database and a second copy of its data; turning it on or off restarts a MariaDB database. A refusal answers with the sentence that says what to change.
+  """
+  setDatabaseStandby(enabled: Boolean!, id: String!): Database
 
   """Make an environment the project's default (unsets the previous one)."""
   setDefaultEnvironment(id: ID!): Boolean
@@ -4825,6 +5400,11 @@ type Mutation {
   startApp(id: String!): App
 
   """
+  Start the cluster's leader where it runs unless it already answers. Answers with the leader's state, never an error for a leader that could not start.
+  """
+  startClusterLeader(id: String!): ClusterLeader
+
+  """
   Start a connected move: everything here is replaced by a copy of the old Deplo, then each app and database is deployed on its mapped server and filled with its data. The old Deplo keeps running.
   """
   startDeploMove(
@@ -4888,6 +5468,11 @@ type Mutation {
   """
   startWithoutMigratedData(id: String!): Database
   stopApp(id: String!): App
+
+  """
+  Stop emptying a server: it takes work again. What is moving right now finishes its move, and what already moved stays where it is.
+  """
+  stopEmptyingClusterMember(clusterId: String!, serverId: String!): Cluster
 
   """
   Close a run somebody stopped part-way, WITHOUT finishing it - the migration sources keep their agents, because re-running is how a stopped migration is resumed.
@@ -5124,6 +5709,7 @@ input NodeGrantInput {
 type OverviewAppState {
   appId: ID!
   neverDeployed: Boolean!
+  restartsPaused: Boolean!
   runtime: OverviewRuntime
   status: AppStatus!
 }
@@ -5274,6 +5860,21 @@ enum PasskeyKind {
 }
 
 """
+Somewhere an App can be placed: a server, or a cluster whose leader picks the server. A cluster's members are never listed here.
+"""
+type PlacementChoice {
+  id: ID
+  isDeploHost: Boolean
+  kind: PlacementKind
+  name: String
+}
+
+enum PlacementKind {
+  cluster
+  server
+}
+
+"""
 A preview-only variable override. Write-only, like every stored secret: the value is never projected and there is no reveal path.
 """
 type PreviewEnvVar {
@@ -5392,6 +5993,11 @@ type Query {
   """
   appMetricsHistory(appId: String!): [ContainerMetricsSample!]
 
+  """
+  Each move or failover of one app inside the metrics history window (oldest first), so a jump in a chart has its explanation beside it.
+  """
+  appMetricsMarkers(appId: String!): [MetricsMarker!]
+
   """Pull request previews for an app, plus why they may not work."""
   appPreviews(appId: ID!): AppPreviewsView
 
@@ -5456,6 +6062,15 @@ type Query {
 
   """Where Deplo can create a repository for a Deploy button's project."""
   cloneDestinations: CloneDestinations
+  cluster(id: String!): Cluster
+
+  """
+  What `deleteCluster` would do: which Apps and databases stop failing over. The active team's are named; another team's are counted. Requires instanceAdmin.
+  """
+  clusterDeletion(id: String!): ClusterDeletion
+
+  """The clusters the active team may use, by creation order."""
+  clusters: [Cluster!]
 
   """
   The service names a stack would share with something already on the network it lands on - what `createApp` refuses it over, asked before creating so the caller can pass `renameClashes` instead. Empty when nothing clashes.
@@ -5495,6 +6110,11 @@ type Query {
   The metrics history buffered for one database (oldest first). Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   databaseMetricsHistory(databaseId: String!): [ContainerMetricsSample!]
+
+  """
+  Each move or failover of one database inside the metrics history window (oldest first), so a jump in a chart has its explanation beside it.
+  """
+  databaseMetricsMarkers(databaseId: String!): [MetricsMarker!]
 
   """
   Live container state for a database, straight from the owning agent. Polled by the database's status badge (same shape as appRuntime).
@@ -5768,6 +6388,11 @@ type Query {
   What moving the panel to this address would break: passkeys welded to the current hostname, sessions, deploy hooks already pasted into someone's CI, connected AI clients, invite links, servers still waiting for their install command, notification subscriptions. Counted live and instance-wide, and only meaningful when the address actually moves - an unchanged address answers all zeroes. A query, not a mutation: it reads the database and dials nothing.
   """
   panelAddressImpact(url: String!): PanelAddressImpact
+
+  """
+  The servers and clusters the active team may place an App on, servers first.
+  """
+  placementChoices: [PlacementChoice!]
 
   """The app's preview-only variable overrides (advanced)."""
   previewEnvVars(appId: ID!): [PreviewEnvVar!]
@@ -6109,7 +6734,7 @@ type RuntimeContainer {
   exposed: Boolean
 
   """
-  "healthy" | "unhealthy" | "starting", or "" when the image declares no healthcheck, which is not a synonym for healthy.
+  "healthy" | "unhealthy" | "starting", or "" when nothing checks it, which is not a synonym for healthy. Follows the server agent's own check, the one that restarts the app, and Docker's when the image has one.
   """
   health: String
   name: String
@@ -6117,6 +6742,11 @@ type RuntimeContainer {
   """Times docker has restarted this container."""
   restartCount: Int
   running: Boolean
+
+  """
+  The server this container is on, by name, when the app runs on several; else null.
+  """
+  server: String
   service: String
 
   """

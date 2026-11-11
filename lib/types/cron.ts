@@ -6,8 +6,15 @@ export type CronShell = "sh" | "bash";
 
 export type CronOverlap = "skip" | "allow";
 
+// `lost`: Deplo stopped watching. `server_lost`: the run's server stopped. Neither is ever retried.
 export type CronRunStatus =
-  "running" | "succeeded" | "failed" | "timedout" | "skipped" | "lost";
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "timedout"
+  | "skipped"
+  | "lost"
+  | "server_lost";
 
 export interface CronJob {
   id: ID;

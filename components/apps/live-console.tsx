@@ -17,6 +17,7 @@ import type { ConsoleInstance } from "@/lib/data/console";
 type ConsoleInfo = {
   containerName: string;
   instances: ConsoleInstance[];
+  unavailable?: string[];
 };
 
 const CONSOLE_INFO_QUERY = /* GraphQL */ `
@@ -34,7 +35,9 @@ const CONSOLE_INFO_QUERY = /* GraphQL */ `
         workdir
         openStdin
         tty
+        replica
       }
+      unavailable
     }
   }
 `;
@@ -69,7 +72,11 @@ export function LiveConsole({
         const ci = data.consoleInfo;
         setInfo(
           ci?.running
-            ? { containerName: ci.containerName, instances: ci.instances }
+            ? {
+                containerName: ci.containerName,
+                instances: ci.instances,
+                unavailable: ci.unavailable,
+              }
             : null,
         );
       })
@@ -98,6 +105,7 @@ export function LiveConsole({
         title={title}
         instances={info.instances}
         initialName={info.containerName}
+        unavailable={info.unavailable}
         probeShell={probeShell}
       />
     );

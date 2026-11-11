@@ -415,6 +415,16 @@ test("every backup destination, schedule and restore point leaves in the export"
     databaseId: "db_main",
     status: "failed",
   });
+  // What a returning cluster server left is a volume, not a dump: it does not travel as a restore point.
+  await seedRun(db, {
+    id: "brun_left",
+    destinationId: "dst_s3",
+    databaseId: "db_main",
+    objectKey: "deplo/a/db_main/left-1.tar.gz.age",
+  });
+  await db.execute(
+    `update backup_runs set left_at = '2026-02-02T00:00:00Z' where id = 'brun_left'`,
+  );
 
   const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
   const s3 = out.destinations.find((d) => d.name === "bucket");

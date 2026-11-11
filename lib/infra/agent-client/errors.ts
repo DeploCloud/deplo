@@ -60,6 +60,65 @@ export class AgentReleaseUnavailableError extends Error {
 
 export class AgentUninstallUnsupportedError extends Error {}
 
+/** An agent without `cluster.host`: named, never failed at runtime. */
+export class AgentClusterUnsupportedError extends Error {}
+
+export const CLUSTER_HOST_UNSUPPORTED_MESSAGE =
+  "The server agent on this server is too old to run a cluster leader. " +
+  "Deplo updates it on its own: try again in a few minutes.";
+
+/** An agent without `cluster`: named, never failed at runtime. */
+export class AgentClusterMemberUnsupportedError extends Error {}
+
+export const CLUSTER_MEMBER_UNSUPPORTED_MESSAGE =
+  "The server agent on this server is too old to join a cluster. " +
+  "Deplo updates it on its own: try again in a few minutes.";
+
+/** An agent without `cluster.images`: named, never failed at runtime. */
+export class AgentClusterImagesUnsupportedError extends Error {}
+
+export const CLUSTER_IMAGES_UNSUPPORTED_MESSAGE =
+  "The server agent on this server is too old to copy images to the other servers of its cluster. " +
+  "Deplo updates it on its own.";
+
+/** An agent without `cluster.failover`: named, never handed a workload to start. */
+export const clusterFailoverUnsupportedMessage = (
+  server: string,
+  cluster: string,
+) =>
+  `The server agent on ${server} is too old to take over Apps when another server in cluster ${cluster} stops. ` +
+  "Deplo updates it on its own.";
+
+/** An agent without `cluster.failover.restore`: named, never handed a database to restore. */
+export const clusterRestoreUnsupportedMessage = (
+  server: string,
+  cluster: string,
+) =>
+  `The server agent on ${server} is too old to restore a database when another server in cluster ${cluster} stops. ` +
+  "Deplo updates it on its own.";
+
+/** An agent without `cluster.forwarders`: named, never failed at runtime. */
+export class AgentClusterForwardersUnsupportedError extends Error {}
+
+export const CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE =
+  "The server agent on this server is too old to keep names working across the servers of its cluster. " +
+  "Deplo updates it on its own.";
+
+export class ClusterReleaseUnavailableError extends Error {}
+
+/** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */
+export class ClusterLeaderTooOldError extends Error {
+  constructor(
+    readonly leaderVersion: string,
+    readonly minVersion: string,
+  ) {
+    super(
+      `The cluster leader on this server is v${leaderVersion}, older than the v${minVersion} this Deplo needs. ` +
+        "It updates on its own; until then Deplo's own server leads the cluster.",
+    );
+  }
+}
+
 export class AgentBackupUnsupportedError extends Error {}
 
 export class AgentBackupStoreUnsupportedError extends Error {}

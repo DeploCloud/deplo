@@ -1,0 +1,157 @@
+import type { ID } from "./identity";
+import type { ServerStatus } from "./server";
+
+export interface Cluster {
+  id: ID;
+  name: string;
+  allTeams: boolean;
+  /** The server the leader runs on; null is Deplo's own machine. */
+  leaderServerId: ID | null;
+  leaderEpoch: number;
+  /** Set while Deplo's own machine leads because the leader's server does not answer. */
+  leaderTakeoverAt: string | null;
+  /** The last leader event applied; a reconnect replays from here. */
+  eventSeq: number;
+  createdAt: string;
+}
+
+export type ClusterLeaderState =
+  | "running"
+  | "stopped"
+  | "not_installed"
+  | "unreachable"
+  | "unavailable"
+  // It runs, on a version below the one this Deplo accepts.
+  | "outdated";
+
+/** Where a cluster's leader runs and whether it answers, read live from the agent that supervises it. */
+export interface ClusterLeader {
+  serverId: ID | null;
+  serverName: string;
+  onDeploHost: boolean;
+  state: ClusterLeaderState;
+  version: string;
+  /** One plain sentence when the leader is not running, or hears too few servers to move anything; empty otherwise. */
+  message: string;
+  /** Whether a failover would work right now; null with fewer than two servers, or while Deplo's machine stands in. */
+  failoverReady: boolean | null;
+  /** Since when Deplo's own machine leads in its place; null while this leader leads. */
+  takenOverAt: string | null;
+  /** One plain sentence while Deplo cannot update a leader this cluster relies on; empty otherwise. */
+  updateMessage: string;
+  /** The warning shown while Deplo's own server is a member and the leader runs on it; empty otherwise. */
+  ownServerWarning: string;
+}
+
+/** A server the "Run the leader on another server" picker offers. */
+export interface ClusterLeaderChoice {
+  serverId: ID;
+  serverName: string;
+  /** Deplo's own machine, where the leader runs unless it is moved. */
+  onDeploHost: boolean;
+  /** The leader runs here now. */
+  current: boolean;
+  /** Why the leader cannot run there right now; empty when it can. */
+  blocked: string;
+  /** What a leader there cannot do; empty when nothing: a server with no proxy still needs Deplo's machine up. */
+  note: string;
+}
+
+/** Failover needs somewhere to move an App to, so it starts at two members. */
+export const FAILOVER_MIN_MEMBERS = 2;
+
+export function failoverOn(memberCount: number): boolean {
+  return memberCount >= FAILOVER_MIN_MEMBERS;
+}
+
+const ARCH_WORDS: Record<string, string> = { amd64: "x86", arm64: "ARM" };
+
+/** The words a user reads for the architectures servers come in: "x86", "ARM", or "x86 or ARM". */
+export function archWords(archs: string[]): string {
+  const words = [
+    ...new Set(archs.map((a) => ARCH_WORDS[a]).filter((w) => w !== undefined)),
+  ];
+  return words.join(" or ") || archs.join(" or ");
+}
+
+/** What the leader last said about a member's lease: ok, not responding (15 s) or fenced (60 s). */
+export type ClusterLeaseState = "ok" | "not_responding" | "fenced";
+
+/** How far emptying a member has got. `left` at 0 means it holds nothing. */
+export interface ClusterEmptying {
+  since: string;
+  /** How many Apps and databases it held when emptying started. */
+  total: number;
+  left: number;
+  /** The name of the App or database moving now; empty between two moves. */
+  moving: string;
+  /** Why it stopped, in one sentence, until an admin continues; empty while it runs. */
+  error: string;
+}
+
+export interface ClusterMember {
+  serverId: ID;
+  serverName: string;
+  status: ServerStatus;
+  joinedAt: string;
+  /** Set while the member is being emptied. */
+  emptyingSince: string | null;
+  /** Progress while it is being emptied; null otherwise. */
+  emptying: ClusterEmptying | null;
+  /** How many Apps and databases it holds; removing it needs none, except for the last member. */
+  held: number;
+  leaseState: ClusterLeaseState;
+}
+
+export type ClusterJoinReasonCode =
+  "offline" | "agent_too_old" | "in_cluster" | "cannot_host" | "other_teams";
+
+/** One thing that stops a server joining a cluster, in words the admin can act on. */
+export interface ClusterJoinReason {
+  code: ClusterJoinReasonCode;
+  message: string;
+}
+
+/** A server the join picker offers, with what blocks it right now (empty: it can join). */
+export interface ClusterJoinCandidate {
+  serverId: ID;
+  serverName: string;
+  reasons: ClusterJoinReason[];
+}
+
+export interface ClusterJoin {
+  member: ClusterMember;
+  /** Apps and databases that came along, where they run. */
+  apps: number;
+  databases: number;
+  /** One plain line when the cluster still has a single member. */
+  note: string | null;
+}
+
+/** An App whose newest release is still being copied: "web: on 2 of 3 servers". */
+export interface ClusterImageProgress {
+  appId: ID;
+  appName: string;
+  held: number;
+  total: number;
+}
+
+/** One App or database a cluster lets go of when it is deleted: it stays on `serverName`. */
+export interface ClusterReleasedWorkload {
+  kind: "app" | "database";
+  name: string;
+  serverName: string;
+  /** The other servers a spread App also runs on: its copies there stop. */
+  stopsOn: string[];
+  /** It found no room after a server stopped, so it is not running now. */
+  waiting: boolean;
+  /** What an App reaches by name on another server today and no longer will: names stop crossing servers. */
+  losesReach: string[];
+}
+
+/** What the Delete confirmation shows: the asking team's own work by name, every other team's as a count. */
+export interface ClusterDeletion {
+  failoverOn: boolean;
+  workloads: ClusterReleasedWorkload[];
+  otherTeams: { teamName: string; apps: number; databases: number }[];
+}

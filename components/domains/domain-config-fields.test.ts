@@ -45,3 +45,26 @@ test("the certificate stays editable while Cloudflare is detected", () => {
   assert.doesNotMatch(certTrigger(true), /\sdisabled=""/);
   assert.doesNotMatch(certTrigger(false), /\sdisabled=""/);
 });
+
+function fields(tunnel: boolean) {
+  return renderToStaticMarkup(
+    createElement(
+      TooltipProvider,
+      null,
+      createElement(DomainConfigFields, {
+        state: initialDomainConfig(behindCloudflare),
+        onChange() {},
+        idPrefix: "t",
+        tunnel,
+      }),
+    ),
+  );
+}
+
+test("a tunnel-served domain is told it needs no certificate of its own", () => {
+  const note = /it\s+needs no certificate of its own/;
+  assert.match(fields(true), note);
+  assert.doesNotMatch(fields(true), /id="t-cert"/);
+  assert.doesNotMatch(fields(false), note);
+  assert.match(fields(false), /id="t-cert"/);
+});

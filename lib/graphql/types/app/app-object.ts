@@ -1,9 +1,14 @@
 import { builder } from "../../builder";
 import { ResourceLimitsRef } from "../resource-limits";
 import { HealthCheckRef } from "../health-check";
+import { FailoverReachRef, reachOrNull } from "../failover-reach";
 import { DeploySourceEnum, AppStatusEnum } from "../enums";
 import { DeploymentRef } from "./deployment-object";
+import { type AppFailover, getAppFailover } from "@/lib/data/apps/failover";
 import { listApps } from "@/lib/data/apps/listing";
+import { appFailoverReach } from "@/lib/data/clusters/architectures";
+import { getCluster } from "@/lib/data/clusters/roster";
+import { appWaitingNote } from "@/lib/data/clusters/placement";
 import type { AppSummary } from "@/lib/data/apps/summary";
 import { effectiveFramework } from "@/lib/apps/framework-catalog";
 import { listDeployments } from "@/lib/data/deployments/deployment-queries";
@@ -72,6 +77,41 @@ const PublishedPortRef = builder
     }),
   });
 
+const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
+  description:
+    "How an app that keeps data on a cluster member fails over: a Volume waits for its server or comes back from a backup, a Bind never moves.",
+  fields: (t) => ({
+    cluster: t.exposeString("cluster"),
+    serverName: t.exposeString("serverName", {
+      description: "The member it runs on now.",
+    }),
+    disk: t.exposeString("disk", {
+      description: "`volume` or `bind`: what ties it to that server.",
+    }),
+    automatic: t.exposeBoolean("automatic", {
+      description:
+        "Whether it moves on its own from its latest backup (failoverFromBackup).",
+    }),
+    sentence: t.exposeString("sentence", {
+      description: "What its page says about how it fails over.",
+    }),
+    waiting: t.exposeBoolean("waiting", {
+      description: "Its server stopped answering and it waits for it.",
+    }),
+    bringBack: t.string({
+      nullable: true,
+      description:
+        "The one click bringAppBack offers, naming the backup it restores; null when it is not waiting or no other server can read a backup.",
+      resolve: (f) => f.bringBack,
+    }),
+    why: t.string({
+      nullable: true,
+      description: "Why nothing can bring it back, while it waits.",
+      resolve: (f) => f.why,
+    }),
+  }),
+});
+
 export const AppRef = builder.objectRef<AppSummary>("App").implement({
   description: "A deployable application owned by a team.",
   fields: (t) => ({
@@ -86,7 +126,37 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
       description: "The Project container this app belongs to, if any.",
       resolve: (p) => p.projectId ?? null,
     }),
-    serverId: t.exposeID("serverId"),
+    serverId: t.exposeID("serverId", {
+      description:
+        "The server the app runs on now. For an app on a cluster, the member the leader placed it on.",
+    }),
+    clusterId: t.id({
+      nullable: true,
+      description:
+        "The cluster the app is placed on; null for an app on one server.",
+      resolve: (p) => p.clusterId ?? null,
+    }),
+    placementNote: t.string({
+      nullable: true,
+      description:
+        'Set to "Waiting for room in eu" while the leader of its cluster has nowhere to run this app, or "2 of 3 replicas running · waiting for room" while only some replicas found a server; null otherwise.',
+      resolve: (p) => appWaitingNote(p),
+    }),
+    clusterName: t.string({
+      nullable: true,
+      description:
+        'The name of that cluster, for the line "Runs on eu, now on server-b".',
+      resolve: async (p) =>
+        p.clusterId ? ((await getCluster(p.clusterId))?.name ?? null) : null,
+    }),
+    failoverReach: t.field({
+      type: FailoverReachRef,
+      nullable: true,
+      description:
+        "On a cluster of ARM and x86 servers, which ones this app can fail over to; null when every server can take it or it runs on one server.",
+      resolve: async (p) =>
+        p.clusterId ? reachOrNull(await appFailoverReach(p)) : null,
+    }),
     buildServerId: t.id({
       nullable: true,
       description:
@@ -177,10 +247,39 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "Whether Deplo stops this app's container once it has restarted 10 " +
         "times in half an hour. On by default; off lets it keep crashing.",
     }),
+    restartWhenUnresponsive: t.exposeBoolean("restartWhenUnresponsive", {
+      description:
+        "Whether the server agent restarts this app when it stops answering. On by default.",
+    }),
+    restartsPausedAt: t.string({
+      nullable: true,
+      description:
+        "When the server agent paused those restarts because the app kept failing; null while they are on.",
+      resolve: (p) => p.restartsPausedAt,
+    }),
     zeroDowntimeDeploys: t.exposeBoolean("zeroDowntimeDeploys", {
       description:
         "Beta. Whether a redeploy keeps the old version online until the new one " +
         "is ready. Off by default.",
+    }),
+    replicas: t.exposeInt("replicas", {
+      description:
+        "How many replicas of this single-image app run on its server (1 to 10).",
+    }),
+    stickySessions: t.exposeBoolean("stickySessions", {
+      description:
+        "Whether a cookie keeps each visitor on the same replica. Only applies with more than one.",
+    }),
+    failoverFromBackup: t.exposeBoolean("failoverFromBackup", {
+      description:
+        "On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.",
+    }),
+    failover: t.field({
+      type: AppFailoverRef,
+      nullable: true,
+      description:
+        "How this app fails over when it keeps data on a cluster member; null for an app that keeps none or runs on one server.",
+      resolve: (p) => (p.clusterId ? getAppFailover(p.id) : null),
     }),
     screenshotsEnabled: t.exposeBoolean("screenshotsEnabled", {
       description:

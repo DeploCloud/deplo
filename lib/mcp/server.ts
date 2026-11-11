@@ -82,6 +82,7 @@ Its vocabulary, which the tools use literally:
 - Project: a container of Environments (production, staging). Each Environment owns its own Apps and shared variables.
 - Folder: a grouping of Apps with its own access grants.
 - Server: a machine in the fleet. Servers are shared; everything else belongs to one team.
+- Cluster: several servers that act as one. Clusters are shared like servers.
 
 How to work here:
 - Every call runs in ONE team. \`whoami\` names the default; \`list_teams\` names every team this connection can act in. To work in another team, pass its id or slug as the \`team\` argument of any tool - there is no "switch team" step, the argument IS the switch. \`find\` searches every team at once and says which team each hit is in.

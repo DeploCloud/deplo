@@ -17,6 +17,15 @@ export const BACKUP_S3_READ_CAPABILITY = "backup-s3-read";
 // Hard gate: with it the agent takes only DATA from an outside-the-fleet artifact, never its compose/env/mounts.
 export const BACKUP_UNTRUSTED_CONFIG_CAPABILITY = "backup-untrusted-config";
 
+// A Redis that runs append-only reloads the append-only file after a restore, so an older agent restores into a dataset that comes back empty.
+export const BACKUP_REDIS_AOF_CAPABILITY = "backup.redis-aof";
+
+// A Postgres base backup, its change log, and the restore that replays both (#203).
+export const POSTGRES_ARCHIVE_CAPABILITY = "backup.postgres-archive";
+
+// The agent starts a whole compose stack beside the live one and swaps only once every service is ready.
+export const STACK_OVERLAP_CAPABILITY = "deploy.overlap.stack";
+
 export const CRON_CAPABILITY = "cron";
 
 export const METRICS_STREAM_CAPABILITY = "metrics-stream";
@@ -77,8 +86,38 @@ export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
 // Without it a reroute pulls only missing images, so a database Update would change nothing.
 export const REROUTE_PULL_CAPABILITY = "reroute.pull";
 
+// The deploy's restart rule: the agent restarts an app that stops answering.
+export const RESTART_CAPABILITY = "health.restart";
+
 // CaptureScreenshot: the deployment screenshot browser (ADR-0039).
 export const SCREENSHOT_CAPABILITY = "screenshot";
 
 // The agent links to the panel (ADR-0040), and with it Hello's link_addresses and SetLinkAddresses.
 export const AGENT_LINK_CAPABILITY = "agent-link";
+
+// The agent installs, runs and removes the deplo-cluster binary and forwards calls to it (ADR-0043).
+export const CLUSTER_HOST_CAPABILITY = "cluster.host";
+
+// The agent is a cluster party: it dials every relay it knows and holds one connection to each (ADR-0044).
+export const CLUSTER_CAPABILITY = "cluster";
+
+// The agent copies a built image to another member of its cluster over the relay (ADR-0044).
+export const CLUSTER_IMAGES_CAPABILITY = "cluster.images";
+
+// The agent starts a workload its cluster's leader moves to it; without it the leader's order is renewed and ignored.
+export const CLUSTER_FAILOVER_CAPABILITY = "cluster.failover";
+
+// The agent restores the bundle's backup into a moved workload before it counts as started (#202).
+export const CLUSTER_FAILOVER_RESTORE_CAPABILITY = "cluster.failover.restore";
+
+// The agent holds a database's standby copy and promotes it when its leader says so (#218).
+export const CLUSTER_STANDBY_CAPABILITY = "cluster.standby";
+
+// The agent holds workloads' names on its Environments' networks and relays them to the member that runs them (#200).
+export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";
+
+// The agent holds a marked service back until the App is ready: a tunnel's connector must not send visitors to an App that is not up.
+export const START_AFTER_READY_CAPABILITY = "deploy.start-after-ready";
+
+// The agent runs a stack that declares one replica as a project, so a member can hold one replica of an App spread over several (#208).
+export const SPREAD_CAPABILITY = "deploy.spread";

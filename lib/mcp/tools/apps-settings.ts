@@ -11,6 +11,8 @@ const APP_FIELDS_SETTINGS = /* GraphQL */ `
   buildFallback
   rollbackKeep
   deployHookEnabled
+  replicas
+  stickySessions
   composeUpArgs
   ports {
     published
@@ -52,10 +54,12 @@ export const APPS_SETTINGS: McpToolDef[] = [
           restarting
           unhealthy
           unreachable
+          unreachableServers
           missing
           containers {
             name
             service
+            server
             state
             health
             running
@@ -184,6 +188,109 @@ export const APPS_SETTINGS: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpSetHealthCheck($id: String!, $input: HealthCheckInput) {
         updateAppHealthCheck(id: $id, input: $input) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_restart_when_unresponsive",
+    title: "Restart an app when it stops answering",
+    description:
+      "Whether the server agent restarts the app after 3 failed checks in a row (its health check, or GET / on its port when it has a domain). Applies from the next deploy.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.appId, value: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetRestartWhenUnresponsive($id: String!, $value: Boolean!) {
+        setAppRestartWhenUnresponsive(id: $id, value: $value) {
+          id
+          slug
+          restartWhenUnresponsive
+          restartsPausedAt
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_failover_from_backup",
+    title: "Fail an app over automatically from its latest backup",
+    description:
+      "A cluster app with a Volume: on, it moves on its own when its server stops, restored from its latest backup (later writes are lost); off, the default, it waits for its server. Refused with a Bind.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.appId, value: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetFailoverFromBackup($id: String!, $value: Boolean!) {
+        setAppFailoverFromBackup(id: $id, value: $value) {
+          id
+          slug
+          failoverFromBackup
+          failover {
+            sentence
+          }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "bring_app_back",
+    title: "Bring a waiting app back from its latest backup",
+    description:
+      "A cluster app with a Volume whose server stopped: start it on another server from its latest backup. Later writes are LOST. Refused while its own server may still be running it.",
+    group: "Apps",
+    requires: "restore_backups",
+    destructive: true,
+    input: z.object({ appId }),
+    variables: (a) => ({ id: a.appId }),
+    query: /* GraphQL */ `
+      mutation McpBringAppBack($id: String!) {
+        bringAppBack(id: $id) {
+          id
+          slug
+          failover {
+            waiting
+            sentence
+            bringBack
+            why
+          }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_replicas",
+    title: "Run an app as several replicas",
+    description:
+      "How many replicas (1 to 10) of a single-image app run on its server. " +
+      "Refused with a Volume, a Bind or a published port. A deploy briefly uses twice the memory.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, replicas: z.number().int().min(1).max(10) }),
+    variables: (a) => ({ id: a.appId, value: a.replicas }),
+    query: /* GraphQL */ `
+      mutation McpSetAppReplicas($id: String!, $value: Int!) {
+        setAppReplicas(id: $id, value: $value) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_sticky_sessions",
+    title: "Keep each visitor on the same replica",
+    description:
+      "For an app with more than one replica: a cookie keeps each visitor on the same replica, " +
+      "for apps that hold a session in memory. Applies from the next deploy.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.appId, value: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetAppStickySessions($id: String!, $value: Boolean!) {
+        setAppStickySessions(id: $id, value: $value) { ${APP_FIELDS_SETTINGS} }
       }
     `,
   }),

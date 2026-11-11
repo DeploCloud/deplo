@@ -152,3 +152,21 @@ test("gzip that inflates past the cap is still judged, not swallowed", async () 
   );
   assert.equal(encrypted, false);
 });
+
+test("a Postgres base backup uploaded to a database is named for what it is", async () => {
+  const base = tarLike();
+  base.fill(0, 0, 100);
+  base.write("backup_label", 0);
+  await assert.rejects(
+    sniffArtifact(zlib.gzipSync(base), { kind: "database", recoveryKey: "" }),
+    /base backup of a Postgres database on a cluster/,
+  );
+  // Any other archive is still an app's.
+  await assert.rejects(
+    sniffArtifact(zlib.gzipSync(tarLike()), {
+      kind: "database",
+      recoveryKey: "",
+    }),
+    /That is an app backup/,
+  );
+});

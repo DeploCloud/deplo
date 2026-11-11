@@ -103,6 +103,7 @@ const run = (
   objectKey: `deplo/t/database/db_1/${id}.dump.gz`,
   sizeBytes: 100,
   decryptedSizeBytes: null,
+  heldMs: null,
   sha256: null,
   orphanedAt: null,
   status: "success",

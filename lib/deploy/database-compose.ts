@@ -5,7 +5,12 @@ import { defaultLogging, renderResourceLimitsYaml } from "./resources";
 import type { ResourceLimits } from "../types/container";
 import type { DatabaseType } from "../types/database";
 import type { DatabaseReach } from "../databases/link";
+import {
+  CHANGE_LOG_DIR,
+  CHANGE_LOG_KEPT_MINUTES,
+} from "../databases/change-log";
 import { isOfficialEngineImage } from "../databases/images";
+import { STANDBY_ENGINES, standbyContainer } from "../databases/standby";
 import { formatHostPort } from "../host-address";
 import { deploImageClaim, deploImageMessage } from "./deplo-image";
 
@@ -57,6 +62,21 @@ const DB_HEALTHCHECKS: Record<
     "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping",
 };
 
+// The keyfile arrives as an env var and is written where mongod will accept it (its own, 0400).
+const MONGO_REPLICA_START =
+  'printf %s "$$MONGO_KEYFILE" > /etc/mongo-keyfile && ' +
+  "chown mongodb:mongodb /etc/mongo-keyfile && chmod 400 /etc/mongo-keyfile && " +
+  "exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /etc/mongo-keyfile --bind_ip_all";
+
+// Healthy once the set exists; the first check creates it, which also converts a standalone's data in place.
+function mongoReplicaHealthcheck(host: string): string {
+  const init = `rs.initiate({_id:"rs0",members:[{_id:0,host:"${host}:27017"}]}).ok`;
+  return (
+    'mongosh --quiet -u "$$MONGO_INITDB_ROOT_USERNAME" -p "$$MONGO_INITDB_ROOT_PASSWORD" ' +
+    `--authenticationDatabase admin --eval 'try{rs.status().ok}catch(e){${init}}'`
+  );
+}
+
 function mysqlEnv(
   prefix: "MYSQL" | "MARIADB",
   username: string,
@@ -71,6 +91,33 @@ function mysqlEnv(
     ? base
     : [...base, `${prefix}_USER=${username}`, `${prefix}_PASSWORD=${password}`];
 }
+
+// Append-only, fsync every second. A dataset that only has a snapshot is switched on live: at
+// startup Redis would load an empty append-only file and ignore the snapshot.
+const REDIS_START = `d=/data
+if [ -f $d/dump.rdb ] && [ ! -s $d/appendonly.aof ] && ! ls $d/appendonlydir/*.base.* >/dev/null 2>&1; then
+  docker-entrypoint.sh redis-server --requirepass "$REDISCLI_AUTH" --appendonly no &
+  pid=$!
+  trap 'kill -TERM $pid' TERM INT
+  until redis-cli ping >/dev/null 2>&1; do sleep 0.2; done
+  redis-cli config set appendfsync everysec >/dev/null
+  redis-cli config set appendonly yes >/dev/null
+  wait $pid
+  wait $pid
+else
+  exec docker-entrypoint.sh redis-server --requirepass "$REDISCLI_AUTH" --appendonly yes --appendfsync everysec
+fi
+`;
+
+// A finished piece of the change log is copied beside the data, at most a minute after its first write; the
+// server agent ships it from there. https://deplo.build/docs/operations/clusters/databases
+const WAL_DIR = `${DB_DATA_DIRS.postgres}/${CHANGE_LOG_DIR}`;
+const POSTGRES_ARCHIVE = [
+  "archive_mode=on",
+  // What nothing collected in time is dropped, so a destination that is away never fills the database's disk.
+  `archive_command=mkdir -p ${WAL_DIR} && { find ${WAL_DIR} -type f -mmin +${CHANGE_LOG_KEPT_MINUTES} -delete; cp %p ${WAL_DIR}/.%f; } && mv ${WAL_DIR}/.%f ${WAL_DIR}/%f`,
+  "archive_timeout=60",
+];
 
 export function generateDatabaseCompose(input: {
   name: string;
@@ -87,6 +134,14 @@ export function generateDatabaseCompose(input: {
   mounts?: { filePath: string; mountPath: string }[] | null;
   filesDir?: string | null;
   network: string;
+  // MongoDB runs as a one-member replica set when it has one: the dump then carries its oplog.
+  mongoKeyfile?: string | null;
+  // Postgres on a cluster: see archivesChangeLog.
+  archiveChangeLog?: boolean;
+  // A standby copy (#218): the engine's own start command, under a name the database never answers to.
+  standby?: { command: string[]; env: string[] } | null;
+  // The database itself, while it keeps a standby copy: its engine's row may add start settings.
+  keepsStandby?: boolean;
 }): string {
   const {
     name,
@@ -108,6 +163,12 @@ export function generateDatabaseCompose(input: {
   if (claim) throw new Error(deploImageMessage(image, claim, "This database"));
 
   const customCommand = input.customCommand?.trim();
+  const custom = input.customImage?.trim();
+  const replicaSet =
+    type === "mongodb" &&
+    !!input.mongoKeyfile &&
+    !customCommand &&
+    !(custom && !isOfficialEngineImage(type, custom));
   const envByType: Record<DatabaseType, string[]> = {
     postgres: [
       `POSTGRES_USER=${username}`,
@@ -120,6 +181,7 @@ export function generateDatabaseCompose(input: {
     mongodb: [
       `MONGO_INITDB_ROOT_USERNAME=${username}`,
       `MONGO_INITDB_ROOT_PASSWORD=${password}`,
+      ...(replicaSet ? [`MONGO_KEYFILE=${input.mongoKeyfile}`] : []),
     ],
     redis: customCommand ? [] : [`REDISCLI_AUTH=${password}`],
     clickhouse: [
@@ -128,16 +190,30 @@ export function generateDatabaseCompose(input: {
       `CLICKHOUSE_DB=${dbName}`,
     ],
   };
-  const defaultCommand =
-    type === "redis"
-      ? `redis-server --requirepass ${escapeComposeDollars(password)}`
-      : "";
+  // Postgres settings the platform owns, each one a `-c`; empty leaves the image's own command.
+  const postgresSettings: string[] = [];
+  if (type === "postgres" && input.archiveChangeLog)
+    postgresSettings.push(...POSTGRES_ARCHIVE);
+  // ponytail: only an engine that starts with the image's own command has settings today (MariaDB); merge them
+  // into the engine's command when one that has its own (Postgres, Redis, MongoDB) gains some.
+  const standbySettings =
+    (input.keepsStandby && STANDBY_ENGINES[type]?.settings) || [];
   const command = customCommand
     ? `    command: ${escapeComposeDollars(JSON.stringify(customCommand))}\n`
-    : defaultCommand
-      ? `    command: ${defaultCommand}\n`
-      : "";
-  const envLines = envByType[type];
+    : postgresSettings.length > 0
+      ? `    command: ${JSON.stringify(["postgres", ...postgresSettings.flatMap((s) => ["-c", s])])}\n`
+      : replicaSet
+        ? `    command: ${JSON.stringify(["sh", "-c", MONGO_REPLICA_START])}\n`
+        : type === "redis"
+          ? `    command: ${escapeComposeDollars(JSON.stringify(["sh", "-c", REDIS_START]))}\n`
+          : standbySettings.length > 0
+            ? `    command: ${JSON.stringify(standbySettings)}\n`
+            : "";
+  const envLines = [...envByType[type], ...(input.standby?.env ?? [])];
+  const service = input.standby ? standbyContainer(name) : name;
+  const start = input.standby
+    ? `    command: ${escapeComposeDollars(JSON.stringify(input.standby.command))}\n`
+    : command;
   const envBlock = envLines.length
     ? "    environment:\n" +
       envLines.map((l) => `      - ${escapeComposeDollars(l)}`).join("\n") +
@@ -157,23 +233,24 @@ export function generateDatabaseCompose(input: {
     })
     .join("");
 
-  const custom = input.customImage?.trim();
   const healthTest =
     custom && !isOfficialEngineImage(type, custom)
       ? "exit 0"
-      : DB_HEALTHCHECKS[type]({ username, dbName });
+      : replicaSet
+        ? mongoReplicaHealthcheck(name)
+        : DB_HEALTHCHECKS[type]({ username, dbName });
 
   return `# Generated by Deplo  database ${name} (${type})
 services:
-  ${name}:
+  ${service}:
     image: ${image}
-    container_name: ${name}
+    container_name: ${service}
     restart: unless-stopped
     labels:
 ${labels}
     networks:
       - deplo
-${resources}${command}${envBlock}${ports}    volumes:
+${resources}${start}${envBlock}${input.standby ? "" : ports}    volumes:
       - ${name}-data:${DB_DATA_DIRS[type]}${configMounts}
     healthcheck:
       test: ["CMD-SHELL", ${JSON.stringify(healthTest)}]
@@ -206,7 +283,7 @@ export function buildConnectionString(a: {
     case "redis":
       return `redis://${auth}`;
     case "mongodb":
-      return `mongodb://${auth}/${dbName}?authSource=admin`;
+      return `mongodb://${auth}/${dbName}?authSource=admin&directConnection=true`;
     case "mariadb":
       return `mysql://${auth}/${dbName}`;
     case "postgres":

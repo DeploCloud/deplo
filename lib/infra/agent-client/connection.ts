@@ -40,7 +40,30 @@ export type {
   RestartControlPlaneResponse,
   UpdateControlPlaneResponse,
 } from "../../agent/gen/agent";
-import type { AttachHandle } from "../docker";
+import type { AttachHandle } from "../../attach/types";
+
+/** What one cluster member is handed to run its name forwarders (#200). */
+export interface ClusterForwarderTable {
+  clusterId: string;
+  /** Every member of the cluster: server id and certificate fingerprint. */
+  members: { serverId: string; fingerprint: string }[];
+  /** The names this member holds on its Environments' networks, for workloads that run on another member. */
+  hold: {
+    network: string;
+    kind: "app" | "database";
+    workloadId: string;
+    name: string;
+    port: number;
+  }[];
+  /** The workloads placed here that other members of their Environment may reach. */
+  serve: {
+    network: string;
+    kind: "app" | "database";
+    workloadId: string;
+    port: number;
+    sourceFingerprints: string[];
+  }[];
+}
 
 export interface AgentProbeHttpRequest {
   appId: string;
@@ -75,6 +98,8 @@ export interface AgentConsoleInstance {
   health: string;
   restartCount: number;
   startedAtUnix: number;
+  // The restart rule's last probe: "starting" | "answering" | "not_answering", "" when none (or an older agent).
+  answer?: string;
 }
 export interface AgentFileEntry {
   path: string;
@@ -116,6 +141,8 @@ export interface AgentJobStatus {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  /** The server stopped it itself when its cluster lease ran out. */
+  fenced: boolean;
 }
 
 export interface DroppedEntries {
@@ -129,6 +156,19 @@ export interface FollowLogsOptions {
   untilUnix?: number;
   timestamps?: boolean;
 }
+
+export interface ClusterHostStatus {
+  installed: boolean;
+  running: boolean;
+  version: string;
+  relay: boolean;
+  /** Needs `cluster`: whether this agent is a cluster member, and how many relays hold its connection. */
+  member: boolean;
+  relayLinks: number;
+}
+
+/** The cluster a member is in and the certificates that may lead it: an order from anyone else is refused. */
+export type ClusterLeaderPins = { clusterId: string; leaders: string[] };
 
 export interface AgentConnection {
   hello(timeoutMs?: number): Promise<HelloResponse>;
@@ -223,6 +263,43 @@ export interface AgentConnection {
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
   selfUninstall(deadlineMs?: number): Promise<string[]>;
+  // Need `cluster.host` (ADR-0043): the agent runs the deplo-cluster binary and forwards calls to it.
+  installCluster(
+    version: string,
+    binaries: Record<string, { url: string; sha256: string }>,
+    relay: boolean,
+  ): Promise<{ version: string; running: boolean }>;
+  removeCluster(): Promise<{ removed: boolean }>;
+  clusterStatus(): Promise<ClusterHostStatus>;
+  clusterCall(
+    method: string,
+    payload: Uint8Array,
+    timeoutMs?: number,
+  ): Promise<Uint8Array>;
+  /** The leader's event stream after `since`, one JSON line per item, until the caller stops iterating (#195). */
+  clusterWatch(since: number): AsyncGenerator<Uint8Array, void, unknown>;
+  // Needs `cluster` (ADR-0044): the agent dials every relay it knows and never listens.
+  setClusterMember(
+    member: boolean,
+    relays: string[],
+    pins?: ClusterLeaderPins,
+  ): Promise<{ member: boolean; relayLinks: number }>;
+  /** Tells this member to accept one image from one member's certificate; it refuses any other image stream. */
+  expectClusterImage(
+    imageRef: string,
+    sourceFingerprint: string,
+    keep: number,
+  ): Promise<void>;
+  // Needs `cluster.images` (ADR-0044): send a built image to one member, which prunes older releases.
+  copyClusterImage(
+    imageRef: string,
+    targetFingerprint: string,
+    keep: number,
+  ): Promise<{ alreadyPresent: boolean; bytes: number; pruned: string[] }>;
+  // Needs `cluster.forwarders` (#200): the names this member holds and the streams it serves; the full set.
+  setClusterForwarders(
+    table: ClusterForwarderTable,
+  ): Promise<{ held: number; served: number }>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */

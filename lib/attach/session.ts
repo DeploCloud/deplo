@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import { type AttachHandle } from "../infra/docker";
+import type { AttachHandle } from "./types";
 import {
   accessSweep,
   makeRoom,

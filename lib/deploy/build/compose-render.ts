@@ -22,21 +22,15 @@ import {
   renderHealthCheckYaml,
   renderYamlKeys,
 } from "../health-check";
-import type { OverlapStacks } from "../overlap";
-import { portProbeCommand } from "../port-probe";
+import { STAND_IN_LABEL, standInName, type OverlapStacks } from "../overlap";
+import { replicasRefusal } from "../replicas";
+import { portProbeHealthCheck } from "../port-probe";
 import { deployNetwork } from "../network";
 import { defaultLogging, renderResourceLimitsYaml } from "../resources";
 import { traefikRouterLabels } from "../routing";
 import { appEnv, type PreviewEnvContext } from "./deploy-env";
 
 export type RenderComposeOptions = Parameters<typeof renderCompose>[0];
-
-export const STAND_IN_LABEL = "deplo.stand-in=true";
-
-// `_` never appears in an app's slug, so no other app's container can hold this name.
-export function standInName(name: string): string {
-  return `${name}_next`;
-}
 
 // https://deplo.build/docs/concepts/what-happens-on-a-deploy
 export function renderOverlapStacks(opts: RenderComposeOptions): {
@@ -66,16 +60,7 @@ function overlapHealthCheck(
   const hc = own
     ? { ...own }
     : opts.routes.length > 0
-      ? {
-          test: [
-            "CMD-SHELL",
-            escapeComposeDollars(portProbeCommand(opts.port)),
-          ],
-          interval: "30s",
-          timeout: "5s",
-          retries: 3,
-          start_period: "180s",
-        }
+      ? portProbeHealthCheck(opts.port)
       : null;
   if (!hc) return null;
   const svc = { healthcheck: hc };
@@ -89,6 +74,13 @@ export function renderCompose(opts: {
   serviceName?: string;
   aliases?: string[];
   extraLabels?: string[];
+  // More than one copy: no fixed container name, and Compose starts that many.
+  replicas?: number;
+  // Keep each visitor on one copy; only honoured with more than one.
+  stickySessions?: boolean;
+  // One member's share of an App spread over a cluster: no fixed container name even for one copy,
+  // so the leader can start a lost replica beside it.
+  scaled?: boolean;
   name: string;
   image: string;
   port: number;
@@ -131,6 +123,7 @@ export function renderCompose(opts: {
       defaultPort: port,
       certResolver: certResolver(),
       dockerNetwork: opts.network,
+      sticky: opts.stickySessions === true && (opts.replicas ?? 1) > 1,
       ...(opts.basicAuthUsers
         ? {
             basicAuth: {
@@ -203,6 +196,11 @@ export function renderCompose(opts: {
     : renderHealthCheckYaml(opts.healthCheck, 4);
 
   const service = opts.serviceName ?? name;
+  const replicas = opts.replicas ?? 1;
+  const identityYaml =
+    replicas > 1 || opts.scaled
+      ? `    restart: unless-stopped\n    deploy:\n      replicas: ${replicas}\n`
+      : `    container_name: ${service}\n    restart: unless-stopped\n`;
   const networksYaml = opts.aliases?.length
     ? "    networks:\n      deplo:\n        aliases:\n" +
       opts.aliases.map((a) => `          - ${a}`).join("\n") +
@@ -213,9 +211,7 @@ export function renderCompose(opts: {
 services:
   ${service}:
     image: ${image}
-    container_name: ${service}
-    restart: unless-stopped
-${networksYaml}${resourcesYaml}${healthYaml}${portsYaml}${envYaml}${appVolsYaml}    labels:
+${identityYaml}${networksYaml}${resourcesYaml}${healthYaml}${portsYaml}${envYaml}${appVolsYaml}    labels:
 ${labelsYaml}
 
 networks:
@@ -241,6 +237,8 @@ export async function renderDeployStack(opts: {
   previewPort: number | null;
   routes: RoutableDomain[];
   image: string;
+  // One member of a cluster the App is spread over, and how many of its replicas that member runs.
+  member?: { replicas: number };
 }): Promise<{
   composeYaml: string;
   env: Record<string, string>;
@@ -257,6 +255,10 @@ export async function renderDeployStack(opts: {
   const basicAuthUsers = await basicAuthUsersValue(project.id);
   const network = deployNetwork(project, preview ? deployKey : null);
   const ports = preview ? [] : (project.ports ?? []);
+  const replicas = preview ? 1 : (opts.member?.replicas ?? project.replicas);
+  const scaled = !preview && opts.member !== undefined;
+  const refusal = replicasRefusal(project, preview ? 1 : project.replicas);
+  if (refusal) throw new Error(refusal);
   const stackOpts: RenderComposeOptions = {
     ...(await appTraefikOverrides(project.id, Boolean(preview))),
     name: opts.name,
@@ -275,12 +277,15 @@ export async function renderDeployStack(opts: {
     ports: portMappings(ports),
     resources: project.resources,
     healthCheck: project.healthCheck,
+    replicas,
+    scaled,
+    stickySessions: project.stickySessions,
   };
   return {
     composeYaml: renderCompose(stackOpts),
     env,
     buildEnv,
     network,
-    overlap: { ...renderOverlapStacks(stackOpts), ports },
+    overlap: { ...renderOverlapStacks(stackOpts), ports, replicas, scaled },
   };
 }

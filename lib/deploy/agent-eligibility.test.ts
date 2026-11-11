@@ -11,7 +11,7 @@ import {
   explicitDockerfileDescriptor,
   findComposeFile,
   resolveUploadMethod,
-} from "./agent-deploy";
+} from "./agent-deploy-request";
 import type { BuildConfig } from "../types/build";
 
 function build(

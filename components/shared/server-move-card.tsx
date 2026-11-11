@@ -3,9 +3,16 @@
 import { LoadingText } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { ArrowRightLeft, Server as ServerIcon } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Boxes,
+  Server as ServerIcon,
+  TriangleAlert,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DocsLink } from "@/components/ui/docs-link";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
@@ -21,8 +28,26 @@ import { joinNames } from "@/lib/utils";
 import type { DocsTopic } from "@/lib/docs";
 import type { ActionResult } from "@/lib/result";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import type { FailoverPreview } from "@/lib/data/databases/failover";
+import { FailoverNote } from "@/components/storage/database-failover";
+import { ClusterAddressNote } from "@/components/shared/cluster-address-note";
 
-type MoveServer = { id: string; name: string; isDeploHost: boolean };
+type MoveServer = {
+  id: string;
+  name: string;
+  isDeploHost: boolean;
+  /** A cluster: the move lets its leader pick the server. */
+  kind?: "cluster";
+};
+type OnCluster = {
+  id: string;
+  name: string;
+  serverName: string;
+  /** "Waiting for room in eu" while no server of the cluster runs it. */
+  waiting?: string | null;
+  /** A cluster of ARM and x86 servers: which ones it can fail over to, or that it has none. */
+  reach?: { line: string | null; warning: string | null } | null;
+};
 
 export function AppServerCard({
   appId,
@@ -30,15 +55,24 @@ export function AppServerCard({
   serverId,
   servers,
   neighbours,
+  cluster,
+  addressNote,
 }: {
   appId: string;
   name: string;
   serverId: string;
   servers: MoveServer[];
   neighbours: string[];
+  cluster?: OnCluster | null;
+  /** Shown once a cluster is picked: no domain of the App is on Cloudflare. */
+  addressNote?: string | null;
 }) {
   return (
     <ServerMoveCard
+      cluster={cluster ?? undefined}
+      onClusterNote={
+        addressNote ? <ClusterAddressNote note={addressNote} /> : undefined
+      }
       name={name}
       serverId={serverId}
       servers={servers}
@@ -47,10 +81,15 @@ export function AppServerCard({
       docs="storage.move"
       successMessage={`Moving ${name}`}
       move={(to) =>
-        gqlAction(
-          `mutation($id: String!, $serverId: String!) { moveAppToServer(id: $id, serverId: $serverId) { id } }`,
-          { id: appId, serverId: to },
-        )
+        servers.find((s) => s.id === to)?.kind === "cluster"
+          ? gqlAction(
+              `mutation($id: String!, $clusterId: String!) { moveAppToCluster(id: $id, clusterId: $clusterId) { id } }`,
+              { id: appId, clusterId: to },
+            )
+          : gqlAction(
+              `mutation($id: String!, $serverId: String!) { moveAppToServer(id: $id, serverId: $serverId) { id } }`,
+              { id: appId, serverId: to },
+            )
       }
     />
   );
@@ -60,32 +99,44 @@ export function DatabaseServerCard({
   db,
   servers,
   disabled,
+  cluster,
+  failover,
 }: {
   db: DatabaseDTO;
   servers: MoveServer[];
   disabled: boolean;
+  cluster?: OnCluster | null;
+  /** What placing it on a cluster would promise, shown once a cluster is picked. */
+  failover?: FailoverPreview | null;
 }) {
   return (
     <ServerMoveCard
       disabled={disabled}
+      cluster={cluster ?? undefined}
       name={db.name}
       serverId={db.serverId}
       servers={servers}
       verb="Restarts"
       docs="databases.move"
       successMessage="Database moved"
+      onClusterNote={failover ? <FailoverNote {...failover} /> : undefined}
       move={(to) =>
-        gqlAction(
-          `mutation($id: String!, $input: UpdateDatabaseInput!) { updateDatabase(id: $id, input: $input) { id } }`,
-          {
-            id: db.id,
-            input: {
-              exposedPublicly: db.exposedPublicly,
-              exposedPort: db.exposedPublicly ? db.exposedPort : null,
-              serverId: to,
-            },
-          },
-        )
+        servers.find((s) => s.id === to)?.kind === "cluster"
+          ? gqlAction(
+              `mutation($id: String!, $clusterId: String!) { moveDatabaseToCluster(id: $id, clusterId: $clusterId) { id } }`,
+              { id: db.id, clusterId: to },
+            )
+          : gqlAction(
+              `mutation($id: String!, $input: UpdateDatabaseInput!) { updateDatabase(id: $id, input: $input) { id } }`,
+              {
+                id: db.id,
+                input: {
+                  exposedPublicly: db.exposedPublicly,
+                  exposedPort: db.exposedPublicly ? db.exposedPort : null,
+                  serverId: to,
+                },
+              },
+            )
       }
     />
   );
@@ -101,8 +152,13 @@ function ServerMoveCard({
   successMessage,
   move,
   disabled,
+  cluster,
+  onClusterNote,
 }: {
   disabled?: boolean;
+  cluster?: OnCluster;
+  /** Shown in the dialog while the picked target is a cluster. */
+  onClusterNote?: React.ReactNode;
   name: string;
   serverId: string;
   servers: MoveServer[];
@@ -114,12 +170,16 @@ function ServerMoveCard({
 }) {
   const router = useRouter();
   const selectId = React.useId();
-  const targets = servers.filter((s) => s.id !== serverId);
+  const targets = servers.filter(
+    (s) => s.id !== serverId && s.id !== cluster?.id,
+  );
   const [target, setTarget] = React.useState("");
   const current = servers.find((s) => s.id === serverId);
-  const currentName = current?.name ?? "its current server";
+  const currentName =
+    cluster?.serverName ?? current?.name ?? "its current server";
 
-  if (targets.length === 0) return null;
+  // Where a cluster App runs is always said; only the Move button needs somewhere to go.
+  if (targets.length === 0 && !cluster) return null;
 
   return (
     <Card>
@@ -134,67 +194,104 @@ function ServerMoveCard({
           <p className="flex items-center gap-2 text-sm">
             <ServerIcon className="size-4 text-muted-foreground" />
             <LoadingText>
-              {currentName}
-              <ServerRoleHint isDeploHost={current?.isDeploHost} />
+              {cluster?.waiting ? (
+                cluster.waiting
+              ) : cluster ? (
+                <>
+                  Runs on <strong>{cluster.name}</strong> · now on{" "}
+                  {cluster.serverName}
+                </>
+              ) : (
+                <>
+                  {currentName}
+                  <ServerRoleHint isDeploHost={current?.isDeploHost} />
+                </>
+              )}
             </LoadingText>
           </p>
+          {cluster?.reach?.line && (
+            <p className="text-xs text-muted-foreground">
+              {cluster.reach.line} <DocsLink topic="clusters.architectures" />
+            </p>
+          )}
+          {cluster?.reach?.warning && (
+            <p className="flex items-start gap-1.5 text-xs text-warning">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {cluster.reach.warning}{" "}
+                <DocsLink topic="clusters.architectures" />
+              </span>
+            </p>
+          )}
         </div>
-        <ConfirmAction
-          trigger={
-            <Button variant="outline" size="sm" disabled={disabled}>
-              <ArrowRightLeft className="size-4" />
-              Move
-            </Button>
-          }
-          onOpenChange={(open) =>
-            setTarget(open && targets.length === 1 ? targets[0].id : "")
-          }
-          title={`Move ${name} to another server?`}
-          description={
-            <>
-              {verb} it on the server you pick and{" "}
-              <strong>copies its data across</strong>.
-            </>
-          }
-          consequence={`${name} is offline during the copy. If the copy fails, it stays on ${currentName}.`}
-          variant="default"
-          confirmLabel="Move"
-          confirmDisabled={!target}
-          successMessage={successMessage}
-          extra={
-            <div className="space-y-2">
-              <FieldLabel htmlFor={selectId}>Move to</FieldLabel>
-              <Select value={target} onValueChange={setTarget}>
-                <SelectTrigger id={selectId} className="w-full">
-                  <SelectValue placeholder="Pick a server" />
-                </SelectTrigger>
-                <SelectContent>
-                  {targets.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        <ServerIcon className="size-4 text-muted-foreground" />
-                        {s.name}
-                        <ServerRoleHint isDeploHost={s.isDeploHost} />
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {neighbours.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Stops reaching {joinNames(neighbours)} by name:{" "}
-                  {neighbours.length === 1 ? "it stays" : "they stay"} on{" "}
-                  {currentName}.
-                </p>
-              )}
-            </div>
-          }
-          onConfirm={async () => {
-            const res = await move(target);
-            if (res.ok) router.refresh();
-            return res;
-          }}
-        />
+        {targets.length > 0 && (
+          <ConfirmAction
+            trigger={
+              <Button variant="outline" size="sm" disabled={disabled}>
+                <ArrowRightLeft className="size-4" />
+                Move
+              </Button>
+            }
+            onOpenChange={(open) =>
+              setTarget(open && targets.length === 1 ? targets[0].id : "")
+            }
+            title={`Move ${name} to another server?`}
+            description={
+              <>
+                {verb} it on the server you pick and{" "}
+                <strong>copies its data across</strong>.
+              </>
+            }
+            consequence={`${name} is offline during the copy. If the copy fails, it stays on ${currentName}.`}
+            variant="default"
+            confirmLabel="Move"
+            confirmDisabled={!target}
+            successMessage={successMessage}
+            extra={
+              <div className="space-y-2">
+                <FieldLabel htmlFor={selectId}>Move to</FieldLabel>
+                <Select value={target} onValueChange={setTarget}>
+                  <SelectTrigger id={selectId} className="w-full">
+                    <SelectValue placeholder="Pick a server" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {targets.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="flex items-center gap-2">
+                          {s.kind === "cluster" ? (
+                            <Boxes className="size-4 text-muted-foreground" />
+                          ) : (
+                            <ServerIcon className="size-4 text-muted-foreground" />
+                          )}
+                          {s.name}
+                          {s.kind === "cluster" ? (
+                            <Badge variant="outline">Cluster</Badge>
+                          ) : (
+                            <ServerRoleHint isDeploHost={s.isDeploHost} />
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {targets.find((s) => s.id === target)?.kind === "cluster" &&
+                  onClusterNote}
+                {neighbours.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Stops reaching {joinNames(neighbours)} by name:{" "}
+                    {neighbours.length === 1 ? "it stays" : "they stay"} on{" "}
+                    {currentName}.
+                  </p>
+                )}
+              </div>
+            }
+            onConfirm={async () => {
+              const res = await move(target);
+              if (res.ok) router.refresh();
+              return res;
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   );

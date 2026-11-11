@@ -453,7 +453,7 @@ export async function deleteUser(
               .select({
                 id: appPreviewsTable.id,
                 deployKey: appPreviewsTable.deployKey,
-                serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
+                serverId: sql<string>`coalesce(${appPreviewsTable.serverId}, ${appsTable.previewServerId}, ${appsTable.serverId})`,
               })
               .from(appPreviewsTable)
               .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))

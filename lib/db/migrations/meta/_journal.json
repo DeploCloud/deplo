@@ -1513,6 +1513,181 @@
       "when": 1794150251012,
       "tag": "0215_zero_downtime_deploys",
       "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1794236651012,
+      "tag": "0216_backup_run_held_ms",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1794236751012,
+      "tag": "0217_app_replicas",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1794313242964,
+      "tag": "0218_restart_when_unresponsive",
+      "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1794323151012,
+      "tag": "0219_app_sticky_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1794400000000,
+      "tag": "0220_clusters",
+      "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1794486400000,
+      "tag": "0221_cluster_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1794572800000,
+      "tag": "0222_workload_placements",
+      "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1794659200000,
+      "tag": "0223_cluster_watch",
+      "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1794672800000,
+      "tag": "0224_cluster_image_copies",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1794832000000,
+      "tag": "0225_failover_bundle_pushes",
+      "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1794900000000,
+      "tag": "0227_app_tunnels",
+      "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1794968000000,
+      "tag": "0229_database_restore_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1795002000000,
+      "tag": "0230_cluster_emptying",
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1795104000000,
+      "tag": "0233_cluster_leader_takeover",
+      "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1795138000000,
+      "tag": "0234_cron_run_server",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1795206000000,
+      "tag": "0236_postgres_change_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1795240000000,
+      "tag": "0237_app_failover_from_backup",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1795308000000,
+      "tag": "0239_cluster_leave_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1795342000000,
+      "tag": "0240_cluster_binary_updates",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1795376000000,
+      "tag": "0241_database_standby",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1795410000000,
+      "tag": "0242_backup_run_left_behind",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1795444000000,
+      "tag": "0243_image_architectures",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1795512000000,
+      "tag": "0245_preview_server",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1795648000000,
+      "tag": "0249_app_unresponsive_alert_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1795716000000,
+      "tag": "0251_activity_server_change",
+      "breakpoints": true
     }
   ]
 }

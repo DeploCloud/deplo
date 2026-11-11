@@ -4,6 +4,7 @@ import type { MountPropagation } from "../../types/container";
 import { mountOptions } from "../../apps/volume-model";
 import { hostVolumeName } from "../../utils";
 import { isReservedSharedName } from "../compose-lint/networks";
+import { composeServiceReplicas, REPLICAS_DATA_MESSAGE } from "../replicas";
 import type { App, ComposeDoc, ComposeStackInput } from "./types";
 
 type StackMount = {
@@ -117,6 +118,9 @@ export function injectAppVolumes(
           `existing service in Settings → Storage.`,
       );
     }
+    // The rule the YAML is held to: copies of a service cannot share a disk. A File is one per copy.
+    if (v.type !== "app" && composeServiceReplicas(services[svcName]) > 1)
+      throw new Error(REPLICAS_DATA_MESSAGE);
     const declared = declaredFor(svcName);
     const targetPath = v.mountPath.replace(/\/+$/, "");
     if (declared.has(targetPath)) continue;

@@ -78,6 +78,7 @@ export function ConsolePane({
   title,
   instances,
   initialName,
+  unavailable = [],
   attachBase,
   exec,
   probeShell,
@@ -86,6 +87,8 @@ export function ConsolePane({
   title: PaneTitle;
   instances: ConsoleInstance[];
   initialName: string;
+  // Servers running this App whose copies could not be listed.
+  unavailable?: string[];
   attachBase?: string;
   exec?: (
     command: string,
@@ -189,7 +192,7 @@ export function ConsolePane({
                           inst.running ? "bg-[var(--success)]" : "bg-ring",
                         )}
                       />
-                      {inst.service}
+                      {inst.replica ?? inst.service}
                       {inst.exposed ? (
                         <span className="text-[10px] text-muted-foreground">
                           app
@@ -202,10 +205,15 @@ export function ConsolePane({
             </Select>
           ) : (
             <span className="shrink-0 font-mono text-xs text-muted-foreground">
-              {active.service}
+              {active.replica ?? active.service}
             </span>
           )}
         </SimpleTooltip>
+        {unavailable.length > 0 && (
+          <span className="text-xs text-[var(--warning)]">
+            Can&apos;t reach {unavailable.join(", ")} right now
+          </span>
+        )}
 
         <ConsoleStatus
           label={

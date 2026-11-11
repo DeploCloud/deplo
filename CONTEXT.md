@@ -763,6 +763,14 @@ setting says. Calling it an error sends the reader to look for build logs that d
 _Avoid_: expired (that is the idle timeout), deleted, closed (that is the pull request's own
 lifecycle), "out of space" / "space error" (nothing to do with disk), "over quota".
 
+**Offline: its server stopped** (a pull request preview's status, `offline` in the store):
+The preview of a **cluster** App ran on a member that stopped. A preview is placed by the
+cluster's leader like an App (`app_previews.server_id` records the member), but it has no
+failover bundle and no tunnel, and the leader keeps no record of it: nothing moves it. It
+reads offline until the next push or **Redeploy** places it again, possibly on another
+member, where a generated address follows it. It still holds its slot.
+_Avoid_: failed over, moved, waiting for room (those are an App's), error (no build failed).
+
 **Database**:
 A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)
 keyed by slug `db-<name>` on the `deplo` network, so apps reach it by a stable DNS name and
@@ -828,35 +836,82 @@ stays downloadable on purpose).
 **Replica**:
 One of several running copies of the same **App** release, each able to answer its traffic on
 its own. An App has one replica unless someone asks for more; the replicas of one App share its
-configuration, its domains and its database, never their own disk.
+configuration, its domains and its database, never their own disk. On a **cluster** the replicas
+of an App with a Cloudflare domain are spread across its members, each member running its own
+share beside a connector; any other App keeps them on one member, where its address points.
 _Avoid_: instance (that is a whole Deplo), copy (a **live copy** is a migration), node, pod.
 
 **Cluster**:
 Several **servers** that act as one. An App or managed database is placed on the cluster, never
 on one of its members, and the cluster decides which member runs it. A server belongs to at most
 one cluster; joining brings the Apps already on it along, where they run. A cluster of one is
-allowed, and **failover** starts at two. Shared across teams by the same rules as a server, which
-its members follow. Offered next to "server" when adding one, and in every place an App picks
-where it runs.
+allowed, and **failover** starts at two, where it works only while Deplo is up: from three, with
+the leader on one of them, it also works while Deplo is down. Shared across teams by the same
+rules as a server, which its members follow. Offered next to "server" when adding one, and in
+every place an App picks where it runs.
 _Avoid_: Kubernetes cluster (nothing of Kubernetes is involved), server group, pool, node (a
 member is a server).
+
+**Cluster member**:
+A **server** that belongs to a **cluster**. It runs what the cluster's leader places on it and
+stops its databases and Apps with files when the leader has not renewed it for a minute. In
+copy a member is "a server" of the cluster; "member" is for code and these docs.
+_Avoid_: node, worker, host, replica (those are copies of an App).
+
+**Workload**:
+An **App** or a managed database placed on a **cluster**: the unit its leader places, moves and
+fails over. A word for code and these docs only; a user reads "Apps and databases".
+_Avoid_: service (a compose service), job (a scheduled job), task, pod.
 
 **Cluster leader**:
 The process that leads one **cluster**: it decides which member runs each workload and orders
 **failover**, re-sending the stack Deplo last built rather than building one. It runs on Deplo's
 own machine unless an admin installs it on another server, so a cluster can keep failing over
 while Deplo is down; while a remote leader is offline, Deplo's machine leads in its place. It
-accepts no incoming connection
+leads only while more than half of the cluster's servers answer it, or exactly half and Deplo
+does, so a cluster cut in two never has two. It accepts no incoming connection
 ([ADR-0043](docs/adr/0043-a-cluster-is-led-by-its-own-leader-not-kubernetes.md)).
 _Avoid_: master, manager, control plane (that is Deplo itself), scheduler.
+
+**Cluster relay**:
+The meeting point of one **cluster**: its leader and every member dial out to it and it passes
+their traffic between them, unable to read it. Deplo's machine always runs one; a leader on
+another server runs a second one there
+([ADR-0044](docs/adr/0044-cluster-members-meet-through-a-relay-over-tcp.md)).
+_Avoid_: proxy (that is Traefik), tunnel (that is Cloudflare's), mesh, VPN.
+
+**Name forwarder**:
+The small forwarder on an Environment's network that holds a workload's name on every **cluster**
+member and carries each connection to the member running it, over the **cluster relay**, so
+Apps reach each other by name across members
+([ADR-0028](docs/adr/0028-an-environment-owns-a-network.md)).
+_Avoid_: stand-in (that is an overlap deploy's next release), proxy (that is Traefik), tunnel, mesh.
 
 **Failover**:
 A **cluster** moving an App, unasked, off a member that has gone **offline** and onto another
 member, so its domains answer again. The automatic twin of a **server move**: nobody clicks
 anything, and the move is recorded in **Activity** like any other. An App on a server outside a
-cluster never fails over.
+cluster never fails over. On a cluster that mixes ARM and x86 servers a failover stays among the
+servers the App's image runs on.
 _Avoid_: automatic server move, migration (that is moving off another platform), restart (the
 App stays on a server that is still up).
+
+**Standby copy**:
+A second copy of a database on a **cluster**, kept on another member than the database and
+following every change it makes. A **failover** promotes it instead of restoring a backup, so
+about a second of writes is lost. Expert only, off by default, and it costs the database's
+memory and disk a second time. It is never a **replica**: nothing reads from it.
+_Avoid_: replica (those are copies of an App that all answer), secondary, slave, mirror.
+
+**Left on a server**:
+What a member of a **cluster** still held of a database, or of an App with a Volume, when it came
+back after a **failover**: saved as a backup before that member removes its copy, and listed with
+the workload's backups as "Left on _server_ after the failover at 14:32". No schedule ever prunes
+it and Deplo never restores it on its own; restoring it by hand loses everything written since the
+failover. When it cannot be saved, the data stays on that server and **Activity** says why; the
+server tries again on its own, and Activity says when it is saved.
+_Avoid_: left-behind backup (a server **left behind** is one that missed an **update stop**),
+orphan backup, stale backup, old copy.
 
 **Storage-only server**:
 A **server** whose agent is installed to HOLD BACKUPS and nothing else: no Docker, no
@@ -1017,13 +1072,15 @@ a cron job is arbitrary code execution as the container's user with no sandbox.
 _Avoid_: scheduled task, scheduled job, cronjob (one word), task, timer.
 
 **Cron run**:
-One **executed** cron job, retries included - a `cron_runs` row. Six statuses:
+One **executed** cron job, retries included - a `cron_runs` row. Seven statuses:
 `running` · `succeeded` · `failed` · `timedout` (hit the job's own timeout, which points at
 a setting rather than at the command) · `skipped` (never started: the container was stopped,
 or the previous run was still going) · `lost` (Deplo could not find out how it ended - the
 agent restarted under it). `lost` is deliberately **not** `failed`: the command runs inside
 the _agent's_ process, so a control-plane restart does not kill it, and a run we lost track
-of most likely succeeded.
+of most likely succeeded. `server_lost` ("Lost: its server stopped") is the other way round: the
+**cluster** member running it stopped, so the command is most likely half done. Neither is ever
+retried; a `server_lost` run alerts once (`cron_run_lost`) and offers "Run now".
 Retries live in the SAME row (`attempt`), so one scheduled fire is always one row and the
 stored output is the last attempt's.
 _Avoid_: execution, invocation, cron job (that is the schedule), interrupted (use `lost`).

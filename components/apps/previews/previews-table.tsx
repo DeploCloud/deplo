@@ -54,6 +54,54 @@ import type { AppPreviewDTO } from "@/lib/data/previews";
 import { gitProfileUrl, timeAgo } from "@/lib/utils";
 import { SecurityShield } from "@/components/security-updates/security-shield";
 
+/** What a preview's row says it is doing; `offline` is one whose server, a member of the App's cluster, stopped. */
+// What brings an offline preview back besides the next push.
+export function RedeployPreviewLabel() {
+  return (
+    <>
+      <RotateCw className="size-4" />
+      Redeploy preview
+    </>
+  );
+}
+
+export function PreviewStatus({
+  preview: p,
+  maxActive,
+}: {
+  preview: AppPreviewDTO;
+  maxActive: number;
+}) {
+  if (p.isFork && !p.approved)
+    return (
+      <Badge variant="outline" className="gap-1.5">
+        <ShieldAlert className="size-3.5 text-[var(--warning)]" />
+        Needs approval
+      </Badge>
+    );
+  if (p.status === "evicted")
+    return (
+      <SimpleTooltip
+        content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
+      >
+        <span className="inline-flex">
+          <StatusBadge status={p.status} />
+        </span>
+      </SimpleTooltip>
+    );
+  return (
+    <StatusBadge
+      status={p.status}
+      labels={{
+        offline:
+          p.offlineReason === "server_emptied"
+            ? "Offline: its server was emptied"
+            : "Offline: its server stopped",
+      }}
+    />
+  );
+}
+
 export function PreviewsTable({
   appSlug,
   previews,
@@ -117,7 +165,8 @@ export function PreviewsTable({
         {rows.map((p) => {
           const blocked = p.isFork && !p.approved;
           const review = blocked && canDeploy;
-          const openUrl = !review && !p.closed ? p.url : null;
+          const openUrl =
+            !review && !p.closed && p.status !== "offline" ? p.url : null;
           const logsHref = p.latestDeploymentId
             ? `/apps/${appSlug}/deployments/${p.latestDeploymentId}`
             : null;
@@ -187,28 +236,16 @@ export function PreviewsTable({
               </TableCell>
 
               <TableCell>
-                {blocked ? (
-                  <Badge variant="outline" className="gap-1.5">
-                    <ShieldAlert className="size-3.5 text-[var(--warning)]" />
-                    Needs approval
-                  </Badge>
-                ) : p.status === "evicted" ? (
-                  <SimpleTooltip
-                    content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
-                  >
-                    <span className="inline-flex">
-                      <StatusBadge status={p.status} />
-                    </span>
-                  </SimpleTooltip>
-                ) : (
-                  <StatusBadge status={p.status} />
-                )}
+                <PreviewStatus preview={p} maxActive={maxActive} />
               </TableCell>
 
               <TableCell>
                 {p.status === "building" || p.status === "queued" ? (
                   <Skeleton className="h-4 w-40" />
-                ) : p.url && !p.closed && p.status !== "evicted" ? (
+                ) : p.url &&
+                  !p.closed &&
+                  p.status !== "evicted" &&
+                  p.status !== "offline" ? (
                   <a
                     href={p.url}
                     target="_blank"
@@ -217,10 +254,14 @@ export function PreviewsTable({
                   >
                     {p.host}
                   </a>
-                ) : p.status === "evicted" ? (
+                ) : p.status === "evicted" || p.status === "offline" ? (
                   <span
                     className="font-mono text-xs text-muted-foreground"
-                    title="Redeploy to bring this address back"
+                    title={
+                      p.status === "offline"
+                        ? "Redeploy to run it on another server"
+                        : "Redeploy to bring this address back"
+                    }
                   >
                     {p.host}
                   </span>
@@ -328,8 +369,7 @@ export function PreviewsTable({
                             )
                           }
                         >
-                          <RotateCw className="size-4" />
-                          Redeploy
+                          <RedeployPreviewLabel />
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <a

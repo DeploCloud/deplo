@@ -8,6 +8,8 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { formatBytes, formatDateTime, timeAgo } from "@/lib/utils";
 import type { BackupRun } from "@/lib/types/backup";
+import { heldLabel } from "@/lib/backup-hold";
+import { leftBehindLabel } from "@/lib/backups/left-behind";
 import type { BackupTarget } from "./target";
 import { RunMenu } from "./run-menu";
 import {
@@ -109,12 +111,27 @@ export function RunRow({
               {run.status}
             </span>
           )}
+          {run.leftAt && (
+            <span
+              className="text-xs text-muted-foreground"
+              suppressHydrationWarning
+            >
+              {leftBehindLabel(
+                run.leftOnServer,
+                run.leftAt,
+                Intl.DateTimeFormat().resolvedOptions().timeZone,
+              )}
+            </span>
+          )}
         </div>
         <p
           className="mt-1 text-xs text-muted-foreground"
           suppressHydrationWarning
         >
           {formatDateTime(run.startedAt)} · {destinationName}
+          {ok && heldLabel(run.heldMs) && (
+            <span> · {heldLabel(run.heldMs)}</span>
+          )}
           {ok && !run.sha256 && (
             <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
               <span> · not checksummed</span>

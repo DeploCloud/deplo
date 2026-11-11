@@ -12,16 +12,13 @@ import { getServerById } from "../servers/roster";
 import { requireActiveTeamId } from "../../membership";
 import { hasAppCapability, requireAppCapability } from "../node-access";
 import { loadTeamApp } from "../app-graph-load";
-import { primaryDomainApp } from "../domains/primary-domain";
-import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
-import { portFor } from "../../deploy/ports";
+import { listAppLogMembers, listAppMembers } from "../clusters/placement";
 import {
-  httpHealthVerdict,
-  recentHttpHealth,
-  withinStartPeriod,
-} from "../../apps/http-health";
+  replicaIndexOf,
+  replicaLabels,
+  replicaTag,
+} from "../../deploy/replica-names";
 import { isDockerLevelStderr } from "../../infra/docker";
-import { sweepStale } from "../../stale-sweep";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { AgentUnreachableError } from "../../infra/agent-client/errors";
@@ -31,11 +28,30 @@ import { logMaxDays } from "../instance-settings/settings-store";
 import type { App } from "../../types/app";
 import type { Server } from "../../types/server";
 import {
-  loadOverviewAppStates,
-  type OverviewAppState,
-} from "./overview-app-states";
+  ALL_REPLICAS_PREFIX,
+  allReplicasRow,
+  replicaGroupOf,
+  withReplicaGroups,
+} from "./replicas";
+import {
+  containerName,
+  listInstances,
+  ON_SERVER,
+  type ConsoleInstance,
+} from "./instances";
 
 export type { OverviewAppState, OverviewRuntime } from "./overview-app-states";
+export {
+  containerName,
+  listInstances,
+  type ConsoleInstance,
+} from "./instances";
+export {
+  getAppRuntime,
+  getOverviewAppStates,
+  type AppRuntime,
+  type RuntimeContainer,
+} from "./runtime";
 
 const CONSOLE_OFF_MESSAGE = "! the console is turned off for this app";
 
@@ -49,52 +65,6 @@ export interface AttachInfo {
   running: boolean;
   shell: string;
   instances: ConsoleInstance[];
-}
-
-export interface ConsoleInstance {
-  name: string;
-  service: string;
-  image: string;
-  running: boolean;
-  exposed: boolean;
-  user: string;
-  workdir: string;
-  openStdin: boolean;
-  tty: boolean;
-  state: string;
-  health: string;
-  restartCount: number;
-  startedAtUnix: number;
-}
-
-export function containerName(p: App, deployKey: string = p.slug): string {
-  return `deplo-${deployKey}`;
-}
-
-export async function listInstances(p: App): Promise<ConsoleInstance[]> {
-  const exposeService = await primaryDomainApp(p.id);
-  const conn = await connectAgent(p.serverId);
-  try {
-    return orderInstances(
-      p,
-      await conn.listInstances(p.id, p.slug, exposeService),
-    );
-  } finally {
-    conn.close();
-  }
-}
-
-function orderInstances(
-  p: App,
-  instances: ConsoleInstance[],
-): ConsoleInstance[] {
-  const own = (i: ConsoleInstance) => i.service === p.slug;
-  return [...instances].sort((a, b) => {
-    if (own(a) !== own(b)) return own(a) ? -1 : 1;
-    if (a.exposed !== b.exposed) return a.exposed ? -1 : 1;
-    if (a.running !== b.running) return a.running ? -1 : 1;
-    return a.service.localeCompare(b.service);
-  });
 }
 
 export interface LogsInfo {
@@ -145,13 +115,94 @@ async function listInstancesForDisplay(p: App): Promise<{
   }
 }
 
+// A container the console can open: its own container name, the server it is on, and how the picker names it.
+interface InstanceTarget {
+  instance: ConsoleInstance;
+  target: string;
+  serverId: string;
+}
+
+// An App's targets wherever they run: one server's as before, every server's when its replicas are spread.
+// `down` names the servers that could not be asked; with none answering it throws as one server does.
+async function listInstanceTargets(
+  p: App,
+): Promise<{ targets: InstanceTarget[]; down: string[] }> {
+  const memberIds = await listAppMembers(p);
+  if (memberIds.length < 2)
+    return {
+      targets: (await listInstances(p)).map((instance) => ({
+        instance,
+        target: instance.name,
+        serverId: p.serverId,
+      })),
+      down: [],
+    };
+  const { up, down, error } = await listMemberInstances(p, memberIds);
+  if (up.length === 0)
+    throw error ?? new AgentUnreachableError("No server of this App answered");
+  return {
+    targets: up.flatMap((m) =>
+      m.instances.map((i) => ({
+        instance: onServer(i, m.server),
+        target: `${i.name}${ON_SERVER}${m.server.id}`,
+        serverId: m.server.id,
+      })),
+    ),
+    down,
+  };
+}
+
+// `web-1 · server-b`: how a picker names one server's replica.
+const onServer = (i: ConsoleInstance, server: Server): ConsoleInstance => ({
+  ...i,
+  replica: `${i.replica ?? i.name} · ${server.name}`,
+});
+
+function pickTarget(
+  targets: InstanceTarget[],
+  target: string | undefined,
+  fallback: "running" | "first",
+): InstanceTarget | undefined {
+  if (target) return targets.find((c) => c.target === target);
+  return (
+    (fallback === "running" && targets.find((c) => c.instance.running)) ||
+    targets[0]
+  );
+}
+
+async function consoleInstancesForDisplay(p: App): Promise<{
+  instances: ConsoleInstance[];
+  unavailable: string[];
+}> {
+  try {
+    const { targets, down } = await listInstanceTargets(p);
+    return {
+      instances: targets.length
+        ? targets.map((c) => ({ ...c.instance, name: c.target }))
+        : [displayFallback(p)],
+      unavailable: down,
+    };
+  } catch (e) {
+    if (e instanceof AgentUnreachableError)
+      return { instances: [displayFallback(p)], unavailable: [] };
+    throw e;
+  }
+}
+
+// On several members of a cluster the picker lists every server's copies, each named with its server.
 export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
   if (!(await hasAppCapability(appId, "view_logs"))) return null;
+  const memberIds = await listAppLogMembers(p);
   const [found, supportsTimeline, maxDays] = await Promise.all([
-    listInstancesForDisplay(p),
+    memberIds.length > 1
+      ? memberInstancesForDisplay(p, memberIds)
+      : listInstancesForDisplay(p).then((f) => ({
+          ...f,
+          instances: withReplicaGroups(f.instances, p.slug),
+        })),
     serverSupports(p.serverId, LOGS_TIMERANGE_CAPABILITY),
     logMaxDays(),
   ]);
@@ -165,175 +216,13 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   };
 }
 
-export interface RuntimeContainer {
-  name: string;
-  service: string;
-  state: string;
-  health: string;
-  restartCount: number;
-  startedAtUnix: number;
-  running: boolean;
-  exposed: boolean;
-}
-
-export interface AppRuntime {
-  total: number;
-  running: number;
-  restarting: number;
-  unhealthy: number;
-  missing: string[];
-  containers: RuntimeContainer[];
-  unreachable: boolean;
-}
-
-const RUNTIME_TTL_MS = 3_000;
-const runtimeCache = new Map<string, { at: number; value: AppRuntime }>();
-
-export async function getAppRuntime(appId: string): Promise<AppRuntime | null> {
-  const teamId = await requireActiveTeamId();
-  const p = await loadTeamApp(appId, teamId);
-  if (!p) return null;
-  await requireAppCapability(appId, "view");
-
-  const hit = runtimeCache.get(p.id);
-  if (hit && Date.now() - hit.at < RUNTIME_TTL_MS) return hit.value;
-
-  const value = await probeRuntime(p);
-  runtimeCache.set(p.id, { at: Date.now(), value });
-  sweepStale(runtimeCache, (e) => e.at, RUNTIME_TTL_MS);
-  return value;
-}
-
-async function probeRuntime(p: App): Promise<AppRuntime> {
-  const exposeService = await primaryDomainApp(p.id);
-  let conn: AgentConnection;
-  try {
-    conn = await connectAgent(p.serverId);
-  } catch {
-    return unknownRuntime();
-  }
-  try {
-    const instances = orderInstances(
-      p,
-      await conn.listInstances(p.id, p.slug, exposeService),
-    );
-
-    let legacySoloState = "";
-    const agentReportsState = instances.some((i) => i.state !== "");
-    if (
-      !agentReportsState &&
-      instances.length === 1 &&
-      instances[0].name === containerName(p)
-    ) {
-      try {
-        const seen = await conn.inspect(p.slug);
-        if (seen.exists) legacySoloState = seen.state;
-      } catch {}
-    }
-
-    const containers: RuntimeContainer[] = instances.map((i, idx) => ({
-      name: i.name,
-      service: i.service,
-      state: i.state || (idx === 0 ? legacySoloState : ""),
-      health: i.health,
-      restartCount: i.restartCount,
-      startedAtUnix: i.startedAtUnix,
-      running: i.running,
-      exposed: i.exposed,
-    }));
-
-    const declared = p.compose ? composeServiceNames(p.compose) : [p.slug];
-    const present = new Set(containers.map((c) => c.service));
-    const missing = declared.filter((s) => !present.has(s));
-
-    await applyHttpHealth(p, conn, containers, exposeService);
-
-    return {
-      total: containers.length,
-      running: containers.filter((c) => c.running).length,
-      restarting: containers.filter((c) => c.state === "restarting").length,
-      unhealthy: containers.filter((c) => c.running && c.health === "unhealthy")
-        .length,
-      missing,
-      containers,
-      unreachable: false,
-    };
-  } catch (e) {
-    if (e instanceof AgentUnreachableError) return unknownRuntime();
-    throw e;
-  } finally {
-    conn.close();
-  }
-}
-
-async function applyHttpHealth(
-  p: App,
-  conn: AgentConnection,
-  containers: RuntimeContainer[],
-  exposeService: string,
-): Promise<void> {
-  const h = p.healthCheck;
-  if (h?.type !== "http") return;
-  const target =
-    containers.find((c) => c.running && c.service === exposeService) ??
-    containers.find((c) => c.running);
-  if (!target) return;
-  if (withinStartPeriod(target.startedAtUnix, h.startPeriodS)) {
-    target.health = "starting";
-    return;
-  }
-  const recent = recentHttpHealth(p.id, h.intervalS);
-  if (recent) {
-    target.health = recent;
-    return;
-  }
-  let ok = false;
-  try {
-    const res = await conn.probeHttp({
-      appId: p.id,
-      slug: p.slug,
-      service: target.service,
-      port: h.port ?? portFor(p),
-      path: h.path?.trim() || "/",
-      host: "",
-      maxBytes: 1,
-    });
-    ok = res.status > 0 && res.status < 400;
-  } catch {
-    ok = false;
-  }
-  target.health = httpHealthVerdict(p.id, ok, h.retries);
-}
-
-function unknownRuntime(): AppRuntime {
-  return {
-    total: 0,
-    running: 0,
-    restarting: 0,
-    unhealthy: 0,
-    missing: [],
-    containers: [],
-    unreachable: true,
-  };
-}
-
-export async function getOverviewAppStates(
-  requestedIds: string[],
-): Promise<OverviewAppState[]> {
-  return loadOverviewAppStates(requestedIds, async (appId) => {
-    try {
-      return (await getAppRuntime(appId)) ?? unknownRuntime();
-    } catch {
-      return unknownRuntime();
-    }
-  });
-}
-
 export interface ConsoleInfo {
   containerName: string;
   image: string;
   running: boolean;
   instances: ConsoleInstance[];
+  // The servers running this App that could not be asked for their copies, by name.
+  unavailable?: string[];
 }
 
 export async function getConsoleInfo(
@@ -343,13 +232,14 @@ export async function getConsoleInfo(
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
   await requireAppCapability(appId, "view");
-  const { instances } = await listInstancesForDisplay(p);
+  const { instances, unavailable } = await consoleInstancesForDisplay(p);
   const def = instances[0];
   return {
     containerName: def.name,
     image: def.image,
     running: instances.some((i) => i.running),
     instances,
+    unavailable,
   };
 }
 
@@ -361,12 +251,18 @@ export async function getShellLabel(
   const p = await loadTeamApp(appId, teamId);
   if (!p) return "raw exec (no shell)";
   await requireAppCapability(appId, "view");
-  const { instances } = await listInstancesForDisplay(p);
-  const pick = target
-    ? instances.find((i) => i.name === target)
-    : (instances.find((i) => i.running) ?? instances[0]);
-  if (!pick || !pick.running) return "raw exec (no shell)";
-  return probeShellLabel(p, pick.name, pick.image);
+  let pick: InstanceTarget | undefined;
+  try {
+    pick = pickTarget(
+      (await listInstanceTargets(p)).targets,
+      target,
+      "running",
+    );
+  } catch (e) {
+    if (!(e instanceof AgentUnreachableError)) throw e;
+  }
+  if (!pick || !pick.instance.running) return "raw exec (no shell)";
+  return probeShellLabel(p, pick);
 }
 
 export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
@@ -379,7 +275,10 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
   const running = instances.some((i) => i.running);
   let shell = "raw exec (no shell)";
   if (running) {
-    shell = await probeShellLabel(p, def.name, def.image);
+    shell = await probeShellLabel(p, {
+      instance: def,
+      serverId: p.serverId,
+    });
   }
   return {
     containerName: def.name,
@@ -392,12 +291,11 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
 
 async function probeShellLabel(
   p: App,
-  container: string,
-  image: string,
+  at: Pick<InstanceTarget, "instance" | "serverId">,
 ): Promise<string> {
-  const conn = await connectAgent(p.serverId);
+  const conn = await connectAgent(at.serverId);
   try {
-    return await conn.shellLabel(p.id, container, image);
+    return await conn.shellLabel(p.id, at.instance.name, at.instance.image);
   } catch (e) {
     if (e instanceof AgentUnreachableError) return "raw exec (no shell)";
     throw e;
@@ -425,38 +323,78 @@ export async function resolveAttachTarget(
   await requireAppCapability(appId, "open_app_console");
   if (!p.consoleEnabled) return { ok: false, reason: "not-found" };
 
-  let instances: ConsoleInstance[];
+  let targets: InstanceTarget[];
   try {
-    instances = await listInstances(p);
+    ({ targets } = await listInstanceTargets(p));
   } catch (e) {
     if (e instanceof AgentUnreachableError)
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  const pick = target
-    ? instances.find((i) => i.name === target)
-    : (instances.find((i) => i.running) ?? instances[0]);
+  const pick = pickTarget(targets, target, "running");
   if (!pick) return { ok: false, reason: "no-instance" };
-  if (!pick.running) return { ok: false, reason: "stopped" };
-  return { ok: true, instance: pick, server: await serverOf(p) };
+  if (!pick.instance.running) return { ok: false, reason: "stopped" };
+  return {
+    ok: true,
+    instance: pick.instance,
+    server: (await getServerById(pick.serverId)) ?? undefined,
+  };
+}
+
+export interface LogsMember {
+  server: Server;
+  group: ConsoleInstance[];
+}
+
+type LogsTarget =
+  | {
+      ok: true;
+      instance: ConsoleInstance;
+      // Every copy to read when the target is a service with replicas; one entry otherwise.
+      group: ConsoleInstance[];
+      server: Server | undefined;
+      // Only for an App read on several servers of its cluster: each one's copies, and the servers that cannot be read.
+      members?: LogsMember[];
+      unavailable?: string[];
+    }
+  | {
+      ok: false;
+      reason: "not-found" | "no-instance" | "unreachable" | "forbidden";
+    };
+
+function logsGroup(
+  instances: ConsoleInstance[],
+  target?: string,
+): ConsoleInstance[] | null {
+  const all = target?.startsWith(ALL_REPLICAS_PREFIX)
+    ? target.slice(ALL_REPLICAS_PREFIX.length)
+    : null;
+  const pick =
+    all !== null
+      ? instances.find((i) => i.service === all)
+      : target
+        ? (instances.find((i) => i.name === target) ??
+          instances.find((i) => i.service === target))
+        : instances[0];
+  if (!pick) return null;
+  // A named copy reads alone; the service, or the default, reads every copy.
+  const exact = all === null && !!target && pick.name === target;
+  return exact ? [pick] : replicaGroupOf(instances, pick);
 }
 
 export async function resolveLogsTarget(
   appId: string,
   target?: string,
-): Promise<
-  | { ok: true; instance: ConsoleInstance; server: Server | undefined }
-  | {
-      ok: false;
-      reason: "not-found" | "no-instance" | "unreachable" | "forbidden";
-    }
-> {
+): Promise<LogsTarget> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
   if (!(await hasAppCapability(appId, "view_logs")))
     return { ok: false, reason: "forbidden" };
 
+  const memberIds = await listAppLogMembers(p);
+  if (memberIds.length > 1) return logsAcrossMembers(p, memberIds, target);
+
   let instances: ConsoleInstance[];
   try {
     instances = await listInstances(p);
@@ -465,12 +403,125 @@ export async function resolveLogsTarget(
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  const pick = target
-    ? (instances.find((i) => i.name === target) ??
-      instances.find((i) => i.service === target))
-    : instances[0];
-  if (!pick) return { ok: false, reason: "no-instance" };
-  return { ok: true, instance: pick, server: await serverOf(p) };
+  const group = logsGroup(instances, target);
+  if (!group) return { ok: false, reason: "no-instance" };
+  return { ok: true, instance: group[0]!, group, server: await serverOf(p) };
+}
+
+type MemberInstances = { server: Server; instances: ConsoleInstance[] };
+
+// A cluster App's copies on every server that holds some, each tagged as the replica it is; `down` are the servers
+// that could not be read. With none readable, `error` is why the server it runs on now was not.
+async function listMemberInstances(
+  p: App,
+  memberIds: string[],
+): Promise<{ up: MemberInstances[]; down: string[]; error?: unknown }> {
+  const listed = await Promise.all(
+    memberIds.map(async (id) => {
+      const server = await getServerById(id);
+      if (!server) return null;
+      try {
+        const instances = await listInstances({ ...p, serverId: id });
+        return { server, instances, error: null };
+      } catch (error) {
+        return { server, instances: null, error };
+      }
+    }),
+  );
+  const known = listed.filter((m) => m !== null);
+  const up = known.filter((m) => m.instances !== null);
+  // A replica is one of the App's copies wherever it runs: one on each of two servers is still two.
+  const labels = replicaLabels(
+    [...new Set(up.flatMap((m) => m.instances!.map((i) => i.name)))],
+    p.slug,
+  );
+  // With a server out of reach, or each server numbering its own, a copy can look alone; an App set to several replicas still names it.
+  const lone = (name: string) =>
+    p.replicas > 1 && replicaIndexOf(name) !== null
+      ? replicaTag(name, p.slug)
+      : null;
+  return {
+    up: up.map((m) => ({
+      server: m.server,
+      instances: m.instances!.map((i) => ({
+        ...i,
+        replica: labels.get(i.name)?.label ?? lone(i.name),
+      })),
+    })),
+    down: known.filter((m) => m.instances === null).map((m) => m.server.name),
+    error: known.find((m) => m.server.id === p.serverId)?.error,
+  };
+}
+
+// What the logs picker lists for an App on several servers: "all replicas" first, then each copy as `web-1 · server-b`.
+async function memberInstancesForDisplay(
+  p: App,
+  memberIds: string[],
+): Promise<{
+  instances: ConsoleInstance[];
+  real: boolean;
+  unreachable: boolean;
+}> {
+  const { up } = await listMemberInstances(p, memberIds);
+  const all = up.flatMap((m) => m.instances);
+  if (all.length === 0)
+    return {
+      instances: [displayFallback(p)],
+      real: false,
+      unreachable: up.length === 0,
+    };
+  const out: ConsoleInstance[] = [];
+  const grouped = new Set<string>();
+  for (const m of up)
+    for (const i of m.instances) {
+      const copies = all.filter((c) => c.service === i.service);
+      if (i.replica && copies.length > 1 && !grouped.has(i.service)) {
+        grouped.add(i.service);
+        out.push(allReplicasRow(i, i.replica.replace(/-\d+$/, ""), copies));
+      }
+      out.push({
+        ...onServer(i, m.server),
+        name: `${i.name}${ON_SERVER}${m.server.id}`,
+      });
+    }
+  return { instances: out, real: true, unreachable: false };
+}
+
+async function logsAcrossMembers(
+  p: App,
+  memberIds: string[],
+  target?: string,
+): Promise<LogsTarget> {
+  const { up, down, error } = await listMemberInstances(p, memberIds);
+  if (up.length === 0) {
+    if (!error || error instanceof AgentUnreachableError)
+      return { ok: false, reason: "unreachable" };
+    throw error;
+  }
+  const at = target?.lastIndexOf(ON_SERVER) ?? -1;
+  const only =
+    at > 0 && memberIds.includes(target!.slice(at + 1))
+      ? target!.slice(at + 1)
+      : null;
+  const wanted = only ? target!.slice(0, at) : target;
+  const members: LogsMember[] = [];
+  for (const m of up) {
+    if (only && m.server.id !== only) continue;
+    const group = logsGroup(m.instances, wanted);
+    if (group) members.push({ server: m.server, group });
+  }
+  const first = members[0];
+  if (!first) return { ok: false, reason: "no-instance" };
+  return {
+    ok: true,
+    instance: first.group[0]!,
+    group: first.group,
+    server: first.server,
+    // A copy picked on one server is read there alone, whatever the other servers are doing.
+    ...(!only && (members.length > 1 || down.length > 0)
+      ? { members, unavailable: down }
+      : {}),
+  };
 }
 
 export async function execInContainer(
@@ -490,13 +541,14 @@ export async function execInContainer(
   if (command === "clear") return { output: "\f" };
 
   try {
-    const instances = await listInstances(p);
-    const pick = target
-      ? instances.find((i) => i.name === target)
-      : instances[0];
+    const pick = pickTarget(
+      (await listInstanceTargets(p)).targets,
+      target,
+      "first",
+    );
     if (!pick) return { output: `! no such instance: ${target}` };
 
-    const res = await execOnAgent(p, pick.name, command, pick.image);
+    const res = await execOnAgent(p, pick, command);
 
     if (isDockerLevelStderr(res.stderr)) {
       const reason =
@@ -525,13 +577,12 @@ export async function execInContainer(
 
 async function execOnAgent(
   p: App,
-  container: string,
+  at: InstanceTarget,
   command: string,
-  image: string,
 ): Promise<{ stdout: string; stderr: string; code: number; rawMode: boolean }> {
-  const conn: AgentConnection = await connectAgent(p.serverId);
+  const conn: AgentConnection = await connectAgent(at.serverId);
   try {
-    return await conn.exec(p.id, container, command, image);
+    return await conn.exec(p.id, at.instance.name, command, at.instance.image);
   } finally {
     conn.close();
   }

@@ -94,6 +94,15 @@ function hasCompleteCustomRouting(
   );
 }
 
+/** The http port hand-written labels route their service on, read from the labels as written; null when they name none. */
+export function customLabelPort(labels: TraefikLabel[]): number | null {
+  const own = labels.find(({ key }) =>
+    /^traefik\.http\.services\.[^.]+\.loadbalancer\.server\.port$/i.test(key),
+  );
+  const port = Number(own?.value);
+  return Number.isInteger(port) && port > 0 ? port : null;
+}
+
 export function overlayTraefikLabels(
   generated: string[],
   labels: TraefikLabel[],

@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { backupRuns as backupRunsTable } from "../../db/schema/control-plane/backups";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { assembleBackupRun } from "../backup-rows";
 import { getCurrentUser } from "../../auth/current-user";
 import { requireMembership } from "../../membership";
@@ -13,7 +14,11 @@ import { dispatchAlert } from "../../notify/dispatch";
 import { setAppStatus } from "../apps/lifecycle";
 import { mapBackupUnsupported } from "../../infra/agent-client/errors";
 import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
+import { isBaseBackupKey } from "../backup-objectkey";
 import { restoreFromDestination } from "../backup-transport";
+import { changeLogBroken } from "../clusters/change-log";
+import { requireDatabase } from "../databases/rows";
+import { databaseVolumeProject } from "./left-behind";
 import { requireBackupCapability } from "./target-access";
 import { resolveTarget } from "./target-descriptor";
 import { assertNotPausedForMove } from "../deplo-move/source-guard";
@@ -62,19 +67,55 @@ export async function restoreBackup(runId: string): Promise<void> {
     try {
       if (run.targetKind === "app" && target.appId)
         await setAppStatus(target.appId, "restoring");
+      const started = Date.now();
+      // What a returning cluster member left of a database is its volume, not a dump: it goes back as a volume.
+      const leftVolume =
+        run.leftAt && target.databaseId
+          ? await requireDatabase(target.databaseId, teamId)
+          : null;
       const result = await restoreFromDestination(
         creds,
-        {
-          serverId: target.serverId,
-          kind: run.targetKind,
-          database: target.database,
-          project: target.project,
-        },
+        leftVolume
+          ? {
+              serverId: target.serverId,
+              kind: "app",
+              project: databaseVolumeProject(leftVolume, true),
+            }
+          : {
+              serverId: target.serverId,
+              kind: run.targetKind,
+              database: target.database,
+              project: target.project,
+            },
         run.objectKey,
         run.sha256 ?? "",
       );
+      if (
+        result.ok &&
+        target.databaseId &&
+        (isBaseBackupKey(run.objectKey) || leftVolume)
+      )
+        await changeLogBroken(target.databaseId);
       if (!result.ok)
         failure = result.error || "the agent reported a failed restore";
+      else if (target.databaseId)
+        // The recovery estimate of a database on a cluster reads this.
+        await getDb()
+          .update(databasesTable)
+          .set({
+            restoreBytesPerSec: Math.max(
+              1,
+              Math.round(
+                (run.sizeBytes * 1000) / Math.max(1, Date.now() - started),
+              ),
+            ),
+          })
+          .where(
+            and(
+              eq(databasesTable.id, target.databaseId),
+              eq(databasesTable.teamId, teamId),
+            ),
+          );
     } catch (e) {
       failure = (mapBackupUnsupported(e) as Error).message;
     } finally {

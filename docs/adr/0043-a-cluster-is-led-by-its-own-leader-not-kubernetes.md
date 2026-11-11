@@ -18,4 +18,5 @@ Kubernetes is the usual answer to running Apps across several machines. The need
 ## Consequences
 
 - To redeploy without Deplo, a leader needs an App's decrypted variables, which today only the control plane holds. What a leader may keep, and how it is protected, is decided separately.
+- A remote leader and Deplo's machine can both be running, each cut off from the other. A leader therefore leads only while more than half of the cluster's servers answer it, or exactly half and Deplo does. Failover without Deplo needs more than half of the servers up: a two-server cluster that loses one while Deplo is down moves nothing, and its databases stop until Deplo is back (`docs/agents/cluster-rollout.md` §5).
 - "Cluster" is the user-facing word. Nothing of Kubernetes is involved, and the Add dialog says so in one plain line.

@@ -8,6 +8,7 @@ import { assembleDatabase } from "../backup-rows";
 import { loadTeamApp } from "../app-graph-load";
 import { decryptSecretOrThrow } from "../../crypto";
 import { parseConnectionPassword } from "../../deploy/database-compose";
+import { archivesChangeLog } from "../../databases/change-log";
 import { deployNetwork } from "../../deploy/network";
 import { retargetStackNetwork } from "../../deploy/compose-stack/stack-network";
 import {
@@ -70,6 +71,8 @@ export interface ResolvedTarget {
   databaseId: string | null;
   appId: string | null;
   dbType: DatabaseType | null;
+  /** A Postgres database on a cluster: its failover schedule writes base backups. */
+  archivesChangeLog?: boolean;
   database?: DatabaseDescriptor;
   project?: ProjectDescriptor;
   label: string;
@@ -102,6 +105,7 @@ export async function resolveTarget(
       databaseId: db.id,
       appId: null,
       dbType: db.type,
+      archivesChangeLog: archivesChangeLog(db),
       database: databaseDescriptor(db),
       label: `database ${db.name}`,
     };

@@ -38,6 +38,12 @@ const ConsoleInstanceRef = builder
       workdir: t.exposeString("workdir"),
       openStdin: t.exposeBoolean("openStdin"),
       tty: t.exposeBoolean("tty"),
+      replica: t.exposeString("replica", {
+        nullable: true,
+        description:
+          "`web-2` when this is one of several replicas of its service; null " +
+          "for a lone container. Read from the container name, never stored.",
+      }),
     }),
   });
 
@@ -52,6 +58,12 @@ const ConsoleInfoRef = builder.objectRef<ConsoleInfo>("ConsoleInfo").implement({
     instances: t.field({
       type: [ConsoleInstanceRef],
       resolve: (c) => c.instances,
+    }),
+    unavailable: t.stringList({
+      description:
+        "The servers running this app that could not be asked for their " +
+        "replicas, by name. Empty unless its replicas are spread over a cluster.",
+      resolve: (c) => c.unavailable ?? [],
     }),
   }),
 });
@@ -103,8 +115,9 @@ const RuntimeContainerRef = builder
       }),
       health: t.exposeString("health", {
         description:
-          '"healthy" | "unhealthy" | "starting", or "" when the image declares ' +
-          "no healthcheck, which is not a synonym for healthy.",
+          '"healthy" | "unhealthy" | "starting", or "" when nothing checks it, ' +
+          "which is not a synonym for healthy. Follows the server agent's own " +
+          "check, the one that restarts the app, and Docker's when the image has one.",
       }),
       restartCount: t.exposeInt("restartCount", {
         description: "Times docker has restarted this container.",
@@ -117,6 +130,13 @@ const RuntimeContainerRef = builder
       }),
       running: t.exposeBoolean("running"),
       exposed: t.exposeBoolean("exposed"),
+      server: t.string({
+        nullable: true,
+        description:
+          "The server this container is on, by name, when the app runs on " +
+          "several; else null.",
+        resolve: (c) => c.server ?? null,
+      }),
     }),
   });
 
@@ -144,6 +164,12 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
     unreachable: t.exposeBoolean("unreachable", {
       description:
         "The agent did not answer: the counts are unknown, not zero.",
+    }),
+    unreachableServers: t.stringList({
+      description:
+        "For an app on several servers: the ones that did not answer, by " +
+        "name. The counts cover the others.",
+      resolve: (r) => r.unreachableServers ?? [],
     }),
     containers: t.field({
       type: [RuntimeContainerRef],
@@ -179,6 +205,7 @@ const OverviewAppStateRef = builder
         resolve: (state) => state.status,
       }),
       neverDeployed: t.exposeBoolean("neverDeployed", { nullable: false }),
+      restartsPaused: t.exposeBoolean("restartsPaused", { nullable: false }),
       runtime: t.field({
         type: OverviewRuntimeRef,
         nullable: true,

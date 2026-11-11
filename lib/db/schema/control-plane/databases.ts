@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
+import { clusters } from "./clusters";
 import { teams } from "./identity";
 import { environments } from "./projects";
 import { servers } from "./servers";
@@ -37,6 +38,9 @@ export const databases = pgTable(
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),
+    clusterId: text("cluster_id").references(() => clusters.id, {
+      onDelete: "set null",
+    }),
     host: text("host").notNull(),
     port: integer("port").notNull(),
     connectionStringEnc: text("connection_string_enc").notNull(),
@@ -60,6 +64,13 @@ export const databases = pgTable(
     restartLoopGuard: boolean("restart_loop_guard").notNull().default(true),
     restartLoopStoppedAt: isoTimestamptz("restart_loop_stopped_at"),
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
+    // Artifact bytes per second of the last restore; NULL until one was measured.
+    restoreBytesPerSec: bigint("restore_bytes_per_sec", { mode: "number" }),
+    // When Postgres's change log last reached the backup destination; NULL while it is not archived.
+    walArchivedAt: isoTimestamptz("wal_archived_at"),
+    // On a cluster: keep a copy that follows it on another member. The seed marks the copy made last.
+    standby: boolean("standby").notNull().default(false),
+    standbySeed: text("standby_seed"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

@@ -49,6 +49,44 @@ export const DATABASES_SETTINGS: McpToolDef[] = [
     `,
   }),
   tool({
+    name: "move_database_to_cluster",
+    title: "Place a database on a cluster",
+    description:
+      "Restart the database on the member its cluster's leader picks, copying its data; it is then backed up every 15 minutes to another server. Leaving a cluster is update_database.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    destructive: true,
+    input: z.object({
+      databaseId,
+      clusterId: z
+        .string()
+        .describe("The cluster's id, as returned by list_clusters."),
+    }),
+    variables: (a) => ({ id: a.databaseId, clusterId: a.clusterId }),
+    query: /* GraphQL */ `
+      mutation McpMoveDatabaseToCluster($id: String!, $clusterId: String!) {
+        moveDatabaseToCluster(id: $id, clusterId: $clusterId) { ${DATABASE_FIELDS_SETTINGS} clusterId }
+      }
+    `,
+  }),
+  tool({
+    name: "set_database_standby",
+    title: "Keep a standby copy of a database",
+    description:
+      "Turn a database's standby copy on or off. Another server of its cluster runs it and a failover promotes it, losing about a second of writes. Never ClickHouse; MongoDB from three servers. Costs its memory and disk twice.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    input: z.object({ databaseId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.databaseId, enabled: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetDatabaseStandby($id: String!, $enabled: Boolean!) {
+        setDatabaseStandby(id: $id, enabled: $enabled) { ${DATABASE_FIELDS_SETTINGS} clusterId standby standbyServerName }
+      }
+    `,
+  }),
+  tool({
     name: "rename_database",
     title: "Rename a database",
     description: "Change a database's display name. Its host name stays.",

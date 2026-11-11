@@ -15,6 +15,7 @@ export type LiveApp = {
   latestDeploymentStatus: DeploymentStatus | null;
   latestScreenshotAt: string | null;
   restartLoopStoppedAt: string | null;
+  restartsPausedAt: string | null;
 };
 
 const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
@@ -25,6 +26,7 @@ const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
       status
       productionUrl
       restartLoopStoppedAt
+      restartsPausedAt
       latestDeployment {
         id
         status
@@ -41,6 +43,7 @@ type SubResult = {
     status: AppStatus;
     productionUrl: string | null;
     restartLoopStoppedAt: string | null;
+    restartsPausedAt: string | null;
     latestDeployment: {
       id: string;
       status: DeploymentStatus;
@@ -79,6 +82,7 @@ export function AppLiveStatusProvider({
           status: p.status,
           productionUrl: p.productionUrl,
           restartLoopStoppedAt: p.restartLoopStoppedAt,
+          restartsPausedAt: p.restartsPausedAt,
           latestDeploymentId: p.latestDeployment?.id ?? null,
           latestDeploymentStatus: p.latestDeployment?.status ?? null,
           latestScreenshotAt: p.latestDeployment?.screenshotAt ?? null,
@@ -110,6 +114,10 @@ export function useLiveStatus(fallback: AppStatus): AppStatus {
 export function useNeverDeployed(): boolean {
   const live = useLiveApp();
   return !!live && live.latestDeploymentId === null && live.status === "idle";
+}
+
+export function useRestartsPaused(): boolean {
+  return !!useLiveApp()?.restartsPausedAt;
 }
 
 export function useLiveRunning(fallback: boolean): boolean {

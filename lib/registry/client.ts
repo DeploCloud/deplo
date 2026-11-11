@@ -358,7 +358,53 @@ interface ManifestDoc {
   }[];
 }
 interface ConfigBlob {
+  os?: string;
+  architecture?: string;
   config?: { ExposedPorts?: Record<string, unknown> };
+}
+
+const archList = (archs: unknown[]): string[] =>
+  [
+    ...new Set(
+      archs.filter(
+        (a): a is string =>
+          typeof a === "string" &&
+          /^[a-z0-9]{1,16}$/.test(a) &&
+          a !== "unknown",
+      ),
+    ),
+  ].sort();
+
+/** The architectures a public image is published for, as its registry names them; empty when it does not say. */
+export async function imageArchitectures(imageRef: string): Promise<string[]> {
+  const parsed = parseImageRef(imageRef);
+  if (!parsed) return [];
+  const registryHost =
+    parsed.registry === DOCKER_HUB_REGISTRY
+      ? "registry-1.docker.io"
+      : parsed.registry;
+  const repo = encodeRepoPath(parsed.repository);
+  const token = await ociToken(registryHost, parsed.repository);
+  const base = `https://${registryHost}/v2/${repo}`;
+  const doc = (
+    await fetchJson<ManifestDoc>(
+      `${base}/manifests/${encodeURIComponent(parsed.digest ?? parsed.tag)}`,
+      { headers: { Accept: MANIFEST_ACCEPT, ...ociAuthHeaders(token) } },
+    )
+  ).body;
+  if (doc?.manifests?.length)
+    return archList(
+      doc.manifests
+        .filter((m) => m.platform?.os === "linux")
+        .map((m) => m.platform?.architecture),
+    );
+  const digest = doc?.config?.digest;
+  if (!digest) return [];
+  const blob = await fetchConfigBlob(
+    `${base}/blobs/${encodeURIComponent(digest)}`,
+    ociAuthHeaders(token),
+  );
+  return blob?.os === "linux" ? archList([blob.architecture]) : [];
 }
 
 export async function imageExposedPort(

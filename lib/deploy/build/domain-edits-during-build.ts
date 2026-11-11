@@ -1,6 +1,7 @@
 import "server-only";
 
 import { loadDeployment } from "../../data/app-graph-load";
+import { activateAppTunnel } from "../../data/clusters/app-tunnel";
 import {
   primaryDomainName,
   syncProductionUrl,
@@ -9,6 +10,8 @@ import type { RoutableDomain } from "../../data/domains/routes";
 import { routableForDeploy } from "./deploy-routes";
 import { log } from "./deployment-state";
 import { rerouteApp } from "./reroute";
+
+const CONNECTOR_WAIT_MS = 30_000;
 
 const routesKey = (routes: RoutableDomain[]) =>
   routes
@@ -24,6 +27,9 @@ export async function applyDomainEditsMadeDuringBuild(
 ): Promise<void> {
   try {
     if ((await loadDeployment(depId))?.status !== "ready") return;
+    // The App is up and its connector has just started: its domains switch once Cloudflare sees it.
+    if ((await activateAppTunnel(appId, CONNECTOR_WAIT_MS)) > 0)
+      log(depId, "info", "Switched its Cloudflare domains to the App's tunnel");
     const current = await routableForDeploy(
       appId,
       "production",

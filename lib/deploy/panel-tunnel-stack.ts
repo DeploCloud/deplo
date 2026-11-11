@@ -1,6 +1,7 @@
 import { isMap, isScalar, isSeq, parseDocument, type Document } from "yaml";
 
 import { LINK_PATH } from "../infra/agent-link/protocol";
+import { HOST_GATEWAY_ENTRY, RELAY_PATH, RELAY_TARGET } from "./cluster-relay";
 import { defaultLogging } from "./resources";
 import { linkTarget, TRAEFIK_CONTAINER } from "./traefik-stack";
 
@@ -8,6 +9,8 @@ import { linkTarget, TRAEFIK_CONTAINER } from "./traefik-stack";
 export const TUNNEL_SERVICE = "deplo-tunnel";
 export const CLOUDFLARED_IMAGE = "cloudflare/cloudflared:2026.9.3";
 const TOKEN_ENV = "TUNNEL_TOKEN";
+// KEEP IN SYNC with the agent's lateLabel (internal/server/start_after_ready.go).
+export const START_AFTER_READY_LABEL = "deplo.start-after-ready";
 // The platform's network: the panel and its proxy, and no tenant (ADR-0028).
 const PLATFORM_NETWORK = "deplo";
 
@@ -21,9 +24,14 @@ export type TunnelIngressRule = {
 export function panelTunnelIngress(
   hostname: string,
   panelTarget: string,
+  relay = false,
 ): TunnelIngressRule[] {
   return [
     { hostname, path: `^${LINK_PATH}$`, service: linkTarget(panelTarget) },
+    // The cluster relay is carried the way the link is, on the same address (ADR-0042, ADR-0044).
+    ...(relay
+      ? [{ hostname, path: `^${RELAY_PATH}$`, service: RELAY_TARGET }]
+      : []),
     { hostname, service: panelTarget },
     { service: "http_status:404" },
   ];
@@ -33,8 +41,9 @@ export function panelTunnelIngress(
 export function withPanelTunnel(
   currentYaml: string,
   token: string | null,
+  opts: { relay?: boolean } = {},
 ): string {
-  return withTunnelConnector(currentYaml, TUNNEL_SERVICE, token);
+  return withTunnelConnector(currentYaml, TUNNEL_SERVICE, token, opts);
 }
 
 const PROXY_TARGET = `http://${TRAEFIK_CONTAINER}:80`;
@@ -69,6 +78,7 @@ export function withTunnelConnector(
   currentYaml: string,
   service: string,
   token: string | null,
+  opts: { relay?: boolean; startAfterReady?: boolean } = {},
 ): string {
   const doc = parseStack(currentYaml);
   const services = doc.get("services", true);
@@ -93,6 +103,12 @@ export function withTunnelConnector(
       command: ["tunnel", "--no-autoupdate", "run"],
       environment: [`${TOKEN_ENV}=${value}`],
       networks: [PLATFORM_NETWORK],
+      // The relay is a process on the host: the connector reaches it by Docker's host gateway.
+      ...(opts.relay ? { extra_hosts: [HOST_GATEWAY_ENTRY] } : {}),
+      // Kept in the stack file, so the agent holds it back on every later start too.
+      ...(opts.startAfterReady
+        ? { labels: { [START_AFTER_READY_LABEL]: "true" } }
+        : {}),
     }),
   );
   const networks = doc.get("networks", true);
@@ -102,6 +118,24 @@ export function withTunnelConnector(
       doc.createNode({ external: true }),
     );
   return doc.toString({ lineWidth: 0 });
+}
+
+/** Whether the panel's connector reaches the host by its gateway name, which a relay route needs (ADR-0044). */
+export function panelTunnelReachesHost(currentYaml: string): boolean {
+  try {
+    const hosts = parseStack(currentYaml).getIn(
+      ["services", TUNNEL_SERVICE, "extra_hosts"],
+      true,
+    );
+    return (
+      isSeq(hosts) &&
+      hosts.items.some(
+        (i) => isScalar(i) && String(i.value) === HOST_GATEWAY_ENTRY,
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** The token the stack's connector runs with; null when the stack has none. */

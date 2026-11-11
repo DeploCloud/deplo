@@ -12,6 +12,8 @@ const DATABASE_FIELDS = /* GraphQL */ `
   dbName
   username
   serverId
+  clusterId
+  standby
   sizeMb
   exposedPublicly
   connectionStringMasked
@@ -54,6 +56,7 @@ export const DATABASES: McpToolDef[] = [
       query McpGetDatabase($id: String!) {
         database(id: $id) {
           ${DATABASE_FIELDS}
+          failoverReach { line warning }
           customImage
           customCommand
           resources { memoryMb cpuMilli pidsLimit storageGb }
@@ -80,6 +83,12 @@ export const DATABASES: McpToolDef[] = [
       ]),
       version: z.string().describe('Engine version, e.g. "17".'),
       serverId: z.string().optional(),
+      clusterId: z
+        .string()
+        .optional()
+        .describe(
+          "Place it on this cluster instead of a server (list_clusters); it is then backed up every 15 minutes to another server.",
+        ),
       dbName: z.string().optional(),
       username: z.string().optional(),
     }),

@@ -96,6 +96,12 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     restartLoopStoppedAt: row.restartLoopStoppedAt ?? null,
     screenshotsEnabled: row.screenshotsEnabled,
     zeroDowntimeDeploys: row.zeroDowntimeDeploys,
+    restartWhenUnresponsive: row.restartWhenUnresponsive,
+    restartsPausedAt: row.restartsPausedAt ?? null,
+    clusterId: row.clusterId ?? null,
+    replicas: row.replicas,
+    stickySessions: row.stickySessions,
+    failoverFromBackup: row.failoverFromBackup,
     // The hook's on/off state travels with the app; deploy_hook_token_enc never does, only deploy-hook.ts reads it.
     deployHookEnabled: row.deployHookEnabled,
     composeUpArgs: row.composeUpArgs?.trim() ? row.composeUpArgs : null,

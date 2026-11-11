@@ -8,6 +8,9 @@ export const APP_FIELDS = /* GraphQL */ `
   status
   productionUrl
   serverId
+  clusterId
+  clusterName
+  placementNote
   projectId
   folderId
   framework
@@ -150,6 +153,7 @@ export const APPS_READ: McpToolDef[] = [
       query McpGetApp($slug: String!) {
         app(slug: $slug) {
           ${APP_FIELDS}
+          failoverReach { line warning }
           dockerImage
           compose
           composeUpArgs

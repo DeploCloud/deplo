@@ -78,7 +78,7 @@ export function mapBuildSettings(
 
   if ((app.replicas ?? 1) > 1)
     notes.push(
-      `Runs ${app.replicas} replicas on {panel}. Deplo runs one container per app, so it arrives as one.`,
+      `Runs ${app.replicas} replicas on {panel}. It arrives with one: raise Replicas under its Advanced settings to run more.`,
     );
 
   return { value: build, notes };
@@ -285,7 +285,7 @@ export function unsupportedNotes(app: SourceApplication): string[] {
   );
   if (swarm.length > 0)
     notes.push(
-      `Swarm settings on {panel} (${swarm.map(([, label]) => label).join(", ")}) have no equivalent here - Deplo runs one container per app through compose.`,
+      `Swarm settings on {panel} (${swarm.map(([, label]) => label).join(", ")}) have no equivalent here - Deplo runs an app through compose, not Swarm.`,
     );
   return notes;
 }

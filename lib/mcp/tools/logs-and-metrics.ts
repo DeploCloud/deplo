@@ -25,7 +25,7 @@ export const LOGS: McpToolDef[] = [
         .string()
         .optional()
         .describe(
-          "One container, by compose service name; defaults to the workload's own.",
+          "One container, by compose service name; defaults to the workload's own. An app with replicas reads every replica merged and tagged web-1, web-2; name one container to read a single replica.",
         ),
     }),
     query: "",
@@ -50,6 +50,16 @@ const CONTAINER_METRICS = /* GraphQL */ `
   pids
   running
   ts
+  unavailable
+`;
+
+const SAMPLE_SHARES = /* GraphQL */ `
+  members {
+    server
+    cpu
+    memUsed
+    running
+  }
 `;
 
 export const METRICS: McpToolDef[] = [
@@ -57,7 +67,7 @@ export const METRICS: McpToolDef[] = [
     name: "metrics",
     title: "Live metrics",
     description:
-      "Live CPU, memory and I/O for an app, a database or a whole server. A server also reports disk, which is how you explain a build that failed on a full host.",
+      "Live CPU, memory and I/O for an app, a database or a whole server. A server also reports disk, which is how you explain a build that failed on a full host. `unavailable` names a cluster's silent servers.",
     group: "Monitoring",
     requires: "view_metrics",
     readOnly: true,
@@ -116,7 +126,7 @@ export const METRICS_HISTORY: McpToolDef[] = [
     name: "metrics_history",
     title: "Read metrics history",
     description:
-      "The recent CPU, memory, network and disk samples of an app, a database or a server, as the Monitoring page charts them.",
+      "The recent CPU, memory, network and disk samples of an app, a database or a server, as the Monitoring page charts them. On a cluster a sample has each server's share, and markers say when it moved.",
     group: "Monitoring",
     requires: "view_metrics",
     readOnly: true,
@@ -152,6 +162,11 @@ export const METRICS_HISTORY: McpToolDef[] = [
           blockWrite
           pids
           running
+          ${SAMPLE_SHARES}
+        }
+        appMetricsMarkers(appId: $id) @include(if: $app) {
+          ts
+          label
         }
         databaseMetricsHistory(databaseId: $id) @include(if: $database) {
           ts
@@ -165,6 +180,11 @@ export const METRICS_HISTORY: McpToolDef[] = [
           blockWrite
           pids
           running
+          ${SAMPLE_SHARES}
+        }
+        databaseMetricsMarkers(databaseId: $id) @include(if: $database) {
+          ts
+          label
         }
         serverMetricsHistory(serverId: $id) @include(if: $server) {
           ts

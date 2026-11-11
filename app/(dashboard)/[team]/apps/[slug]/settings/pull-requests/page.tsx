@@ -83,6 +83,7 @@ export default async function AppPullRequestsSettingsPage(
               comment={view.comment}
               requiredLabels={view.requiredLabels}
               appServerId={project.serverId}
+              clusterName={view.clusterName}
               appPort={project.build.port}
               servers={servers}
               activeCount={

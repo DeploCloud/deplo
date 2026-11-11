@@ -13,7 +13,20 @@ import {
 import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
 import { requireCapability, requireMembership } from "../../membership";
-import { canHostWorkloads, listServersForTeam } from "../servers/roster";
+import {
+  assertServerNotInCluster,
+  clusterMemberServerIdSet,
+} from "../clusters/members";
+import { imageArchs } from "../clusters/architectures";
+import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
+import { resolveTeamCluster } from "../clusters/roster";
+import type { Cluster } from "../../types/cluster";
+import type { Server } from "../../types/server";
+import {
+  canHostWorkloads,
+  getServerById,
+  listServersForTeam,
+} from "../servers/roster";
 import { assertServerAccessibleTx } from "../servers/team-access";
 import { isReservedSharedName } from "../../deploy/compose-lint/networks";
 import {
@@ -142,6 +155,8 @@ export interface CreateAppInput {
     targets?: EnvTarget[];
   }[];
   serverId?: string;
+  /** Place the App on a cluster: the leader picks the member. Not together with `serverId`. */
+  clusterId?: string;
   buildServerId?: string | null;
   build?: Partial<BuildConfig>;
   autoDeploy?: boolean;
@@ -170,6 +185,7 @@ export interface CreateAppFromTemplateInput {
   variantSlug?: string;
   name?: string;
   serverId?: string;
+  clusterId?: string;
   projectId?: string;
   environmentId?: string;
   folderId?: string;
@@ -285,10 +301,39 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const servers = await listServersForTeam(membership.teamId);
   if (input.serverId && !servers.some((s) => s.id === input.serverId))
     throw new Error("That server isn't available to this team.");
-  const deployable = servers.filter(canHostWorkloads);
+  const members = await clusterMemberServerIdSet();
+  const deployable = servers.filter(
+    (s) => canHostWorkloads(s) && !members.has(s.id),
+  );
+  if (input.clusterId && input.serverId)
+    throw new Error("Pick a cluster or a server, not both.");
+  if (input.serverId) await assertServerNotInCluster(input.serverId);
   if (input.serverId && !deployable.some((s) => s.id === input.serverId))
     throw new Error("That server doesn't run apps.");
+  // The leader answers before anything is written, so a refusal leaves no App behind.
+  const appId = newId("prj");
+  let cluster: Cluster | null = null;
+  let clusterServer: Server | null = null;
+  if (input.clusterId) {
+    cluster = await resolveTeamCluster(membership.teamId, input.clusterId);
+    const memberId = await askLeaderToPlace(cluster, {
+      kind: "app",
+      id: appId,
+      name: input.name.trim(),
+      environmentId: placement.environmentId,
+      limitMb: 0,
+      // A pulled image only goes where its registry says it runs; one built here goes anywhere.
+      archs:
+        input.source === "docker-image" && input.dockerImage
+          ? await imageArchs(input.dockerImage)
+          : [],
+    });
+    // A member follows its cluster's sharing, whatever the server itself is shared with.
+    clusterServer = await getServerById(memberId);
+    if (!clusterServer) throw new Error("Server not found");
+  }
   const server =
+    clusterServer ||
     (input.serverId && deployable.find((s) => s.id === input.serverId)) ||
     deployable[0];
   if (!server)
@@ -380,7 +425,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const logo = input.logo && isValidLogoValue(input.logo) ? input.logo : null;
 
   const project: App = {
-    id: newId("prj"),
+    id: appId,
     name: input.name.trim(),
     slug,
     teamId: membership.teamId,
@@ -411,6 +456,11 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     restartLoopGuard: true,
     screenshotsEnabled: true,
     zeroDowntimeDeploys: false,
+    restartWhenUnresponsive: true,
+    restartsPausedAt: null,
+    replicas: 1,
+    stickySessions: false,
+    failoverFromBackup: false,
     autoDeploy: input.autoDeploy ?? true,
     deployHookEnabled: true,
     composeUpArgs: rawComposeArgs
@@ -474,6 +524,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
               createdByUserId: userId,
               hostReachBy: reach.length > 0 ? userId : null,
               traefikLabelsBy,
+              clusterId: cluster?.id ?? null,
             });
             await tx
               .insert(appBuildTable)
@@ -499,9 +550,19 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       }
     },
   );
+  if (cluster)
+    await recordPlacement({
+      clusterId: cluster.id,
+      kind: "app",
+      workloadId: project.id,
+      members: [server.id],
+      epoch: cluster.leaderEpoch,
+    });
   await recordActivity(
     "app",
-    `Created app ${project.name}`,
+    cluster
+      ? `Created app ${project.name} on cluster ${cluster.name}`
+      : `Created app ${project.name}`,
     user.name,
     project.id,
   );
@@ -632,6 +693,7 @@ export async function createAppFromTemplate(
     autoDomainPath: blueprint.expose?.path ?? null,
     mounts: blueprint.mounts,
     serverId: input.serverId,
+    clusterId: input.clusterId,
     projectId: input.projectId ?? null,
     environmentId: input.environmentId ?? null,
     folderId: input.folderId ?? null,

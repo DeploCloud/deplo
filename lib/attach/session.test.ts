@@ -1,7 +1,7 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import type { AttachHandle } from "../infra/docker";
+import type { AttachHandle } from "./types";
 import { open, get, recheckAccess, destroy } from "./session";
 
 const handle = (): AttachHandle => ({

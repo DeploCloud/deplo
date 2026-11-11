@@ -92,6 +92,11 @@ const CreateAppFromTemplateInputType = builder.inputType(
         description: "The new App name. Omitted uses the template name.",
       }),
       serverId: t.string({ required: false }),
+      clusterId: t.string({
+        required: false,
+        description:
+          "Place the App on a cluster instead of a server: its leader picks the server. Not together with serverId.",
+      }),
       projectId: t.string({ required: false }),
       environmentId: t.string({ required: false }),
       folderId: t.string({ required: false }),
@@ -164,6 +169,7 @@ builder.mutationFields((t) => ({
         variantSlug: input.variantSlug ?? undefined,
         name: input.name ?? undefined,
         serverId: input.serverId ?? undefined,
+        clusterId: input.clusterId ?? undefined,
         projectId: input.projectId ?? undefined,
         environmentId: input.environmentId ?? undefined,
         folderId: input.folderId ?? undefined,

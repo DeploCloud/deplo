@@ -11,7 +11,7 @@ import { agentMessage, connectFn } from "./agent";
 import { startAttempt } from "./attempt";
 import { settle, settleOrRetry } from "./outcome";
 import type { InFlightRun, SchedulableJob } from "./targets";
-import { listSchedulableJobs } from "./targets";
+import { listSchedulableJobs, serverOf } from "./targets";
 
 async function hasOtherRunningRun(
   jobId: string,
@@ -167,7 +167,7 @@ export async function runJobNow(
 export async function cancelRun(r: InFlightRun, actor: string): Promise<void> {
   if (r.run.agentJobId) {
     try {
-      const conn = await connectFn(r.target.serverId);
+      const conn = await connectFn(serverOf(r));
       try {
         await conn.killJob(r.run.agentJobId);
       } finally {

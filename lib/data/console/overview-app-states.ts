@@ -15,7 +15,7 @@ import {
 import { metricsStreamUnsupported } from "../../monitoring/stream-modes";
 import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
 import type { AppStatus } from "../../types/app";
-import type { AppRuntime } from "./index";
+import type { AppRuntime } from "./runtime";
 
 export type OverviewRuntime = Pick<
   AppRuntime,
@@ -29,6 +29,7 @@ export interface OverviewAppState {
   appId: string;
   status: AppStatus;
   neverDeployed: boolean;
+  restartsPaused: boolean;
   runtime: OverviewRuntime | null;
 }
 
@@ -126,6 +127,19 @@ function mergeHealth(
   };
 }
 
+// Telemetry carries the server agent's verdict only from an agent new enough to send it. The agent is still
+// asked for an App with its own http check, and for one it restarted, until it says the App answers again.
+function asksTheAgent(row: {
+  healthCheckEnabled: boolean;
+  healthCheckType: string | null;
+  recoveryAlertOwed: boolean;
+}): boolean {
+  return (
+    (row.healthCheckEnabled && row.healthCheckType === "http") ||
+    row.recoveryAlertOwed
+  );
+}
+
 function intervalMs(row: {
   healthCheckEnabled: boolean;
   healthCheckType: string | null;
@@ -203,6 +217,8 @@ export async function loadOverviewAppStates(
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
       status: appsTable.status,
+      restartsPausedAt: appsTable.restartsPausedAt,
+      recoveryAlertOwed: appsTable.recoveryAlertOwed,
       latestDeploymentId: appsTable.latestDeploymentId,
       healthCheckEnabled: appsTable.healthCheckEnabled,
       healthCheckType: appsTable.healthCheckType,
@@ -236,9 +252,7 @@ export async function loadOverviewAppStates(
         const legacy = metricsStreamUnsupported(row.serverId);
         if (
           row.status !== "active" ||
-          (!legacy &&
-            telemetry.get(row.id) != null &&
-            (!row.healthCheckEnabled || row.healthCheckType !== "http"))
+          (!legacy && telemetry.get(row.id) != null && !asksTheAgent(row))
         )
           return false;
         const cached = fallback.cache.get(row.id);
@@ -266,18 +280,16 @@ export async function loadOverviewAppStates(
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: row.status === "idle" && row.latestDeploymentId == null,
+        restartsPaused: false,
         runtime: null,
       };
     }
-    if (
-      live &&
-      !legacy &&
-      (!row.healthCheckEnabled || row.healthCheckType !== "http")
-    )
+    if (live && !legacy && !asksTheAgent(row))
       return {
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: false,
+        restartsPaused: row.restartsPausedAt != null,
         runtime: live,
       };
 
@@ -287,6 +299,7 @@ export async function loadOverviewAppStates(
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: false,
+        restartsPaused: row.restartsPausedAt != null,
         runtime: mergeHealth(live, cached.value),
       };
     }
@@ -295,6 +308,7 @@ export async function loadOverviewAppStates(
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: false,
+        restartsPaused: row.restartsPausedAt != null,
         runtime: fromFallback(cached.value),
       };
     }
@@ -302,6 +316,7 @@ export async function loadOverviewAppStates(
       appId: row.id,
       status: row.status as AppStatus,
       neverDeployed: false,
+      restartsPaused: row.restartsPausedAt != null,
       runtime: live,
     };
   });

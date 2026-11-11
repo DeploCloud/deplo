@@ -26,10 +26,15 @@ export type AlertKey =
   | "git_connection_failing"
   | "git_access_missing"
   | "app_crash_loop"
+  | "app_unresponsive"
+  | "app_restarts_paused"
+  | "cluster_failover_waiting"
+  | "cluster_member_returned"
   | "app_out_of_memory"
   | "security_update_available"
   | "cron_job_failed"
   | "cron_job_succeeded"
+  | "cron_run_lost"
   | "database_ready"
   | "database_failed"
   | "database_rebuilt"
@@ -70,10 +75,15 @@ export const ALL_ALERTS: AlertKey[] = [
   "git_connection_failing",
   "git_access_missing",
   "app_crash_loop",
+  "app_unresponsive",
+  "app_restarts_paused",
+  "cluster_failover_waiting",
+  "cluster_member_returned",
   "app_out_of_memory",
   "security_update_available",
   "cron_job_failed",
   "cron_job_succeeded",
+  "cron_run_lost",
   "database_ready",
   "database_failed",
   "database_rebuilt",

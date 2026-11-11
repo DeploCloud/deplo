@@ -60,6 +60,8 @@ export interface Backup {
   lastRunAt: string | null;
   lastStatus: "success" | "failed" | "running" | "canceled" | "never";
   enabled: boolean;
+  /** Its runs are Postgres base backups, which a failover replays the change log onto. */
+  baseBackup?: boolean;
   createdAt: string;
 }
 
@@ -75,8 +77,14 @@ export interface BackupRun {
   objectKey: string;
   sizeBytes: number;
   decryptedSizeBytes: number | null;
+  heldMs: number | null;
   sha256: string | null;
   orphanedAt: string | null;
+  /** Data a returning cluster member had left: when the failover happened, and the server it was on. */
+  leftAt?: string | null;
+  leftOnServerId?: ID | null;
+  /** That server's name; only the listing fills it in. */
+  leftOnServer?: string | null;
   status: BackupRunStatus;
   error: string | null;
   startedAt: string;

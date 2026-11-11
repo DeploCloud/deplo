@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, eq } from "drizzle-orm";
 
+import { getServerById } from "../servers/roster";
 import { assertServerAccessibleTx } from "../servers/team-access";
 import { getDb } from "../../db/client";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
@@ -13,7 +14,10 @@ import { recordActivity } from "../activity";
 import { dispatchAlert } from "../../notify/dispatch";
 import { encryptSecret, randomToken } from "../../crypto";
 import { connectAgent } from "../../infra/agent-client/connect";
-import { buildConnectionString } from "../../deploy/database-compose";
+import {
+  buildConnectionString,
+  effectiveDatabaseImage,
+} from "../../deploy/database-compose";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
 import { databaseHostClash, hostNameClaims } from "../host-name-claims";
 import { environmentInTeam } from "../environments";
@@ -37,6 +41,11 @@ import {
 } from "./validate";
 import { databaseExists, toDTO, type DatabaseDTO } from "./rows";
 import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
+import { imageArchs } from "../clusters/architectures";
+import { assertServerNotInCluster } from "../clusters/members";
+import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
+import { resolveTeamCluster } from "../clusters/roster";
+import { ensureFailoverBackup } from "./failover";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
 import type { Database, DatabaseType } from "../../types/database";
 
@@ -45,6 +54,8 @@ export async function createDatabase(input: {
   type: DatabaseType;
   version: string;
   serverId?: string;
+  /** Place it on a cluster instead: the leader picks the member. */
+  clusterId?: string;
   environmentId?: string | null;
   username?: string;
   dbName?: string;
@@ -75,7 +86,11 @@ export async function createDatabase(input: {
   if (exposed && !(await canExposePorts()))
     throw new Error("You don't have permission to publish ports");
 
-  const server = await resolveTeamServer(teamId, input.serverId);
+  if (input.clusterId && input.serverId)
+    throw new Error("Pick a cluster or a server, not both.");
+  const cluster = input.clusterId
+    ? await resolveTeamCluster(teamId, input.clusterId)
+    : null;
 
   const nameTaken = await getDb()
     .select({ id: databasesTable.id })
@@ -86,6 +101,37 @@ export async function createDatabase(input: {
     .limit(1);
   if (nameTaken.length > 0)
     throw new Error(`A database named "${name}" already exists in this team.`);
+
+  const environmentId = input.environmentId
+    ? ((await environmentInTeam(input.environmentId, teamId))?.id ??
+      (() => {
+        throw new Error("Environment not found");
+      })())
+    : null;
+
+  // The leader answers before anything is written, so a refusal leaves no database behind.
+  const id = newId("db");
+  // A member follows its cluster's sharing, whatever the server itself is shared with.
+  const server = cluster
+    ? await getServerById(
+        await askLeaderToPlace(cluster, {
+          kind: "database",
+          id,
+          name,
+          environmentId,
+          limitMb: 0,
+          archs: await imageArchs(
+            effectiveDatabaseImage({
+              type: input.type,
+              version: input.version,
+              customImage,
+            }),
+          ),
+        }),
+      )
+    : await resolveTeamServer(teamId, input.serverId);
+  if (!server) throw new Error("Server not found");
+  if (!cluster) await assertServerNotInCluster(server.id);
 
   // db-<slug> is a stack on its server, and app slugs and volume names share that namespace.
   const clash = databaseHostClash(`db-${slug}`, server, await hostNameClaims());
@@ -124,13 +170,6 @@ export async function createDatabase(input: {
       ? input.password
       : randomToken(12);
 
-  const environmentId = input.environmentId
-    ? ((await environmentInTeam(input.environmentId, teamId))?.id ??
-      (() => {
-        throw new Error("Environment not found");
-      })())
-    : null;
-
   const conn = buildConnectionString({
     type: input.type,
     username,
@@ -141,7 +180,7 @@ export async function createDatabase(input: {
   });
 
   const db: Database = {
-    id: newId("db"),
+    id,
     teamId,
     environmentId,
     name,
@@ -154,6 +193,7 @@ export async function createDatabase(input: {
     dbName,
     status: "provisioning",
     serverId: server.id,
+    clusterId: cluster?.id ?? null,
     host: service,
     port,
     connectionStringEnc: encryptSecret(conn),
@@ -182,9 +222,21 @@ export async function createDatabase(input: {
       await tx.insert(databasesTable).values(databaseToRow(db));
     });
   });
+  if (cluster) {
+    await recordPlacement({
+      clusterId: cluster.id,
+      kind: "database",
+      workloadId: db.id,
+      members: [server.id],
+      epoch: cluster.leaderEpoch,
+    });
+    await ensureFailoverBackup(db);
+  }
   await recordActivity(
     "database",
-    `Created database ${name} (${input.type})`,
+    cluster
+      ? `Created database ${name} (${input.type}) on cluster ${cluster.name}`
+      : `Created database ${name} (${input.type})`,
     user.name,
     null,
     teamId,

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   composeTraefikLabels,
+  customLabelPort,
   overlayTraefikLabels,
   validateTraefikLabels,
 } from "./traefik-overrides";
@@ -254,4 +255,28 @@ test("disabling proxy routing does not require joining the proxy network", () =>
     { allowTraefikLabels: true },
   );
   assert.ok(labelsOf(doc.services.web).includes("traefik.enable=false"));
+});
+
+test("the port hand-written labels route on is read from the labels as written", () => {
+  assert.equal(
+    customLabelPort([
+      { key: "traefik.http.routers.own.rule", value: "Host(`a.example.com`)" },
+      {
+        key: "traefik.http.services.own.loadbalancer.server.port",
+        value: "9000",
+      },
+    ]),
+    9000,
+  );
+  assert.equal(
+    customLabelPort([
+      {
+        key: "traefik.tcp.services.own.loadbalancer.server.port",
+        value: "5432",
+      },
+    ]),
+    null,
+    "only an http service is probed",
+  );
+  assert.equal(customLabelPort([]), null);
 });

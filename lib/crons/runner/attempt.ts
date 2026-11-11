@@ -11,9 +11,9 @@ import {
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { agentMessage, connectFn } from "./agent";
 import { deadlineOf, STALE_CLAIM_MS } from "./deadlines";
-import { settle, settleOrRetry } from "./outcome";
+import { settle, settleOrRetry, settleServerLost } from "./outcome";
 import type { CronTarget, InFlightRun, JobRow } from "./targets";
-import { listInFlightRuns } from "./targets";
+import { listInFlightRuns, listStoppedMembers, serverOf } from "./targets";
 
 // ponytail: serial in the fire phase - a job still going when the ladder runs out
 let quickFinishPolls = [150, 250, 350, 500];
@@ -91,7 +91,12 @@ export async function startAttempt(
     });
     await getDb()
       .update(cronRunsTable)
-      .set({ agentJobId, container: container.name, nextAttemptAt: null })
+      .set({
+        agentJobId,
+        serverId: r.target.serverId,
+        container: container.name,
+        nextAttemptAt: null,
+      })
       .where(
         and(
           eq(cronRunsTable.id, r.run.id),
@@ -104,6 +109,7 @@ export async function startAttempt(
       run: {
         ...r.run,
         agentJobId,
+        serverId: r.target.serverId,
         container: container.name,
         nextAttemptAt: null,
       },
@@ -129,11 +135,13 @@ export async function reapInFlightRuns(
   heartbeat: () => Promise<boolean> = async () => true,
 ): Promise<void> {
   const runs = await listInFlightRuns();
+  const stopped = await listStoppedMembers();
   const byServer = new Map<string, InFlightRun[]>();
   for (const r of runs) {
-    const list = byServer.get(r.target.serverId);
+    const serverId = serverOf(r);
+    const list = byServer.get(serverId);
     if (list) list.push(r);
-    else byServer.set(r.target.serverId, [r]);
+    else byServer.set(serverId, [r]);
   }
 
   for (const [serverId, group] of byServer) {
@@ -144,7 +152,10 @@ export async function reapInFlightRuns(
       conn = await connectFn(serverId);
     } catch (e) {
       for (const r of group) {
-        if (now.getTime() > deadlineOf(r.run)) {
+        // What is stored about the member counts only when its own agent cannot be asked.
+        if (r.run.agentJobId && stopped.has(serverId))
+          await settleServerLost(r, serverId, now);
+        else if (now.getTime() > deadlineOf(r.run)) {
           await settle(
             r,
             "lost",
@@ -161,7 +172,7 @@ export async function reapInFlightRuns(
     try {
       for (const r of group) {
         try {
-          await reapOne(conn, r, now);
+          await reapOne(conn, r, now, stopped);
         } catch (e) {
           console.warn(
             `[crons] reaping run ${r.run.id} failed: ${agentMessage(e)}`,
@@ -178,6 +189,7 @@ async function reapOne(
   conn: AgentConnection,
   r: InFlightRun,
   now: Date,
+  stopped: ReadonlySet<string> = new Set(),
 ): Promise<boolean> {
   if (!r.run.agentJobId) {
     if (r.run.nextAttemptAt) {
@@ -197,6 +209,11 @@ async function reapOne(
   }
 
   const poll = await conn.pollJob(r.run.agentJobId);
+  // An agent that forgot the job on a member that stopped lost it to the stop, not to a restart.
+  if (poll.fenced || (!poll.found && stopped.has(serverOf(r)))) {
+    await settleServerLost(r, serverOf(r), now);
+    return false;
+  }
   if (!poll.found) {
     await settle(
       r,

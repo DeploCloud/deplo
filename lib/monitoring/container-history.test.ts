@@ -11,6 +11,10 @@ import {
   recordContainerInstances,
   clearContainerHistory,
   pruneContainerHistoryTo,
+  recordMemberSample,
+  dropMemberSamples,
+  freshMemberIds,
+  peakMemoryMb,
 } from "./container-history";
 import type {
   ContainerInstanceMetrics,
@@ -191,4 +195,149 @@ test("clearContainerHistory clears the breakdown cell too, per id and wholesale"
 
   clearContainerHistory();
   assert.deepEqual(latestContainerInstances("app_2"), []);
+});
+
+const share = (serverId: string, s: ContainerMetricsSample) => ({
+  serverId,
+  cpu: s.cpu,
+  memUsed: s.memUsed,
+  running: s.running,
+});
+
+test("one server's readings are the workload's history, value for value", () => {
+  const first = sample("app_1", NOW - 5000, { cpu: 7, netRx: 900 });
+  // A restarted container counts from zero again, and the history shows it as it does today.
+  const second = sample("app_1", NOW, { cpu: 9, netRx: 40 });
+  recordMemberSample("srv_a", first, [instance("web")]);
+  recordMemberSample("srv_a", second, [instance("web")]);
+  assert.deepEqual(getContainerHistory("app_1"), [
+    { ...first, members: [share("srv_a", first)] },
+    { ...second, members: [share("srv_a", second)] },
+  ]);
+  assert.deepEqual(latestContainerInstances("app_1"), [instance("web")]);
+});
+
+test("two servers' readings total on the first server's tick, with each one's share", () => {
+  const a = sample("app_1", NOW - 5000, {
+    cpu: 10,
+    memUsed: 100,
+    memLimit: 1000,
+    pids: 3,
+    hostCores: 4,
+  });
+  const b = sample("app_1", NOW - 4000, {
+    cpu: 30,
+    memUsed: 300,
+    memLimit: 1000,
+    pids: 5,
+    hostCores: 2,
+  });
+  recordMemberSample("srv_a", a, [instance("web-1")]);
+  recordMemberSample("srv_b", b, [instance("web-1")]);
+  assert.equal(getContainerHistory("app_1").length, 1, "srv_b does not lead");
+
+  const a2 = { ...a, ts: NOW, cpu: 20 };
+  recordMemberSample("srv_a", a2, [instance("web-1")]);
+  const total = getContainerHistory("app_1").at(-1)!;
+  assert.deepEqual(
+    {
+      ts: total.ts,
+      cpu: total.cpu,
+      memUsed: total.memUsed,
+      memLimit: total.memLimit,
+      memPct: total.memPct,
+      pids: total.pids,
+      running: total.running,
+      containers: total.containers,
+      hostCores: total.hostCores,
+      members: total.members,
+    },
+    {
+      ts: NOW,
+      cpu: 50,
+      memUsed: 400,
+      memLimit: 2000,
+      memPct: 20,
+      pids: 8,
+      running: 2,
+      containers: 2,
+      hostCores: 6,
+      members: [share("srv_a", a2), share("srv_b", b)],
+    },
+  );
+  assert.deepEqual(
+    latestContainerInstances("app_1").map((i) => [i.name, i.serverId]),
+    [
+      ["web-1", "srv_a"],
+      ["web-1", "srv_b"],
+    ],
+  );
+});
+
+test("a server joining the total adds what it sends from then on, never its counter so far", () => {
+  const at = (ago: number, netRx: number) =>
+    sample("app_1", NOW - ago, { netRx });
+  recordMemberSample("srv_a", at(10_000, 1000), []);
+  recordMemberSample("srv_b", at(9000, 5_000_000), []);
+  recordMemberSample("srv_a", at(5000, 1100), []);
+  recordMemberSample("srv_b", at(4000, 5_000_300), []);
+  recordMemberSample("srv_a", at(0, 1200), []);
+  assert.deepEqual(
+    getContainerHistory("app_1").map((s) => s.netRx),
+    [1000, 1100, 1500],
+  );
+});
+
+test("a server silent past the fresh window leaves the total, and the next one leads", () => {
+  recordMemberSample("srv_a", sample("app_1", NOW - 30_000, { cpu: 10 }), []);
+  recordMemberSample("srv_b", sample("app_1", NOW - 29_000, { cpu: 30 }), []);
+  recordMemberSample("srv_b", sample("app_1", NOW - 24_000, { cpu: 31 }), []);
+  assert.equal(getContainerHistory("app_1").length, 1, "srv_a still leads");
+  const alone = sample("app_1", NOW - 14_000, { cpu: 32 });
+  recordMemberSample("srv_b", alone, []);
+  const last = getContainerHistory("app_1").at(-1)!;
+  assert.equal(last.cpu, 32);
+  assert.deepEqual(last.members, [share("srv_b", alone)]);
+  assert.deepEqual(freshMemberIds("app_1", NOW - 14_000), ["srv_b"]);
+  assert.deepEqual(freshMemberIds("app_1", NOW + 60_000), []);
+});
+
+test("a server whose frame no longer carries the workload leaves the total at once", () => {
+  recordMemberSample("srv_a", sample("app_1", NOW - 5000, { cpu: 10 }), []);
+  recordMemberSample("srv_b", sample("app_1", NOW - 4000, { cpu: 30 }), []);
+  recordMemberSample("srv_a", sample("app_2", NOW - 4000), []);
+  dropMemberSamples("srv_a", new Set(["app_2"]));
+  recordMemberSample("srv_b", sample("app_1", NOW, { cpu: 31 }), []);
+  assert.equal(getContainerHistory("app_1").at(-1)!.cpu, 31);
+  assert.deepEqual(freshMemberIds("app_2", NOW), ["srv_a"]);
+});
+
+test("clearing or pruning a workload forgets its servers too", () => {
+  recordMemberSample("srv_a", sample("app_1", NOW - 5000), []);
+  recordMemberSample("srv_b", sample("app_1", NOW - 4000), []);
+  clearContainerHistory("app_1");
+  assert.deepEqual(freshMemberIds("app_1", NOW), []);
+  recordMemberSample("srv_b", sample("app_1", NOW), []);
+  assert.equal(getContainerHistory("app_1").length, 1, "srv_b leads alone");
+  pruneContainerHistoryTo(new Set());
+  assert.deepEqual(freshMemberIds("app_1", NOW), []);
+});
+
+test("the 24-hour peak is the highest reading of the last day, in MB, and older ones are forgotten", () => {
+  const MB = 1024 * 1024;
+  const HOUR = 3_600_000;
+  clearContainerHistory();
+  assert.equal(peakMemoryMb("prj_peak", 1, NOW), 0, "nothing was measured");
+  recordContainerSample(
+    sample("prj_peak", NOW - 30 * HOUR, { memUsed: 4000 * MB }),
+  );
+  recordContainerSample(
+    sample("prj_peak", NOW - 20 * HOUR, { memUsed: 900 * MB }),
+  );
+  recordContainerSample(sample("prj_peak", NOW - 1000, { memUsed: 300 * MB }));
+  assert.equal(peakMemoryMb("prj_peak", 1, NOW), 900);
+  assert.equal(peakMemoryMb("prj_peak", 3, NOW), 300, "one replica's share");
+  assert.equal(peakMemoryMb("prj_other", 1, NOW), 0);
+  clearContainerHistory("prj_peak");
+  assert.equal(peakMemoryMb("prj_peak", 1, NOW), 0);
 });

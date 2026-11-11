@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
-import { BackupKind } from "../../agent/gen/agent";
+import { BackupKind, PostgresArchive } from "../../agent/gen/agent";
 import { connectBackupAgent } from "../../infra/agent-client/preflight";
 import { assembleDatabase } from "../backup-rows";
 import { databaseDescriptor } from "../backups/target-descriptor";
@@ -183,6 +183,7 @@ export async function openDatabaseDump(
     database: databaseDescriptor(db),
     ageRecipient: recipient,
     streamOut: true,
+    archive: PostgresArchive.POSTGRES_ARCHIVE_NONE,
   });
   return {
     chunks: (async function* () {

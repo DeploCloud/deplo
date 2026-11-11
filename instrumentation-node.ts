@@ -178,6 +178,13 @@ export async function register(): Promise<void> {
     console.error("[deplo] preview reaper startup failed:", e);
   }
   try {
+    const { startClusterWatch } =
+      await import("./lib/data/clusters/watch-scheduler");
+    startClusterWatch();
+  } catch (e) {
+    console.error("[deplo] cluster watch startup failed:", e);
+  }
+  try {
     const { startPubSubBridge } = await import("./lib/graphql/pubsub");
     startPubSubBridge();
   } catch (e) {
@@ -237,6 +244,10 @@ export async function register(): Promise<void> {
         const n = await restoreTunnelConnectors();
         if (n > 0)
           console.log(`[deplo] restored ${n} Cloudflare Tunnel connector(s)`);
+        // A cluster App's own tunnel: taken in, and switched once its connector is connected.
+        const { reconcileAppTunnels } =
+          await import("./lib/data/clusters/app-tunnel");
+        await reconcileAppTunnels();
       };
       const tick = () =>
         void run().catch((e) =>
@@ -288,6 +299,9 @@ export async function register(): Promise<void> {
         ),
         import("./lib/previews/reaper").then(({ releasePreviewReaperLease }) =>
           releasePreviewReaperLease(),
+        ),
+        import("./lib/data/clusters/watch-scheduler").then(
+          ({ releaseClusterWatchLease }) => releaseClusterWatchLease(),
         ),
         import("./lib/crons/scheduler").then(({ releaseCronSchedulerLease }) =>
           releaseCronSchedulerLease(),

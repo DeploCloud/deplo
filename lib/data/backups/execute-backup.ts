@@ -13,7 +13,10 @@ import { newId, nowIso } from "../../ids";
 import { requireMembership } from "../../membership";
 import { recordActivity } from "../activity";
 import { dispatchAlert } from "../../notify/dispatch";
+import { PostgresArchive } from "../../agent/gen/agent";
 import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
+import { POSTGRES_ARCHIVE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import { serverSupports } from "../../infra/agent-client/preflight";
 import { mapBackupUnsupported } from "../../infra/agent-client/errors";
 import { unreachableMessage } from "../../infra/server-health";
 import {
@@ -31,6 +34,8 @@ import { requireBackupCapability } from "./target-access";
 import { resolveTarget } from "./target-descriptor";
 import { MAX_RUNS_PER_TARGET, pruneRetention } from "./retention";
 import { formatBytes } from "./format-bytes";
+import { scheduleAppBundleRefresh } from "../clusters/app-restore";
+import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
 export const backupRunsInFlight = new Map<string, AbortController>();
@@ -71,6 +76,8 @@ export async function executeBackup(
     appId: string | null;
     destinationId: string;
     retentionCount: number;
+    /** The schedule's runs are base backups, for as long as the database archives its change log. */
+    baseBackup?: boolean;
   },
 ): Promise<BackupRun> {
   const startedAt = nowIso();
@@ -91,6 +98,7 @@ export async function executeBackup(
     objectKey: "",
     sizeBytes: 0,
     decryptedSizeBytes: null,
+    heldMs: null,
     sha256: null,
     orphanedAt: null,
     status: "running",
@@ -133,6 +141,11 @@ export async function executeBackup(
     activityAppId = target.appId;
     activityDatabaseId = target.databaseId;
     targetServerId = target.serverId;
+    // A server that cannot write one keeps the dump: a failover then restores that, without the change log.
+    const base =
+      !!opts.baseBackup &&
+      !!target.archivesChangeLog &&
+      (await serverSupports(target.serverId, POSTGRES_ARCHIVE_CAPABILITY));
     objectKey = buildObjectKey({
       teamId,
       kind: opts.kind,
@@ -142,6 +155,7 @@ export async function executeBackup(
         opts.kind,
         target.dbType,
         Boolean(creds.destination.ageRecipient),
+        base,
       ),
       at: new Date(startedAt),
     });
@@ -157,6 +171,7 @@ export async function executeBackup(
         kind: opts.kind,
         database: target.database,
         project: target.project,
+        ...(base ? { archive: PostgresArchive.POSTGRES_ARCHIVE_BASE } : {}),
       },
       objectKey,
       abort.signal,
@@ -197,6 +212,7 @@ export async function executeBackup(
           objectKey: result!.objectKey,
           sizeBytes: result!.sizeBytes,
           decryptedSizeBytes: result!.decryptedSizeBytes || null,
+          heldMs: result!.heldMs || null,
           sha256: result!.sha256 || null,
           finishedAt,
         };
@@ -248,6 +264,12 @@ export async function executeBackup(
     }
     throw new Error("This backup was canceled");
   }
+
+  // A database on a cluster fails over from its latest backup: its leader learns of this one now (#202).
+  if (!failure && opts.kind === "database" && opts.databaseId)
+    scheduleDatabaseBundle(opts.databaseId);
+  if (!failure && opts.kind === "app" && opts.appId)
+    scheduleAppBundleRefresh(opts.appId);
 
   await recordActivity(
     "backup",

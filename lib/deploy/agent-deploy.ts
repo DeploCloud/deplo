@@ -1,16 +1,11 @@
 import "server-only";
 
-import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
 import {
-  SourceKind,
   BuildKind,
   DeployPhase,
   type DeployRequest,
   type DeployEvent,
-  type RegistryAuth,
-  type BuildSpec,
-  type ReadyCheck,
+  ReadyCheck,
   type SourceCompose,
 } from "../agent/gen/agent";
 import { explainNetworkError } from "./network";
@@ -21,120 +16,33 @@ import { agentPreflight } from "../infra/agent-client/preflight";
 import {
   DEPLOY_PULL_BASE_CAPABILITY,
   FILES_BIND_CHECK_CAPABILITY,
+  RESTART_CAPABILITY,
+  START_AFTER_READY_CAPABILITY,
+  SPREAD_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
-import { stackFilesDir } from "./deploy-key";
-import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
+import {
+  buildDeployRequest,
+  type AgentBuildPlan,
+} from "./agent-deploy-request";
+import { stackFilesDir, stackName } from "./deploy-key";
+import { fileBindsUnderFilesDir } from "./file-binds";
 import { loadRegistryAuthsForApp } from "../data/registries";
+import { restartRuleForApp } from "./restart-rule-app";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
+import {
+  apps as appsTable,
+  appVolumes as appVolumesTable,
+} from "../db/schema/control-plane/apps";
+import { loadAppConnectorToken } from "../data/clusters/app-tunnel";
+import { appConnectorService, withAppConnector } from "./app-connector";
 import { tarDir, tarDirChunks } from "./context-tar";
-import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
-import { autoComposeSkip } from "./build/source-compose";
 import { offerBuiltImage } from "./build/build-reuse";
 import { deployOverlap, type OverlapStacks } from "./overlap";
+import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "./replicas";
 import { getServerById } from "../data/servers/roster";
-import type { BuildConfig } from "../types/build";
+import { offerFailoverBundle } from "./failover-offer";
 import type { LogLevel } from "../types/deployment";
-
-export type AgentBuildPlan =
-  | {
-      kind: "dockerfile";
-      buildDir: string;
-      build: BuildConfig;
-    }
-  | {
-      kind: "image";
-      image: string;
-      pull: boolean;
-    }
-  | {
-      kind: "git";
-      url: string;
-      branch: string;
-      // A full SHA to build instead of the branch tip (a rollback that rebuilds).
-      commit?: string;
-      subdir: string;
-      submodules?: boolean;
-      build: BuildConfig;
-    }
-  | {
-      kind: "compose";
-      mounts: { filePath: string; content: string }[];
-    }
-  | {
-      // The compose file the source carries, built and brought up from its checkout.
-      kind: "source-compose";
-      source:
-        | {
-            kind: "git";
-            url: string;
-            commit: string;
-            subdir: string;
-            submodules?: boolean;
-          }
-        | { kind: "upload"; buildDir: string };
-      composeFile: string;
-    };
-
-export function agentCanHandle(build: BuildConfig | null): boolean {
-  if (!build) return true;
-  void normalizeBuildConfig(build).buildMethod;
-  return true;
-}
-
-// Detect automatically falls back to Railpack, so an agent without auto detection still builds it.
-export function agentCapabilityForMethod(
-  build: BuildConfig | null,
-): string | null {
-  if (!build) return null;
-  const b = normalizeBuildConfig(build);
-  if (b.methodAuto || b.buildMethod === "railpack") return "deploy.railpack";
-  if (b.buildMethod === "compose") return "deploy.compose.source";
-  return null;
-}
-
-export function buildSpecFor(build: BuildConfig): BuildSpec {
-  const b = normalizeBuildConfig(build);
-  const runtimeVersion = (b.runtimeVersion ?? "").trim();
-  return {
-    method: b.methodAuto ? "auto" : b.buildMethod,
-    port: b.port ?? 0,
-    installCommand: b.installCommand ?? "",
-    buildCommand: b.buildCommand ?? "",
-    startCommand: b.startCommand ?? "",
-    outputDirectory: b.outputDirectory ?? "",
-    skipInstall: b.installCommand === "",
-    // A proto3 string cannot carry NULL ("work it out") apart from "" ("run nothing"), so these say it.
-    skipBuild: b.buildCommand === "",
-    runtimeVersion,
-    runtimeLanguage: runtimeVersion ? "node" : "",
-    staticSinglePageApp: b.methodSettings.staticSinglePageApp ?? false,
-    autoMethod: b.methodAuto,
-    composeFile: b.methodSettings.composeFile?.trim() ?? "",
-  };
-}
-
-export interface DockerfileDescriptor {
-  dockerfilePath: string;
-  contextPath: string;
-  targetStage: string;
-  generated: boolean;
-  generatedDockerfile: string;
-}
-
-export function explicitDockerfileDescriptor(
-  build: BuildConfig,
-): DockerfileDescriptor {
-  const s = build.methodSettings;
-  return {
-    dockerfilePath: s.dockerfilePath?.trim() || "Dockerfile",
-    contextPath: s.dockerContextPath?.trim() || ".",
-    targetStage: s.dockerBuildStage?.trim() || "",
-    generated: false,
-    generatedDockerfile: "",
-  };
-}
 
 export interface AgentDeploySink {
   log: (level: LogLevel, text: string) => void;
@@ -318,16 +226,48 @@ export async function runAgentDeploy(opts: {
       : await loadRegistryAuthsForApp(opts.appId),
   });
   applyAgentFeatures(req, opts, hello.capabilities, opts.sink);
+  if (!opts.buildOnly && hello.capabilities.includes(RESTART_CAPABILITY))
+    req.restartRule =
+      (await restartRuleForApp(opts.appId, opts.ready)) ?? undefined;
   if (opts.overlap && !opts.buildOnly) {
+    const replicas = opts.overlap.replicas;
+    const scaled = opts.overlap.scaled === true;
+    if (
+      (replicas > 1 && !hello.capabilities.includes(REPLICAS_CAPABILITY)) ||
+      (scaled && !hello.capabilities.includes(SPREAD_CAPABILITY))
+    )
+      throw new Error(REPLICAS_AGENT_MESSAGE);
     const choice = deployOverlap({
       ports: opts.overlap.ports,
       capabilities: hello.capabilities,
       dockerVersion: (await getServerById(opts.serverId))?.dockerVersion,
+      stack: opts.overlap.stack,
     });
     if (choice.overlap) {
       req.composeYaml = opts.overlap.live;
       req.standInComposeYaml = opts.overlap.standIn;
+    } else if (replicas > 1 || scaled) {
+      throw new Error(
+        `Running ${scaled ? "replicas on several servers" : `${replicas} replicas`} needs the new version to start beside the old one. ${choice.reason}`,
+      );
     } else opts.sink.log("info", choice.reason);
+  }
+  const connectorToken = opts.buildOnly
+    ? null
+    : await appConnectorToken(opts.appId, opts.slug);
+  if (connectorToken) {
+    // A HARD gate: an older agent starts it at once, and the tunnel would send visitors to an App that is not up.
+    if (!hello.capabilities.includes(START_AFTER_READY_CAPABILITY))
+      throw new AgentUnavailableError(
+        "the server agent on this server is too old to start the App's tunnel once it is ready - " +
+          "Deplo updates it on its own",
+      );
+    req.composeYaml = withAppConnector(
+      req.composeYaml,
+      opts.slug,
+      connectorToken,
+    );
+    req.startAfterReady = [appConnectorService(opts.slug)];
   }
   if (opts.reuseFor)
     req.reuseImage = await offerBuiltImage(
@@ -357,6 +297,18 @@ export async function runAgentDeploy(opts: {
         "Update the agent (reissue the install command from the server's actions menu).",
     );
   }
+
+  // A cluster App's leader gets what this deploy sent, sealed, once it is ready (ADR-0045).
+  const offerBundle = (r: AgentDeployResult): AgentDeployResult => {
+    if (r.ready && !opts.buildOnly && !opts.forkPreview)
+      offerFailoverBundle(
+        opts.appId,
+        opts.deployId,
+        req,
+        opts.overlap?.scaled ? stackName(opts.slug) : undefined,
+      );
+    return r;
+  };
 
   // A reattach replays everything AFTER this seq, so a reconnect never double-logs and misses nothing.
   const cursor = { seq: 0 };
@@ -390,7 +342,7 @@ export async function runAgentDeploy(opts: {
         started = true;
       },
     );
-    if (outcome.terminal) return outcome.terminal;
+    if (outcome.terminal) return offerBundle(outcome.terminal);
     if (!started) {
       throw new AgentUnavailableError("agent stream produced no events");
     }
@@ -430,7 +382,7 @@ export async function runAgentDeploy(opts: {
         cursor,
         () => {},
       );
-      if (outcome.terminal) return outcome.terminal;
+      if (outcome.terminal) return offerBundle(outcome.terminal);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/not.?found/i.test(msg)) {
@@ -450,6 +402,19 @@ export async function runAgentDeploy(opts: {
     "Could not reconnect to the agent to follow the deploy.",
   );
   return { ready: false, commitSha: "" };
+}
+
+// Only the App's production stack carries its tunnel's connector; a preview is never served through it.
+async function appConnectorToken(
+  appId: string,
+  slug: string,
+): Promise<string | null> {
+  const [app] = await getDb()
+    .select({ slug: appsTable.slug })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  return app?.slug === slug ? loadAppConnectorToken(appId) : null;
 }
 
 // An upload's build folder goes up in chunks when the agent can take them, else whole.
@@ -542,187 +507,6 @@ function coerceLevel(s: string): LogLevel {
   return LEVELS.has(s as LogLevel) ? (s as LogLevel) : "info";
 }
 
-export async function buildDeployRequest(opts: {
-  deployId: string;
-  slug: string;
-  appId: string;
-  imageRef: string;
-  composeYaml: string;
-  network: string;
-  env: Record<string, string>;
-  plan: AgentBuildPlan;
-  readyTimeoutMs?: number;
-  noCache?: boolean;
-  pullBase?: boolean;
-  forceRecreate?: boolean;
-  composeUpArgs?: string[];
-  buildOnly?: boolean;
-  registryAuth?: RegistryAuth[];
-}): Promise<DeployRequest> {
-  const base: DeployRequest = {
-    deployId: opts.deployId,
-    slug: opts.slug,
-    projectId: opts.appId,
-    imageRef: opts.imageRef,
-    sourceKind: SourceKind.SOURCE_KIND_UNSPECIFIED,
-    buildKind: BuildKind.BUILD_KIND_UNSPECIFIED,
-    dockerfile: undefined,
-    composeYaml: opts.composeYaml,
-    network: opts.network,
-    env: opts.env,
-    readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
-    contextTar: new Uint8Array(0),
-    pullImage: false,
-    mounts: [],
-    devWorkspaceSubdir: "",
-    buildSpec: undefined,
-    noBuildCache: opts.noCache ?? false,
-    forceRecreate: opts.forceRecreate ?? false,
-    composeUpArgs: opts.composeUpArgs ?? [],
-    buildOnly: opts.buildOnly ?? false,
-    registryAuth: opts.registryAuth ?? [],
-    filesBindSources: filesBindSources(
-      opts.composeYaml,
-      stackFilesDir(opts.slug),
-    ),
-    ready: undefined,
-    githubToken: "",
-    pullBaseImages: opts.pullBase ?? false,
-    standInComposeYaml: "",
-  };
-
-  if (opts.plan.kind === "compose") {
-    return {
-      ...base,
-      sourceKind: SourceKind.SOURCE_KIND_COMPOSE,
-      buildKind: BuildKind.BUILD_KIND_NONE,
-      mounts: opts.plan.mounts.map((m) => ({
-        path: m.filePath,
-        content: m.content,
-      })),
-    };
-  }
-
-  if (opts.plan.kind === "image") {
-    return {
-      ...base,
-      sourceKind: SourceKind.SOURCE_KIND_IMAGE,
-      buildKind: BuildKind.BUILD_KIND_NONE,
-      pullImage: opts.plan.pull,
-    };
-  }
-
-  if (opts.plan.kind === "git") {
-    return {
-      ...base,
-      sourceKind: SourceKind.SOURCE_KIND_GIT,
-      ...buildFieldsFor(opts.plan.build),
-      git: {
-        url: opts.plan.url,
-        branch: opts.plan.branch,
-        commit: opts.plan.commit ?? "",
-        subdir: opts.plan.subdir,
-        token: "",
-        submodules: opts.plan.submodules ?? false,
-      },
-    };
-  }
-
-  if (opts.plan.kind === "source-compose") {
-    const { source, composeFile } = opts.plan;
-    return {
-      ...base,
-      buildKind: BuildKind.BUILD_KIND_COMPOSE,
-      buildSpec: {
-        ...buildSpecFor(buildConfigFor({ buildMethod: "compose" })),
-        composeFile,
-      },
-      ...(source.kind === "git"
-        ? {
-            sourceKind: SourceKind.SOURCE_KIND_GIT,
-            git: {
-              url: source.url,
-              branch: "",
-              commit: source.commit,
-              subdir: source.subdir,
-              token: "",
-              submodules: source.submodules ?? false,
-            },
-          }
-        : { sourceKind: SourceKind.SOURCE_KIND_UPLOAD }),
-    };
-  }
-
-  // An upload's method is resolved against its own files before the build.
-  const { buildDir, build } = opts.plan;
-  const normalized = await resolveUploadMethod(buildDir, build);
-  return {
-    ...base,
-    sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
-    ...buildFieldsFor(normalized),
-  };
-}
-
-function buildFieldsFor(build: BuildConfig): Partial<DeployRequest> {
-  const b = normalizeBuildConfig(build);
-  if (b.buildMethod === "dockerfile" && !b.methodAuto)
-    return {
-      buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-      dockerfile: explicitDockerfileDescriptor(b),
-    };
-  // With composeYaml empty this only reads the compose file: the stack is rendered from it next.
-  if (b.buildMethod === "compose" && !b.methodAuto)
-    return {
-      buildKind: BuildKind.BUILD_KIND_COMPOSE,
-      buildSpec: buildSpecFor(b),
-    };
-  return {
-    buildKind: BuildKind.BUILD_KIND_RAILPACK,
-    buildSpec: buildSpecFor(b),
-  };
-}
-
-export const COMPOSE_FILE_NAMES = [
-  "compose.yaml",
-  "compose.yml",
-  "docker-compose.yaml",
-  "docker-compose.yml",
-];
-
-// Detect automatically for an upload, the same order the agent applies to a clone.
-export async function resolveUploadMethod(
-  buildDir: string,
-  build: BuildConfig,
-): Promise<BuildConfig> {
-  const b = normalizeBuildConfig(build);
-  if (!b.methodAuto) return b;
-  if (await fileExists(join(buildDir, "Dockerfile")))
-    return { ...b, buildMethod: "dockerfile", methodAuto: false };
-  const compose = await findComposeFile(buildDir, b.methodSettings.composeFile);
-  const deployable =
-    compose != null &&
-    autoComposeSkip(
-      compose,
-      await readFile(join(buildDir, compose), "utf8").catch(() => ""),
-    ) == null;
-  return {
-    ...b,
-    buildMethod: deployable ? "compose" : "railpack",
-    methodAuto: false,
-  };
-}
-
-export async function findComposeFile(
-  buildDir: string,
-  preferred?: string | null,
-): Promise<string | null> {
-  for (const name of preferred?.trim()
-    ? [preferred.trim()]
-    : COMPOSE_FILE_NAMES)
-    if (await fileExists(join(buildDir, name))) return name;
-  return null;
-}
-
 // Each new behaviour is the agent's to honour: an older one gets the request it understands.
 function applyAgentFeatures(
   req: DeployRequest,
@@ -763,12 +547,3 @@ function applyAgentFeatures(
 
 // Long enough for a JVM or a Rails boot; a crash ends the wait at once.
 const READY_CHECK_TIMEOUT_MS = 180_000;
-
-async function fileExists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}

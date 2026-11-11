@@ -11,6 +11,7 @@ import {
 } from "./destinations/credentials";
 import {
   BackupKind,
+  PostgresArchive,
   type BackupRequest,
   type RestoreEvent,
   type RestoreRequest,
@@ -18,12 +19,15 @@ import {
 import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
 import type { BackupDestination, BackupTargetKind } from "../types/backup";
 import { parseS3Args } from "../backups/s3-args";
+import { changeLogPrefix, isBaseBackupKey } from "./backup-objectkey";
 
 export interface TransportTarget {
   serverId: string;
   kind: BackupTargetKind;
   database?: DatabaseDescriptor;
   project?: ProjectDescriptor;
+  /** Postgres on a cluster: a base backup, or the change log archived since the last shipment. */
+  archive?: PostgresArchive;
 }
 
 export interface BackupOutcome {
@@ -32,6 +36,8 @@ export interface BackupOutcome {
   objectKey: string;
   sizeBytes: number;
   decryptedSizeBytes: number;
+  // How long the App was paused for a consistent volume copy; 0 or absent when it was not.
+  heldMs?: number;
   sha256: string;
 }
 
@@ -52,6 +58,27 @@ function hasS3Args(dest: BackupDestination): boolean {
   return dest.kind === "s3" && parseS3Args(dest.s3ExtraArgs).length > 0;
 }
 
+const isRedis = (t: TransportTarget) => t.database?.dbType === "redis";
+
+/** What an agent is handed to write an artifact where it can reach it itself: a bucket, or a store on its own disk. */
+export function backupRequestFor(
+  creds: DestinationWithSecrets,
+  target: Omit<TransportTarget, "serverId">,
+  objectKey: string,
+): BackupRequest {
+  const dest = creds.destination;
+  return {
+    kind: wireKind(target.kind),
+    database: target.database,
+    project: target.project,
+    s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
+    store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
+    ageRecipient: dest.ageRecipient ?? "",
+    streamOut: false,
+    archive: target.archive ?? PostgresArchive.POSTGRES_ARCHIVE_NONE,
+  };
+}
+
 export async function backupToDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
@@ -60,18 +87,11 @@ export async function backupToDestination(
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
   const destServer = destinationServerId(dest, target.serverId);
-  const req: BackupRequest = {
-    kind: wireKind(target.kind),
-    database: target.database,
-    project: target.project,
-    s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
-    store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
-    ageRecipient: dest.ageRecipient ?? "",
-    streamOut: false,
-  };
+  const req = backupRequestFor(creds, target, objectKey);
 
   if (dest.kind === "s3" || destServer === target.serverId) {
     const conn = await connectBackupAgent(target.serverId, {
+      postgresArchive: !!target.archive,
       store: dest.kind === "server",
       // An agent ignoring the recipient would write the app's decrypted env to the bucket in the clear.
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
@@ -119,6 +139,7 @@ async function consumeBackup(
         objectKey: ev.result.objectKey || objectKey,
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
         decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+        heldMs: Number(ev.result.heldMs ?? 0),
         sha256: ev.result.sha256 ?? "",
       };
     }
@@ -161,7 +182,10 @@ async function relayBackup(
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
   // store: true though the SOURCE writes nothing: stream_out rides the same backup-store capability.
-  const src = await connectBackupAgent(target.serverId, { store: true });
+  const src = await connectBackupAgent(target.serverId, {
+    store: true,
+    postgresArchive: !!target.archive,
+  });
   let sink: AgentConnection | null = null;
   let release = abortWith(signal, src);
   try {
@@ -183,6 +207,7 @@ async function relayBackup(
             objectKey,
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
             decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+            heldMs: Number(ev.result.heldMs ?? 0),
             sha256: ev.result.sha256 ?? "",
           };
           if (!ev.result.ok) throw new RelayAborted();
@@ -226,6 +251,11 @@ async function relayBackup(
       };
     }
     if (!produced.ok) return produced;
+    if (produced.sizeBytes === 0) {
+      // Nothing was waiting: the empty file the relay opened must not stay where a restore would read it.
+      await sink.storeDelete(storeTargetFor(dest, objectKey)).catch(() => {});
+      return produced;
+    }
     if (!landed.ok) {
       return {
         ok: false,
@@ -262,6 +292,7 @@ async function relayBackup(
       objectKey,
       sizeBytes: landed.bytesWritten,
       decryptedSizeBytes: produced.decryptedSizeBytes,
+      heldMs: produced.heldMs ?? 0,
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
@@ -269,6 +300,28 @@ async function relayBackup(
     sink?.close();
     src.close();
   }
+}
+
+/** What an agent is handed to restore an artifact it can read itself: a bucket, or a store on its own disk. */
+export function restoreRequestFor(
+  creds: DestinationWithSecrets,
+  target: Omit<TransportTarget, "serverId">,
+  objectKey: string,
+  expectedSha256 = "",
+  // Only a failover replays the change log: a restore by hand goes back to the backup it names.
+  logPrefix = "",
+): RestoreRequest {
+  const dest = creds.destination;
+  return {
+    logPrefix,
+    kind: wireKind(target.kind),
+    database: target.database,
+    project: target.project,
+    s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
+    store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
+    ageIdentity: creds.ageIdentity,
+    expectedSha256,
+  };
 }
 
 export async function restoreFromDestination(
@@ -281,20 +334,13 @@ export async function restoreFromDestination(
   const destServer = destinationServerId(dest, target.serverId);
 
   if (dest.kind === "s3" || destServer === target.serverId) {
-    const req: RestoreRequest = {
-      kind: wireKind(target.kind),
-      database: target.database,
-      project: target.project,
-      s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
-      store:
-        dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
-      ageIdentity: creds.ageIdentity,
-      expectedSha256,
-    };
+    const req = restoreRequestFor(creds, target, objectKey, expectedSha256);
     const conn = await connectBackupAgent(target.serverId, {
       store: dest.kind === "server",
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
+      redisAof: isRedis(target),
+      postgresArchive: isBaseBackupKey(objectKey),
     });
     try {
       return await consumeRestore(conn.restore(req));
@@ -306,7 +352,11 @@ export async function restoreFromDestination(
   const src = await connectBackupAgent(destServer, { store: true });
   let workload: AgentConnection | null = null;
   try {
-    workload = await connectBackupAgent(target.serverId, { store: true });
+    workload = await connectBackupAgent(target.serverId, {
+      store: true,
+      redisAof: isRedis(target),
+      postgresArchive: isBaseBackupKey(objectKey),
+    });
     const bytes = src.readStoreFile({ store: storeTargetFor(dest, objectKey) });
     return await consumeRestore(
       workload.restoreFrom(
@@ -338,6 +388,7 @@ export async function openUploadRestore(
   const conn = await connectBackupAgent(target.serverId, {
     store: true,
     untrustedConfig: true,
+    redisAof: isRedis(target),
   });
   return {
     events: conn.restoreFrom(
@@ -392,6 +443,12 @@ export async function deleteManyFromDestination(
   targets: { key: string; prefix?: boolean }[],
 ): Promise<{ ok: boolean; error: string; deleted: number }[]> {
   if (targets.length === 0) return [];
+  // A base backup goes with the change log archived after it, wherever a run is deleted.
+  targets = targets.flatMap((t) =>
+    !t.prefix && isBaseBackupKey(t.key)
+      ? [t, { key: changeLogPrefix(t.key), prefix: true, withBase: true }]
+      : [t],
+  );
   const dest = creds.destination;
   const serverId = destinationServerId(dest, targetServerId);
   const conn = await connectBackupAgent(serverId, {
@@ -416,7 +473,8 @@ export async function deleteManyFromDestination(
         out.push({ ok: false, error: mapped.message, deleted: 0 });
       }
     }
-    return out;
+    // One answer per target asked for: the change log's folder is best effort, the next prune tries again.
+    return out.filter((_, i) => !("withBase" in targets[i]!));
   } finally {
     conn.close();
   }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Boxes, Plus, Server as ServerIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +38,14 @@ import { useRouter } from "@/lib/nav";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { generatePassword } from "@/lib/password-policy";
+import {
+  FAILOVER_BACKUP_MINUTES,
+  FAILOVER_PROMISES,
+  lossSentence,
+  recoverySentence,
+} from "@/lib/databases/failover-copy";
+import { environmentReachNote } from "@/lib/databases/relay-notice";
+import { FailoverNote } from "./database-failover";
 import { DB_NAMES, DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
 import { DatabaseLogo } from "./database-logo";
 import { DbVersionInput } from "./db-version-input";
@@ -55,7 +64,13 @@ export function CreateDatabase({
   autoOpen = false,
   size = "default",
 }: {
-  servers: { id: string; name: string; isDeploHost: boolean }[];
+  servers: {
+    id: string;
+    name: string;
+    isDeploHost: boolean;
+    /** A cluster: its leader picks the server. */
+    kind?: "cluster";
+  }[];
   environments?: EnvironmentOption[];
   canCreate: boolean;
   canExposePorts?: boolean;
@@ -99,6 +114,8 @@ export function CreateDatabase({
   // A soft router.refresh() reconciles `servers` in place, so the mount-only initializer can be stale.
   const effectiveServerId =
     servers.find((s) => s.id === serverId)?.id ?? servers[0]?.id ?? "";
+  const onCluster =
+    servers.find((s) => s.id === effectiveServerId)?.kind === "cluster";
 
   function onTypeChange(v: string) {
     const t = v as DatabaseType;
@@ -128,7 +145,7 @@ export function CreateDatabase({
   const parsedPort = Number.parseInt(port, 10);
   const portValid =
     Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
-  const exposeReady = !exposed || portValid;
+  const exposeReady = onCluster || !exposed || portValid;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -140,13 +157,14 @@ export function CreateDatabase({
       name: name.trim(),
       type,
       version,
-      serverId: effectiveServerId || null,
+      serverId: onCluster ? null : effectiveServerId || null,
+      clusterId: onCluster ? effectiveServerId : null,
       environmentId: environmentId === NO_ENVIRONMENT ? null : environmentId,
       username: creds.username && username.trim() ? username.trim() : null,
       dbName: creds.dbName && dbName.trim() ? dbName.trim() : null,
       password: creds.password && password ? password : null,
-      exposedPublicly: exposed,
-      exposedPort: exposed ? parsedPort : null,
+      exposedPublicly: exposed && !onCluster,
+      exposedPort: exposed && !onCluster ? parsedPort : null,
     };
     const restore = { username, dbName, password, showPassword, exposed, port };
     setOpen(false);
@@ -330,16 +348,25 @@ export function CreateDatabase({
             {servers.length > 1 && (
               <div className="space-y-2">
                 <Label>Server</Label>
-                <Select value={serverId} onValueChange={setServerId}>
+                <Select value={effectiveServerId} onValueChange={setServerId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select" />
+                    <SelectValue placeholder="Select a server or cluster" />
                   </SelectTrigger>
                   <SelectContent>
                     {servers.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         <span className="flex items-center gap-2">
+                          {s.kind === "cluster" ? (
+                            <Boxes className="size-4 text-muted-foreground" />
+                          ) : (
+                            <ServerIcon className="size-4 text-muted-foreground" />
+                          )}
                           {s.name}
-                          <ServerRoleHint isDeploHost={s.isDeploHost} />
+                          {s.kind === "cluster" ? (
+                            <Badge variant="outline">Cluster</Badge>
+                          ) : (
+                            <ServerRoleHint isDeploHost={s.isDeploHost} />
+                          )}
                         </span>
                       </SelectItem>
                     ))}
@@ -347,10 +374,20 @@ export function CreateDatabase({
                 </Select>
               </div>
             )}
+            {onCluster && (
+              <FailoverNote
+                promises={FAILOVER_PROMISES}
+                loss={lossSentence(
+                  FAILOVER_BACKUP_MINUTES,
+                  type === "postgres",
+                )}
+                recovery={recoverySentence(null, null)}
+              />
+            )}
             {environments.length > 0 && (
               <div className="space-y-2">
                 <FieldLabel
-                  info="Apps reach this database by name only from the same environment and the same server: a network does not span machines."
+                  info={environmentReachNote(onCluster)}
                   docs="network.isolation"
                 >
                   Environment
@@ -362,61 +399,66 @@ export function CreateDatabase({
                 />
               </div>
             )}
-            <div className="space-y-3 rounded-lg border border-border p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Expose publicly</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Publish the port to the internet. Keep off unless required.
-                  </p>
+            {!onCluster && (
+              <div className="space-y-3 rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Expose publicly</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Publish the port to the internet. Keep off unless
+                      required.
+                    </p>
+                  </div>
+                  {canExposePorts ? (
+                    <Switch checked={exposed} onCheckedChange={setExposed} />
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span tabIndex={0}>
+                          <Switch checked={false} disabled />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        You don&apos;t have permission to publish ports
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
-                {canExposePorts ? (
-                  <Switch checked={exposed} onCheckedChange={setExposed} />
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span tabIndex={0}>
-                        <Switch checked={false} disabled />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      You don&apos;t have permission to publish ports
-                    </TooltipContent>
-                  </Tooltip>
+                {exposed && (
+                  <div className="space-y-1.5">
+                    <FieldLabel
+                      htmlFor="db-port"
+                      info="The port on the server clients connect to. Use an unprivileged port (1024-65535) that is free on the host, or click Generate."
+                      docs="databases.hostPort"
+                    >
+                      Host port
+                    </FieldLabel>
+                    <div className="flex gap-2">
+                      <Input
+                        id="db-port"
+                        inputMode="numeric"
+                        value={port}
+                        onChange={(e) =>
+                          setPort(e.target.value.replace(/[^0-9]/g, ""))
+                        }
+                        placeholder="e.g. 25432"
+                        aria-invalid={port !== "" && !portValid}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={generatePort}
+                        disabled={
+                          generatingPort || pending || !effectiveServerId
+                        }
+                      >
+                        {generatingPort ? "Finding…" : "Generate"}
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
-              {exposed && (
-                <div className="space-y-1.5">
-                  <FieldLabel
-                    htmlFor="db-port"
-                    info="The port on the server clients connect to. Use an unprivileged port (1024-65535) that is free on the host, or click Generate."
-                    docs="databases.hostPort"
-                  >
-                    Host port
-                  </FieldLabel>
-                  <div className="flex gap-2">
-                    <Input
-                      id="db-port"
-                      inputMode="numeric"
-                      value={port}
-                      onChange={(e) =>
-                        setPort(e.target.value.replace(/[^0-9]/g, ""))
-                      }
-                      placeholder="e.g. 25432"
-                      aria-invalid={port !== "" && !portValid}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={generatePort}
-                      disabled={generatingPort || pending || !effectiveServerId}
-                    >
-                      {generatingPort ? "Finding…" : "Generate"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </AnimatedHeight>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>

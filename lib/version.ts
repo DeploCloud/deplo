@@ -9,6 +9,15 @@ export const DEPLO_COMMIT: string = process.env.DEPLO_COMMIT ?? "";
 export const AGENT_VERSION: string = agentPin.agent;
 export const AGENT_MIN_VERSION: string = agentPin.agentMin;
 
+// The deplo-cluster binary the agent installs, and its floor (ADR-0043). Empty until the first release exists.
+export const CLUSTER_VERSION: string = agentPin.cluster;
+export const CLUSTER_MIN_VERSION: string = agentPin.clusterMin;
+
+/** Whether `v` (default: this panel's pin) names a release; an empty or unparseable pin is "unpinned". */
+export function clusterPinned(v: string = CLUSTER_VERSION): boolean {
+  return parseSemver(v) !== null;
+}
+
 // ADR-0041: whether this release is an update stop, and the stop an instance must pass to install it.
 export const UPDATE_STOP: boolean = agentPin.updateStop;
 export const REQUIRED_STOP: string | null =

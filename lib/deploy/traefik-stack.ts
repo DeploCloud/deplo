@@ -9,6 +9,7 @@ import {
 } from "yaml";
 
 import { LINK_PATH, LINK_PORT } from "../infra/agent-link/protocol";
+import { HOST_GATEWAY_ENTRY, RELAY_PATH, RELAY_TARGET } from "./cluster-relay";
 import { composeTruthy } from "./compose-lint/document";
 
 export const TRAEFIK_CONTAINER = "deplo-traefik";
@@ -90,7 +91,14 @@ const CERT_FILE = "deplo-certificates.yml";
 const PANEL_CONFIG = "deplo-panel";
 const PANEL_FILE = "deplo-panel.yml";
 const DEFAULT_CERT_CONFIG = "deplo-default-cert";
-const OUR_CONFIGS = [CERT_CONFIG, PANEL_CONFIG, DEFAULT_CERT_CONFIG];
+const RELAY_CONFIG = "deplo-cluster-relay";
+const RELAY_FILE = "deplo-cluster-relay.yml";
+const OUR_CONFIGS = [
+  CERT_CONFIG,
+  PANEL_CONFIG,
+  DEFAULT_CERT_CONFIG,
+  RELAY_CONFIG,
+];
 const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
 const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
 const FILE_WATCH_FLAG = "--providers.file.watch=true";
@@ -291,6 +299,8 @@ export type PanelRoute = {
   https: boolean;
   certResolver: string | null;
   target: string;
+  /** Also routes the cluster relay's path to the relay on the host (ADR-0044). */
+  relay?: boolean;
 };
 
 const PANEL_PRIORITY = 2;
@@ -299,6 +309,11 @@ const PANEL_PRIORITY = 2;
 const LINK_SERVICE = "deplo-link";
 const LINK_PRIORITY = 3;
 const linkRouterOf = (router: string) => `${router}-link`;
+
+// The cluster relay rides the same names as the link, one path over (ADR-0044).
+const RELAY_SERVICE = "deplo-relay";
+const RELAY_PRIORITY = 3;
+const relayRouterOf = (router: string) => `${router}-relay`;
 
 const REDIRECT_PRIORITY = 1;
 
@@ -347,7 +362,9 @@ export function panelRoute(currentYaml: string): PanelRoute | null {
   const domain = ruleHost(router.rule);
   if (!domain) return null;
   const resolver = router.tls?.certResolver;
+  const relay = http?.routers?.[relayRouterOf(PANEL_ROUTER)] !== undefined;
   return {
+    ...(relay ? { relay: true } : {}),
     domain,
     fallbackDomain: ruleHost(
       (http?.routers?.[PANEL_FALLBACK_ROUTER] as { rule?: unknown } | undefined)
@@ -377,6 +394,7 @@ export function withPanelRoute(
 
   if (!route) {
     dropFileProvider(doc, service, PANEL_CONFIG);
+    setHostGateway(doc, service, false);
     return dump(doc);
   }
 
@@ -404,7 +422,82 @@ export function withPanelRoute(
     "the panel's own route",
     panelFile(currentContent, { ...route, domain, fallbackDomain, target }),
   );
+  setHostGateway(doc, service, route.relay === true);
   return dump(doc);
+}
+
+/** The address a server's proxy answers the cluster relay on, or null when it carries no such route. */
+export function relayRouteHost(currentYaml: string): string | null {
+  let content: unknown;
+  try {
+    content = parseCompose(currentYaml).getIn([
+      "configs",
+      RELAY_CONFIG,
+      "content",
+    ]);
+  } catch {
+    return null;
+  }
+  if (typeof content !== "string") return null;
+  return content.match(/Host\(`([^`]+)`\)/)?.[1] ?? null;
+}
+
+/** The relay beside a leader on another server answers on that server's own address (ADR-0044); null takes it out. */
+export function withRelayRoute(
+  currentYaml: string,
+  host: string | null,
+): string {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  dropOurConfig(doc, service, RELAY_CONFIG);
+  if (!host) {
+    dropFileProvider(doc, service, RELAY_CONFIG);
+    setHostGateway(doc, service, false);
+    return dump(doc);
+  }
+  const address = assertRoutableHost(
+    host,
+    "This server has no address for the cluster relay to answer on",
+  );
+  const file = new Document({
+    http: {
+      routers: {
+        [RELAY_CONFIG]: {
+          rule: `Host(\`${address}\`) && Path(\`${RELAY_PATH}\`)`,
+          entryPoints: ["websecure"],
+          service: RELAY_CONFIG,
+          priority: RELAY_PRIORITY,
+          tls: {},
+        },
+      },
+      services: {
+        [RELAY_CONFIG]: {
+          loadBalancer: { servers: [{ url: RELAY_TARGET }] },
+        },
+      },
+    },
+  });
+  mountDeploConfig(
+    doc,
+    service,
+    RELAY_CONFIG,
+    RELAY_FILE,
+    "the cluster relay's route",
+    file.toString({ lineWidth: 0 }),
+  );
+  setHostGateway(doc, service, true);
+  return dump(doc);
+}
+
+// The proxy reaches a process on the host by this name, so it only gets the name while a relay route needs it.
+function setHostGateway(doc: Stack, service: YAMLMap, on: boolean): void {
+  const hosts = service.get("extra_hosts", true);
+  const rest = (isSeq(hosts) ? hosts.items.map(scalar) : []).filter(
+    (h) => h !== HOST_GATEWAY_ENTRY,
+  );
+  if (on) rest.push(HOST_GATEWAY_ENTRY);
+  if (rest.length === 0) service.delete("extra_hosts");
+  else service.set("extra_hosts", doc.createNode(rest));
 }
 
 function panelFile(current: unknown, route: PanelRoute): string {
@@ -423,16 +516,40 @@ function panelFile(current: unknown, route: PanelRoute): string {
     service: LINK_SERVICE,
     priority: LINK_PRIORITY,
   });
+  const relayRouter = (host: string) => ({
+    ...router(host),
+    rule: `Host(\`${host}\`) && Path(\`${RELAY_PATH}\`)`,
+    service: RELAY_SERVICE,
+    priority: RELAY_PRIORITY,
+  });
   const write = (doc: Document) => {
     const routers = ["http", "routers"];
     doc.setIn([...routers, PANEL_ROUTER], doc.createNode(router(route.domain)));
     placeAfter(doc, routers, PANEL_ROUTER, {
       [linkRouterOf(PANEL_ROUTER)]: linkRouter(route.domain),
     });
+    for (const n of [PANEL_ROUTER, PANEL_FALLBACK_ROUTER])
+      doc.deleteIn([...routers, relayRouterOf(n)]);
+    if (doc.hasIn(["http", "services"]))
+      doc.deleteIn(["http", "services", RELAY_SERVICE]);
+    let last = linkRouterOf(PANEL_ROUTER);
+    if (route.relay) {
+      placeAfter(doc, routers, last, {
+        [relayRouterOf(PANEL_ROUTER)]: relayRouter(route.domain),
+      });
+      last = relayRouterOf(PANEL_ROUTER);
+    }
     if (route.fallbackDomain && route.fallbackDomain !== route.domain) {
-      placeAfter(doc, routers, linkRouterOf(PANEL_ROUTER), {
+      placeAfter(doc, routers, last, {
         [PANEL_FALLBACK_ROUTER]: router(route.fallbackDomain),
         [linkRouterOf(PANEL_FALLBACK_ROUTER)]: linkRouter(route.fallbackDomain),
+        ...(route.relay
+          ? {
+              [relayRouterOf(PANEL_FALLBACK_ROUTER)]: relayRouter(
+                route.fallbackDomain,
+              ),
+            }
+          : {}),
       });
     } else {
       doc.deleteIn([...routers, PANEL_FALLBACK_ROUTER]);
@@ -468,6 +585,13 @@ function panelFile(current: unknown, route: PanelRoute): string {
       [LINK_SERVICE]: {
         loadBalancer: { servers: [{ url: linkTarget(route.target) }] },
       },
+      ...(route.relay
+        ? {
+            [RELAY_SERVICE]: {
+              loadBalancer: { servers: [{ url: RELAY_TARGET }] },
+            },
+          }
+        : {}),
     });
     return doc.toString({ lineWidth: 0 });
   };

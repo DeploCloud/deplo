@@ -1,6 +1,8 @@
 "use client";
 
-import { Server as ServerIcon, Variable } from "lucide-react";
+import { ClusterAddressNote } from "@/components/shared/cluster-address-note";
+import { ADDRESS_CHANGES_NOTE } from "@/lib/clusters/address-note";
+import { Boxes, Server as ServerIcon, Variable } from "lucide-react";
 
 import { BuildConfigFields } from "@/components/apps/build-config-fields";
 import {
@@ -95,20 +97,31 @@ export function WizardAdvanced({
       <AdvancedGroup title="Deploy to">
         <Select value={serverId} onValueChange={setServerId}>
           <SelectTrigger>
-            <SelectValue placeholder="Select a server" />
+            <SelectValue placeholder="Select a server or cluster" />
           </SelectTrigger>
           <SelectContent>
             {servers.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 <span className="flex items-center gap-2">
-                  <ServerIcon className="size-4 text-muted-foreground" />
+                  {s.kind === "cluster" ? (
+                    <Boxes className="size-4 text-muted-foreground" />
+                  ) : (
+                    <ServerIcon className="size-4 text-muted-foreground" />
+                  )}
                   {serverLabel(s)}
-                  <ServerRoleHint isDeploHost={s.isDeploHost} />
+                  {s.kind === "cluster" ? (
+                    <Badge variant="outline">Cluster</Badge>
+                  ) : (
+                    <ServerRoleHint isDeploHost={s.isDeploHost} />
+                  )}
                 </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {selectedServer?.kind === "cluster" && (
+          <ClusterAddressNote note={ADDRESS_CHANGES_NOTE} />
+        )}
       </AdvancedGroup>
 
       <AdvancedGroup title="Environment variables">

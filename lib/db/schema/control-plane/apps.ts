@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
+import { clusters } from "./clusters";
 import { deployments } from "./deployments";
 import { teams, users } from "./identity";
 import { environments, folders, projects } from "./projects";
@@ -38,6 +39,10 @@ export const apps = pgTable(
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),
+    // Set once the App's server joined a cluster; `server_id` still names where it runs now.
+    clusterId: text("cluster_id").references(() => clusters.id, {
+      onDelete: "set null",
+    }),
     migrateFromServerId: text("migrate_from_server_id").references(
       () => servers.id,
       { onDelete: "set null" },
@@ -125,6 +130,18 @@ export const apps = pgTable(
     restartLoopStoppedAt: isoTimestamptz("restart_loop_stopped_at"),
     screenshotsEnabled: boolean("screenshots_enabled").notNull().default(true),
     zeroDowntimeDeploys: boolean("zero_downtime_deploys")
+      .notNull()
+      .default(false),
+    restartWhenUnresponsive: boolean("restart_when_unresponsive")
+      .notNull()
+      .default(true),
+    restartsPausedAt: isoTimestamptz("restarts_paused_at"),
+    // What the team was told about a hang, kept here so a restart of Deplo forgets nothing.
+    unresponsiveAlertedAt: isoTimestamptz("unresponsive_alerted_at"),
+    recoveryAlertOwed: boolean("recovery_alert_owed").notNull().default(false),
+    replicas: integer("replicas").notNull().default(1),
+    stickySessions: boolean("sticky_sessions").notNull().default(false),
+    failoverFromBackup: boolean("failover_from_backup")
       .notNull()
       .default(false),
     latestDeploymentId: text("latest_deployment_id").references(

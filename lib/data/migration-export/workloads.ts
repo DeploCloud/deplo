@@ -134,7 +134,8 @@ async function schedulesFor(teamId: string) {
   const restorePoints = (id: string): DeploExportBackupRun[] =>
     (runsBy.get(id) ?? []).flatMap((r) => {
       const destination = destName.get(r.destinationId);
-      if (!destination || !r.objectKey) return [];
+      // What a returning cluster member left restores as a volume, which another Deplo would not know.
+      if (!destination || !r.objectKey || r.leftAt) return [];
       return [
         {
           destination,

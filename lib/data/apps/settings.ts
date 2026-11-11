@@ -32,11 +32,19 @@ import { requireAppCapability } from "../node-access";
 import { listGithubInstallations } from "../github";
 import { recordActivity } from "../activity";
 import { loadAppGraph } from "../app-graph-load";
+import { usesComposeStack } from "../../utils";
+import {
+  REPLICAS_DATA_MESSAGE,
+  cleanReplicas,
+  replicasRefusal,
+  scaleConflicts,
+} from "../../deploy/replicas";
 import { syncAppWebhook } from "../git-connections";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { cleanAppName } from "./create";
 import type { UploadArchive } from "../../types/app";
 import type { HealthCheck } from "../../types/container";
+import { stackReplicas } from "../../deploy/compose-stack/stand-in";
 
 export async function updateAppOwned(
   id: string,
@@ -101,6 +109,31 @@ export async function setAppRestartLoopGuard(
   );
 }
 
+// The rule travels with a deploy, so a change reaches the server agent on the next one.
+export async function setAppRestartWhenUnresponsive(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const rows = await getDb()
+    .update(appsTable)
+    .set({
+      restartWhenUnresponsive: enabled,
+      pendingChangesAt: nowIso(),
+      updatedAt: nowIso(),
+    })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ name: appsTable.name });
+  if (rows.length === 0) throw new Error("App not found");
+  await recordActivity(
+    "app",
+    `${enabled ? "Turned on" : "Turned off"} restarting ${rows[0].name} when it stops answering`,
+    user.name,
+    id,
+  );
+}
+
 // Beta. Applies from the next deploy: the old version stays online until the new one is ready.
 export async function setAppZeroDowntimeDeploys(
   id: string,
@@ -117,6 +150,61 @@ export async function setAppZeroDowntimeDeploys(
   await recordActivity(
     "app",
     `${enabled ? "Turned on" : "Turned off"} zero-downtime deploys for ${rows[0].name}`,
+    user.name,
+    id,
+  );
+}
+
+// Applies from the next deploy, which always starts every copy before it stops an old one.
+export async function setAppReplicas(
+  id: string,
+  replicas: number,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const n = cleanReplicas(replicas);
+  const app = await loadAppGraph(id);
+  if (!app || app.teamId !== membership.teamId)
+    throw new Error("App not found");
+  if (usesComposeStack(app))
+    throw new Error("A compose stack sets replicas in its own YAML");
+  const refusal = replicasRefusal(app, n);
+  if (refusal) throw new Error(refusal);
+  await getDb()
+    .update(appsTable)
+    .set({ replicas: n, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+  await recordActivity(
+    "app",
+    `Set ${app.name} to ${n} ${n === 1 ? "replica" : "replicas"}`,
+    user.name,
+    id,
+  );
+}
+
+// Applies from the next deploy; the label is only rendered with more than one copy.
+export async function setAppStickySessions(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const app = await loadAppGraph(id);
+  if (!app || app.teamId !== membership.teamId)
+    throw new Error("App not found");
+  // A stack says how many in its own YAML.
+  const replicas = usesComposeStack(app)
+    ? stackReplicas(app.compose)
+    : app.replicas;
+  if (enabled && replicas < 2)
+    throw new Error("Sticky sessions need more than one replica");
+  await getDb()
+    .update(appsTable)
+    .set({ stickySessions: enabled, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+  await recordActivity(
+    "app",
+    `${enabled ? "Kept" : "Stopped keeping"} each visitor on the same replica for ${app.name}`,
     user.name,
     id,
   );
@@ -285,6 +373,13 @@ export async function setAppComposeUpArgs(
   if (raw) {
     const problem = validateComposeUpArgs(raw);
     if (problem) throw new Error(problem);
+    const [app] = await getDb()
+      .select({ compose: appsTable.compose })
+      .from(appsTable)
+      .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+      .limit(1);
+    if (scaleConflicts(app?.compose, raw).length > 0)
+      throw new Error(REPLICAS_DATA_MESSAGE);
   }
   const updated = await getDb()
     .update(appsTable)

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
@@ -18,6 +18,7 @@ import {
   destroyStackOn,
 } from "../volume-migration";
 import { withKeyedLock } from "../keyed-mutex";
+import { getServerById } from "../servers/roster";
 import { databaseHostClash, hostNameClaims } from "../host-name-claims";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import {
@@ -25,37 +26,136 @@ import {
   MAX_PORT,
   isValidExposePort,
 } from "../../databases/ports";
-import { assertNotProvisioning, requireDatabase } from "./rows";
+import { assembleDatabase } from "../backup-rows";
+import { assertNotMigrating } from "../migration-guard";
+import type { Database } from "../../types/database";
+import type { Server } from "../../types/server";
+import { assertNotProvisioning, mountsFor, requireDatabase } from "./rows";
 import {
   databasePassword,
   dbVolumeHostName,
   renderDatabaseStackYaml,
   rerouteRequest,
 } from "./stack";
+import { redeployArchs } from "../clusters/architectures";
+import { dropFailoverBundle } from "../clusters/bundles";
+import { assertServerNotInCluster } from "../clusters/members";
+import {
+  askLeaderToPlace,
+  clearPlacement,
+  recordPlacement,
+} from "../clusters/placement";
+import { resolveTeamCluster } from "../clusters/roster";
+import { ensureFailoverBackup } from "./failover";
+import { dropStandbyCopy, endStandby, syncStandbySoon } from "./standby";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
+import type { Cluster } from "../../types/cluster";
 
-export async function updateDatabase(
+interface UpdateDatabaseInput {
+  exposedPublicly: boolean;
+  exposedPort?: number;
+  serverId?: string;
+}
+
+export function updateDatabase(
   id: string,
-  input: {
-    exposedPublicly: boolean;
-    exposedPort?: number;
-    serverId?: string;
-  },
+  input: UpdateDatabaseInput,
+): Promise<void> {
+  return writeDatabasePlacement(id, input);
+}
+
+/** Places a database on a cluster: the leader picks the member, the database moves there like a server move. */
+export async function moveDatabaseToCluster(
+  id: string,
+  clusterId: string,
 ): Promise<void> {
   const { membership } = await requireCapability("configure_databases");
-  const teamId = membership.teamId;
-  const user = (await getCurrentUser())!;
-  const db = await requireDatabase(id, teamId);
-
-  const exposed = input.exposedPublicly;
-  if (exposed && !(await canExposePorts()))
-    throw new Error("You don't have permission to publish ports");
-
-  const targetServer = await resolveTeamServer(
-    teamId,
-    input.serverId ?? db.serverId,
+  const cluster = await resolveTeamCluster(membership.teamId, clusterId);
+  const db = await requireDatabase(id, membership.teamId);
+  if (db.clusterId === cluster.id) return;
+  assertNotProvisioning(db, "moving it");
+  // A refusal throws here, before anything stops.
+  const member = await askLeaderToPlace(cluster, {
+    kind: "database",
+    id,
+    name: db.name,
+    environmentId: db.environmentId,
+    limitMb: db.resources?.memoryMb ?? 0,
+    archs: await redeployArchs("database", id),
+  });
+  await writeDatabasePlacement(
+    id,
+    {
+      exposedPublicly: db.exposedPublicly,
+      exposedPort: db.exposedPort ?? undefined,
+      serverId: member,
+    },
+    cluster,
   );
+  await recordPlacement({
+    clusterId: cluster.id,
+    kind: "database",
+    workloadId: id,
+    members: [member],
+    epoch: cluster.leaderEpoch,
+  });
+  await ensureFailoverBackup({
+    ...db,
+    serverId: member,
+    clusterId: cluster.id,
+  });
+}
+
+/** Who writes, with every gate already answered: built by the gated door, or by Deplo for its own moves. */
+interface PlacementWriter {
+  teamId: string;
+  actor: string;
+  load: () => Promise<Database>;
+  targetServer: Server;
+  /** Why Deplo moved it, for Activity. */
+  why?: string;
+}
+
+/** The gated door: every write a person asks for passes here, and nothing here can switch a gate off. */
+async function writeDatabasePlacement(
+  id: string,
+  input: UpdateDatabaseInput,
+  cluster?: Cluster,
+): Promise<void> {
+  const { teamId } = (await requireCapability("configure_databases"))
+    .membership;
+  if (input.exposedPublicly && !(await canExposePorts()))
+    throw new Error("You don't have permission to publish ports");
+  const load = () => requireDatabase(id, teamId);
+  const db = await load();
+  const targetId = input.serverId ?? db.serverId;
+  // A member follows its cluster's sharing: the one the leader named, or the one the database is on.
+  const viaCluster =
+    cluster != null || (db.clusterId != null && targetId === db.serverId);
+  const targetServer = viaCluster
+    ? await getServerById(targetId)
+    : await resolveTeamServer(teamId, targetId);
+  if (!targetServer) throw new Error("Server not found");
+  await applyDatabasePlacement(
+    id,
+    input,
+    { teamId, actor: (await getCurrentUser())!.name, load, targetServer },
+    cluster,
+  );
+}
+
+// Ungated: the caller holds the gate, or is Deplo itself. No resolver reaches this but through writeDatabasePlacement.
+async function applyDatabasePlacement(
+  id: string,
+  input: UpdateDatabaseInput,
+  who: PlacementWriter,
+  cluster?: Cluster,
+): Promise<void> {
+  const { teamId, actor, load, targetServer } = who;
+  const db = await load();
+  const exposed = input.exposedPublicly;
   const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
+  if (movingFrom && !cluster) await assertServerNotInCluster(targetServer.id);
   if (movingFrom) {
     const clash = databaseHostClash(
       db.host,
@@ -92,9 +192,11 @@ export async function updateDatabase(
   )
     return;
 
+  // The copy goes before its database moves: it may sit on the very server the database is headed for.
+  if (movingFrom && db.standby) await dropStandbyCopy(db);
   let moveWarning: string | null = null;
   await withKeyedLock(id, async () => {
-    const cur = await requireDatabase(id, teamId);
+    const cur = await load();
     assertNotProvisioning(cur, "editing it");
     const password = databasePassword(cur);
     const connEnc = encryptSecret(
@@ -107,8 +209,15 @@ export async function updateDatabase(
         dbName: cur.dbName,
       }),
     );
+    // Rendered for where it will be: arriving on a cluster starts archiving a Postgres change log, leaving stops it.
+    const clusterId = movingFrom ? (cluster?.id ?? null) : cur.clusterId;
     const yaml = renderDatabaseStackYaml(
-      { ...cur, exposedPublicly: exposed, exposedPort: newExposedPort },
+      {
+        ...cur,
+        clusterId,
+        exposedPublicly: exposed,
+        exposedPort: newExposedPort,
+      },
       password,
     );
     const agent = await connectAgent(targetServer.id);
@@ -176,28 +285,99 @@ export async function updateDatabase(
       .update(databasesTable)
       .set({
         serverId: targetServer.id,
+        ...(movingFrom ? { clusterId } : {}),
+        ...(clusterId ? {} : { walArchivedAt: null }),
         exposedPublicly: exposed,
         exposedPort: newExposedPort,
         connectionStringEnc: connEnc,
       })
-      .where(eq(databasesTable.id, id));
+      .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)));
     publishDatabaseChanged(id);
   });
   if (moveWarning) console.warn(`[databases] ${moveWarning}`);
+  if (movingFrom && db.standby) {
+    if (cluster) syncStandbySoon(id);
+    else await endStandby(id);
+  }
+  if (movingFrom && db.clusterId && !cluster) {
+    await clearPlacement("database", id);
+    await dropFailoverBundle(id, db.clusterId, "database").catch(() => {});
+  }
+  // A move inside the cluster names the server only; arriving on it names both.
+  const where =
+    cluster && db.clusterId !== cluster.id
+      ? `cluster ${cluster.name}, now on ${targetServer.name}`
+      : targetServer.name;
   await recordActivity(
     "database",
     movingFrom
       ? moveWarning
-        ? `Moved database ${db.name} to ${targetServer.name} (warning: ${moveWarning})`
-        : `Moved database ${db.name} to ${targetServer.name}`
+        ? `Moved database ${db.name} to ${where} (warning: ${moveWarning})`
+        : `Moved database ${db.name} to ${where}` +
+          (who.why ? `: ${who.why}` : "")
       : exposed
         ? `Exposed database ${db.name} on port ${newExposedPort}`
         : `Unexposed database ${db.name}`,
-    user.name,
+    actor,
     null,
     teamId,
     null,
     db.id,
+    { serverChange: Boolean(movingFrom) },
   );
   await markLinkedAppsPending(db.id);
+}
+
+/**
+ * Deplo itself moving a cluster database to another member of its cluster, as emptying a server does.
+ * No Capability is read: the caller holds the gate. The database stays on the cluster.
+ */
+export async function relocateClusterDatabase(
+  id: string,
+  cluster: Cluster,
+  serverId: string,
+  why: string,
+): Promise<void> {
+  const [row] = await getDb()
+    .select({
+      teamId: databasesTable.teamId,
+      clusterId: databasesTable.clusterId,
+      exposedPublicly: databasesTable.exposedPublicly,
+      exposedPort: databasesTable.exposedPort,
+    })
+    .from(databasesTable)
+    .where(eq(databasesTable.id, id))
+    .limit(1);
+  if (!row || row.clusterId !== cluster.id)
+    throw new Error("Database not found");
+  const targetServer = await getServerById(serverId);
+  if (!targetServer) throw new Error("Server not found");
+  await applyDatabasePlacement(
+    id,
+    {
+      exposedPublicly: row.exposedPublicly,
+      exposedPort: row.exposedPort ?? undefined,
+      serverId,
+    },
+    {
+      teamId: row.teamId,
+      actor: "Deplo",
+      load: () => loadForDeplo(id),
+      targetServer,
+      why,
+    },
+    cluster,
+  );
+}
+
+// Deplo acting for itself has no session, which the team-scoped loader requires.
+async function loadForDeplo(id: string): Promise<Database> {
+  const [row] = await getDb()
+    .select()
+    .from(databasesTable)
+    .where(eq(databasesTable.id, id))
+    .limit(1);
+  if (!row) throw new Error("Not found");
+  assertNotMigrating("database", row.name, row.migrationRunId);
+  return assembleDatabase(row, await mountsFor(row.id));
 }

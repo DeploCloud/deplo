@@ -6,6 +6,7 @@ import { Hammer, SlidersHorizontal, Sparkles } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
 import { listBuildServerChoices } from "@/lib/data/servers/roster";
+import { RESTART_CAPABILITY } from "@/lib/infra/agent-client/hello-capabilities";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { canExposePorts } from "@/lib/membership";
 import { listAppCronJobs } from "@/lib/data/crons/listing";
@@ -17,7 +18,17 @@ import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerRow } from "@/components/apps/settings/rebuild-container-row";
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
+import { RestartWhenUnresponsiveForm } from "@/components/apps/settings/restart-when-unresponsive-form";
+import { FailoverFromBackupForm } from "@/components/apps/settings/failover-from-backup-form";
+import { appDisk } from "@/lib/apps/failover-copy";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
+import { ReplicasForm } from "@/components/apps/settings/replicas-form";
+import { StickySessionsForm } from "@/components/apps/settings/sticky-sessions-form";
+import { serverLacks } from "@/lib/infra/agent-client/preflight";
+import { stackReplicas } from "@/lib/deploy/compose-stack/stand-in";
+import { REPLICAS_CAPABILITY, replicasRefusal } from "@/lib/deploy/replicas";
+import { appReplicasWaiting } from "@/lib/data/clusters/placement";
+import { replicaSpreadNote } from "@/lib/data/clusters/spread";
 import { ZeroDowntimeForm } from "@/components/apps/settings/zero-downtime-form";
 import { ScreenshotsForm } from "@/components/apps/settings/screenshots-form";
 import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
@@ -52,6 +63,10 @@ export default async function AppAdvancedSettingsPage(
     mayConfigureTraefik && !usesComposeStack(project)
       ? await getAppTraefikLabels(project.id)
       : null;
+  const restartNeedsNewerAgent = await serverLacks(
+    project.serverId,
+    RESTART_CAPABILITY,
+  );
   const cron = canCron ? await listAppCronJobs(project.id) : null;
 
   const isComposeStack = usesComposeStack(project);
@@ -107,6 +122,25 @@ export default async function AppAdvancedSettingsPage(
         )}
 
         <CapabilityFieldset cap="configure_apps">
+          <RestartWhenUnresponsiveForm
+            appId={project.id}
+            enabled={project.restartWhenUnresponsive}
+            paused={project.restartsPausedAt != null}
+            needsNewerAgent={restartNeedsNewerAgent}
+            ownCheck={project.healthCheck != null}
+          />
+        </CapabilityFieldset>
+
+        {project.clusterId && appDisk(project) === "volume" && (
+          <CapabilityFieldset cap="configure_apps">
+            <FailoverFromBackupForm
+              appId={project.id}
+              enabled={project.failoverFromBackup}
+            />
+          </CapabilityFieldset>
+        )}
+
+        <CapabilityFieldset cap="configure_apps">
           <RestartLoopForm
             targetKind="app"
             targetId={project.id}
@@ -119,6 +153,32 @@ export default async function AppAdvancedSettingsPage(
             <ZeroDowntimeForm
               appId={project.id}
               enabled={project.zeroDowntimeDeploys}
+            />
+          </CapabilityFieldset>
+        )}
+
+        {!isComposeStack && (
+          <CapabilityFieldset cap="configure_apps">
+            <ReplicasForm
+              appId={project.id}
+              replicas={project.replicas}
+              refusal={replicasRefusal(project, 2)}
+              agentTooOld={await serverLacks(
+                project.serverId,
+                REPLICAS_CAPABILITY,
+              )}
+              spread={await replicaSpreadNote(project)}
+              waiting={await appReplicasWaiting(project)}
+            />
+          </CapabilityFieldset>
+        )}
+
+        {(isComposeStack ? stackReplicas(project.compose) : project.replicas) >
+          1 && (
+          <CapabilityFieldset cap="configure_apps">
+            <StickySessionsForm
+              appId={project.id}
+              enabled={project.stickySessions}
             />
           </CapabilityFieldset>
         )}

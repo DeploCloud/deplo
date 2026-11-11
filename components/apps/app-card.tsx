@@ -94,6 +94,9 @@ function LiveCardStatusDot({
         status={status}
         runtime={liveState?.runtime ?? null}
         neverDeployed={neverDeployed}
+        restartsPaused={
+          liveState?.restartsPaused ?? project.restartsPausedAt != null
+        }
       />
     </span>
   );

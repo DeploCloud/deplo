@@ -1,9 +1,17 @@
 import { Suspense } from "react";
-import { AppDomainNotices } from "@/components/domains/app-domain-notices";
+import {
+  AppAddressNotice,
+  AppDomainNotices,
+} from "@/components/domains/app-domain-notices";
 import { SecurityUpdatesNotice } from "@/components/security-updates/security-updates-notice";
 import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
+import { getAppFailover } from "@/lib/data/apps/failover";
 import { hasAppCapability } from "@/lib/data/node-access";
+import {
+  AppFailoverCard,
+  AppWaitingNotice,
+} from "@/components/apps/app-failover";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
 import { listDeployments } from "@/lib/data/deployments/deployment-queries";
 import { getAppCoverScreenshot } from "@/lib/data/deployments/screenshot";
@@ -24,9 +32,11 @@ export default async function AppOverview(
   const prod =
     deployments.find((d) => d.id === project.latestDeployment?.id) ??
     project.latestDeployment;
-  const [shot, canConfigure] = await Promise.all([
+  const [shot, canConfigure, failover, canRestore] = await Promise.all([
     prod ? getAppCoverScreenshot(project.id) : null,
     hasAppCapability(project.id, "configure_apps"),
+    project.clusterId ? getAppFailover(project.id) : null,
+    hasAppCapability(project.id, "restore_backups"),
   ]);
 
   return (
@@ -40,12 +50,23 @@ export default async function AppOverview(
         move={Boolean(project.migrateFromServerId)}
       />
 
+      <AppWaitingNotice
+        appId={project.id}
+        name={project.name}
+        failover={failover}
+        canRestore={canRestore}
+      />
+
       {repoCredentialMissing(project) && project.repo && (
         <RepoLinkNotice
           slug={slug}
           repoName={project.repo.repo || project.repo.url}
         />
       )}
+
+      <Suspense fallback={null}>
+        <AppAddressNotice app={project} />
+      </Suspense>
 
       <Suspense fallback={null}>
         <AppDomainNotices app={project} />
@@ -66,6 +87,8 @@ export default async function AppOverview(
         shot={shot}
         canConfigure={canConfigure}
       />
+
+      <AppFailoverCard failover={failover} />
 
       <RecentDeployments slug={slug} deployments={deployments} />
     </div>

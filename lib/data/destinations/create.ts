@@ -249,37 +249,47 @@ export async function ensureDefaultDestination(): Promise<void> {
       ? "This server"
       : serverLabel(server);
 
-    const { identity, recipient } = await generateAgeKeypair();
-    const d: BackupDestination = {
-      id: newId("dst"),
-      teamId,
-      name,
-      kind: "server",
-      provider: null,
-      s3ExtraArgs: null,
-      endpoint: null,
-      region: null,
-      bucket: null,
-      accessKeyEnc: null,
-      secretKeyEnc: null,
-      allowPrivateEndpoint: false,
-      serverId: server.id,
-      path: null,
-      ageRecipient: recipient,
-      ageIdentityEnc: encryptSecret(identity),
-      recoveryKeySavedAt: null,
-      status: "unverified",
-      createdAt: nowIso(),
-      lastTestAt: null,
-      lastTestError: null,
-      lastTestServerId: null,
-      lastTestMs: null,
-      lastFreeBytes: null,
-      lastTotalBytes: null,
-      resolvedPath: null,
-    };
-    await getDb().insert(destTable).values(destinationToRow(d));
+    await insertServerDestination(teamId, server.id, name);
   } catch {
     await release();
   }
+}
+
+/** A server-kind destination Deplo sets up itself, with its own recovery key. Ungated: callers gate. */
+export async function insertServerDestination(
+  teamId: string,
+  serverId: string,
+  name: string,
+): Promise<BackupDestination> {
+  const { identity, recipient } = await generateAgeKeypair();
+  const d: BackupDestination = {
+    id: newId("dst"),
+    teamId,
+    name,
+    kind: "server",
+    provider: null,
+    s3ExtraArgs: null,
+    endpoint: null,
+    region: null,
+    bucket: null,
+    accessKeyEnc: null,
+    secretKeyEnc: null,
+    allowPrivateEndpoint: false,
+    serverId,
+    path: null,
+    ageRecipient: recipient,
+    ageIdentityEnc: encryptSecret(identity),
+    recoveryKeySavedAt: null,
+    status: "unverified",
+    createdAt: nowIso(),
+    lastTestAt: null,
+    lastTestError: null,
+    lastTestServerId: null,
+    lastTestMs: null,
+    lastFreeBytes: null,
+    lastTotalBytes: null,
+    resolvedPath: null,
+  };
+  await getDb().insert(destTable).values(destinationToRow(d));
+  return d;
 }

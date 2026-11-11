@@ -20,6 +20,15 @@ import {
   type AccessRequirement,
 } from "../git/provider-access";
 import { sweepDomainDns } from "../data/domains/dns-check";
+import { reconcileDissolvedClusters } from "../data/clusters/dissolve";
+import { reconcileNameForwarders } from "../data/clusters/forwarders";
+import { reconcileClusterImages } from "../data/clusters/images";
+import { reconcileFailoverBundles } from "../data/clusters/bundles";
+import { reconcileDatabaseBundles } from "../data/clusters/database-bundles";
+import { reconcileFailoverBackupHomes } from "../data/databases/failover";
+import { reconcileStandbys } from "../data/databases/standby";
+import { rehostClusterAddresses } from "../data/clusters/failover-address";
+import { reconcileClusterRelay } from "../data/clusters/relay";
 import { sweepCloudflareCertificates } from "../data/domains/cloudflare-mode";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo, type UpdateInfo } from "../data/updates";
@@ -45,6 +54,15 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("Deplo update", checkDeploUpdate);
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
+  await settle("cluster relay", reconcileClusterRelay);
+  await settle("dissolved clusters", reconcileDissolvedClusters);
+  await settle("cluster images", reconcileClusterImages);
+  await settle("name forwarders", reconcileNameForwarders);
+  await settle("failover bundles", reconcileFailoverBundles);
+  await settle("failover backups", reconcileFailoverBackupHomes);
+  await settle("database bundles", reconcileDatabaseBundles);
+  await settle("standby copies", reconcileStandbys);
+  await settle("cluster addresses", rehostClusterAddresses);
   await settle("cloudflare certificates", sweepCloudflareCertificates);
   await settle("git tokens", checkGitConnections);
   await settle("github app access", checkGithubAppAccess);

@@ -6,7 +6,7 @@ import { getDb } from "../../db/client";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { assembleDatabase } from "../backup-rows";
 import { requireActiveTeamId } from "../../membership";
-import { decryptSecretOrThrow, randomToken } from "../../crypto";
+import { decryptSecretOrThrow, deriveKey, randomToken } from "../../crypto";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { VOLUME_USAGE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { serverSupports } from "../../infra/agent-client/preflight";
@@ -16,6 +16,7 @@ import {
 } from "../../deploy/database-compose";
 import { stackFilesDir } from "../../deploy/deploy-key";
 import { appNetwork, explainNetworkError } from "../../deploy/network";
+import { archivesChangeLog } from "../../databases/change-log";
 import { loadDatabase, mountsFor } from "./rows";
 import type { Database } from "../../types/database";
 import { isPausedForMove } from "../deplo-move/source-guard";
@@ -30,11 +31,19 @@ export function mountFilesFor(
   return db.mounts.map((m) => ({ path: m.filePath, content: m.content }));
 }
 
+// Derived, never stored: the same id always gets the same keyfile, so a re-render never changes it.
+export function mongoKeyfileFor(databaseId: string): string {
+  return deriveKey(`mongo-keyfile:${databaseId}`).toString("base64");
+}
+
 export function renderDatabaseStackYaml(
   db: Database,
   password: string,
+  standby?: { command: string[]; env: string[] },
 ): string {
   return generateDatabaseCompose({
+    standby,
+    keepsStandby: Boolean(db.standby),
     name: db.host,
     databaseId: db.id,
     type: db.type,
@@ -50,6 +59,8 @@ export function renderDatabaseStackYaml(
     mounts: db.mounts,
     filesDir: stackFilesDir(db.host),
     network: appNetwork(db),
+    mongoKeyfile: db.type === "mongodb" ? mongoKeyfileFor(db.id) : null,
+    archiveChangeLog: archivesChangeLog(db),
   });
 }
 

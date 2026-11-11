@@ -74,3 +74,14 @@ test("search text is underscore-free so a typed key still matches", () => {
   assert.ok(!alertSearchText(key).includes("_"));
   assert.ok(searchAlerts("server disk").includes(key));
 });
+
+test("a cron run lost with its server is a default alert under Cron jobs, found by what happened", () => {
+  assert.ok(ALL_ALERTS.includes("cron_run_lost"));
+  assert.ok(DEFAULT_ALERTS.includes("cron_run_lost"));
+  assert.ok(
+    ALERT_CATEGORIES.find((c) => c.key === "crons")?.alerts.includes(
+      "cron_run_lost",
+    ),
+  );
+  assert.ok(searchAlerts("server stopped").includes("cron_run_lost"));
+});

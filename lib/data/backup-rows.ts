@@ -53,6 +53,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     dataCopyError: d.dataCopyError,
     migrationRunId: d.migrationRunId,
     serverId: d.serverId,
+    clusterId: d.clusterId ?? null,
     host: d.host,
     port: d.port,
     connectionStringEnc: d.connectionStringEnc,
@@ -65,6 +66,10 @@ export function databaseToRow(d: Database): DatabaseInsert {
     restartLoopGuard: d.restartLoopGuard,
     restartLoopStoppedAt: d.restartLoopStoppedAt,
     sizeMb: d.sizeMb,
+    restoreBytesPerSec: d.restoreBytesPerSec ?? null,
+    walArchivedAt: d.walArchivedAt ?? null,
+    standby: d.standby ?? false,
+    standbySeed: d.standbySeed ?? null,
     createdAt: d.createdAt,
   } satisfies Record<
     Exclude<keyof Database, "resources" | "mounts">,
@@ -90,6 +95,7 @@ export function assembleDatabase(
     dataCopyError: row.dataCopyError ?? "",
     migrationRunId: row.migrationRunId ?? null,
     serverId: row.serverId,
+    clusterId: row.clusterId ?? null,
     host: row.host,
     port: row.port,
     connectionStringEnc: row.connectionStringEnc,
@@ -103,6 +109,10 @@ export function assembleDatabase(
     restartLoopStoppedAt: row.restartLoopStoppedAt ?? null,
     mounts,
     sizeMb: row.sizeMb,
+    restoreBytesPerSec: row.restoreBytesPerSec ?? null,
+    walArchivedAt: row.walArchivedAt ?? null,
+    standby: row.standby ?? false,
+    standbySeed: row.standbySeed ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -191,6 +201,7 @@ export function backupToRow(b: Backup): BackupInsert {
     lastRunAt: b.lastRunAt,
     lastStatus: b.lastStatus,
     enabled: b.enabled,
+    baseBackup: b.baseBackup ?? false,
     createdAt: b.createdAt,
   } satisfies Record<keyof Backup, unknown> as BackupInsert;
 }
@@ -210,6 +221,7 @@ export function assembleBackup(row: BackupRow): Backup {
     lastRunAt: row.lastRunAt,
     lastStatus: row.lastStatus as Backup["lastStatus"],
     enabled: row.enabled,
+    baseBackup: row.baseBackup,
     createdAt: row.createdAt,
   };
 }
@@ -227,13 +239,19 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
     objectKey: r.objectKey,
     sizeBytes: r.sizeBytes,
     decryptedSizeBytes: r.decryptedSizeBytes,
+    heldMs: r.heldMs,
     sha256: r.sha256,
     orphanedAt: r.orphanedAt,
+    leftAt: r.leftAt ?? null,
+    leftOnServerId: r.leftOnServerId ?? null,
     status: r.status,
     error: r.error,
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,
-  } satisfies Record<keyof BackupRun, unknown> as BackupRunInsert;
+  } satisfies Record<
+    Exclude<keyof BackupRun, "leftOnServer">,
+    unknown
+  > as BackupRunInsert;
 }
 
 export function assembleBackupRun(row: BackupRunRow): BackupRun {
@@ -249,8 +267,11 @@ export function assembleBackupRun(row: BackupRunRow): BackupRun {
     objectKey: row.objectKey,
     sizeBytes: row.sizeBytes,
     decryptedSizeBytes: row.decryptedSizeBytes ?? null,
+    heldMs: row.heldMs ?? null,
     sha256: row.sha256 ?? null,
     orphanedAt: row.orphanedAt ?? null,
+    leftAt: row.leftAt ?? null,
+    leftOnServerId: row.leftOnServerId ?? null,
     status: row.status as BackupRunStatus,
     error: row.error,
     startedAt: row.startedAt,

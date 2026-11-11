@@ -18,6 +18,7 @@ import {
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
 import { linkMayCome } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
+import { applyRestartEvents } from "../data/restart-events";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
@@ -41,9 +42,9 @@ import {
   markMetricsStreamUnsupported,
 } from "./stream-modes";
 import {
+  dropMemberSamples,
   pruneContainerHistoryTo,
-  recordContainerInstances,
-  recordContainerSample,
+  recordMemberSample,
 } from "./container-history";
 import { instanceFrozen } from "../data/deplo-move/freeze";
 
@@ -165,9 +166,9 @@ async function ingestFrame(
   };
   for (const [projectId, stats] of byProject) {
     const agg = aggregateContainerStats(projectId, stats, ts, capacity);
-    recordContainerInstances(projectId, agg.instances);
-    recordContainerSample(toContainerSample(agg));
+    recordMemberSample(serverId, toContainerSample(agg), agg.instances);
   }
+  dropMemberSamples(serverId, byProject);
   return byProject;
 }
 
@@ -250,6 +251,7 @@ async function runStreamLoop(
         attempt = 0;
 
         const byProject = await ingestFrame(serverId, frame, facts);
+        await applyRestartEvents(serverId, frame.restartEvents);
 
         const now = Date.now();
         if (now - lastHealthWriteAt >= HEALTH_WRITE_MS) {
