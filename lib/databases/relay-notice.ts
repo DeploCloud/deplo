@@ -7,3 +7,14 @@ export function relayNoticeText(appNames: string[]): string | null {
     names.length > 3 ? `${shown} and ${names.length - 3} more` : shown;
   return `${who} reach${names.length === 1 ? "es" : ""} this database through Deplo's relay. It is faster on the same server.`;
 }
+
+/** The Environment field's tooltip: on a cluster a name follows the database to whichever server runs it. */
+export function environmentReachNote(onCluster: boolean): string {
+  return onCluster
+    ? "Apps reach this database by name only from the same environment, on any server of the cluster."
+    : "Apps reach this database by name only from the same environment and the same server: a network does not span machines.";
+}
+
+/** The same rule where the card cannot tell a server from a cluster. */
+export const MOVE_ENVIRONMENT_NOTE =
+  "Apps reach a database by name only from the same environment, on the same server or cluster";

@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
+import { MOVE_ENVIRONMENT_NOTE } from "@/lib/databases/relay-notice";
 import { toast } from "sonner";
 import {
   Boxes,
@@ -415,7 +416,7 @@ function CardActions({
                 Sub={DropdownMenuSub}
                 SubTrigger={DropdownMenuSubTrigger}
                 SubContent={DropdownMenuSubContent}
-                content="Apps reach a database by name only from the same environment, and only on the same server"
+                content={MOVE_ENVIRONMENT_NOTE}
                 subContentClassName="max-h-72 overflow-y-auto"
                 trigger={
                   <>
