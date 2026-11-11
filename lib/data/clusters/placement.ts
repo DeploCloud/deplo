@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { type DbTx, getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
@@ -8,6 +8,7 @@ import {
   workloadPlacements,
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { deployments } from "../../db/schema/control-plane/deployments";
 import { nowIso } from "../../ids";
 import { callClusterLeader } from "../../infra/agent-client/cluster-host";
 import { requireActiveTeamId } from "../../membership";
@@ -318,6 +319,45 @@ export async function listWorkloadPlacements(
     out.set(r.workloadId, list);
   }
   return out;
+}
+
+/**
+ * The servers that hold an App's logs: the one it runs on now, every member a replica is placed on, and
+ * the member its release was deployed on when a failover has since moved it off.
+ */
+export async function listAppLogMembers(app: {
+  id: string;
+  clusterId?: string | null;
+  serverId: string;
+}): Promise<string[]> {
+  if (!app.clusterId) return [app.serverId];
+  const [placed, [release], cluster] = await Promise.all([
+    listWorkloadPlacements("app", [app.id]),
+    getDb()
+      .select({ serverId: deployments.serverId })
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.appId, app.id),
+          eq(deployments.status, "ready"),
+          eq(deployments.environment, "production"),
+        ),
+      )
+      .orderBy(desc(deployments.seq))
+      .limit(1),
+    clusterMemberServerIds(app.clusterId),
+  ]);
+  const members = (placed.get(app.id) ?? []).map((p) => p.serverId);
+  const left = release?.serverId;
+  return [
+    ...new Set(
+      [
+        app.serverId,
+        ...members,
+        left && cluster.includes(left) ? left : null,
+      ].filter((s): s is string => Boolean(s)),
+    ),
+  ];
 }
 
 /** "Waiting for room in eu" while the leader has nowhere to run an App; null once it runs, or for an App on one server. */

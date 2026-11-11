@@ -6,8 +6,7 @@ import { memberHoldsAppCapability } from "@/lib/data/node-access";
 import { requireActiveTeamId } from "@/lib/membership";
 import * as logs from "@/lib/logs/session";
 import { SessionLimitError } from "@/lib/live-session-guard";
-import { connectAgent } from "@/lib/infra/agent-client/connect";
-import { followGroup, logsStreamName } from "@/lib/logs/follow";
+import { logsStreamName, openLogs } from "@/lib/logs/follow";
 import { parseLogWindow } from "@/lib/logs/window";
 import { logMaxDays } from "@/lib/data/instance-settings/settings-store";
 
@@ -77,13 +76,17 @@ export async function GET(
   );
   let session;
   try {
-    const conn = await connectAgent(resolved.server!.id);
-    const handle = followGroup(conn, appId, resolved.group, tail, window);
+    const { handle, close } = await openLogs(
+      appId,
+      { ...resolved, server: resolved.server! },
+      tail,
+      window,
+    );
     session = logs.open(
       { appId, teamId, userId: user.id, authorize },
       logsStreamName(resolved.group),
       handle,
-      () => conn.close(),
+      close,
     );
   } catch (e) {
     if (e instanceof SessionLimitError)

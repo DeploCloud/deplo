@@ -12,8 +12,14 @@ import { getServerById } from "../servers/roster";
 import { requireActiveTeamId } from "../../membership";
 import { hasAppCapability, requireAppCapability } from "../node-access";
 import { loadTeamApp } from "../app-graph-load";
+import { listAppLogMembers } from "../clusters/placement";
 import { primaryDomainApp } from "../domains/primary-domain";
 import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
+import {
+  replicaIndexOf,
+  replicaLabels,
+  replicaTag,
+} from "../../deploy/replica-names";
 import { isDockerLevelStderr } from "../../infra/docker";
 import { sweepStale } from "../../stale-sweep";
 import { connectAgent } from "../../infra/agent-client/connect";
@@ -149,6 +155,7 @@ async function listInstancesForDisplay(p: App): Promise<{
   }
 }
 
+// ponytail: the picker lists the copies on the server the App runs on now; replicas spread over members (#208) add theirs here.
 export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
@@ -418,36 +425,31 @@ export async function resolveAttachTarget(
   return { ok: true, instance: pick, server: await serverOf(p) };
 }
 
-export async function resolveLogsTarget(
-  appId: string,
-  target?: string,
-): Promise<
+export interface LogsMember {
+  server: Server;
+  group: ConsoleInstance[];
+}
+
+type LogsTarget =
   | {
       ok: true;
       instance: ConsoleInstance;
       // Every copy to read when the target is a service with replicas; one entry otherwise.
       group: ConsoleInstance[];
       server: Server | undefined;
+      // Only for an App read on several servers of its cluster: each one's copies, and the servers that cannot be read.
+      members?: LogsMember[];
+      unavailable?: string[];
     }
   | {
       ok: false;
       reason: "not-found" | "no-instance" | "unreachable" | "forbidden";
-    }
-> {
-  const teamId = await requireActiveTeamId();
-  const p = await loadTeamApp(appId, teamId);
-  if (!p) return { ok: false, reason: "not-found" };
-  if (!(await hasAppCapability(appId, "view_logs")))
-    return { ok: false, reason: "forbidden" };
+    };
 
-  let instances: ConsoleInstance[];
-  try {
-    instances = await listInstances(p);
-  } catch (e) {
-    if (e instanceof AgentUnreachableError)
-      return { ok: false, reason: "unreachable" };
-    throw e;
-  }
+function logsGroup(
+  instances: ConsoleInstance[],
+  target?: string,
+): ConsoleInstance[] | null {
   const all = target?.startsWith(ALL_REPLICAS_PREFIX)
     ? target.slice(ALL_REPLICAS_PREFIX.length)
     : null;
@@ -458,11 +460,99 @@ export async function resolveLogsTarget(
         ? (instances.find((i) => i.name === target) ??
           instances.find((i) => i.service === target))
         : instances[0];
-  if (!pick) return { ok: false, reason: "no-instance" };
+  if (!pick) return null;
   // A named copy reads alone; the service, or the default, reads every copy.
   const exact = all === null && !!target && pick.name === target;
-  const group = exact ? [pick] : replicaGroupOf(instances, pick);
+  return exact ? [pick] : replicaGroupOf(instances, pick);
+}
+
+export async function resolveLogsTarget(
+  appId: string,
+  target?: string,
+): Promise<LogsTarget> {
+  const teamId = await requireActiveTeamId();
+  const p = await loadTeamApp(appId, teamId);
+  if (!p) return { ok: false, reason: "not-found" };
+  if (!(await hasAppCapability(appId, "view_logs")))
+    return { ok: false, reason: "forbidden" };
+
+  const memberIds = await listAppLogMembers(p);
+  if (memberIds.length > 1) return logsAcrossMembers(p, memberIds, target);
+
+  let instances: ConsoleInstance[];
+  try {
+    instances = await listInstances(p);
+  } catch (e) {
+    if (e instanceof AgentUnreachableError)
+      return { ok: false, reason: "unreachable" };
+    throw e;
+  }
+  const group = logsGroup(instances, target);
+  if (!group) return { ok: false, reason: "no-instance" };
   return { ok: true, instance: group[0]!, group, server: await serverOf(p) };
+}
+
+// A cluster App's copies on every server that holds some; a server that cannot be read is named, never an error.
+async function logsAcrossMembers(
+  p: App,
+  memberIds: string[],
+  target?: string,
+): Promise<LogsTarget> {
+  const listed = await Promise.all(
+    memberIds.map(async (id) => {
+      const server = await getServerById(id);
+      if (!server) return null;
+      try {
+        const instances = await listInstances({ ...p, serverId: id });
+        return { server, instances, error: null };
+      } catch (error) {
+        return { server, instances: null, error };
+      }
+    }),
+  );
+  const known = listed.filter((m) => m !== null);
+  const up = known.filter((m) => m.instances !== null);
+  if (up.length === 0) {
+    const error = known.find((m) => m.server.id === p.serverId)?.error;
+    if (!error || error instanceof AgentUnreachableError)
+      return { ok: false, reason: "unreachable" };
+    throw error;
+  }
+  // A replica is one of the App's copies wherever it runs: one on each of two servers is still two.
+  const labels = replicaLabels(
+    [...new Set(up.flatMap((m) => m.instances!.map((i) => i.name)))],
+    p.slug,
+  );
+  // With a server out of reach a copy can look alone; an App set to several replicas still names it.
+  const lone = (name: string) =>
+    p.replicas > 1 && replicaIndexOf(name) !== null
+      ? replicaTag(name, p.slug)
+      : null;
+  const members: LogsMember[] = [];
+  for (const m of up) {
+    const group = logsGroup(
+      m.instances!.map((i) => ({
+        ...i,
+        replica: labels.get(i.name)?.label ?? lone(i.name),
+      })),
+      target,
+    );
+    if (group) members.push({ server: m.server, group });
+  }
+  const first = members[0];
+  if (!first) return { ok: false, reason: "no-instance" };
+  const unavailable = known
+    .filter((m) => m.instances === null)
+    .map((m) => m.server.name);
+  return {
+    ok: true,
+    instance: first.group[0]!,
+    group: first.group,
+    server: first.server,
+    ...(members.length > 1 || unavailable.length > 0
+      ? { members, unavailable }
+      : {}),
+  };
 }
 
 export async function execInContainer(
