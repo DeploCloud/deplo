@@ -74,6 +74,18 @@ export async function listClustersForTeam(teamId: string): Promise<Cluster[]> {
   return rows.map(assemble);
 }
 
+/** The one answer to "is this cluster this team's": the cluster, or the refusal. */
+export async function resolveTeamCluster(
+  teamId: string,
+  clusterId: string,
+): Promise<Cluster> {
+  const cluster = (await listClustersForTeam(teamId)).find(
+    (c) => c.id === clusterId,
+  );
+  if (!cluster) throw new Error("That cluster isn't available to this team.");
+  return cluster;
+}
+
 export async function listClusters(): Promise<Cluster[]> {
   await requireTeamWide("clusters");
   const teamId = await requireActiveTeamId();

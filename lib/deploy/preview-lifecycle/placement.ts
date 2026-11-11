@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { askLeaderToPlace } from "../../data/clusters/placement";
-import { listClustersForTeam } from "../../data/clusters/roster";
+import { resolveTeamCluster } from "../../data/clusters/roster";
 import { serverWildcardIp } from "../../data/servers/addresses";
 import { getServerById } from "../../data/servers/roster";
 import { teardownOrQueue } from "../../data/teardown-queue";
@@ -52,10 +52,7 @@ async function memberFor(p: Preview, app: App): Promise<string> {
     (await memberStillServes(app.clusterId!, p.serverId))
   )
     return p.serverId;
-  const cluster = (await listClustersForTeam(app.teamId)).find(
-    (c) => c.id === app.clusterId,
-  );
-  if (!cluster) throw new Error(CLUSTER_NOT_AVAILABLE);
+  const cluster = await resolveTeamCluster(app.teamId, app.clusterId!);
   return askLeaderToPlace(cluster, {
     kind: "app",
     id: p.id,

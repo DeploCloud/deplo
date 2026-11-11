@@ -30,7 +30,10 @@ import {
 } from "../db/schema/control-plane/backups";
 import { workloadPlacements } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
-import { servers as serversTable } from "../db/schema/control-plane/servers";
+import {
+  servers as serversTable,
+  serverTeams,
+} from "../db/schema/control-plane/servers";
 import { __resetReleaseCacheForTests } from "../agent/release";
 import { __setClusterPinForTest } from "../infra/agent-client/cluster-host";
 import {
@@ -246,6 +249,17 @@ test("placing on a cluster is refused without create_databases, with both a clus
   );
   assert.equal(asked.length, 0);
   assert.equal((await db.select().from(databasesTable)).length, 0);
+});
+
+test("a database lands on a member the team was never given as a server", async () => {
+  const cluster = await eu();
+  await db
+    .update(serversTable)
+    .set({ allTeams: false })
+    .where(eq(serversTable.id, "srv_2"));
+  await db.insert(serverTeams).values({ serverId: "srv_2", teamId: TEAM_A });
+  const made = await asTeamB(() => newDb(cluster.id, "theirs"));
+  assert.equal((await dbRow(made.id)).serverId, "srv_2");
 });
 
 test("a leader's refusal is the sentence the user reads and nothing is created", async () => {

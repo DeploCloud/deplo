@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, eq } from "drizzle-orm";
 
+import { getServerById } from "../servers/roster";
 import { assertServerAccessibleTx } from "../servers/team-access";
 import { getDb } from "../../db/client";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
@@ -43,7 +44,7 @@ import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
 import { imageArchs } from "../clusters/architectures";
 import { assertServerNotInCluster } from "../clusters/members";
 import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
-import { listClustersForTeam } from "../clusters/roster";
+import { resolveTeamCluster } from "../clusters/roster";
 import { ensureFailoverBackup } from "./failover";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
 import type { Database, DatabaseType } from "../../types/database";
@@ -88,10 +89,8 @@ export async function createDatabase(input: {
   if (input.clusterId && input.serverId)
     throw new Error("Pick a cluster or a server, not both.");
   const cluster = input.clusterId
-    ? (await listClustersForTeam(teamId)).find((c) => c.id === input.clusterId)
+    ? await resolveTeamCluster(teamId, input.clusterId)
     : null;
-  if (input.clusterId && !cluster)
-    throw new Error("That cluster isn't available to this team.");
 
   const nameTaken = await getDb()
     .select({ id: databasesTable.id })
@@ -112,9 +111,9 @@ export async function createDatabase(input: {
 
   // The leader answers before anything is written, so a refusal leaves no database behind.
   const id = newId("db");
+  // A member follows its cluster's sharing, whatever the server itself is shared with.
   const server = cluster
-    ? await resolveTeamServer(
-        teamId,
+    ? await getServerById(
         await askLeaderToPlace(cluster, {
           kind: "database",
           id,
@@ -129,10 +128,9 @@ export async function createDatabase(input: {
             }),
           ),
         }),
-      ).catch(() => {
-        throw new Error("That cluster's server isn't available to this team.");
-      })
+      )
     : await resolveTeamServer(teamId, input.serverId);
+  if (!server) throw new Error("Server not found");
   if (!cluster) await assertServerNotInCluster(server.id);
 
   // db-<slug> is a stack on its server, and app slugs and volume names share that namespace.

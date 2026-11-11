@@ -20,9 +20,14 @@ import {
   clearPlacement,
   recordPlacement,
 } from "../clusters/placement";
-import { listClustersForTeam } from "../clusters/roster";
+import { resolveTeamCluster } from "../clusters/roster";
 import { joinAppTunnel, leaveAppTunnel } from "../clusters/app-tunnel";
-import { canHostWorkloads, listServersForTeam } from "../servers/roster";
+import {
+  canHostWorkloads,
+  getServerById,
+  listAllServers,
+  listServersForTeam,
+} from "../servers/roster";
 import { hostPortClaimed } from "../host-ports";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
 import { composeNamesOnNetwork } from "../../deploy/compose-stack/compose-read";
@@ -36,7 +41,6 @@ import { teardownOrQueue } from "../teardown-queue";
 import { dropAppWebhook, syncAppWebhook } from "../git-connections";
 import { loadAppGraph, loadDomainsForApp } from "../app-graph-load";
 import { assertNotMigrating } from "../migration-guard";
-import { listAllServers } from "../servers/roster";
 import { requireAppCapability } from "../node-access";
 import { recordActivity } from "../activity";
 import {
@@ -47,6 +51,7 @@ import {
 } from "./source-guards";
 import type { App, DeploySource } from "../../types/app";
 import type { Cluster } from "../../types/cluster";
+import type { Server } from "../../types/server";
 import type { GitRepo } from "../../types/build";
 
 export interface UpdateSourceInput {
@@ -75,8 +80,6 @@ export async function moveAppToServer(
   if (!app || app.teamId !== membership.teamId)
     throw new Error("App not found");
   if (app.serverId === serverId) return;
-  // Leaving a cluster is moving the App, not only configuring it.
-  if (app.clusterId) await requireAppCapability(id, "move_apps");
   await writeAppSource(
     id,
     {
@@ -98,10 +101,7 @@ export async function moveAppToCluster(
   const app = await loadAppGraph(id);
   if (!app || app.teamId !== membership.teamId)
     throw new Error("App not found");
-  const cluster = (await listClustersForTeam(membership.teamId)).find(
-    (c) => c.id === clusterId,
-  );
-  if (!cluster) throw new Error("That cluster isn't available to this team.");
+  const cluster = await resolveTeamCluster(membership.teamId, clusterId);
   if (app.clusterId === cluster.id) return;
   // A refusal throws here, before anything stops.
   const member = await askLeaderToPlace(cluster, {
@@ -148,30 +148,80 @@ async function tunnelWarn(
   );
 }
 
+interface SourceMove {
+  deploy: boolean;
+  cluster?: Cluster;
+  /** Why Deplo moved it, for Activity. */
+  why?: string;
+}
+
+/** Who writes, with every gate already answered: built by the gated door, or by Deplo for its own moves. */
+interface SourceWriter {
+  teamId: string;
+  user: { id: string; name: string };
+  servers: Server[];
+  repo: GitRepo | null;
+  editReach: string[];
+  traefikLabelsBy: string | null;
+}
+
+/** The gated door: every write a person asks for passes here, and nothing here can switch a gate off. */
 async function writeAppSource(
   id: string,
   input: UpdateSourceInput,
-  move?: {
-    deploy: boolean;
-    cluster?: Cluster;
-    as?: { teamId: string; why: string };
-  },
+  move?: { deploy: boolean; cluster?: Cluster },
 ): Promise<void> {
-  const { membership } = move?.as
-    ? { membership: { teamId: move.as.teamId } }
-    : await requireAppCapability(id, "configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const teamId = membership.teamId;
+  const [at] = await getDb()
+    .select({ serverId: appsTable.serverId, clusterId: appsTable.clusterId })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, teamId)))
+    .limit(1);
+  const moving = Boolean(
+    at && input.serverId && input.serverId !== at.serverId,
+  );
+  // Leaving a cluster is moving the App, not only configuring it.
+  if (moving && at.clusterId && at.clusterId !== move?.cluster?.id)
+    await requireAppCapability(id, "move_apps");
   assertImageRef(input.source, input.dockerImage);
   const editReach = await assertComposeSavable(input.compose);
   const traefikLabelsBy = await authorizeComposeTraefik(input.compose);
-  const user = move?.as ? { id: "", name: "Deplo" } : (await getCurrentUser())!;
-  // A move re-writes the stored repo, already scoped when it was saved.
-  const repo = move
-    ? input.repo
-    : await scopeRepoCredentials(input.repo, membership.teamId);
-  // The cluster is shared with the team even when the member it lands on is not.
-  const servers = move?.as
-    ? await listAllServers()
-    : await listServersForTeam(membership.teamId);
+  const servers = await listServersForTeam(teamId);
+  // A member follows its cluster's sharing: the one the App is on, and the one the leader named.
+  for (const sid of [
+    at?.clusterId ? at.serverId : null,
+    move?.cluster ? input.serverId : null,
+  ]) {
+    if (!sid || servers.some((s) => s.id === sid)) continue;
+    const member = await getServerById(sid);
+    if (member) servers.push(member);
+  }
+  await applyAppSource(
+    id,
+    input,
+    {
+      teamId,
+      user: (await getCurrentUser())!,
+      servers,
+      // A move re-writes the stored repo, already scoped when it was saved.
+      repo: move ? input.repo : await scopeRepoCredentials(input.repo, teamId),
+      editReach,
+      traefikLabelsBy,
+    },
+    move,
+  );
+}
+
+// Ungated: the caller holds the gate, or is Deplo itself. No resolver reaches this but through writeAppSource.
+async function applyAppSource(
+  id: string,
+  input: UpdateSourceInput,
+  who: SourceWriter,
+  move?: SourceMove,
+): Promise<void> {
+  const membership = { teamId: who.teamId };
+  const { user, repo, editReach, traefikLabelsBy, servers } = who;
   const serversById = new Map(servers.map((s) => [s.id, s] as const));
 
   const [current] = await getDb()
@@ -363,7 +413,7 @@ async function writeAppSource(
     "app",
     move
       ? `Moved ${current?.name ?? "app"} to ${serversById.get(input.serverId!)?.name ?? "another server"}` +
-          (move.as ? `: ${move.as.why}` : "")
+          (move.why ? `: ${move.why}` : "")
       : `Updated deploy source`,
     user.name,
     id,
@@ -432,7 +482,7 @@ export async function relocateClusterApp(
   if (!app || app.clusterId !== cluster.id) throw new Error("App not found");
   assertNotMigrating("app", app.name, app.migrationRunId);
   const deploy = app.source !== "upload" || app.upload != null;
-  await writeAppSource(
+  await applyAppSource(
     id,
     {
       source: app.source,
@@ -440,7 +490,15 @@ export async function relocateClusterApp(
       dockerImage: app.dockerImage,
       serverId,
     },
-    { deploy, cluster, as: { teamId: app.teamId, why } },
+    {
+      teamId: app.teamId,
+      user: { id: "", name: "Deplo" },
+      servers: await listAllServers(),
+      repo: app.repo,
+      editReach: [],
+      traefikLabelsBy: null,
+    },
+    { deploy, cluster, why },
   );
   return deploy;
 }
