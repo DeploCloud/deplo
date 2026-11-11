@@ -224,6 +224,11 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   `leadFrom` (`lib/data/clusters/leader-move.ts`) changes it, and it stores the next epoch BEFORE
   telling the leader, so no two leaders are ever handed the same one. Both may lead, so a bundle
   goes to every leader key (`refreshLeaderKeys`) and both are parties of every relay roster.
+- **A leader leads only with a quorum, and Deplo's beat breaks a tie**
+  (`docs/agents/cluster-rollout.md` §5). More than half of the cluster's servers answer it, or
+  exactly half while Deplo named its epoch in the last 20 s (`beatClusterLeaders`, every 5 s, to
+  `leaderHost` only). A takeover waits `TAKEOVER_AFTER_MS`, longer than a leader trusts a beat
+  (`DeploFor` in `deplo-cluster`): change the two together, or two leaders each hold half a cluster.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
   where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) - a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and
