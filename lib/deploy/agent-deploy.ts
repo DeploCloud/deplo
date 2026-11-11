@@ -11,7 +11,6 @@ import {
   type RegistryAuth,
   type BuildSpec,
   ReadyCheck,
-  RestartRule,
   type SourceCompose,
 } from "../agent/gen/agent";
 import { explainNetworkError } from "./network";
@@ -44,7 +43,7 @@ import { offerBuiltImage } from "./build/build-reuse";
 import { deployOverlap, type OverlapStacks } from "./overlap";
 import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "./replicas";
 import { getServerById } from "../data/servers/roster";
-import { scheduleFailoverBundle } from "../data/clusters/bundles";
+import { offerFailoverBundle } from "./failover-offer";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
@@ -508,45 +507,6 @@ async function appConnectorToken(
     .where(eq(appsTable.id, appId))
     .limit(1);
   return app?.slug === slug ? loadAppConnectorToken(appId) : null;
-}
-
-function offerFailoverBundle(
-  appId: string,
-  agentDeployId: string,
-  req: DeployRequest,
-): void {
-  scheduleFailoverBundle({
-    appId,
-    deploymentId: agentDeployId.replace(/-stack$/, ""),
-    stack: {
-      slug: req.slug,
-      projectId: req.projectId,
-      imageRef: req.imageRef,
-      composeYaml: req.composeYaml,
-      network: req.network,
-      env: { ...req.env },
-      // Pulled images need their credentials again; a built image is already on the member.
-      registryAuth:
-        req.pullImage || req.sourceKind === SourceKind.SOURCE_KIND_COMPOSE
-          ? req.registryAuth.map((a) => ({ ...a }))
-          : [],
-      composeUpArgs: [...req.composeUpArgs],
-      ...(req.startAfterReady.length > 0
-        ? { startAfterReady: [...req.startAfterReady] }
-        : {}),
-      // What keeps a moved App checked, restarted and configured as this deploy left it.
-      ...(req.ready ? { ready: ReadyCheck.toJSON(req.ready) } : {}),
-      ...(req.restartRule
-        ? { restartRule: RestartRule.toJSON(req.restartRule) }
-        : {}),
-      ...(req.mounts.length > 0
-        ? { mounts: req.mounts.map((m) => ({ ...m })) }
-        : {}),
-      ...(req.filesBindSources.length > 0
-        ? { filesBindSources: [...req.filesBindSources] }
-        : {}),
-    },
-  });
 }
 
 // An upload's build folder goes up in chunks when the agent can take them, else whole.
