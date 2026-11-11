@@ -1280,7 +1280,14 @@ enum ClusterJoinReasonCode {
 Where a cluster's leader runs and whether it answers, asked live of the server that runs it.
 """
 type ClusterLeader {
-  """One plain sentence on why it is not running; empty when it is."""
+  """
+  Whether a failover would work right now: the leader answers and enough servers answer it. Null with fewer than two servers, or while Deplo's machine stands in for the leader.
+  """
+  failoverReady: Boolean
+
+  """
+  One plain sentence on why it is not running, or that it hears too few servers to move anything; empty otherwise.
+  """
   message: String
 
   """It runs on the machine Deplo itself runs on."""
@@ -1317,6 +1324,11 @@ type ClusterLeaderChoice {
 
   """The leader runs here now."""
   current: Boolean
+
+  """
+  What a leader there cannot do; empty when nothing. A server with no proxy still needs Deplo's machine up to move anything.
+  """
+  note: String
 
   """Deplo's own machine, where the leader runs unless it is moved."""
   onDeploHost: Boolean

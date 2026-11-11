@@ -170,7 +170,9 @@ const activityTexts = async () =>
       .orderBy(activities.createdAt, activities.seq)
   )
     .map((a) => a.message)
-    .filter((m) => /not responding|answers again|for a minute/.test(m));
+    .filter((m) =>
+      /not responding|answers again|for a minute|Too few servers/.test(m),
+    );
 
 /** Runs a watch until the stored sequence reaches `until`, then drops the leader's end of it. */
 async function watchUntil(clusterId: string, until: number) {
@@ -255,6 +257,26 @@ test("events buffered while Deplo was away are applied once, in order, from the 
   assert.equal(texts.length, 2);
   assert.match(texts[0], /is not responding in cluster eu\./);
   assert.match(texts[1], /answers again in cluster eu\./);
+});
+
+test("a leader that hears too few servers is never read as each server going silent", async () => {
+  const cluster = await eu();
+  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
+  const said = (member: string, state: string) =>
+    leader.watch.push("member_state", cluster.id, { member, state });
+  // srv_2 stops; then srv_3 does, and the leader, left hearing one of three, stops counting on the last one too.
+  said("srv_2", "not_responding");
+  said("srv_3", "not_responding");
+  said(SERVER_1, "not_responding");
+  said(SERVER_1, "fenced");
+  await watchUntil(cluster.id, 4);
+
+  assert.deepEqual(await activityTexts(), [
+    "srv_2 is not responding in cluster eu.",
+    "Too few servers answer in cluster eu, so nothing moves and srv_3 no longer counts as answering.",
+    `Too few servers answer in cluster eu, so nothing moves and ${SERVER_1} no longer counts as answering.`,
+    `Too few servers answer in cluster eu, so ${SERVER_1} stopped the databases and Apps with files that must never run twice.`,
+  ]);
 });
 
 test("a second watch starts from the stored sequence and applies nothing twice", async () => {

@@ -101,6 +101,15 @@ export async function getCluster(id: string): Promise<Cluster | null> {
 }
 
 /** The servers that are members of a cluster, in the order they joined. */
+/** What the leader last said about each member's lease. */
+export async function clusterLeaseStates(clusterId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ state: clusterMembersTable.leaseState })
+    .from(clusterMembersTable)
+    .where(eq(clusterMembersTable.clusterId, clusterId));
+  return rows.map((r) => r.state);
+}
+
 export async function clusterMemberServerIds(
   clusterId: string,
 ): Promise<string[]> {

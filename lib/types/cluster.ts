@@ -31,8 +31,10 @@ export interface ClusterLeader {
   onDeploHost: boolean;
   state: ClusterLeaderState;
   version: string;
-  /** One plain sentence when the leader is not running; empty otherwise. */
+  /** One plain sentence when the leader is not running, or hears too few servers to move anything; empty otherwise. */
   message: string;
+  /** Whether a failover would work right now; null with fewer than two servers, or while Deplo's machine stands in. */
+  failoverReady: boolean | null;
   /** Since when Deplo's own machine leads in its place; null while this leader leads. */
   takenOverAt: string | null;
   /** One plain sentence while Deplo cannot update a leader this cluster relies on; empty otherwise. */
@@ -51,6 +53,8 @@ export interface ClusterLeaderChoice {
   current: boolean;
   /** Why the leader cannot run there right now; empty when it can. */
   blocked: string;
+  /** What a leader there cannot do; empty when nothing: a server with no proxy still needs Deplo's machine up. */
+  note: string;
 }
 
 /** Failover needs somewhere to move an App to, so it starts at two members. */

@@ -22,6 +22,7 @@ import {
 } from "../../membership";
 import { probeClusterMember } from "../../infra/agent-client/cluster-host";
 import {
+  FAILOVER_MIN_MEMBERS,
   failoverOn,
   type Cluster,
   type ClusterJoin,
@@ -32,6 +33,7 @@ import {
   type ClusterMember,
 } from "../../types/cluster";
 import type { ServerStatus } from "../../types/server";
+import { TWO_SERVERS_JOINED } from "../../clusters/failover-reach";
 import { archivesChangeLog } from "../../databases/change-log";
 import { recordActivity } from "../activity";
 import { assembleDatabase } from "../backup-rows";
@@ -411,8 +413,10 @@ export async function addClusterMember(
   return {
     member,
     ...came,
-    note: failoverOn(members.length)
-      ? null
-      : "Failover starts at two members. Add another server to turn it on.",
+    note: !failoverOn(members.length)
+      ? "Failover starts at two members. Add another server to turn it on."
+      : members.length === FAILOVER_MIN_MEMBERS
+        ? TWO_SERVERS_JOINED
+        : null,
   };
 }

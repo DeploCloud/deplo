@@ -383,11 +383,19 @@ test("a cluster of one is allowed and says failover starts at two members", asyn
     false,
   );
   const second = await asAdmin(() => addClusterMember(cluster.id, "srv_3"));
-  assert.equal(second.note, null);
+  assert.equal(
+    second.note,
+    "Failover is on. With two servers it works only while Deplo is up.",
+  );
+  fleet.host("srv_4");
+  await seedServerRow(db, { id: "srv_4", ip: "10.0.0.4", host: "10.0.0.4" });
+  await fingerprint("srv_4", "4".repeat(64));
+  const third = await asAdmin(() => addClusterMember(cluster.id, "srv_4"));
+  assert.equal(third.note, null);
   const members = await asAdmin(() => listClusterMembers(cluster.id));
   assert.deepEqual(
     members.map((m) => m.serverId),
-    ["srv_2", "srv_3"],
+    ["srv_2", "srv_3", "srv_4"],
   );
   assert.equal(failoverOn(members.length), true);
 });
