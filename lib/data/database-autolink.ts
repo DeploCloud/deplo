@@ -36,6 +36,7 @@ const candidates = () =>
       teamId: appsTable.teamId,
       environmentId: appsTable.environmentId,
       serverId: appsTable.serverId,
+      clusterId: appsTable.clusterId,
     })
     .from(envVarsTable)
     .innerJoin(appsTable, eq(appsTable.id, envVarsTable.appId));

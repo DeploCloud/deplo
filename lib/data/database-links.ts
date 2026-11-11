@@ -54,6 +54,7 @@ interface Placement {
   teamId: string;
   environmentId: string | null;
   serverId: string;
+  clusterId: string | null;
 }
 
 export interface DatabaseLinkOption {
@@ -114,6 +115,7 @@ const placedDatabases = () =>
       teamId: databasesTable.teamId,
       environmentId: databasesTable.environmentId,
       serverId: databasesTable.serverId,
+      clusterId: databasesTable.clusterId,
       exposedPublicly: databasesTable.exposedPublicly,
       exposedPort: databasesTable.exposedPort,
       envName: environmentsTable.name,
@@ -136,6 +138,7 @@ async function appPlacement(
       teamId: appsTable.teamId,
       environmentId: appsTable.environmentId,
       serverId: appsTable.serverId,
+      clusterId: appsTable.clusterId,
     })
     .from(appsTable)
     .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
@@ -197,6 +200,7 @@ export async function listDatabaseAppLinks(databaseId: string): Promise<{
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
       serverId: appsTable.serverId,
+      clusterId: appsTable.clusterId,
       envName: environmentsTable.name,
       projectName: projectsTable.name,
     })
@@ -494,6 +498,7 @@ export async function withLinkedValues(
         teamId: appsTable.teamId,
         environmentId: appsTable.environmentId,
         serverId: appsTable.serverId,
+        clusterId: appsTable.clusterId,
       })
       .from(appsTable)
       .where(eq(appsTable.id, appId))
