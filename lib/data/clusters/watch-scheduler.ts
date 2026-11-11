@@ -8,6 +8,8 @@ import { clusters as clustersTable } from "../../db/schema/control-plane/cluster
 import { acquireLease, releaseLease } from "../../backups/lease";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { runEmptyingPass } from "./empty";
+import { leaderHost } from "./host";
+import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
 import { getClusterById } from "./roster";
 import { runClusterWatch } from "./watch";
@@ -23,6 +25,8 @@ interface State {
   owner: string;
   ticking: boolean;
   watches: Map<string, AbortController>;
+  /** The server whose leader each watch was opened on. */
+  leading?: Map<string, string>;
 }
 
 const KEY = Symbol.for("deplo.cluster.watch");
@@ -59,13 +63,26 @@ export async function runClusterWatchTick(): Promise<void> {
         c.abort();
         state.watches.delete(id);
       }
+    const leading = (state.leading ??= new Map());
     for (const id of ids) {
+      await superviseClusterLeader(id).catch((e) =>
+        console.warn(
+          `[cluster-leader] ${id}: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+      const cluster = await getClusterById(id);
+      const host = (cluster && (await leaderHost(cluster))?.id) || "";
+      // Another leader leads now: the watch on the old one has nothing more to say.
+      if (state.watches.has(id) && leading.get(id) !== host) {
+        state.watches.get(id)!.abort();
+        state.watches.delete(id);
+      }
       if (!state.watches.has(id)) {
         const c = new AbortController();
         state.watches.set(id, c);
+        leading.set(id, host);
         void runClusterWatch(id, c.signal);
       }
-      const cluster = await getClusterById(id);
       if (cluster)
         await pushLeaderRoster(cluster, { onlyIfChanged: true }).catch(
           () => false,

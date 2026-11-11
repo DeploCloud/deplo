@@ -1,166 +1,37 @@
-import { test, before, after, beforeEach, afterEach } from "node:test";
+import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
-import { makeTestDb, type TestDb } from "../db/test-harness";
-import { __setTestDb, __resetTestDb } from "../db/client";
-import { runWithIdentity } from "../auth/request-context";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import {
-  seedDeployment,
-  seedServer,
-  SERVER_1,
-  TRUNCATE_PROJECT_GRAPH,
-} from "./app-graph-test-helpers";
-import { seedServerRow } from "./infra-test-helpers";
-import { activities } from "../db/schema/control-plane/activity";
-import {
-  clusterLeaderKeys,
-  failoverBundlePushes,
-} from "../db/schema/control-plane/clusters";
+import type { TestDb } from "../db/test-harness";
+import { TEAM_B, USER_1 } from "./identity-test-helpers";
+import { SERVER_1 } from "./app-graph-test-helpers";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
-import { __resetReleaseCacheForTests } from "../agent/release";
-import { __setClusterPinForTest } from "../infra/agent-client/cluster-host";
-import {
-  fakeClusterHosts,
-  type FakeClusterHost,
-} from "../infra/agent-client/cluster-test-helpers";
-import {
-  __setRunnerForTest,
-  __resetQueueForTest,
-} from "../deploy/deploy-queue";
+import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { createCluster } from "./clusters/manage";
-import { addClusterMember } from "./clusters/members";
 import { ensureClusterLeader, getClusterLeader } from "./clusters/leader";
-import { forgetLeaderRoster } from "./clusters/leader-sync";
 import { moveClusterLeader } from "./clusters/leader-move";
 import { getClusterById } from "./clusters/roster";
+import { keyFingerprint } from "./clusters/bundles";
 import {
-  flushFailoverBundles,
-  keyFingerprint,
-  pushFailoverBundle,
-} from "./clusters/bundles";
-import { createApp } from "./apps/create";
-import { invalidateFrozen } from "./deplo-move/freeze";
-import {
-  newTestLeader,
+  leaderLab,
   openBundle,
+  relayRosters,
+  TRAEFIK,
   type TestLeader,
 } from "./cluster-leader-test-helpers";
 
-let db: TestDb;
-let pg: PGlite;
-let fleet: ReturnType<typeof fakeClusterHosts>;
-let origFetch: typeof fetch;
-const origIp = process.env.DEPLO_SERVER_IP;
-
-const SUMS =
-  `${"a".repeat(64)}  deplo-cluster-linux-amd64\n` +
-  `${"b".repeat(64)}  deplo-cluster-linux-arm64\n`;
+const lab = leaderLab();
+const { asAdmin, asTeamB, eu, messages, clusterApp, deployed } = lab;
+const { keyOwners, pushedTo } = lab;
 const everyone = { allTeams: true, teamIds: [] as string[] };
-const SERVERS = ["srv_2", "srv_3", "srv_4"];
 
-let hosts: Record<string, FakeClusterHost> = {};
-let leaders: Record<string, TestLeader> = {};
-
-before(async () => {
-  ({ db, pg } = await makeTestDb());
-  __setTestDb(db);
-  __setRunnerForTest(async () => {});
+let db: TestDb;
+let hosts: Record<string, FakeClusterHost>;
+let leaders: Record<string, TestLeader>;
+beforeEach(() => {
+  ({ db, hosts, leaders } = lab);
 });
-
-after(async () => {
-  __resetTestDb();
-  __resetQueueForTest();
-  await pg.close();
-});
-
-const RUNNING = {
-  installed: true,
-  running: true,
-  version: "0.2.0",
-  relay: true,
-  member: false,
-  relayLinks: 0,
-};
-
-beforeEach(async () => {
-  await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table clusters, failover_bundle_pushes, activities, deplo_moves, registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
-  await seedIdentity(db, {
-    users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
-    ],
-  });
-  await seedServer(db);
-  process.env.DEPLO_SERVER_IP = "10.0.0.1";
-  for (const [i, id] of SERVERS.entries()) {
-    await seedServerRow(db, {
-      id,
-      ip: `10.0.0.${i + 2}`,
-      host: `10.0.0.${i + 2}`,
-    });
-    await db
-      .update(serversTable)
-      .set({ agentCertFingerprint: String(i + 2).repeat(64) })
-      .where(eq(serversTable.id, id));
-  }
-  await db
-    .update(serversTable)
-    .set({ agentCertFingerprint: "1".repeat(64) })
-    .where(eq(serversTable.id, SERVER_1));
-  fleet = fakeClusterHosts();
-  hosts = {};
-  leaders = {};
-  for (const id of [SERVER_1, ...SERVERS]) {
-    const l = (leaders[id] = await newTestLeader());
-    hosts[id] = fleet.host(id, {
-      leader: l.calls,
-      ...(id === SERVER_1 ? { status: RUNNING } : {}),
-    });
-  }
-  __setClusterPinForTest({ version: "0.2.0", min: "0.2.0" });
-  __resetReleaseCacheForTests();
-  forgetLeaderRoster();
-  origFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(SUMS)) as typeof fetch;
-  invalidateFrozen();
-});
-
-afterEach(async () => {
-  await flushFailoverBundles();
-  fleet.restore();
-  __setClusterPinForTest(null);
-  __resetReleaseCacheForTests();
-  globalThis.fetch = origFetch;
-  if (origIp === undefined) delete process.env.DEPLO_SERVER_IP;
-  else process.env.DEPLO_SERVER_IP = origIp;
-  invalidateFrozen();
-});
-
-const asAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
-const asTeamB = <T>(fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId: "user_b", teamId: TEAM_B }, fn);
-
-async function eu() {
-  const cluster = await asAdmin(() => createCluster("eu", everyone));
-  await asAdmin(() => addClusterMember(cluster.id, "srv_2"));
-  await asAdmin(() => addClusterMember(cluster.id, "srv_3"));
-  return cluster;
-}
-
-const messages = async (teamId = TEAM_A) =>
-  (
-    await db
-      .select()
-      .from(activities)
-      .where(eq(activities.teamId, teamId))
-      .orderBy(activities.seq)
-  ).map((a) => `${a.actor}: ${a.message}`);
 
 test("moving the leader installs it on the picked server, which leads from the next epoch", async () => {
   const cluster = await eu();
@@ -205,29 +76,6 @@ test("only an instance admin moves a leader, whichever team asks", async () => {
   assert.equal(hosts.srv_4.installs.length, 0);
   assert.deepEqual(await messages(TEAM_B), []);
 });
-
-const TRAEFIK = `services:
-  traefik:
-    image: traefik:v3.7
-    container_name: deplo-traefik
-    command:
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-networks:
-  deplo:
-    external: true
-`;
-
-const relayRosters = (h: FakeClusterHost) =>
-  h.calls
-    .filter((c) => c.method === "relay.roster")
-    .map(
-      (c) =>
-        JSON.parse(new TextDecoder().decode(c.payload)) as {
-          cluster: string;
-          parties: { fingerprint: string; role: string }[];
-        },
-    );
 
 test("a server that answers on 443 runs a relay beside the leader, and every member is told to dial it", async () => {
   const cluster = await eu();
@@ -352,62 +200,6 @@ test("a server that cannot run a leader is refused in words, and nothing changes
   assert.equal(now.leaderEpoch, cluster.leaderEpoch);
   assert.equal(hosts.srv_4.installs.length, 0);
 });
-
-const COMPOSE =
-  'services:\n  web:\n    image: nginx:1.27\n    expose:\n      - "80"\n';
-
-async function clusterApp(clusterId: string) {
-  return asAdmin(() =>
-    createApp({
-      name: "web",
-      source: "compose",
-      repo: null,
-      compose: COMPOSE,
-      deploy: false,
-      clusterId,
-    }),
-  );
-}
-
-// What a successful deploy leaves behind: a ready deployment and its bundle at every leader.
-async function deployed(app: { id: string; slug: string }, deployId: string) {
-  await seedDeployment(db, { id: deployId, appId: app.id, status: "ready" });
-  await pushFailoverBundle({
-    appId: app.id,
-    deploymentId: deployId,
-    stack: {
-      slug: app.slug,
-      projectId: app.id,
-      imageRef: "nginx:1.27",
-      composeYaml: COMPOSE,
-      network: "deplo-team-x",
-      env: { API_KEY: "k-123" },
-      registryAuth: [],
-      composeUpArgs: [],
-    },
-  });
-}
-
-const keyOwners = async (clusterId: string) =>
-  Object.fromEntries(
-    (
-      await db
-        .select()
-        .from(clusterLeaderKeys)
-        .where(eq(clusterLeaderKeys.clusterId, clusterId))
-    ).map((k) => [k.serverId ?? "deplo", k.publicKey]),
-  );
-
-const pushedTo = async (appId: string) =>
-  (
-    await db
-      .select()
-      .from(failoverBundlePushes)
-      .where(eq(failoverBundlePushes.workloadId, appId))
-  )
-    .filter((r) => r.pushedAt)
-    .map((r) => r.keyFingerprint)
-    .sort();
 
 test("both leaders may lead, so every bundle is sealed to both keys and each opens its own", async () => {
   const cluster = await eu();

@@ -496,6 +496,11 @@ async function runSkippedBootJobs(): Promise<void> {
       async () => (await import("../apps/delete")).resumeAppDeletes(),
     ],
     [
+      "cluster leaders",
+      async () =>
+        (await import("../clusters/leader-standby")).leadClustersAfterMove(),
+    ],
+    [
       "OAuth resources",
       async () =>
         (await import("../../auth/oauth-resources")).reconcileOAuthResources(),

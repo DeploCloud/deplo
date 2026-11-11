@@ -120,8 +120,11 @@ export async function applyLeaderEvent(
   switch (e.type) {
     case "epoch": {
       const epoch = Number(d.epoch);
+      // Only upward: a leader that led before reports the epoch it left with.
       await advance(
-        Number.isInteger(epoch) && epoch > 0 ? { leaderEpoch: epoch } : {},
+        Number.isInteger(epoch) && epoch > cluster.leaderEpoch
+          ? { leaderEpoch: epoch }
+          : {},
       );
       return "applied";
     }
@@ -214,7 +217,7 @@ export async function reconcileCluster(
         m.id,
         m.state as ClusterLeaseState,
       );
-  if (view.epoch > 0 && view.epoch !== cluster.leaderEpoch)
+  if (view.epoch > cluster.leaderEpoch)
     await getDb()
       .update(clustersTable)
       .set({ leaderEpoch: view.epoch })
