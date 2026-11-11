@@ -8,18 +8,29 @@ import type {
   FailoverPreview,
 } from "@/lib/data/databases/failover";
 
+/** The promises of spec #176, in its words, wherever failover is described. */
+export function FailoverPromises({
+  promises,
+}: {
+  promises: readonly string[];
+}) {
+  return (
+    <ul className="space-y-1 text-sm">
+      {promises.map((p) => (
+        <li key={p} className="flex items-start gap-2">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <span>{p}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** What a database on a cluster relies on: the two promises, then loss and recovery. */
 export function FailoverNote({ promises, loss, recovery }: FailoverPreview) {
   return (
     <div className="space-y-2 rounded-lg border border-border p-3">
-      <ul className="space-y-1 text-sm">
-        {promises.map((p) => (
-          <li key={p} className="flex items-start gap-2">
-            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <span>{p}</span>
-          </li>
-        ))}
-      </ul>
+      <FailoverPromises promises={promises} />
       <p className="text-xs text-muted-foreground">
         {loss} {recovery} <DocsLink topic="clusters.databases" />
       </p>
