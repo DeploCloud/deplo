@@ -4,10 +4,7 @@ import { and, eq, lt } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { watchClusterLeader } from "../../infra/agent-client/cluster-host";
-import {
-  FAILOVER_MIN_MEMBERS,
-  type ClusterLeaseState,
-} from "../../types/cluster";
+import type { ClusterLeaseState } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import {
@@ -25,13 +22,10 @@ import {
 } from "./leader-sync";
 import { recordPlacement } from "./placement";
 import { applyLeftSaved, applyMemberReturned } from "./returned";
-import { clusterLeaseStates, getClusterById } from "./roster";
-import {
-  leaderHearsEnough,
-  leaseSentence,
-} from "../../clusters/failover-reach";
+import { getClusterById } from "./roster";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
+import { leaseChangeSentence } from "./lease-activity";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
 // Events carry a sequence; the last one applied is stored, so a restart or a reconnect replays only what is new.
@@ -97,13 +91,7 @@ async function memberLeaseChanged(
   // A preview never fails over: it reads offline until it is deployed again (#212).
   if (state === "fenced") await markPreviewsOffline(serverId);
   const name = (await getServerById(serverId))?.name ?? "A server";
-  const leases = await clusterLeaseStates(clusterId);
-  const answering = leases.filter((s) => s === "ok").length;
-  // In a cluster of one nothing could move anyway: the server's own silence is the news.
-  const tooFew =
-    leases.length >= FAILOVER_MIN_MEMBERS &&
-    !leaderHearsEnough(answering, leases.length);
-  const text = leaseSentence(name, clusterName, state, tooFew);
+  const text = await leaseChangeSentence(clusterId, clusterName, name, state);
   await recordActivity("server", text, "Deplo");
 }
 
