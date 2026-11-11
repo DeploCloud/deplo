@@ -25,6 +25,7 @@ const DELETION = /* GraphQL */ `
         serverName
         stopsOn
         waiting
+        losesReach
       }
       otherTeams {
         teamName
@@ -53,7 +54,12 @@ export function deletionCost(info: ClusterDeletion): string | undefined {
     : undefined;
 }
 
-function Released({ info }: { info: ClusterDeletion }) {
+const names = (list: string[]) =>
+  list.length > 1
+    ? `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`
+    : list[0];
+
+export function Released({ info }: { info: ClusterDeletion }) {
   if (held(info) === 0)
     return <p className="text-sm text-muted-foreground">Nothing runs on it.</p>;
   return (
@@ -65,6 +71,8 @@ function Released({ info }: { info: ClusterDeletion }) {
             {w.kind === "database" ? "database, " : ""}
             {w.waiting ? "not running, stays on" : "stays on"} {w.serverName}
             {w.stopsOn.length > 0 && `, stops on ${w.stopsOn.join(", ")}`}
+            {w.losesReach.length > 0 &&
+              `, stops reaching ${names(w.losesReach)} by name`}
           </span>
         </li>
       ))}

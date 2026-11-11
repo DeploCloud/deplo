@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
 import type { ClusterDeletion } from "@/lib/types/cluster";
-import { deletionCost } from "./cluster-delete";
+import { deletionCost, Released } from "./cluster-delete";
 
 const web = {
   kind: "app" as const,
@@ -38,4 +41,17 @@ test("deleting a cluster that fails over says what stops: failover, and names ac
 test("a cluster of one, or an empty one, costs nothing to delete", () => {
   assert.equal(deletionCost(deletion({ failoverOn: false })), undefined);
   assert.equal(deletionCost(deletion({ workloads: [] })), undefined);
+});
+
+test("an App that reaches a database on another server by name is told which names it loses", () => {
+  const text = (info: ClusterDeletion) =>
+    renderToStaticMarkup(createElement(Released, { info })).replace(
+      /<[^>]+>/g,
+      "",
+    );
+  assert.equal(
+    text(deletion({ workloads: [{ ...web, losesReach: ["main", "worker"] }] })),
+    "web stays on server-a, stops reaching main and worker by name",
+  );
+  assert.equal(text(deletion()), "web stays on server-a");
 });
