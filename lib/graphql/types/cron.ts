@@ -101,10 +101,12 @@ export const CronRunRef = builder.objectRef<CronRunDTO>("CronRun").implement({
     jobId: t.exposeID("jobId"),
     status: t.exposeString("status", {
       description:
-        "running | succeeded | failed | timedout | skipped | lost. `skipped` " +
-        "never started (the container was stopped, or the previous run was " +
-        "still going) and `lost` means the outcome is unknown - the agent " +
-        "restarted mid-run. Neither is a failure.",
+        "running | succeeded | failed | timedout | skipped | lost | server_lost. " +
+        "`skipped` never started (the container was stopped, or the previous " +
+        "run was still going), `lost` means the outcome is unknown - the agent " +
+        "restarted mid-run - and `server_lost` means the server running it " +
+        "stopped. None of the three is retried; run a lost one again with " +
+        "runCronJobNow.",
     }),
     trigger: t.exposeString("trigger", { description: "schedule | manual." }),
     actor: t.exposeString("actor"),

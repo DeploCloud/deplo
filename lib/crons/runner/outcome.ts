@@ -7,6 +7,7 @@ import {
   cronJobs as cronJobsTable,
   cronRuns as cronRunsTable,
 } from "../../db/schema/control-plane/crons";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { shouldFire } from "../../notify/cooldown";
 import { dispatchAlert } from "../../notify/dispatch";
 import type { CronRunStatus } from "../../types/cron";
@@ -76,6 +77,18 @@ function raiseAlert(
   fields: SettleFields,
 ): void {
   if (status === "skipped") return;
+  if (status === "server_lost") {
+    dispatchAlert({
+      teamId: r.run.teamId,
+      key: "cron_run_lost",
+      title: `Cron job "${r.job.name}" was lost: its server stopped`,
+      body: `${fields.error ?? "Its server stopped while this run was in flight."} The command may be half done. Deplo does not run it again on its own: use Run now if it should run.`,
+      path: r.target.path,
+      appId: r.job.appId,
+      dedupe: { id: `cronrun:${r.run.id}`, state: "lost" },
+    });
+    return;
+  }
 
   const dedupeId = `cron:${r.job.id}`;
   const attempts = r.run.attempt + 1;
@@ -113,9 +126,30 @@ function raiseAlert(
   });
 }
 
+/** The run's server stopped under it: lost for good, alerted once, never retried (spec #176). */
+export async function settleServerLost(
+  r: InFlightRun,
+  serverId: string,
+  at: Date = new Date(),
+): Promise<void> {
+  const [server] = await getDb()
+    .select({ name: serversTable.name })
+    .from(serversTable)
+    .where(eq(serversTable.id, serverId))
+    .limit(1);
+  await settle(
+    r,
+    "server_lost",
+    {
+      error: `${server?.name ?? "Its server"} stopped while this run was in flight.`,
+    },
+    at,
+  );
+}
+
 export async function settleOrRetry(
   r: InFlightRun,
-  status: Exclude<CronRunStatus, "running" | "skipped">,
+  status: Exclude<CronRunStatus, "running" | "skipped" | "server_lost">,
   fields: SettleFields,
   at: Date = new Date(),
 ): Promise<void> {

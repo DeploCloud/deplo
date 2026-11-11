@@ -141,6 +141,8 @@ export interface AgentJobStatus {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  /** The server stopped it itself when its cluster lease ran out. */
+  fenced: boolean;
 }
 
 export interface DroppedEntries {

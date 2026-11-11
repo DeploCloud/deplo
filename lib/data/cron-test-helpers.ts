@@ -129,6 +129,7 @@ export interface FakeJobState {
   stdout?: string;
   stderr?: string;
   timedOut?: boolean;
+  fenced?: boolean;
 }
 
 export class FakeAgent {
@@ -198,6 +199,7 @@ export class FakeAgent {
           stdout: s.stdout ?? "",
           stderr: s.stderr ?? "",
           timedOut: s.timedOut ?? false,
+          fenced: s.fenced ?? false,
         };
       },
       killJob: async (jobId: string) => {

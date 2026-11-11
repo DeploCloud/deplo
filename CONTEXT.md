@@ -1031,13 +1031,15 @@ a cron job is arbitrary code execution as the container's user with no sandbox.
 _Avoid_: scheduled task, scheduled job, cronjob (one word), task, timer.
 
 **Cron run**:
-One **executed** cron job, retries included - a `cron_runs` row. Six statuses:
+One **executed** cron job, retries included - a `cron_runs` row. Seven statuses:
 `running` · `succeeded` · `failed` · `timedout` (hit the job's own timeout, which points at
 a setting rather than at the command) · `skipped` (never started: the container was stopped,
 or the previous run was still going) · `lost` (Deplo could not find out how it ended - the
 agent restarted under it). `lost` is deliberately **not** `failed`: the command runs inside
 the _agent's_ process, so a control-plane restart does not kill it, and a run we lost track
-of most likely succeeded.
+of most likely succeeded. `server_lost` ("Lost: its server stopped") is the other way round: the
+**cluster** member running it stopped, so the command is most likely half done. Neither is ever
+retried; a `server_lost` run alerts once (`cron_run_lost`) and offers "Run now".
 Retries live in the SAME row (`attempt`), so one scheduled fire is always one row and the
 stored output is the last attempt's.
 _Avoid_: execution, invocation, cron job (that is the schedule), interrupted (use `lost`).
