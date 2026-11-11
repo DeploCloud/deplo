@@ -23,7 +23,7 @@ import { downloadBackupArtifact } from "./download";
 import { recordLeftBehindRun } from "./left-behind";
 import { restoreBackup } from "./restore";
 import { pruneRetention } from "./retention";
-import { listBackupRuns } from "./run-listing";
+import { getDatabaseBackupSummary, listBackupRuns } from "./run-listing";
 
 const USER_B = "user_b";
 const FAILED_OVER = "2026-03-03T14:32:00.000Z";
@@ -197,6 +197,20 @@ test("the list names the server it was left on and when the failover happened", 
     leftBehindLabel(null, FAILED_OVER, "UTC", new Date("2026-03-09T00:00:00Z")),
     "Left on a removed server after the failover at 3 Mar, 14:32",
   );
+});
+
+test("it is not the database's last backup", async () => {
+  await seedRun(db, {
+    id: "r_a",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "failed",
+    startedAt: "2026-02-01T00:00:00.000Z",
+  });
+  await seedLeft();
+  const s = await asUser1(() => getDatabaseBackupSummary("db_1"));
+  assert.equal(s.lastRunAt, "2026-02-01T00:00:00.000Z");
+  assert.equal(s.lastStatus, "failed");
 });
 
 test("a file outside the workload's own folder, or in another team's destination, is not recorded", async () => {

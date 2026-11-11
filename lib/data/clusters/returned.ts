@@ -136,6 +136,8 @@ async function listSaved(
 
 /** Why a member kept what it held, in the words the user reads. */
 async function whyKept(w: Workload, server: string, k: Row): Promise<string> {
+  // ponytail: a destination on another server's disk is never written by the member alone, so that data
+  // stays put. Deplo could carry it there itself (backup-transport relays) once a volume can be removed safely.
   if (k.reason === "store_elsewhere") {
     const [dest] =
       typeof k.ref === "string"
