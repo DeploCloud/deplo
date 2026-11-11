@@ -126,7 +126,7 @@ export const METRICS_HISTORY: McpToolDef[] = [
     name: "metrics_history",
     title: "Read metrics history",
     description:
-      "The recent CPU, memory, network and disk samples of an app, a database or a server, as the Monitoring page charts them. On a cluster a sample has each server's share, and markers say when an app moved.",
+      "The recent CPU, memory, network and disk samples of an app, a database or a server, as the Monitoring page charts them. On a cluster a sample has each server's share, and markers say when it moved.",
     group: "Monitoring",
     requires: "view_metrics",
     readOnly: true,
@@ -181,6 +181,10 @@ export const METRICS_HISTORY: McpToolDef[] = [
           pids
           running
           ${SAMPLE_SHARES}
+        }
+        databaseMetricsMarkers(databaseId: $id) @include(if: $database) {
+          ts
+          label
         }
         serverMetricsHistory(serverId: $id) @include(if: $server) {
           ts

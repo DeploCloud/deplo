@@ -3619,7 +3619,7 @@ type Member {
 }
 
 """
-A moment an app changed servers (a move or a failover), read from Activity.
+A moment an app or a database changed servers (a move or a failover), read from Activity.
 """
 type MetricsMarker {
   """The Activity entry, as written."""
@@ -6086,6 +6086,11 @@ type Query {
   The metrics history buffered for one database (oldest first). Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   databaseMetricsHistory(databaseId: String!): [ContainerMetricsSample!]
+
+  """
+  Each move or failover of one database inside the metrics history window (oldest first), so a jump in a chart has its explanation beside it.
+  """
+  databaseMetricsMarkers(databaseId: String!): [MetricsMarker!]
 
   """
   Live container state for a database, straight from the owning agent. Polled by the database's status badge (same shape as appRuntime).

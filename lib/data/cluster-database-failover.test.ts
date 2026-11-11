@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 
 import { eq } from "drizzle-orm";
 
-import { TEAM_A, TEAM_B } from "./identity-test-helpers";
+import { runWithIdentity } from "../auth/request-context";
+import { runTool } from "../mcp/run-tool-test-helpers";
+import { TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
+import { getDatabaseMetricsMarkers } from "./metrics-markers";
 import { seedDestination } from "./backup-test-helpers";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { workloadPlacements } from "../db/schema/control-plane/clusters";
@@ -299,4 +302,39 @@ test("a database that found no room is named as waiting, in its own team", async
     .from(databasesTable)
     .where(eq(databasesTable.id, "db_main"));
   assert.equal(row.serverId, "srv_2");
+});
+
+test("a database's failover is a marker on its charts, read over MCP too and by no other team", async () => {
+  const cluster = await eu();
+  await main(cluster.id);
+  await backedUp({ startedAt: TODAY_1415 });
+  const before = Date.now();
+  await apply(cluster.id, ...failedOver(cluster.id));
+
+  const markers = await asAdmin(() => getDatabaseMetricsMarkers("db_main"));
+  assert.deepEqual(
+    markers.map((m) => m.label),
+    ["Restored main on server-3 from the backup of 14:15"],
+  );
+  assert.ok(markers[0].ts >= before && markers[0].ts <= Date.now());
+
+  const got = await runTool(
+    { userId: USER_1, teamId: TEAM_A },
+    "metrics_history",
+    { kind: "database", id: "db_main" },
+  );
+  assert.equal(got.error, undefined, got.error ?? "");
+  assert.deepEqual(
+    (
+      got.data as { databaseMetricsMarkers: { label: string }[] }
+    ).databaseMetricsMarkers.map((m) => m.label),
+    ["Restored main on server-3 from the backup of 14:15"],
+  );
+
+  assert.deepEqual(
+    await runWithIdentity({ userId: "user_b", teamId: TEAM_B }, () =>
+      getDatabaseMetricsMarkers("db_main"),
+    ),
+    [],
+  );
 });
