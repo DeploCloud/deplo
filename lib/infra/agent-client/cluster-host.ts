@@ -186,9 +186,9 @@ export async function callClusterRelay(
 
 export type MemberProbe = "ok" | "too_old" | "offline";
 
-/** Whether the server's agent answers and can be a cluster member (Hello capability `cluster`). Never throws. */
-export async function probeClusterMember(
+async function probe(
   serverId: string,
+  capability: string,
 ): Promise<MemberProbe> {
   let conn: AgentConnection;
   try {
@@ -198,11 +198,35 @@ export async function probeClusterMember(
   }
   try {
     const hello = await conn.hello();
-    return hello.capabilities?.includes(CLUSTER_CAPABILITY) ? "ok" : "too_old";
+    return hello.capabilities?.includes(capability) ? "ok" : "too_old";
   } catch {
     return "offline";
   } finally {
     conn.close();
+  }
+}
+
+/** Whether the server's agent answers and can be a cluster member (Hello capability `cluster`). Never throws. */
+export async function probeClusterMember(
+  serverId: string,
+): Promise<MemberProbe> {
+  return probe(serverId, CLUSTER_CAPABILITY);
+}
+
+/** Whether the server's agent answers and can run a leader (Hello capability `cluster.host`). Never throws. */
+export async function probeClusterHost(serverId: string): Promise<MemberProbe> {
+  return probe(serverId, CLUSTER_HOST_CAPABILITY);
+}
+
+/** Whether the leader on the server answers calls: it runs, at a version this Deplo accepts. Never throws. */
+export async function clusterLeaderAnswers(serverId: string): Promise<boolean> {
+  try {
+    const here = await clusterLeaderStatus(serverId);
+    return (
+      here.installed && here.running && versionAtLeast(here.version, pin().min)
+    );
+  } catch {
+    return false;
   }
 }
 

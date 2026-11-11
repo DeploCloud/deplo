@@ -91,7 +91,14 @@ const CERT_FILE = "deplo-certificates.yml";
 const PANEL_CONFIG = "deplo-panel";
 const PANEL_FILE = "deplo-panel.yml";
 const DEFAULT_CERT_CONFIG = "deplo-default-cert";
-const OUR_CONFIGS = [CERT_CONFIG, PANEL_CONFIG, DEFAULT_CERT_CONFIG];
+const RELAY_CONFIG = "deplo-cluster-relay";
+const RELAY_FILE = "deplo-cluster-relay.yml";
+const OUR_CONFIGS = [
+  CERT_CONFIG,
+  PANEL_CONFIG,
+  DEFAULT_CERT_CONFIG,
+  RELAY_CONFIG,
+];
 const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
 const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
 const FILE_WATCH_FLAG = "--providers.file.watch=true";
@@ -416,6 +423,69 @@ export function withPanelRoute(
     panelFile(currentContent, { ...route, domain, fallbackDomain, target }),
   );
   setHostGateway(doc, service, route.relay === true);
+  return dump(doc);
+}
+
+/** The address a server's proxy answers the cluster relay on, or null when it carries no such route. */
+export function relayRouteHost(currentYaml: string): string | null {
+  let content: unknown;
+  try {
+    content = parseCompose(currentYaml).getIn([
+      "configs",
+      RELAY_CONFIG,
+      "content",
+    ]);
+  } catch {
+    return null;
+  }
+  if (typeof content !== "string") return null;
+  return content.match(/Host\(`([^`]+)`\)/)?.[1] ?? null;
+}
+
+/** The relay beside a leader on another server answers on that server's own address (ADR-0044); null takes it out. */
+export function withRelayRoute(
+  currentYaml: string,
+  host: string | null,
+): string {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  dropOurConfig(doc, service, RELAY_CONFIG);
+  if (!host) {
+    dropFileProvider(doc, service, RELAY_CONFIG);
+    setHostGateway(doc, service, false);
+    return dump(doc);
+  }
+  const address = assertRoutableHost(
+    host,
+    "This server has no address for the cluster relay to answer on",
+  );
+  const file = new Document({
+    http: {
+      routers: {
+        [RELAY_CONFIG]: {
+          rule: `Host(\`${address}\`) && Path(\`${RELAY_PATH}\`)`,
+          entryPoints: ["websecure"],
+          service: RELAY_CONFIG,
+          priority: RELAY_PRIORITY,
+          tls: {},
+        },
+      },
+      services: {
+        [RELAY_CONFIG]: {
+          loadBalancer: { servers: [{ url: RELAY_TARGET }] },
+        },
+      },
+    },
+  });
+  mountDeploConfig(
+    doc,
+    service,
+    RELAY_CONFIG,
+    RELAY_FILE,
+    "the cluster relay's route",
+    file.toString({ lineWidth: 0 }),
+  );
+  setHostGateway(doc, service, true);
   return dump(doc);
 }
 

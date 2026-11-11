@@ -15,7 +15,12 @@ import {
   withPanelTunnel,
 } from "../../deploy/panel-tunnel-stack";
 import { isDeploHostServer } from "../../deploy/domains";
-import { panelRoute, withPanelRoute } from "../../deploy/traefik-stack";
+import {
+  panelRoute,
+  relayRouteHost,
+  withPanelRoute,
+  withRelayRoute,
+} from "../../deploy/traefik-stack";
 import {
   callClusterRelay,
   clusterLeaderStatus,
@@ -24,12 +29,13 @@ import {
 } from "../../infra/agent-client/cluster-host";
 import { deploHostServer } from "../instance-settings/settings-store";
 import { loadPanelTunnel } from "../instance-settings/panel-tunnel-store";
+import type { Server } from "../../types/server";
 import { getServerById } from "../servers/roster";
-import { leaderHost } from "./host";
+import { leaderHostOf } from "./host";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 
-// Every party of a cluster reaches the others through the relay on Deplo's machine (ADR-0044). This module owns what
-// that relay is told and where its door sits in the proxy; it is internal, so the callers hold the gates.
+// Every party of a cluster reaches the others through a relay: the one on Deplo's machine, and the one beside a leader
+// on another server (ADR-0044). This module owns what a relay is told and where its door sits in the proxy.
 
 export type RelayParty = { fingerprint: string; role: "leader" | "member" };
 export type RelayRoster = { cluster: string; parties: RelayParty[] };
@@ -49,7 +55,23 @@ export async function fingerprintOf(serverId: string): Promise<string | null> {
   return /^[0-9a-f]{64}$/.test(fp) ? fp : null;
 }
 
-/** Who a cluster's relay lets through: its leader, then each member, by the certificate their server holds. */
+/** Where the relay beside a leader on this server answers; null when the server runs no proxy to answer on 443. */
+export function relayAddress(server: Server): string | null {
+  // ponytail: an IPv6-only server gets no relay; give the route a name to answer on when one shows up.
+  return server.traefikEnabled && /^[a-z0-9.-]+$/.test(server.ip)
+    ? `https://${server.ip}`
+    : null;
+}
+
+/** The server whose relay a cluster's parties dial besides Deplo's own: its leader's, when that runs elsewhere. */
+async function remoteRelayHost(clusterId: string): Promise<Server | null> {
+  const cluster = await getClusterById(clusterId);
+  if (!cluster?.leaderServerId) return null;
+  const server = await getServerById(cluster.leaderServerId);
+  return server && relayAddress(server) ? server : null;
+}
+
+/** Who a cluster's relay lets through: its leaders (the one elsewhere and Deplo's own, since both may lead), then each member. */
 export async function clusterRoster(
   clusterId: string,
   memberServerIds: string[] = [],
@@ -57,9 +79,13 @@ export async function clusterRoster(
   const parties: RelayParty[] = [];
   const cluster = await getClusterById(clusterId);
   if (cluster) {
-    const host = await leaderHost(cluster);
-    const fp = host ? await fingerprintOf(host.id) : null;
-    if (fp) parties.push({ fingerprint: fp, role: "leader" });
+    const leaders = new Set<string>();
+    for (const id of new Set([cluster.leaderServerId, null])) {
+      const host = await leaderHostOf(id);
+      const fp = host ? await fingerprintOf(host.id) : null;
+      if (fp) leaders.add(fp);
+    }
+    for (const fp of leaders) parties.push({ fingerprint: fp, role: "leader" });
     for (const id of new Set(memberServerIds)) {
       const m = await fingerprintOf(id);
       if (m) parties.push({ fingerprint: m, role: "member" });
@@ -90,15 +116,21 @@ export async function pushClusterRoster(
     });
     return out;
   }
-  try {
-    await callClusterRelay(relayHost.id, "relay.roster", encode(roster));
-  } catch (e) {
-    out.failed.push({ serverId: relayHost.id, message: messageOf(e) });
+  const remote = await remoteRelayHost(clusterId);
+  for (const relay of remote ? [relayHost, remote] : [relayHost]) {
+    try {
+      await callClusterRelay(relay.id, "relay.roster", encode(roster));
+    } catch (e) {
+      out.failed.push({ serverId: relay.id, message: messageOf(e) });
+    }
   }
   if (roster.parties.length > 0)
     for (const id of new Set(memberServerIds)) {
       try {
-        await setClusterMember(id, true);
+        // Its own relay is already the one beside it.
+        const relays =
+          remote && remote.id !== id ? [relayAddress(remote)!] : [];
+        await setClusterMember(id, true, relays);
         out.dialing.push(id);
       } catch (e) {
         out.failed.push({ serverId: id, message: messageOf(e) });
@@ -128,13 +160,9 @@ export async function clustersOfServer(serverId: string): Promise<string[]> {
     .where(eq(clusterMembersTable.serverId, serverId));
   const onDeploHost = !!server && isDeploHostServer(server);
   const inside = new Set(member.map((m) => m.id));
+  // Deplo's own machine may lead any cluster, so it is a party of all of them.
   return rows
-    .filter(
-      (r) =>
-        inside.has(r.id) ||
-        r.leader === serverId ||
-        (r.leader === null && onDeploHost),
-    )
+    .filter((r) => inside.has(r.id) || r.leader === serverId || onDeploHost)
     .map((r) => r.id);
 }
 
@@ -221,6 +249,32 @@ export async function syncClusterRelayRoute(): Promise<RelayRouteChange> {
   });
 }
 
+/**
+ * Puts the relay's door in the proxy of a server that runs a leader, or takes it out. Answers whether the proxy
+ * changed; a server with no proxy has nothing to change.
+ */
+export async function syncLeaderRelayRoute(
+  server: Server,
+  on: boolean,
+): Promise<boolean> {
+  const address = on ? relayAddress(server) : null;
+  const wanted = address ? new URL(address).hostname : null;
+  const { fetchHostInfo, withTraefikStackLock, applyTraefikConfig } =
+    await import("../../infra/agent-client/host-ops");
+  return withTraefikStackLock(server.id, async () => {
+    const yaml = (await fetchHostInfo(server.id)).traefikComposeYaml;
+    if (!yaml || relayRouteHost(yaml) === wanted) return false;
+    const res = await applyTraefikConfig(server.id, {
+      composeYaml: withRelayRoute(yaml, wanted),
+    });
+    if (!res.ok)
+      throw new Error(
+        res.error || "The proxy on this server refused the change",
+      );
+    return true;
+  });
+}
+
 export type ClusterRelayStart = {
   /** The relay was installed or started on Deplo's machine just now. */
   started: boolean;
@@ -253,8 +307,15 @@ export async function ensureClusterRelay(): Promise<ClusterRelayStart> {
 /** The sweep's job: the route and the relay's rosters are put right again after an update, a restart or a change made elsewhere. */
 export async function reconcileClusterRelay(): Promise<void> {
   const rows = await getDb()
-    .select({ id: clustersTable.id })
+    .select({ id: clustersTable.id, leader: clustersTable.leaderServerId })
     .from(clustersTable);
   await syncClusterRelayRoute();
+  for (const id of new Set(rows.map((r) => r.leader))) {
+    const server = id ? await getServerById(id) : null;
+    if (server)
+      await syncLeaderRelayRoute(server, true).catch((e) =>
+        console.warn(`[cluster-relay] ${server.id}: ${messageOf(e)}`),
+      );
+  }
   await pushClusterRosters(rows.map((r) => r.id));
 }

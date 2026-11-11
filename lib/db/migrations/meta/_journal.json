@@ -1597,6 +1597,13 @@
       "when": 1795002000000,
       "tag": "0230_cluster_emptying",
       "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1795104000000,
+      "tag": "0233_cluster_leader_takeover",
+      "breakpoints": true
     }
   ]
 }

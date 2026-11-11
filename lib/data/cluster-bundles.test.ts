@@ -21,6 +21,7 @@ import { activities } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   clusterLeaderKeys,
+  clusters as clustersTable,
   failoverBundlePushes,
 } from "../db/schema/control-plane/clusters";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
@@ -435,12 +436,11 @@ test("every leader key the cluster holds gets its own sealed copy", async () => 
     status: RUNNING,
     leader: leaderCalls(second),
   });
-  await db.insert(clusterLeaderKeys).values({
-    clusterId: cluster.id,
-    publicKey: second.publicKey,
-    serverId: "srv_3",
-    createdAt: new Date().toISOString(),
-  });
+  // The leader runs on srv_3 (#215): its key and the one on Deplo's machine both hold bundles.
+  await db
+    .update(clustersTable)
+    .set({ leaderServerId: "srv_3" })
+    .where(eq(clustersTable.id, cluster.id));
   await deployOn(app, "dpl_1");
 
   const a = await open(leader, app.id);

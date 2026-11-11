@@ -24,7 +24,7 @@ import {
   listLeaderBundles,
   putLeaderBundle,
 } from "./bundle-calls";
-import { leaderHost } from "./host";
+import { leaderHostOf } from "./host";
 import { isBuiltImage } from "./images";
 import { getClusterById } from "./roster";
 
@@ -84,22 +84,25 @@ async function keyRows(clusterId: string): Promise<KeyRow[]> {
     .where(eq(clusterLeaderKeys.clusterId, clusterId));
 }
 
-async function hostFor(
-  cluster: Cluster,
-  serverId: string | null,
-): Promise<string | null> {
-  const host = await leaderHost({ ...cluster, leaderServerId: serverId });
-  return host?.id ?? null;
+async function hostFor(serverId: string | null): Promise<string | null> {
+  return (await leaderHostOf(serverId))?.id ?? null;
 }
 
-/** Asks the cluster's leader for its key and keeps it; a changed key replaces the old one, so every bundle is sealed again. */
-export async function refreshLeaderKey(cluster: Cluster): Promise<void> {
-  const hostId = await hostFor(cluster, cluster.leaderServerId);
+/** The key of the leader that leads now; the other one only stands by. */
+const leading = (cluster: Cluster) => (k: KeyRow) =>
+  k.serverId === (cluster.leaderTakeoverAt ? null : cluster.leaderServerId);
+
+// A changed key replaces the old one, so every bundle is sealed again.
+async function refreshKeyOf(
+  cluster: Cluster,
+  serverId: string | null,
+): Promise<void> {
+  const hostId = await hostFor(serverId);
   if (!hostId) return;
   const publicKey = await askLeaderKey(hostId);
   const db = getDb();
-  const same = cluster.leaderServerId
-    ? eq(clusterLeaderKeys.serverId, cluster.leaderServerId)
+  const same = serverId
+    ? eq(clusterLeaderKeys.serverId, serverId)
     : isNull(clusterLeaderKeys.serverId);
   const held = await db
     .select()
@@ -125,10 +128,30 @@ export async function refreshLeaderKey(cluster: Cluster): Promise<void> {
     await tx.insert(clusterLeaderKeys).values({
       clusterId: cluster.id,
       publicKey,
-      serverId: cluster.leaderServerId,
+      serverId,
       createdAt: nowIso(),
     });
   });
+}
+
+/**
+ * Keeps the key of each leader that may lead: the one on another server and Deplo's own. A leader that does not
+ * answer keeps the key it had; the key of a server the leader left is retired.
+ */
+export async function refreshLeaderKeys(cluster: Cluster): Promise<void> {
+  const wanted = [...new Set([cluster.leaderServerId, null])];
+  for (const serverId of wanted)
+    await refreshKeyOf(cluster, serverId).catch(() => {});
+  for (const k of await keyRows(cluster.id))
+    if (!wanted.includes(k.serverId))
+      await getDb()
+        .delete(clusterLeaderKeys)
+        .where(
+          and(
+            eq(clusterLeaderKeys.clusterId, cluster.id),
+            eq(clusterLeaderKeys.publicKey, k.publicKey),
+          ),
+        );
 }
 
 async function recordOnce(
@@ -153,6 +176,11 @@ async function recordOnce(
 
 const cannotFailOver = (name: string, cluster: string, why: string) =>
   `${name} cannot fail over yet: ${why} Cluster ${cluster} will not move it to another server until that is fixed.`;
+
+const UNREACHED =
+  "Deplo could not reach the cluster's leader to hand it what it needs to restart this App elsewhere.";
+const NOT_TAKEN =
+  "the cluster's leader did not take its bundle. Deplo will send it again.";
 
 type AppRow = { id: string; name: string; teamId: string };
 
@@ -224,7 +252,7 @@ async function deliver(
         },
       });
     try {
-      const hostId = await hostFor(cluster, k.serverId);
+      const hostId = await hostFor(k.serverId);
       if (!hostId) throw new Error("no leader host");
       await putLeaderBundle(hostId, {
         cluster: cluster.id,
@@ -279,19 +307,13 @@ export async function pushFailoverBundle(input: {
   if (dep?.previewId) return;
   const cluster = await getClusterById(app.clusterId);
   if (!cluster) return;
-  await refreshLeaderKey(cluster).catch(() => {});
+  await refreshLeaderKeys(cluster);
   const keys = await keyRows(cluster.id);
-  if (keys.length === 0) {
-    await recordOnce(
-      app,
-      cannotFailOver(
-        app.name,
-        cluster.name,
-        "Deplo could not reach the cluster's leader to hand it what it needs to restart this App elsewhere.",
-      ),
-    );
-    return;
-  }
+  const lead = keys.find(leading(cluster));
+  // A leader standing by without it is put right by the sweep; only the one that leads decides a failover.
+  if (!lead)
+    await recordOnce(app, cannotFailOver(app.name, cluster.name, UNREACHED));
+  if (keys.length === 0) return;
   const bundle: FailoverBundle = {
     v: 1,
     kind: KIND,
@@ -316,15 +338,8 @@ export async function pushFailoverBundle(input: {
       ),
     ),
   );
-  if (failed.length > 0)
-    await recordOnce(
-      app,
-      cannotFailOver(
-        app.name,
-        cluster.name,
-        "the cluster's leader did not take its bundle. Deplo will send it again.",
-      ),
-    );
+  if (lead && failed.includes(keyFingerprint(lead.publicKey)))
+    await recordOnce(app, cannotFailOver(app.name, cluster.name, NOT_TAKEN));
 }
 
 const inFlight = new Set<Promise<void>>();
@@ -365,7 +380,7 @@ export async function dropFailoverBundle(
   if (!cluster || rows.length === 0) return;
   for (const k of await keyRows(cluster.id)) {
     try {
-      const hostId = await hostFor(cluster, k.serverId);
+      const hostId = await hostFor(k.serverId);
       if (hostId)
         await dropLeaderBundle(hostId, {
           cluster: cluster.id,
@@ -404,8 +419,9 @@ export async function reconcileClusterBundles(
   if (await instanceFrozen()) return;
   const cluster = await getClusterById(clusterId);
   if (!cluster) return;
-  await refreshLeaderKey(cluster).catch(() => {});
+  await refreshLeaderKeys(cluster);
   const keys = await keyRows(cluster.id);
+  const lead = keys.find(leading(cluster));
   const db = getDb();
   const members: AppRow[] = await db
     .select({
@@ -418,7 +434,7 @@ export async function reconcileClusterBundles(
   const held = new Map<string, Map<string, string> | null>();
   for (const k of keys) {
     try {
-      const hostId = await hostFor(cluster, k.serverId);
+      const hostId = await hostFor(k.serverId);
       if (!hostId) throw new Error("no leader host");
       const list = await listLeaderBundles(hostId, cluster.id);
       held.set(
@@ -453,27 +469,19 @@ export async function reconcileClusterBundles(
       const list = held.get(k.publicKey);
       return !list || list.get(app.id) !== live;
     });
-    if (keys.length === 0) {
-      await recordOnce(
-        app,
-        cannotFailOver(
-          app.name,
-          cluster.name,
-          "Deplo could not reach the cluster's leader to hand it what it needs to restart this App elsewhere.",
-        ),
-      );
-      continue;
-    }
+    if (!lead)
+      await recordOnce(app, cannotFailOver(app.name, cluster.name, UNREACHED));
     if (lacking.length === 0) continue;
     if (!source) {
-      await recordOnce(
-        app,
-        cannotFailOver(
-          app.name,
-          cluster.name,
-          "Deplo has no saved copy of its last deploy to give the cluster's leader. It is sent with the next deploy.",
-        ),
-      );
+      if (lead && lacking.includes(lead))
+        await recordOnce(
+          app,
+          cannotFailOver(
+            app.name,
+            cluster.name,
+            "Deplo has no saved copy of its last deploy to give the cluster's leader. It is sent with the next deploy.",
+          ),
+        );
       continue;
     }
     const bundle = JSON.parse(
@@ -486,15 +494,8 @@ export async function reconcileClusterBundles(
       source.bundleEnc,
       lacking,
     );
-    if (failed.length > 0)
-      await recordOnce(
-        app,
-        cannotFailOver(
-          app.name,
-          cluster.name,
-          "the cluster's leader did not take its bundle. Deplo will send it again.",
-        ),
-      );
+    if (lead && failed.includes(keyFingerprint(lead.publicKey)))
+      await recordOnce(app, cannotFailOver(app.name, cluster.name, NOT_TAKEN));
   }
   const fps = keys.map((k) => keyFingerprint(k.publicKey));
   const ids = members.map((m) => m.id);
