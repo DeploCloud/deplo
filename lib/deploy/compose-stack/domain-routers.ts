@@ -64,8 +64,10 @@ export function wireDomainRoutes(opts: {
   basicAuth?: { name: string; users: string };
   wireApp: WireApp;
   ownMiddlewares?: Map<string, string[]>;
-}): void {
+}): Map<string, number> {
   const { services, input, basicAuth, wireApp } = opts;
+  // The port each routed service is reached on, for whoever needs it after the labels are written.
+  const routed = new Map<string, number>();
   const name = input.name;
   const portOf = (service: string): number => {
     return declaredPort(services[service]) ?? 80;
@@ -93,6 +95,7 @@ export function wireDomainRoutes(opts: {
       continue;
     }
     const port = route.port ?? portOf(service);
+    if (!routed.has(service)) routed.set(service, port);
     const keySeed = `${name}-${service}-${route.name}${route.pathPrefix}`;
     mergeLabels(
       services[service] as App,
@@ -119,4 +122,5 @@ export function wireDomainRoutes(opts: {
       }),
     );
   }
+  return routed;
 }

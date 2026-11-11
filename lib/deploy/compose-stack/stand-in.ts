@@ -93,25 +93,14 @@ export function stackOverlapBlocker(
   return null;
 }
 
-function routedPort(labels: unknown): number | null {
-  if (!Array.isArray(labels) || !labels.includes("traefik.enable=true"))
-    return null;
-  for (const label of labels) {
-    const m =
-      /^traefik\.http\.services\.[^.]+\.loadbalancer\.server\.port=(\d+)$/.exec(
-        String(label),
-      );
-    if (m) return Number(m[1]);
-  }
-  return null;
-}
-
 /** The proxy skips a container until it is healthy, so a routed service gets visitors only once it listens. */
-export function probeRoutedServices(services: Record<string, App>): void {
-  for (const svc of Object.values(services)) {
+export function probeRoutedServices(
+  services: Record<string, App>,
+  routedPorts: ReadonlyMap<string, number>,
+): void {
+  for (const [name, port] of routedPorts) {
+    const svc = services[name];
     if (!isRec(svc) || svc.healthcheck != null) continue;
-    const port = routedPort(svc.labels);
-    if (port === null) continue;
     svc.healthcheck = portProbeHealthCheck(port);
     probeEverySecondWhileStarting(svc);
   }
