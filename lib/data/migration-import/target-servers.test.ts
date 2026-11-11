@@ -2,146 +2,85 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
+
 import { makeTestDb, type TestDb } from "../../db/test-harness";
-import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { seedServer, SERVER_1 } from "../app-graph-test-helpers";
-import { importMigrationProject } from "./project-import";
-import { beginMigration } from "./run-lifecycle";
+import { __setTestDb, __resetTestDb } from "../../db/client";
+import { runWithIdentity } from "../../auth/request-context";
 import {
-  URL_BASE,
-  CONNECT,
-  asOwner,
-  openMigrationHarness,
-  closeMigrationHarness,
-  resetMigrationHarness,
-} from "./migration-import-test-helpers";
+  clusterMembers,
+  clusters,
+} from "../../db/schema/control-plane/clusters";
+import {
+  seedServer,
+  SERVER_1,
+  TRUNCATE_PROJECT_GRAPH,
+} from "../app-graph-test-helpers";
+import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
+import { seedServerRow } from "../infra-test-helpers";
+import type { Report } from "./run-report";
+import {
+  landingServerId,
+  resolvePlacements,
+  resolveServers,
+} from "./target-servers";
 
 let db: TestDb;
 let pg: PGlite;
+const AT = "2026-01-01T00:00:00.000Z";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
-  await openMigrationHarness(db);
+  __setTestDb(db);
 });
-
-after(() => closeMigrationHarness(db, pg));
-
-beforeEach(() => resetMigrationHarness(db));
-
-test("a placement naming a migration source is refused, on both axes", async () => {
-  const { servers: serversTable } =
-    await import("../../db/schema/control-plane/servers");
-  const { eq } = await import("drizzle-orm");
-  const SOURCE = "srv_source";
-  await seedServer(db, SOURCE);
+after(async () => {
+  __resetTestDb();
+  await pg.close();
+});
+beforeEach(async () => {
+  await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
+    truncate table clusters, users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
+  // The oldest server is in a cluster; srv_free is a server of its own.
+  await seedServer(db);
+  await seedServerRow(db, { id: "srv_free" });
+  await db.insert(clusters).values({ id: "clu_1", name: "eu", createdAt: AT });
   await db
-    .update(serversTable)
-    .set({ importOnly: true })
-    .where(eq(serversTable.id, SOURCE));
+    .insert(clusterMembers)
+    .values({ serverId: SERVER_1, clusterId: "clu_1", joinedAt: AT });
+});
 
-  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
-  const result = await asOwner(() =>
-    importMigrationProject({
-      ...CONNECT,
-      runId,
-      projectId: "dok-prj-blink",
-      serviceIds: ["dok-app-web", "dok-app-api"],
-      placements: [
-        { serviceId: "dok-app-web", serverId: SOURCE },
-        { serviceId: "dok-app-api", serverId: SERVER_1, buildServerId: SOURCE },
-      ],
-    }),
+test("an import never lands on a cluster member picked as a server: it falls back, and the report says so", async () => {
+  const lines: { message: string }[] = [];
+  const report = {
+    add: async (l: { message: string }) => void lines.push(l),
+  } as unknown as Report;
+
+  const placed = await resolvePlacements(
+    TEAM_A,
+    [
+      { serviceId: "svc_member", serverId: SERVER_1 },
+      { serviceId: "svc_free", serverId: "srv_free" },
+    ],
+    report,
+    "shop",
   );
+  assert.deepEqual([...placed.keys()], ["svc_free"]);
+  assert.match(lines[0].message, /not one this team can deploy to/);
 
-  const apps = await db.select().from(appsTable);
-  const byName = new Map(apps.map((a) => [a.name, a]));
-  assert.equal(byName.get("blink-web")?.serverId, SERVER_1);
-  assert.equal(byName.get("blink-api")?.buildServerId, null);
+  const hosts = await resolveServers(
+    TEAM_A,
+    [{ from: "old-host", to: SERVER_1 }],
+    report,
+    "shop",
+  );
+  assert.equal(hosts.size, 0);
+
   assert.equal(
-    result.items.filter(
-      (i) => i.sourceKind === "server" && i.outcome === "manual",
-    ).length,
-    2,
-    "one line per dropped pick",
-  );
-});
-
-test("each app lands on the server it was placed on, and builds where it was told", async () => {
-  const SERVER_2 = "srv_2";
-  await seedServer(db, SERVER_2);
-  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
-  await asOwner(() =>
-    importMigrationProject({
-      ...CONNECT,
-      runId,
-      projectId: "dok-prj-blink",
-      serviceIds: ["dok-app-web", "dok-app-api"],
-      placements: [
-        { serviceId: "dok-app-web", serverId: SERVER_1 },
-        {
-          serviceId: "dok-app-api",
-          serverId: SERVER_2,
-          buildServerId: SERVER_1,
-        },
-      ],
-    }),
-  );
-
-  const apps = await db.select().from(appsTable);
-  const byName = new Map(apps.map((a) => [a.name, a]));
-  assert.equal(byName.get("blink-web")?.serverId, SERVER_1);
-  assert.equal(byName.get("blink-api")?.serverId, SERVER_2);
-  assert.equal(byName.get("blink-web")?.buildServerId, null);
-  assert.equal(byName.get("blink-api")?.buildServerId, SERVER_1);
-});
-
-test("a placement naming a server this team cannot reach is refused, not used", async () => {
-  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
-  const result = await asOwner(() =>
-    importMigrationProject({
-      ...CONNECT,
-      runId,
-      projectId: "dok-prj-blink",
-      serviceIds: ["dok-app-web"],
-      placements: [
-        { serviceId: "dok-app-web", serverId: "srv_from_another_team" },
-      ],
-    }),
-  );
-
-  const apps = await db.select().from(appsTable);
-  assert.deepEqual(
-    apps.map((a) => a.serverId),
-    [SERVER_1],
-  );
-  const line = result.items.find((i) => i.sourceKind === "server")!;
-  assert.equal(line.outcome, "manual");
-  assert.match(line.message!, /not one this team can deploy to/);
-});
-
-test("a build server this team cannot reach falls back to Automatic", async () => {
-  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
-  const result = await asOwner(() =>
-    importMigrationProject({
-      ...CONNECT,
-      runId,
-      projectId: "dok-prj-blink",
-      serviceIds: ["dok-app-web"],
-      placements: [
-        {
-          serviceId: "dok-app-web",
-          serverId: SERVER_1,
-          buildServerId: "srv_from_another_team",
-        },
-      ],
-    }),
-  );
-
-  const apps = await db.select().from(appsTable);
-  assert.equal(apps[0].serverId, SERVER_1);
-  assert.equal(apps[0].buildServerId, null);
-  assert.match(
-    result.items.find((i) => i.sourceKind === "server")!.message!,
-    /not one this team can build on/,
+    await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+      landingServerId(undefined),
+    ),
+    "srv_free",
   );
 });

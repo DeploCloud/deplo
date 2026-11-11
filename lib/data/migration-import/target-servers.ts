@@ -2,8 +2,17 @@ import "server-only";
 
 import { requireActiveTeamId } from "../../membership";
 import { isValidExposePort } from "../../databases/ports";
+import { clusterMemberServerIdSet } from "../clusters/members";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import type { Report } from "./run-report";
+
+/** Where an import may land: the team's servers that run Apps on their own. A cluster member is placed by its leader, never picked. */
+async function importTargets(teamId: string) {
+  const members = await clusterMemberServerIdSet();
+  return (await listServersForTeam(teamId)).filter(
+    (s) => canHostWorkloads(s) && !members.has(s.id),
+  );
+}
 
 export interface ServerChoice {
   from: string;
@@ -16,11 +25,7 @@ export async function resolveServers(
   report: Report,
   projectName: string,
 ): Promise<Map<string, string | undefined>> {
-  const usable = new Set(
-    (await listServersForTeam(teamId))
-      .filter(canHostWorkloads)
-      .map((s) => s.id),
-  );
+  const usable = new Set((await importTargets(teamId)).map((s) => s.id));
   const out = new Map<string, string | undefined>();
   for (const { from, to } of choices) {
     if (usable.has(to)) out.set(from, to);
@@ -60,7 +65,7 @@ export async function resolvePlacements(
   if (placements.length === 0) return out;
 
   const servers = await listServersForTeam(teamId);
-  const canRun = new Set(servers.filter(canHostWorkloads).map((s) => s.id));
+  const canRun = new Set((await importTargets(teamId)).map((s) => s.id));
   const canBuild = new Set(
     servers.filter((s) => !s.storageOnly && !s.importOnly).map((s) => s.id),
   );
@@ -111,6 +116,5 @@ export async function landingServerId(
 ): Promise<string> {
   if (given) return given;
   const teamId = await requireActiveTeamId();
-  const usable = (await listServersForTeam(teamId)).filter(canHostWorkloads);
-  return usable[0]?.id ?? "";
+  return (await importTargets(teamId))[0]?.id ?? "";
 }
