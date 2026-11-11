@@ -316,12 +316,19 @@ function waitWords(
         alert: (names) => `${Other} is online and ready for ${names}.`,
       };
     case "no_architecture":
-      return {
-        room: false,
-        and: `${other} has the kind of processor it was built for`,
-        alert: (names) =>
-          `${Other} has the kind of processor ${names} was built for.`,
-      };
+      // On a mixed cluster `other` already names the kind of server; saying "kind of processor" again adds nothing.
+      return other === "no other server"
+        ? {
+            room: false,
+            and: `${other} has the kind of processor it was built for`,
+            alert: (names) =>
+              `${Other} has the kind of processor ${names} was built for.`,
+          }
+        : {
+            room: false,
+            and: `there is ${other} to take it`,
+            alert: (names) => `There is ${other} to take ${names}.`,
+          };
     default:
       return {
         room: true,
