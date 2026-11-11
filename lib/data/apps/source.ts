@@ -33,6 +33,8 @@ import { appOwnVolumeNames } from "../project-backup-descriptor";
 import { teardownOrQueue } from "../teardown-queue";
 import { dropAppWebhook, syncAppWebhook } from "../git-connections";
 import { loadAppGraph, loadDomainsForApp } from "../app-graph-load";
+import { assertNotMigrating } from "../migration-guard";
+import { listAllServers } from "../servers/roster";
 import { requireAppCapability } from "../node-access";
 import { recordActivity } from "../activity";
 import {
@@ -129,22 +131,28 @@ export async function moveAppToCluster(
 async function writeAppSource(
   id: string,
   input: UpdateSourceInput,
-  move?: { deploy: boolean; cluster?: Cluster },
+  move?: {
+    deploy: boolean;
+    cluster?: Cluster;
+    as?: { teamId: string; why: string };
+  },
 ): Promise<void> {
-  const { membership } = await requireAppCapability(id, "configure_apps");
+  const { membership } = move?.as
+    ? { membership: { teamId: move.as.teamId } }
+    : await requireAppCapability(id, "configure_apps");
   assertImageRef(input.source, input.dockerImage);
   const editReach = await assertComposeSavable(input.compose);
   const traefikLabelsBy = await authorizeComposeTraefik(input.compose);
-  const user = (await getCurrentUser())!;
+  const user = move?.as ? { id: "", name: "Deplo" } : (await getCurrentUser())!;
   // A move re-writes the stored repo, already scoped when it was saved.
   const repo = move
     ? input.repo
     : await scopeRepoCredentials(input.repo, membership.teamId);
-  const serversById = new Map(
-    (await listServersForTeam(membership.teamId)).map(
-      (s) => [s.id, s] as const,
-    ),
-  );
+  // The cluster is shared with the team even when the member it lands on is not.
+  const servers = move?.as
+    ? await listAllServers()
+    : await listServersForTeam(membership.teamId);
+  const serversById = new Map(servers.map((s) => [s.id, s] as const));
 
   const [current] = await getDb()
     .select({
@@ -330,7 +338,8 @@ async function writeAppSource(
   await recordActivity(
     "app",
     move
-      ? `Moved ${current?.name ?? "app"} to ${serversById.get(input.serverId!)?.name ?? "another server"}`
+      ? `Moved ${current?.name ?? "app"} to ${serversById.get(input.serverId!)?.name ?? "another server"}` +
+          (move.as ? `: ${move.as.why}` : "")
       : `Updated deploy source`,
     user.name,
     id,
@@ -375,4 +384,31 @@ async function writeAppSource(
       );
     }
   }
+}
+
+/**
+ * Deplo itself moving a cluster App to another member of its cluster, as emptying a server does. No Capability
+ * is read: the caller holds the gate. Answers whether a deploy was started on the new member.
+ */
+export async function relocateClusterApp(
+  id: string,
+  cluster: Cluster,
+  serverId: string,
+  why: string,
+): Promise<boolean> {
+  const app = await loadAppGraph(id);
+  if (!app || app.clusterId !== cluster.id) throw new Error("App not found");
+  assertNotMigrating("app", app.name, app.migrationRunId);
+  const deploy = app.source !== "upload" || app.upload != null;
+  await writeAppSource(
+    id,
+    {
+      source: app.source,
+      repo: app.repo,
+      dockerImage: app.dockerImage,
+      serverId,
+    },
+    { deploy, cluster, as: { teamId: app.teamId, why } },
+  );
+  return deploy;
 }

@@ -18,6 +18,7 @@ import {
   destroyStackOn,
 } from "../volume-migration";
 import { withKeyedLock } from "../keyed-mutex";
+import { getServerById } from "../servers/roster";
 import { databaseHostClash, hostNameClaims } from "../host-name-claims";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import {
@@ -25,7 +26,10 @@ import {
   MAX_PORT,
   isValidExposePort,
 } from "../../databases/ports";
-import { assertNotProvisioning, requireDatabase } from "./rows";
+import { assembleDatabase } from "../backup-rows";
+import { assertNotMigrating } from "../migration-guard";
+import type { Database } from "../../types/database";
+import { assertNotProvisioning, mountsFor, requireDatabase } from "./rows";
 import {
   databasePassword,
   dbVolumeHostName,
@@ -104,20 +108,24 @@ async function writeDatabasePlacement(
   id: string,
   input: UpdateDatabaseInput,
   cluster?: Cluster,
+  as?: { teamId: string; why: string },
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_databases");
-  const teamId = membership.teamId;
-  const user = (await getCurrentUser())!;
-  const db = await requireDatabase(id, teamId);
+  const teamId =
+    as?.teamId ??
+    (await requireCapability("configure_databases")).membership.teamId;
+  const actor = as ? "Deplo" : (await getCurrentUser())!.name;
+  const load = () => (as ? loadForDeplo(id) : requireDatabase(id, teamId));
+  const db = await load();
 
   const exposed = input.exposedPublicly;
-  if (exposed && !(await canExposePorts()))
+  if (exposed && !as && !(await canExposePorts()))
     throw new Error("You don't have permission to publish ports");
 
-  const targetServer = await resolveTeamServer(
-    teamId,
-    input.serverId ?? db.serverId,
-  );
+  // The cluster is shared with the team even when the member it lands on is not.
+  const targetServer = as
+    ? await getServerById(input.serverId!)
+    : await resolveTeamServer(teamId, input.serverId ?? db.serverId);
+  if (!targetServer) throw new Error("Server not found");
   const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
   if (movingFrom && !cluster) await assertServerNotInCluster(targetServer.id);
   if (movingFrom) {
@@ -158,7 +166,7 @@ async function writeDatabasePlacement(
 
   let moveWarning: string | null = null;
   await withKeyedLock(id, async () => {
-    const cur = await requireDatabase(id, teamId);
+    const cur = await load();
     assertNotProvisioning(cur, "editing it");
     const password = databasePassword(cur);
     const connEnc = encryptSecret(
@@ -259,15 +267,61 @@ async function writeDatabasePlacement(
     movingFrom
       ? moveWarning
         ? `Moved database ${db.name} to ${where} (warning: ${moveWarning})`
-        : `Moved database ${db.name} to ${where}`
+        : `Moved database ${db.name} to ${where}` + (as ? `: ${as.why}` : "")
       : exposed
         ? `Exposed database ${db.name} on port ${newExposedPort}`
         : `Unexposed database ${db.name}`,
-    user.name,
+    actor,
     null,
     teamId,
     null,
     db.id,
   );
   await markLinkedAppsPending(db.id);
+}
+
+/**
+ * Deplo itself moving a cluster database to another member of its cluster, as emptying a server does.
+ * No Capability is read: the caller holds the gate. The database stays on the cluster.
+ */
+export async function relocateClusterDatabase(
+  id: string,
+  cluster: Cluster,
+  serverId: string,
+  why: string,
+): Promise<void> {
+  const [row] = await getDb()
+    .select({
+      teamId: databasesTable.teamId,
+      clusterId: databasesTable.clusterId,
+      exposedPublicly: databasesTable.exposedPublicly,
+      exposedPort: databasesTable.exposedPort,
+    })
+    .from(databasesTable)
+    .where(eq(databasesTable.id, id))
+    .limit(1);
+  if (!row || row.clusterId !== cluster.id)
+    throw new Error("Database not found");
+  await writeDatabasePlacement(
+    id,
+    {
+      exposedPublicly: row.exposedPublicly,
+      exposedPort: row.exposedPort ?? undefined,
+      serverId,
+    },
+    cluster,
+    { teamId: row.teamId, why },
+  );
+}
+
+// Deplo acting for itself has no session, which the team-scoped loader requires.
+async function loadForDeplo(id: string): Promise<Database> {
+  const [row] = await getDb()
+    .select()
+    .from(databasesTable)
+    .where(eq(databasesTable.id, id))
+    .limit(1);
+  if (!row) throw new Error("Not found");
+  assertNotMigrating("database", row.name, row.migrationRunId);
+  return assembleDatabase(row, await mountsFor(row.id));
 }

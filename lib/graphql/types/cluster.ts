@@ -19,6 +19,10 @@ import {
 } from "@/lib/data/clusters/roster";
 import { listPlacementChoices } from "@/lib/data/clusters/choices";
 import {
+  emptyClusterMember,
+  stopEmptyingClusterMember,
+} from "@/lib/data/clusters/empty";
+import {
   addClusterMember,
   listClusterJoinCandidates,
   listClusterMembers,
@@ -26,6 +30,7 @@ import {
 import {
   failoverOn,
   type Cluster,
+  type ClusterEmptying,
   type ClusterImageProgress,
   type ClusterJoin,
   type ClusterJoinCandidate,
@@ -89,6 +94,29 @@ const ClusterImageProgressRef = builder
     }),
   });
 
+const ClusterEmptyingRef = builder
+  .objectRef<ClusterEmptying>("ClusterEmptying")
+  .implement({
+    description:
+      "How far emptying a server has got. Its Apps and databases move to the other servers of the cluster, one at a time.",
+    fields: (t) => ({
+      since: t.exposeString("since"),
+      total: t.exposeInt("total", {
+        description: "How many Apps and databases it held at the start.",
+      }),
+      left: t.exposeInt("left", {
+        description: "How many it still holds; 0 means it is empty.",
+      }),
+      moving: t.exposeString("moving", {
+        description: "The App or database moving now; empty between two moves.",
+      }),
+      error: t.exposeString("error", {
+        description:
+          "Why it stopped, in one sentence, until emptyClusterMember is called again; empty while it runs.",
+      }),
+    }),
+  });
+
 const ClusterMemberRef = builder
   .objectRef<ClusterMember>("ClusterMember")
   .implement({
@@ -102,6 +130,13 @@ const ClusterMemberRef = builder
       emptyingSince: t.exposeString("emptyingSince", {
         nullable: true,
         description: "Set while the member is being emptied.",
+      }),
+      emptying: t.field({
+        type: ClusterEmptyingRef,
+        nullable: true,
+        description:
+          "Progress while the server is being emptied; null otherwise. It takes no new work in the meantime.",
+        resolve: (m) => m.emptying,
       }),
       leaseState: t.field({
         type: ClusterLeaseStateEnum,
@@ -334,6 +369,30 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { clusterId, serverId }) =>
       addClusterMember(clusterId, serverId),
+  }),
+  emptyClusterMember: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Empty a server of a cluster: it takes no new work, and its Apps and databases move to the other servers one at a time, in the background. Refused before anything moves when the others lack the room. Call it again to continue after it stopped; read `members.emptying` for progress.",
+    args: {
+      clusterId: t.arg.string({ required: true }),
+      serverId: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { clusterId, serverId }) =>
+      emptyClusterMember(clusterId, serverId),
+  }),
+  stopEmptyingClusterMember: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Stop emptying a server: it takes work again. What is moving right now finishes its move, and what already moved stays where it is.",
+    args: {
+      clusterId: t.arg.string({ required: true }),
+      serverId: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { clusterId, serverId }) =>
+      stopEmptyingClusterMember(clusterId, serverId),
   }),
   startClusterLeader: t.field({
     type: ClusterLeaderRef,

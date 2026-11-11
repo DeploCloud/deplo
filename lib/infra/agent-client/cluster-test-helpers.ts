@@ -25,6 +25,8 @@ import {
 } from "./hello-capabilities";
 
 export interface FakeClusterHost {
+  /** Anything else this host's agent answers (stacks, volumes); a test brings its own, and it wins. */
+  extra: Partial<AgentConnection>;
   capabilities: string[];
   /** The agent answers every cluster RPC UNIMPLEMENTED, as one that has Hello but not these. */
   unimplemented: boolean;
@@ -307,11 +309,12 @@ export function fakeClusterHosts(): {
         }),
       close: () => void h.closed++,
     };
-    return conn as AgentConnection;
+    return { ...conn, ...h.extra } as AgentConnection;
   });
   return {
     host(serverId, over = {}) {
       const h: FakeClusterHost = {
+        extra: {},
         capabilities: [
           CLUSTER_HOST_CAPABILITY,
           CLUSTER_CAPABILITY,

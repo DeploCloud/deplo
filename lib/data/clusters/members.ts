@@ -24,6 +24,7 @@ import {
   type Cluster,
   type ClusterJoin,
   type ClusterJoinCandidate,
+  type ClusterEmptying,
   type ClusterJoinReason,
   type ClusterLeaseState,
   type ClusterMember,
@@ -31,6 +32,7 @@ import {
 import type { ServerStatus } from "../../types/server";
 import { recordActivity } from "../activity";
 import { getServerById, listAllServers } from "../servers/roster";
+import { listMemberWorkloads } from "./member-workloads";
 import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
 import { getCluster, getClusterById } from "./roster";
@@ -202,20 +204,40 @@ async function joinReasons(
   return out;
 }
 
-function toMember(r: {
+interface MemberRow {
   serverId: string;
   serverName: string;
   status: string;
   joinedAt: string;
   emptyingSince: string | null;
+  emptyingError: string;
+  emptyingWorkload: string;
+  emptyingTotal: number;
   leaseState: string;
-}): ClusterMember {
+}
+
+async function emptyingOf(r: MemberRow): Promise<ClusterEmptying | null> {
+  if (!r.emptyingSince) return null;
+  const held = await listMemberWorkloads(r.serverId);
+  const moving = held.find((w) => `${w.kind}:${w.id}` === r.emptyingWorkload);
+  return {
+    since: r.emptyingSince,
+    // Work that landed after the start still counts, so "moved" never goes below zero.
+    total: Math.max(r.emptyingTotal, held.length),
+    left: held.length,
+    moving: moving?.name ?? "",
+    error: r.emptyingError,
+  };
+}
+
+async function toMember(r: MemberRow): Promise<ClusterMember> {
   return {
     serverId: r.serverId,
     serverName: r.serverName,
     status: r.status as ServerStatus,
     joinedAt: r.joinedAt,
     emptyingSince: r.emptyingSince,
+    emptying: await emptyingOf(r),
     leaseState: toLeaseState(r.leaseState),
   };
 }
@@ -232,13 +254,16 @@ async function readMembers(clusterId: string): Promise<ClusterMember[]> {
       status: serversTable.status,
       joinedAt: membersTable.joinedAt,
       emptyingSince: membersTable.emptyingSince,
+      emptyingError: membersTable.emptyingError,
+      emptyingWorkload: membersTable.emptyingWorkload,
+      emptyingTotal: membersTable.emptyingTotal,
       leaseState: membersTable.leaseState,
     })
     .from(membersTable)
     .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
     .where(eq(membersTable.clusterId, clusterId))
     .orderBy(asc(membersTable.joinedAt), asc(membersTable.serverId));
-  return rows.map(toMember);
+  return Promise.all(rows.map(toMember));
 }
 
 /** A cluster's members, for whoever may see the cluster: an instance admin, or a team it is shared with. */

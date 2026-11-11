@@ -7,6 +7,7 @@ import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { acquireLease, releaseLease } from "../../backups/lease";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { runEmptyingPass } from "./empty";
 import { pushLeaderRoster } from "./leader-sync";
 import { getClusterById } from "./roster";
 import { runClusterWatch } from "./watch";
@@ -70,6 +71,10 @@ export async function runClusterWatchTick(): Promise<void> {
           () => false,
         );
     }
+    // Not awaited: one move can outlast many ticks, and a pass already running is joined, not doubled.
+    void runEmptyingPass().catch((e) =>
+      console.error("[deplo] emptying a cluster member failed:", e),
+    );
   } catch (e) {
     console.error("[deplo] cluster watch tick failed:", e);
   } finally {

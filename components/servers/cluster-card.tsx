@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocsLink } from "@/components/ui/docs-link";
 import { Bone } from "@/components/ui/skeleton";
+import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { listClusterImageProgress } from "@/lib/data/clusters/images";
 import { getClusterLeader } from "@/lib/data/clusters/leader";
 import { listClusterWaiting } from "@/lib/data/clusters/placement";
@@ -15,6 +16,7 @@ import {
 import {
   failoverOn,
   type Cluster,
+  type ClusterEmptying,
   type ClusterLeader,
 } from "@/lib/types/cluster";
 import type { ServerStatus } from "@/lib/types/server";
@@ -23,6 +25,10 @@ import {
   JoinClusterButton,
   StartLeaderButton,
 } from "./cluster-actions";
+import {
+  MemberEmptyingActions,
+  type MemberEmptyingState,
+} from "./cluster-member-emptying";
 import type { TeamOption } from "./server-team-access";
 
 const LEADER_BADGE: Record<
@@ -61,6 +67,18 @@ const LEASE_BADGE = {
   },
 } as const;
 
+function emptyingState(e: ClusterEmptying | null): MemberEmptyingState {
+  if (!e) return "idle";
+  if (e.error) return "stopped";
+  return e.left === 0 ? "empty" : "emptying";
+}
+
+const EMPTYING_BADGE = {
+  emptying: { label: "Emptying", variant: "warning" },
+  stopped: { label: "Emptying stopped", variant: "destructive" },
+  empty: { label: "Empty", variant: "muted" },
+} as const;
+
 async function Members({ clusterId }: { clusterId: string }) {
   const [members, candidates] = await Promise.all([
     listClusterMembers(clusterId),
@@ -92,26 +110,57 @@ async function Members({ clusterId }: { clusterId: string }) {
           <JoinClusterButton clusterId={clusterId} options={options} />
         </div>
       </div>
+      <AutoRefresh
+        active={members.some((m) => emptyingState(m.emptying) === "emptying")}
+      />
       {members.length > 0 && (
         <ul className="space-y-1">
-          {members.map((m) => (
-            <li key={m.serverId} className="flex items-center gap-2 text-sm">
-              <span className="min-w-0 truncate font-medium">
-                {m.serverName}
-              </span>
-              <Badge variant={MEMBER_BADGE[m.status].variant}>
-                {MEMBER_BADGE[m.status].label}
-              </Badge>
-              {m.leaseState !== "ok" && (
-                <Badge
-                  variant={LEASE_BADGE[m.leaseState].variant}
-                  title={LEASE_BADGE[m.leaseState].title}
-                >
-                  {LEASE_BADGE[m.leaseState].label}
-                </Badge>
-              )}
-            </li>
-          ))}
+          {members.map((m) => {
+            const state = emptyingState(m.emptying);
+            const e = m.emptying;
+            return (
+              <li key={m.serverId} className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="min-w-0 truncate font-medium">
+                    {m.serverName}
+                  </span>
+                  <Badge variant={MEMBER_BADGE[m.status].variant}>
+                    {MEMBER_BADGE[m.status].label}
+                  </Badge>
+                  {m.leaseState !== "ok" && (
+                    <Badge
+                      variant={LEASE_BADGE[m.leaseState].variant}
+                      title={LEASE_BADGE[m.leaseState].title}
+                    >
+                      {LEASE_BADGE[m.leaseState].label}
+                    </Badge>
+                  )}
+                  {state !== "idle" && (
+                    <Badge variant={EMPTYING_BADGE[state].variant}>
+                      {EMPTYING_BADGE[state].label}
+                    </Badge>
+                  )}
+                  {e && state !== "empty" && (
+                    <span className="text-xs text-muted-foreground">
+                      {e.total - e.left} of {e.total} moved
+                      {e.moving && `, moving ${e.moving}`}
+                    </span>
+                  )}
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    <MemberEmptyingActions
+                      clusterId={clusterId}
+                      serverId={m.serverId}
+                      serverName={m.serverName}
+                      state={state}
+                    />
+                  </div>
+                </div>
+                {e?.error && (
+                  <p className="text-xs text-muted-foreground">{e.error}</p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
