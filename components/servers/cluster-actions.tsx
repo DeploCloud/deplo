@@ -36,12 +36,15 @@ import {
 export function ClusterActions({
   cluster,
   teams,
+  open,
+  onOpenChange: setOpen,
 }: {
   cluster: { id: string; name: string; allTeams: boolean; teamIds: string[] };
   teams: TeamOption[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState(cluster.name);
   const [access, setAccess] = React.useState<ServerAccess>({

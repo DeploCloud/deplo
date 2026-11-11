@@ -1113,6 +1113,27 @@ type Cluster {
 }
 
 """
+What deleting a cluster does, for the confirmation: the active team's Apps and databases by name, every other team's as a count.
+"""
+type ClusterDeletion {
+  """
+  True when the cluster fails work over today, so deleting it takes that away.
+  """
+  failoverOn: Boolean
+  otherTeams: [ClusterDeletionTeam!]
+  workloads: [ClusterReleasedWorkload!]
+}
+
+"""
+How much of another team's work a cluster holds: a count, never the names.
+"""
+type ClusterDeletionTeam {
+  apps: Int
+  databases: Int
+  teamName: String
+}
+
+"""
 How far emptying a server has got. Its Apps and databases move to the other servers of the cluster, one at a time.
 """
 type ClusterEmptying {
@@ -1240,6 +1261,11 @@ type ClusterMember {
 
   """Set while the member is being emptied."""
   emptyingSince: String
+
+  """
+  How many Apps and databases it holds. Removing it needs 0, except for the last member, which may keep them.
+  """
+  held: Int
   joinedAt: String
 
   """
@@ -1252,11 +1278,35 @@ type ClusterMember {
 }
 
 """
+An App or database a cluster lets go of when it is deleted. It stays on the server it runs on.
+"""
+type ClusterReleasedWorkload {
+  kind: ClusterWorkloadKind
+  name: String
+
+  """The server it stays on."""
+  serverName: String
+
+  """The other servers a spread App also runs on. Its copies there stop."""
+  stopsOn: [String!]
+
+  """
+  It found no room after a server stopped, so it is not running now and stays stopped.
+  """
+  waiting: Boolean
+}
+
+"""
 Which teams may use a cluster. allTeams: true opens it to every team; false restricts it to teamIds.
 """
 input ClusterSharingInput {
   allTeams: Boolean!
   teamIds: [String!]
+}
+
+enum ClusterWorkloadKind {
+  app
+  database
 }
 
 enum CommitSignature {
@@ -4184,6 +4234,11 @@ type Mutation {
   """
   deleteBackupRun(runId: String!): Boolean
 
+  """
+  Delete a cluster. Every App and database stays on the server it runs on, as an ordinary one that nothing fails over; its servers stay connected. Read `clusterDeletion` first for what that covers. Refused while a server that still runs work does not answer.
+  """
+  deleteCluster(id: String!): Boolean
+
   """Delete a job and its run history."""
   deleteCronJob(id: ID!): Boolean
 
@@ -4568,6 +4623,11 @@ type Mutation {
   Remove a basic-auth user, so its login stops working within seconds. Removing the last one drops the login prompt entirely. Returns true.
   """
   removeBasicAuthUser(id: String!): Boolean
+
+  """
+  Remove a server from a cluster. It is cut off at once and is an ordinary server again. It must hold nothing (empty it first), except the last member: pass keepWorkloads to leave its Apps and databases on it as ordinary ones.
+  """
+  removeClusterMember(clusterId: String!, keepWorkloads: Boolean, serverId: String!): Cluster
 
   """
   Disconnect a domain from automatic DNS. Its Cloudflare Tunnels are torn down; returns what Deplo could not clean up, or null.
@@ -5801,6 +5861,11 @@ type Query {
   """Where Deplo can create a repository for a Deploy button's project."""
   cloneDestinations: CloneDestinations
   cluster(id: String!): Cluster
+
+  """
+  What `deleteCluster` would do: which Apps and databases stop failing over. The active team's are named; another team's are counted. Requires instanceAdmin.
+  """
+  clusterDeletion(id: String!): ClusterDeletion
 
   """The clusters the active team may use, by creation order."""
   clusters: [Cluster!]
