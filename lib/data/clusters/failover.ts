@@ -345,6 +345,7 @@ export async function applyFailoverSummary(
   const from = await serverName(d.member);
   const byTeam = new Map<string, typeof rows>();
   const partial = new Map<string, string>();
+  const others = new Map<string, string>();
   for (const r of rows) {
     // An App whose other replicas still run says how many, so nobody reads it as down.
     const some =
@@ -355,6 +356,7 @@ export async function applyFailoverSummary(
     // On a mixed cluster: the kind of server it waits for.
     const only = await failoverOnly(r.kind, r.id, cluster.id);
     const other = only ? `no other ${only} server` : "no other server";
+    others.set(r.id, other);
     await recordActivity(
       r.kind,
       some
@@ -371,6 +373,14 @@ export async function applyFailoverSummary(
   for (const [teamId, waiting] of byTeam) {
     const names = waiting.map((a) => a.name).join(", ");
     const only = waiting.length === 1 ? waiting[0]! : null;
+    // One sentence per kind of server waited for, as Activity names it.
+    const room = [...new Set(waiting.map((w) => others.get(w.id)!))].map(
+      (other) =>
+        `${other[0]!.toUpperCase()}${other.slice(1)} has room for ${waiting
+          .filter((w) => others.get(w.id) === other)
+          .map((w) => w.name)
+          .join(", ")} yet.`,
+    );
     const many = waiting.every((w) => w.kind === "app")
       ? `${waiting.length} Apps`
       : `${waiting.length} Apps and databases`;
@@ -386,7 +396,7 @@ export async function applyFailoverSummary(
         only && partial.has(only.id)
           ? `${only.name}: ${partial.get(only.id)}`
           : `${only ? names : many} waiting for room in ${cluster.name}`,
-      body: `${from} stopped answering. ${names} found no room on the other servers yet. Deplo tries again every 30 seconds.`,
+      body: `${from} stopped answering. ${room.join(" ")} Deplo tries again every 30 seconds.`,
       path: !only
         ? undefined
         : only.kind === "app"

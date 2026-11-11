@@ -46,8 +46,14 @@ export const AppPreviewRef = builder
       status: t.exposeString("status", {
         description:
           "blocked | queued | building | active | error | idle | evicted | offline. " +
-          "`offline`: its server, a member of the App's cluster, stopped; the next " +
-          "push or a redeploy places it again.",
+          "`offline`: its server, a member of the App's cluster, stopped or was " +
+          "emptied; the next push or a redeploy places it again.",
+      }),
+      offlineReason: t.exposeString("offlineReason", {
+        nullable: true,
+        description:
+          "Why an `offline` preview is not running: server_stopped | server_emptied " +
+          "(no other server of the cluster could take it). Null in every other status.",
       }),
       url: t.exposeString("url"),
       host: t.exposeString("host"),

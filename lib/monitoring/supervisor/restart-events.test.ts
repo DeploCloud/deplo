@@ -158,6 +158,75 @@ test("a recovery nobody was told about stays quiet", async () => {
   assert.equal(capture!.calls.length, 0);
 });
 
+// What an earlier Deplo process left in the database, with nothing in memory.
+async function told(minutesAgo: number, recoveryOwed: boolean) {
+  __resetCooldowns();
+  await h.db
+    .update(appsTable)
+    .set({
+      unresponsiveAlertedAt: new Date(
+        Date.now() - minutesAgo * 60_000,
+      ).toISOString(),
+      recoveryAlertOwed: recoveryOwed,
+    })
+    .where(eq(appsTable.id, "prj_web"));
+}
+
+test("Deplo restarted between the restart and the recovery: it still says so", async () => {
+  const feed = await setup();
+  await told(5, true);
+  await send(feed, ev(RestartEvent_Kind.KIND_RECOVERED));
+  await send(feed, ev(RestartEvent_Kind.KIND_RECOVERED));
+  assert.deepEqual(titles(), ["web is running again"]);
+});
+
+test("a restart inside the window stays quiet after Deplo restarted", async () => {
+  const feed = await setup();
+  await told(10, true);
+  await send(feed, ev(RestartEvent_Kind.KIND_RESTARTED, { unansweredS: 90 }));
+  await waitFor(async () => (await messages()).length === 1, "activity");
+  assert.deepEqual(titles(), []);
+});
+
+test("a restart after the 30-minute window alerts again", async () => {
+  const feed = await setup();
+  await told(31, false);
+  await send(feed, ev(RestartEvent_Kind.KIND_RESTARTED, { unansweredS: 90 }));
+  assert.deepEqual(titles(), ["web stopped answering"]);
+});
+
+test("a restart and its recovery inside the window, after a recovery, stay quiet", async () => {
+  const feed = await setup();
+  await send(feed, ev(RestartEvent_Kind.KIND_RESTARTED, { unansweredS: 90 }));
+  await send(feed, ev(RestartEvent_Kind.KIND_RECOVERED));
+  await send(feed, ev(RestartEvent_Kind.KIND_RESTARTED, { unansweredS: 90 }));
+  await send(feed, ev(RestartEvent_Kind.KIND_RECOVERED));
+  await waitFor(async () => (await messages()).length === 2, "activity");
+  assert.deepEqual(titles(), ["web stopped answering", "web is running again"]);
+});
+
+test("a new pause after restarting resumed alerts again", async () => {
+  const feed = await setup();
+  await send(feed, ev(RestartEvent_Kind.KIND_PAUSED, { restarts: 5 }));
+  await send(feed, ev(RestartEvent_Kind.KIND_RESUMED, { reason: "restart" }));
+  await send(feed, ev(RestartEvent_Kind.KIND_PAUSED, { restarts: 5 }));
+  assert.deepEqual(titles(), [
+    "web is still not answering",
+    "web is still not answering",
+  ]);
+});
+
+test("a recovery after a pause alert says it answers again", async () => {
+  const feed = await setup();
+  await told(10, false);
+  await send(feed, ev(RestartEvent_Kind.KIND_PAUSED, { restarts: 5 }));
+  await send(feed, ev(RestartEvent_Kind.KIND_RECOVERED));
+  assert.deepEqual(titles(), [
+    "web is still not answering",
+    "web is running again",
+  ]);
+});
+
 test("an event for an App on another server is ignored", async () => {
   const feed = await setup();
   await send(feed, ev(RestartEvent_Kind.KIND_PAUSED, { slug: "nobody" }));

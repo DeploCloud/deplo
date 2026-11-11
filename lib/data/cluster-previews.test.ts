@@ -331,10 +331,11 @@ const fence = (member: string, seq = 1, state = "fenced") =>
     data: { member, state },
   });
 
-const statusRead = async () =>
+const read = async () =>
   (await asAdmin(() => listAppPreviews(APP))).previews.find(
     (p) => p.id === PREVIEW,
-  )!.status;
+  )!;
+const statusRead = async () => (await read()).status;
 
 test("a preview of a cluster App runs on the member the leader names, with no bundle, no connector and its own network", async () => {
   await withTunnel();
@@ -485,6 +486,7 @@ test("a preview whose server stopped reads Offline until it is redeployed, and t
   assert.equal(await statusRead(), "active");
   await fence("srv_3", 2);
   assert.equal(await statusRead(), "offline");
+  assert.equal((await read()).offlineReason, "server_stopped");
 
   // A placement the leader reports for it is not a workload of the cluster: nothing is recorded or deployed.
   await applyLeaderEvent(clusterId, {
@@ -686,6 +688,7 @@ test("a preview no other member can take is taken down when its member is emptie
   assert.deepEqual(hosts.srv_3.stack, [`destroy:${KEY}`]);
   assert.deepEqual(await queuedOn(), []);
   assert.equal(await statusRead(), "offline");
+  assert.equal((await read()).offlineReason, "server_emptied");
   assert.ok(
     (await activity()).includes(
       "Took down the preview for pull request #7 of web on srv_3: No server in cluster eu has 256 MB free. Add a server to it or lower web's memory.",
@@ -696,6 +699,7 @@ test("a preview no other member can take is taken down when its member is emptie
   leader.place = "srv_4";
   await asAdmin(() => redeployPreview(PREVIEW));
   assert.equal((await preview()).serverId, "srv_4");
+  assert.equal((await read()).offlineReason, null);
   await cancelQueued();
 });
 

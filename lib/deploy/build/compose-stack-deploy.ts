@@ -12,7 +12,7 @@ import type { DeploymentEnvironment } from "../../types/deployment";
 import { buildComposeStack } from "../compose-stack/render";
 import { stackFilesDir } from "../deploy-key";
 import { deployNetwork } from "../network";
-import type { AgentBuildPlan } from "../agent-deploy";
+import type { AgentBuildPlan } from "../agent-deploy-request";
 import {
   standInStack,
   stackOverlapBlocker,

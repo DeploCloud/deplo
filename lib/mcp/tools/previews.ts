@@ -28,6 +28,7 @@ export const PREVIEWS: McpToolDef[] = [
             author
             headBranch
             status
+            offlineReason
             url
             closed
             approved

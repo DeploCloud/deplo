@@ -21,7 +21,7 @@ import {
   recordSourceCompose,
 } from "../../data/apps/build-outcome";
 import type { SourceCompose } from "../../agent/gen/agent";
-import { findComposeFile, resolveUploadMethod } from "../agent-deploy";
+import { findComposeFile, resolveUploadMethod } from "../agent-deploy-request";
 import {
   autoComposeSkip,
   composeBuildsFromSource,

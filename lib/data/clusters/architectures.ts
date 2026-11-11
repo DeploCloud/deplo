@@ -198,24 +198,44 @@ export async function appFailoverReach(app: {
   source: string;
   dockerImage?: string | null;
 }): Promise<FailoverReach> {
+  return reachOf({
+    name: app.name,
+    clusterId: app.clusterId,
+    serverId: app.serverId,
+    image: app.source === "docker-image" ? (app.dockerImage ?? "") : "",
+  });
+}
+
+/** The same for a database the caller already read under its own gates. */
+export async function databaseFailoverReach(d: {
+  id: string;
+  name: string;
+  clusterId?: string | null;
+}): Promise<FailoverReach> {
+  const w = d.clusterId ? await imageOf("database", d.id) : null;
+  return reachOf({ name: d.name, clusterId: w ? d.clusterId : null, ...w });
+}
+
+async function reachOf(w: {
+  name: string;
+  clusterId?: string | null;
+  serverId?: string;
+  image?: string;
+}): Promise<FailoverReach> {
   const none = { line: null, warning: null };
-  if (!app.clusterId) return none;
+  if (!w.clusterId || !w.serverId) return none;
   // A cluster the team can no longer see is not described to it.
-  const cluster = await getCluster(app.clusterId);
+  const cluster = await getCluster(w.clusterId);
   if (!cluster) return none;
   const members = await memberArchs(cluster.id);
-  const archs = await imageArchs(
-    app.source === "docker-image" ? (app.dockerImage ?? "") : "",
-    app.serverId,
-    { lookup: false },
-  );
+  const archs = await imageArchs(w.image ?? "", w.serverId, { lookup: false });
   const word = onlyArch(archs, members);
   if (!word) return none;
   const can = members.filter((m) => archs.includes(m.arch));
   if (can.length === 1)
     return {
       line: null,
-      warning: `If ${can[0]!.name} stops, ${app.name} has nowhere to go. It is the only ${word} server in ${cluster.name}.`,
+      warning: `If ${can[0]!.name} stops, ${w.name} has nowhere to go. It is the only ${word} server in ${cluster.name}.`,
     };
   return {
     line: `Fails over to ${word} servers only (${can.length} of ${members.length})`,

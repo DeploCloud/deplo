@@ -6,7 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { AppPreviewDTO } from "@/lib/data/previews";
 import { PreviewStatus } from "./previews-table";
 
-const preview = (status: AppPreviewDTO["status"]): AppPreviewDTO => ({
+const preview = (
+  status: AppPreviewDTO["status"],
+  offlineReason: AppPreviewDTO["offlineReason"] = null,
+): AppPreviewDTO => ({
   id: "prv_1",
   appId: "prj_1",
   prNumber: 7,
@@ -20,6 +23,7 @@ const preview = (status: AppPreviewDTO["status"]): AppPreviewDTO => ({
   approved: true,
   approvedSha: null,
   status,
+  offlineReason,
   url: "http://web-pr-7.example.test",
   host: "web-pr-7.example.test",
   closed: false,
@@ -28,12 +32,28 @@ const preview = (status: AppPreviewDTO["status"]): AppPreviewDTO => ({
   updatedAt: "2026-11-08T00:00:00.000Z",
 });
 
-const text = (status: AppPreviewDTO["status"]) =>
+const text = (
+  status: AppPreviewDTO["status"],
+  offlineReason: AppPreviewDTO["offlineReason"] = null,
+) =>
   renderToStaticMarkup(
-    createElement(PreviewStatus, { preview: preview(status), maxActive: 3 }),
+    createElement(PreviewStatus, {
+      preview: preview(status, offlineReason),
+      maxActive: 3,
+    }),
   ).replace(/<[^>]+>/g, "");
 
 test("a preview whose server stopped reads Offline: its server stopped, never Running", () => {
-  assert.equal(text("offline"), "Offline: its server stopped");
+  assert.equal(
+    text("offline", "server_stopped"),
+    "Offline: its server stopped",
+  );
   assert.equal(text("active"), "Running");
+});
+
+test("a preview taken down when its server was emptied says so", () => {
+  assert.equal(
+    text("offline", "server_emptied"),
+    "Offline: its server was emptied",
+  );
 });

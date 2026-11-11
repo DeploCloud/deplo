@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Settings2 } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases/rows";
 import { getFailoverPreview } from "@/lib/data/databases/failover";
+import { databaseFailoverReach } from "@/lib/data/clusters/architectures";
 import { listPlacementChoices } from "@/lib/data/clusters/choices";
 import { getCluster } from "@/lib/data/clusters/roster";
 import {
@@ -28,9 +29,10 @@ export default async function DatabaseGeneralSettingsPage(
   ]);
   if (!db) notFound();
 
-  const [cluster, member] = await Promise.all([
+  const [cluster, member, reach] = await Promise.all([
     db.clusterId ? getCluster(db.clusterId) : null,
     db.clusterId ? getServerById(db.serverId) : null,
+    databaseFailoverReach(db),
   ]);
   const provisioned = new Set(
     servers.filter((s) => s.agent?.certFingerprint).map((s) => s.id),
@@ -63,6 +65,7 @@ export default async function DatabaseGeneralSettingsPage(
                 id: cluster.id,
                 name: cluster.name,
                 serverName: member?.name ?? "a server in it",
+                reach,
               }
             : null
         }

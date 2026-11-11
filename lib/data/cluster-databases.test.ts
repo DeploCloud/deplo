@@ -6,12 +6,8 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth/current-user";
-import { getActiveTeamId, reachableCapabilities } from "../membership";
-import type { GraphQLContext } from "../graphql/context";
-import { runGraphql } from "../mcp/execute";
-import { MCP_TOOLS } from "../mcp/tools/catalog";
+import { runWithIdentity } from "../auth/request-context";
+import { runTool } from "../mcp/run-tool-test-helpers";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
@@ -596,25 +592,6 @@ test("restoring a database measures the speed the recovery copy uses", async () 
 
   assert.ok(((await dbRow("db_1")).restoreBytesPerSec ?? 0) > 0);
 });
-
-async function runTool(
-  identity: RequestIdentity,
-  name: string,
-  args: Record<string, unknown>,
-) {
-  const tool = MCP_TOOLS.find((t) => t.name === name)!;
-  const ctx = await runWithIdentity(
-    identity,
-    async (): Promise<GraphQLContext> => ({
-      viewer: await getCurrentUser(),
-      teamId: await getActiveTeamId(),
-      capabilities: await reachableCapabilities(),
-      via: "token",
-      identity,
-    }),
-  );
-  return runGraphql(tool.query, tool.variables!(args as never), ctx);
-}
 
 test("GraphQL and MCP place a database on a cluster, and the field gate refuses a viewer", async () => {
   const cluster = await eu();

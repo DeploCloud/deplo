@@ -137,6 +137,8 @@ export function ContainerMonitoringDashboard({
   const metricsField = kind === "app" ? "appMetrics" : "databaseMetrics";
   const historyField =
     kind === "app" ? "appMetricsHistory" : "databaseMetricsHistory";
+  const markersField =
+    kind === "app" ? "appMetricsMarkers" : "databaseMetricsMarkers";
   const idArg = kind === "app" ? "appId" : "databaseId";
 
   const cpuLimitCores =
@@ -188,13 +190,13 @@ export function ContainerMonitoringDashboard({
           `query Metrics($id: String!) {
             ${metricsField}(${idArg}: $id) { ${LIVE_FIELDS} }
             ${historyField}(${idArg}: $id) { ${HISTORY_FIELDS} }
-            ${kind === "app" ? "appMetricsMarkers(appId: $id) { ts label }" : ""}
+            ${markersField}(${idArg}: $id) { ts label }
           }`,
           { id },
           (d) => ({
             live: (d[metricsField] as ContainerLive | null) ?? null,
             history: (d[historyField] as ContainerSample[]) ?? [],
-            markers: (d.appMetricsMarkers as ChartMarker[] | undefined) ?? [],
+            markers: (d[markersField] as ChartMarker[] | undefined) ?? [],
           }),
         );
         if (!active || !res.ok || !res.data) return;
@@ -240,7 +242,7 @@ export function ContainerMonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [id, kind, metricsField, historyField, idArg, pollMs]);
+  }, [id, metricsField, historyField, markersField, idArg, pollMs]);
 
   const points = React.useMemo(
     () =>

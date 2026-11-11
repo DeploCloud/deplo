@@ -235,6 +235,11 @@ type App {
   On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.
   """
   failoverFromBackup: Boolean
+
+  """
+  On a cluster of ARM and x86 servers, which ones this app can fail over to; null when every server can take it or it runs on one server.
+  """
+  failoverReach: FailoverReach
   folderId: ID
 
   """
@@ -426,11 +431,16 @@ type AppPreview {
   """
   isFork: Boolean
   latestDeploymentId: ID
+
+  """
+  Why an `offline` preview is not running: server_stopped | server_emptied (no other server of the cluster could take it). Null in every other status.
+  """
+  offlineReason: String
   prNumber: Int
   pullRequestUrl: String
 
   """
-  blocked | queued | building | active | error | idle | evicted | offline. `offline`: its server, a member of the App's cluster, stopped; the next push or a redeploy places it again.
+  blocked | queued | building | active | error | idle | evicted | offline. `offline`: its server, a member of the App's cluster, stopped or was emptied; the next push or a redeploy places it again.
   """
   status: String
   title: String
@@ -1955,6 +1965,11 @@ type Database {
   environmentId: ID
   exposedPort: Int
   exposedPublicly: Boolean
+
+  """
+  On a cluster of ARM and x86 servers, which ones this database can fail over to; null when every server can take it or it runs on one server.
+  """
+  failoverReach: FailoverReach
   host: String
   id: ID
 
@@ -3081,6 +3096,19 @@ input ExtraDomainInput {
   service: String!
 }
 
+"""
+On a cluster of ARM and x86 servers: which of them an app or database can fail over to.
+"""
+type FailoverReach {
+  """"Fails over to x86 servers only (2 of 3)"."""
+  line: String
+
+  """
+  Set instead of the line when a single server can run it, so it has nowhere to go if that one stops.
+  """
+  warning: String
+}
+
 """One server whose agent is older than the fleet version."""
 type FleetAgent {
   id: ID
@@ -3591,7 +3619,7 @@ type Member {
 }
 
 """
-A moment an app changed servers (a move or a failover), read from Activity.
+A moment an app or a database changed servers (a move or a failover), read from Activity.
 """
 type MetricsMarker {
   """The Activity entry, as written."""
@@ -6058,6 +6086,11 @@ type Query {
   The metrics history buffered for one database (oldest first). Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   databaseMetricsHistory(databaseId: String!): [ContainerMetricsSample!]
+
+  """
+  Each move or failover of one database inside the metrics history window (oldest first), so a jump in a chart has its explanation beside it.
+  """
+  databaseMetricsMarkers(databaseId: String!): [MetricsMarker!]
 
   """
   Live container state for a database, straight from the owning agent. Polled by the database's status badge (same shape as appRuntime).

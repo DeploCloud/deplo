@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
@@ -10,10 +10,8 @@ import { dispatchAlert } from "../notify/dispatch";
 import { recordActivity } from "./activity";
 import { RestartEvent_Kind, type RestartEvent } from "../agent/gen/agent";
 
-// App ids alerted for a hang, so "answering again" is only sent after one.
-const KEY = Symbol.for("deplo.restart-events.alerted");
-const alerted = ((globalThis as Record<symbol, unknown>)[KEY] ??=
-  new Set<string>()) as Set<string>;
+// One "stopped answering" alert per window, however many restarts land in it.
+const WINDOW_MS = 30 * 60_000;
 
 const RESUME_WHY: Record<string, string> = {
   deploy: "after a deploy",
@@ -62,11 +60,30 @@ async function applyOne(serverId: string, e: RestartEvent): Promise<void> {
         "Deplo",
         app.id,
       );
-      alerted.add(app.id);
+      const now = Date.now();
+      const first = await getDb()
+        .update(appsTable)
+        .set({
+          unresponsiveAlertedAt: new Date(now).toISOString(),
+          recoveryAlertOwed: true,
+        })
+        .where(
+          and(
+            eq(appsTable.id, app.id),
+            or(
+              isNull(appsTable.unresponsiveAlertedAt),
+              lt(
+                appsTable.unresponsiveAlertedAt,
+                new Date(now - WINDOW_MS).toISOString(),
+              ),
+            ),
+          ),
+        )
+        .returning({ id: appsTable.id });
+      if (first.length === 0) return;
       dispatchAlert({
         teamId: app.teamId,
         key: "app_unresponsive",
-        dedupe: { id: `app:${app.id}`, state: "unresponsive" },
         title: `${app.name} stopped answering`,
         body: `It was up but did not answer for ${e.unansweredS} s, so Deplo restarted it.`,
         path,
@@ -75,21 +92,24 @@ async function applyOne(serverId: string, e: RestartEvent): Promise<void> {
       return;
     }
     case RestartEvent_Kind.KIND_PAUSED: {
-      await getDb()
+      const newly = await getDb()
         .update(appsTable)
-        .set({ restartsPausedAt: nowIso() })
-        .where(eq(appsTable.id, app.id));
-      publishAppChanged(app.id);
+        .set({ restartsPausedAt: nowIso(), recoveryAlertOwed: true })
+        .where(
+          and(eq(appsTable.id, app.id), isNull(appsTable.restartsPausedAt)),
+        )
+        .returning({ id: appsTable.id });
+      if (newly.length > 0) publishAppChanged(app.id);
       await recordActivity(
         "app",
         `Paused restarts for ${app.name}: it restarted ${e.restarts} times in 30 minutes and still does not answer`,
         "Deplo",
         app.id,
       );
+      if (newly.length === 0) return;
       dispatchAlert({
         teamId: app.teamId,
         key: "app_restarts_paused",
-        dedupe: { id: `app:${app.id}`, state: "paused" },
         title: `${app.name} is still not answering`,
         body: "Deplo restarted it several times and it did not help, so it stopped restarting it. The app is still running. The logs have why.",
         path,
@@ -108,7 +128,12 @@ async function applyOne(serverId: string, e: RestartEvent): Promise<void> {
       return;
     }
     case RestartEvent_Kind.KIND_RECOVERED: {
-      if (!alerted.delete(app.id)) return;
+      const owed = await getDb()
+        .update(appsTable)
+        .set({ recoveryAlertOwed: false })
+        .where(and(eq(appsTable.id, app.id), appsTable.recoveryAlertOwed))
+        .returning({ id: appsTable.id });
+      if (owed.length === 0) return;
       dispatchAlert({
         teamId: app.teamId,
         key: "app_unresponsive",

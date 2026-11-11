@@ -20,9 +20,10 @@ import {
   type ContainerInstanceMetrics,
   type ContainerMetricsSample,
 } from "./container-metrics";
-import { TEAM_B } from "./identity-test-helpers";
+import { TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { getAppMetricsMarkers } from "./metrics-markers";
+import { runTool } from "../mcp/run-tool-test-helpers";
 
 const lab = failoverLab();
 const { asAdmin, eu, web, event, apply } = lab;
@@ -251,4 +252,48 @@ test("another team reads no share, no server name and no marker of the App", asy
   assert.equal(await asOtherTeam(() => getAppMetrics(APP)), null);
   assert.deepEqual(await asOtherTeam(() => getAppMetricsHistory(APP)), []);
   assert.deepEqual(await asOtherTeam(() => getAppMetricsMarkers(APP)), []);
+});
+
+const viaMcp = async (tool: string, args: Record<string, unknown>) => {
+  const got = await runTool({ userId: USER_1, teamId: TEAM_A }, tool, args);
+  assert.equal(got.error, undefined, got.error ?? "");
+  // As it goes over the wire: graphql's own objects have no prototype.
+  return JSON.parse(JSON.stringify(got.data));
+};
+
+test("MCP reads the servers that sent nothing, each server's share and the markers", async () => {
+  const cluster = await spread();
+  recordMemberSample("srv_2", sample(NOW, 20), [container(REPLICA, 20)]);
+  const live = await viaMcp("metrics", { kind: "app", id: APP });
+  assert.deepEqual(live.appMetrics.unavailable, ["server-3"]);
+
+  clearContainerHistory();
+  recordMemberSample("srv_2", sample(NOW - 60_000, 10), [
+    container(REPLICA, 10),
+  ]);
+  lab.seq = 0;
+  await apply(
+    cluster.id,
+    event(cluster.id, "failed_over", {
+      kind: "app",
+      workloadId: APP,
+      from: "srv_2",
+      to: "srv_3",
+      reason: "stopped_answering",
+    }),
+  );
+  recordMemberSample("srv_3", sample(NOW, 30), [container(REPLICA, 30)]);
+
+  const history = await viaMcp("metrics_history", { kind: "app", id: APP });
+  assert.deepEqual(
+    history.appMetricsHistory.map((s: { members: unknown }) => s.members),
+    [
+      [{ server: "server-2", cpu: 10, memUsed: 100, running: 1 }],
+      [{ server: "server-3", cpu: 30, memUsed: 100, running: 1 }],
+    ],
+  );
+  assert.deepEqual(
+    history.appMetricsMarkers.map((m: { label: string }) => m.label),
+    ["Moved web to server-3: server-2 stopped answering"],
+  );
 });

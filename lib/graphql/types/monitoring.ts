@@ -24,6 +24,7 @@ import {
 } from "@/lib/data/container-metrics";
 import {
   getAppMetricsMarkers,
+  getDatabaseMetricsMarkers,
   type MetricsMarker,
 } from "@/lib/data/metrics-markers";
 
@@ -155,7 +156,7 @@ const MetricsMarkerRef = builder
   .objectRef<MetricsMarker>("MetricsMarker")
   .implement({
     description:
-      "A moment an app changed servers (a move or a failover), read from Activity.",
+      "A moment an app or a database changed servers (a move or a failover), read from Activity.",
     fields: (t) => ({
       ts: t.exposeFloat("ts", { description: "Epoch ms." }),
       label: t.exposeString("label", {
@@ -374,6 +375,15 @@ builder.queryFields((t) => ({
       "the owning server's telemetry stream has not delivered a frame for it yet.",
     args: { databaseId: t.arg.string({ required: true }) },
     resolve: (_r, { databaseId }) => getDatabaseMetricsHistory(databaseId),
+  }),
+  databaseMetricsMarkers: t.field({
+    type: [MetricsMarkerRef],
+    authScopes: { capability: "view_metrics" },
+    description:
+      "Each move or failover of one database inside the metrics history window " +
+      "(oldest first), so a jump in a chart has its explanation beside it.",
+    args: { databaseId: t.arg.string({ required: true }) },
+    resolve: (_r, { databaseId }) => getDatabaseMetricsMarkers(databaseId),
   }),
 }));
 

@@ -82,7 +82,12 @@ export function PreviewStatus({
   return (
     <StatusBadge
       status={p.status}
-      labels={{ offline: "Offline: its server stopped" }}
+      labels={{
+        offline:
+          p.offlineReason === "server_emptied"
+            ? "Offline: its server was emptied"
+            : "Offline: its server stopped",
+      }}
     />
   );
 }
