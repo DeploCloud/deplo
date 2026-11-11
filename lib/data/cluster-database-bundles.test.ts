@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { eq } from "drizzle-orm";
+
 import { TEAM_A, TEAM_B } from "./identity-test-helpers";
 import {
   seedDatabase,
@@ -9,7 +11,10 @@ import {
   settleProvisioning,
 } from "./backup-test-helpers";
 import { backups as backupsTable } from "../db/schema/control-plane/backups";
-import { failoverBundlePushes } from "../db/schema/control-plane/clusters";
+import {
+  clusters as clustersTable,
+  failoverBundlePushes,
+} from "../db/schema/control-plane/clusters";
 import { CLUSTER_FAILOVER_RESTORE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { decryptSecretOrThrow } from "../crypto";
 import { executeBackup } from "./backups/execute-backup";
@@ -37,6 +42,7 @@ import {
   main,
   open,
   puts,
+  leaderHost,
 } from "./cluster-database-test-helpers";
 
 databaseLab();
@@ -411,4 +417,45 @@ test("the failover backup goes to a server of the cluster before one outside it,
 
   const [schedule] = await db.select().from(backupsTable);
   assert.equal(schedule.destinationId, "dst_member");
+});
+
+test("only the leader that leads decides a failover: one standing by that takes no bundle is put right by the sweep, not warned about", async () => {
+  const cluster = await eu();
+  await main(cluster.id);
+  await backedUp();
+  // The leader runs on srv_4; Deplo's own stands by, answers with its key and takes nothing.
+  await db
+    .update(clustersTable)
+    .set({ leaderServerId: "srv_4" })
+    .where(eq(clustersTable.id, cluster.id));
+  host.srv_4.status = { ...leaderHost.status };
+  host.srv_4.leader = leaderHost.leader;
+  const age = await import("age-encryption");
+  const standby = await age.identityToRecipient(
+    await age.generateX25519Identity(),
+  );
+  leaderHost.leader = (method) => {
+    if (method === "leader.key")
+      return new TextEncoder().encode(JSON.stringify({ publicKey: standby }));
+    throw new Error("the standby leader is restarting");
+  };
+
+  await pushDatabaseBundle("db_main");
+
+  assert.equal((await open()).restore?.backupId, "brun_1");
+  assert.deepEqual(await cannot(), []);
+
+  // The leader that leads not taking it is what keeps the database from failing over.
+  host.srv_4.leader = (method) => {
+    if (method === "leader.key")
+      return new TextEncoder().encode(
+        JSON.stringify({ publicKey: leader.publicKey }),
+      );
+    throw new Error("no room on the leader's disk");
+  };
+  await backedUp({ id: "brun_2", startedAt: "2026-03-01T14:30:00.000Z" });
+  await pushDatabaseBundle("db_main");
+  assert.deepEqual(await cannot(), [
+    "main cannot fail over yet: the cluster's leader did not take its bundle. Deplo will send it again. Cluster eu will not move it to another server until that is fixed.",
+  ]);
 });

@@ -40,6 +40,7 @@ import {
   hostFor,
   keyFingerprint,
   keyRows,
+  leading,
   recordOnce,
   refreshLeaderKeys,
 } from "./bundles";
@@ -158,12 +159,13 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
   const keys = await keyRows(cluster.id);
   const say = (why: string) =>
     recordOnce(db, cannotFailOver(db.name, cluster.name, why), KIND);
-  if (keys.length === 0) {
+  const lead = keys.find(leading(cluster));
+  // A leader standing by without it is put right by the sweep; only the one that leads decides a failover.
+  if (!lead)
     await say(
       "Deplo could not reach the cluster's leader to hand it what it needs to restore this database elsewhere.",
     );
-    return;
-  }
+  if (keys.length === 0) return;
   const sent = rerouteRequest(
     db,
     renderDatabaseStackYaml(db, databasePassword(db)),
@@ -240,7 +242,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
       ),
     );
   if (source.why) await say(source.why);
-  if (failed.length > 0)
+  if (lead && failed.includes(keyFingerprint(lead.publicKey)))
     await say(
       "the cluster's leader did not take its bundle. Deplo will send it again.",
     );
