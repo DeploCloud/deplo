@@ -366,7 +366,10 @@ export async function listWorkloadPlacements(
   return out;
 }
 
-/** Every server that runs replicas of an App, the one it "runs on now" first: stop, start, re-apply and delete reach them all. */
+/**
+ * Every server that runs replicas of an App, the one it "runs on now" first: stop, start, re-apply and delete
+ * reach them all. Only a placement that names several servers adds any; otherwise `server_id` alone is the answer.
+ */
 export async function listAppMembers(app: {
   id: string;
   clusterId?: string | null;
@@ -374,13 +377,12 @@ export async function listAppMembers(app: {
 }): Promise<string[]> {
   if (!app.clusterId) return [app.serverId];
   const placed = (await listWorkloadPlacements("app", [app.id])).get(app.id);
-  return [
-    ...new Set(
-      [app.serverId, ...(placed ?? []).map((p) => p.serverId)].filter(
-        (s): s is string => Boolean(s),
-      ),
-    ),
-  ];
+  const on = new Set(
+    (placed ?? []).map((p) => p.serverId).filter((s): s is string => !!s),
+  );
+  if (on.size < 2) return [app.serverId];
+  on.delete(app.serverId);
+  return [app.serverId, ...on];
 }
 
 /**

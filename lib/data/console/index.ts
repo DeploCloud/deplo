@@ -81,6 +81,8 @@ export function containerName(p: App, deployKey: string = p.slug): string {
   return `deplo-${deployKey}`;
 }
 
+// ponytail: the console, the runtime strip and metrics read the server the App "runs on now"; replicas on its
+// other servers (#208) show in logs only. Fan out over `listAppMembers` here when someone needs them.
 export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   const exposeService = await primaryDomainApp(p.id);
   const conn = await connectAgent(p.serverId);

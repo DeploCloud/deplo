@@ -40,6 +40,7 @@ import {
 } from "../infra/agent-client/cluster-test-helpers";
 import { SPREAD_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { runDeploymentGuarded } from "../deploy/build/deploy-run";
+import { __resetQueueForTest } from "../deploy/deploy-queue";
 import { REPLICAS_MARK } from "../deploy/failover-offer";
 import { OVERLAP_CAPABILITY } from "../deploy/overlap";
 import { REPLICAS_CAPABILITY } from "../deploy/replicas";
@@ -49,6 +50,7 @@ import { deleteApp } from "./apps/delete";
 import { startApp, stopApp } from "./apps/lifecycle";
 import { flushFailoverBundles, type FailoverBundle } from "./clusters/bundles";
 import { createCluster } from "./clusters/manage";
+import { emptyClusterMember, runEmptyingPass } from "./clusters/empty";
 import { addClusterMember } from "./clusters/members";
 import { appWaitingNote, recordPlacement } from "./clusters/placement";
 import {
@@ -211,6 +213,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  __resetQueueForTest();
   await flushFailoverBundles();
   fleet.restore();
   __setClusterPinForTest(null);
@@ -634,4 +637,40 @@ test("deleting a spread App removes it from every server", async () => {
   for (const id of MEMBERS)
     assert.ok(hosts[id].stack.includes("destroy:web"), id);
   assert.deepEqual(await placement(), []);
+});
+
+async function until(done: () => Promise<boolean>, what: string) {
+  for (let i = 0; i < 200; i++) {
+    if (await done()) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.fail(`timed out waiting until ${what}`);
+}
+
+test("emptying a server moves only the replicas it runs, with a deploy that leaves the others running", async () => {
+  await withCloudflareDomain();
+  await runDeploymentGuarded("dpl_1");
+  leader.places = ["srv_2", "srv_3", "srv_2"];
+
+  // srv_4 is not the server the App "runs on now", and still has to give its replica up.
+  await asAdmin(() => emptyClusterMember(clusterId, "srv_4"));
+  await runEmptyingPass();
+  await until(
+    async () => !(await placement()).includes("srv_4"),
+    "the replica left srv_4",
+  );
+  const moved = async () =>
+    (await db.select().from(activities)).some(
+      (a) => a.message === "Emptied server srv_4 of cluster eu",
+    );
+  await until(async () => {
+    await runEmptyingPass();
+    return moved();
+  }, "srv_4 was emptied");
+
+  assert.deepEqual(await placement(), ["srv_2", "srv_3", "srv_2"]);
+  assert.ok(hosts.srv_4.stack.includes("destroy:web"));
+  // The leader was told which server is being emptied, and asked where its replica goes.
+  assert.deepEqual(leader.asked.at(-1)?.current, ["srv_2", "srv_3", "srv_4"]);
+  assert.equal((await app()).serverId, "srv_2");
 });

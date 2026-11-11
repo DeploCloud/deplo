@@ -1,9 +1,12 @@
 import "server-only";
 
-import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { clusterMembers as membersTable } from "../../db/schema/control-plane/clusters";
+import {
+  clusterMembers as membersTable,
+  workloadPlacements,
+} from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import type { WorkloadKind } from "./placement";
 
@@ -18,6 +21,8 @@ export interface MemberWorkload {
   limitMb: number;
   /** An App already deployed on another server whose data is still on this one. */
   leaving: boolean;
+  /** An App with replicas on other servers too: only its replicas here move, with a deploy. */
+  spread?: boolean;
 }
 
 /** What `serverId` holds, in the order an emptying moves it: databases, then Apps, oldest first. */
@@ -25,6 +30,29 @@ export async function listMemberWorkloads(
   serverId: string,
 ): Promise<MemberWorkload[]> {
   const db = getDb();
+  // An App spread over several servers is held by each of them, not only the one it "runs on now".
+  const placed = await db
+    .select({
+      id: workloadPlacements.workloadId,
+      member: workloadPlacements.memberServerId,
+    })
+    .from(workloadPlacements)
+    .innerJoin(appsTable, eq(appsTable.id, workloadPlacements.workloadId))
+    .innerJoin(membersTable, eq(membersTable.clusterId, appsTable.clusterId))
+    .where(
+      and(
+        eq(workloadPlacements.kind, "app"),
+        eq(membersTable.serverId, serverId),
+      ),
+    );
+  const here = [
+    ...new Set(placed.filter((p) => p.member === serverId).map((p) => p.id)),
+  ];
+  const spread = new Set(
+    here.filter((id) =>
+      placed.some((p) => p.id === id && p.member && p.member !== serverId),
+    ),
+  );
   const [dbs, apps] = await Promise.all([
     db
       .select({
@@ -53,6 +81,7 @@ export async function listMemberWorkloads(
           or(
             eq(appsTable.serverId, serverId),
             eq(appsTable.migrateFromServerId, serverId),
+            here.length > 0 ? inArray(appsTable.id, here) : undefined,
           ),
         ),
       )
@@ -69,7 +98,8 @@ export async function listMemberWorkloads(
       kind: "app" as const,
       ...a,
       limitMb: a.limitMb ?? 0,
-      leaving: on !== serverId,
+      leaving: on !== serverId && !spread.has(a.id),
+      ...(spread.has(a.id) ? { spread: true } : {}),
     })),
   ];
 }
