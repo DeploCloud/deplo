@@ -46,6 +46,7 @@ import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { applyLeaderReport } from "./clusters/placement";
 import { getDatabaseFailover, getFailoverPreview } from "./databases/failover";
+import { deleteDatabase } from "./databases/lifecycle";
 import { createDatabase } from "./databases/provision";
 import { moveDatabaseToCluster, updateDatabase } from "./databases/server-move";
 import { restoreBackup } from "./backups/restore";
@@ -460,6 +461,17 @@ test("moving a database off its cluster drops its placement", async () => {
     ).length,
     0,
   );
+});
+
+test("deleting a database on a cluster drops its placement", async () => {
+  const cluster = await eu();
+  const created = await asAdmin(() => newDb(cluster.id));
+  await settleProvisioning(db);
+
+  await asAdmin(() => deleteDatabase(created.id, { force: true }));
+
+  assert.equal(await dbRow(created.id), undefined);
+  assert.deepEqual(await db.select().from(workloadPlacements), []);
 });
 
 test("the page warns once a failover puts the database on its destination's server", async () => {
