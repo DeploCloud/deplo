@@ -9,8 +9,10 @@ import {
 } from "../../agent/gen/agent";
 import { __setAgentConnectorForTest } from "./connect";
 import type { AgentConnection, ClusterHostStatus } from "./connection";
+import { __forgetMemberProbes } from "./cluster-host";
 import {
   CLUSTER_CAPABILITY,
+  CLUSTER_FAILOVER_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
 } from "./hello-capabilities";
@@ -19,6 +21,8 @@ export interface FakeClusterHost {
   capabilities: string[];
   /** The agent answers every cluster RPC UNIMPLEMENTED, as one that has Hello but not these. */
   unimplemented: boolean;
+  /** No connection opens at all, as to a server that is down. */
+  unreachable: boolean;
   status: ClusterHostStatus;
   /** What the leader answers a forwarded call; throws to refuse it. */
   leader: (method: string, payload: Uint8Array) => Uint8Array;
@@ -39,6 +43,11 @@ export interface FakeClusterHost {
   imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
   /** Every deploy request this host's agent was handed, answered ready. */
   deploys: DeployRequest[];
+  /** The stacks this host runs, by slug, as readStack shows them; a reroute replaces one. */
+  stacks: Record<string, string>;
+  reroutes: Parameters<AgentConnection["reroute"]>[0][];
+  /** The agent fails every reroute with this message. */
+  rerouteError: string;
   opened: string[];
   closed: number;
   /** The leader's event buffer, as its watch serves it: a hello, what came after `since`, then what is pushed. */
@@ -58,6 +67,8 @@ export interface FakeClusterHost {
     drop(): void;
     /** The next watch open fails with this message. */
     refuse: string;
+    /** The hello says events were dropped before this watch could read them. */
+    gap: boolean;
   };
 }
 
@@ -81,6 +92,7 @@ function newWatch(): FakeClusterHost["watch"] {
     log: [],
     opens: [],
     refuse: "",
+    gap: false,
     push(type, cluster, data) {
       const e = {
         seq: (w.log.at(-1)?.seq ?? 0) + 1,
@@ -120,7 +132,7 @@ async function* watchStream(
   };
   listeners.get(w)!.add(listener);
   try {
-    yield enc({ hello: true, head: w.log.at(-1)?.seq ?? 0, gap: false });
+    yield enc({ hello: true, head: w.log.at(-1)?.seq ?? 0, gap: w.gap });
     for (const e of w.log) if (e.seq > since) yield enc(e);
     while (true) {
       if (!queue.length) await new Promise<void>((r) => (wake = r));
@@ -139,9 +151,11 @@ export function fakeClusterHosts(): {
   restore(): void;
 } {
   const hosts = new Map<string, FakeClusterHost>();
+  __forgetMemberProbes();
   __setAgentConnectorForTest(async (serverId) => {
     const h = hosts.get(serverId);
     if (!h) return null;
+    if (h.unreachable) throw new Error("the server is offline");
     h.opened.push(serverId);
     const guard = <T>(fn: () => T): Promise<T> =>
       h.unimplemented
@@ -202,6 +216,16 @@ export function fakeClusterHosts(): {
           },
         };
       },
+      readStack: async (slug) => ({
+        exists: slug in h.stacks,
+        yaml: h.stacks[slug] ?? "",
+      }),
+      reroute: async (req) => {
+        if (h.rerouteError) return { ok: false, error: h.rerouteError };
+        h.reroutes.push(req);
+        h.stacks[req.slug] = req.composeYaml;
+        return { ok: true, error: "" };
+      },
       hostInfo: async () =>
         HostInfoResponse.fromPartial({ traefikComposeYaml: h.proxy.yaml }),
       traefikConfig: async (req) => {
@@ -237,9 +261,11 @@ export function fakeClusterHosts(): {
           CLUSTER_HOST_CAPABILITY,
           CLUSTER_CAPABILITY,
           CLUSTER_IMAGES_CAPABILITY,
+          CLUSTER_FAILOVER_CAPABILITY,
           "hostops",
         ],
         unimplemented: false,
+        unreachable: false,
         status: { ...NOTHING },
         leader: (_m, p) => p,
         installs: [],
@@ -250,6 +276,9 @@ export function fakeClusterHosts(): {
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],
         deploys: [],
+        stacks: {},
+        reroutes: [],
+        rerouteError: "",
         opened: [],
         closed: 0,
         watch: newWatch(),

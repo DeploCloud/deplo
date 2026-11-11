@@ -28,6 +28,7 @@ export type AlertKey =
   | "app_crash_loop"
   | "app_unresponsive"
   | "app_restarts_paused"
+  | "cluster_failover_waiting"
   | "app_out_of_memory"
   | "security_update_available"
   | "cron_job_failed"
@@ -74,6 +75,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "app_crash_loop",
   "app_unresponsive",
   "app_restarts_paused",
+  "cluster_failover_waiting",
   "app_out_of_memory",
   "security_update_available",
   "cron_job_failed",

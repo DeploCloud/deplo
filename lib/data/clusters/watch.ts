@@ -7,6 +7,11 @@ import { watchClusterLeader } from "../../infra/agent-client/cluster-host";
 import type { ClusterLeaseState } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
+import {
+  adoptLeaderMoves,
+  applyFailedOver,
+  applyFailoverSummary,
+} from "./failover";
 import { leaderHost } from "./host";
 import {
   forgetLeaderRoster,
@@ -158,6 +163,16 @@ export async function applyLeaderEvent(
       await advance();
       return "applied";
     }
+    case "failed_over": {
+      await applyFailedOver(cluster, d);
+      await advance();
+      return "applied";
+    }
+    case "failover": {
+      await applyFailoverSummary(cluster, e.seq, d);
+      await advance();
+      return "applied";
+    }
     case "superseded": {
       await recordActivity(
         "server",
@@ -174,16 +189,22 @@ export async function applyLeaderEvent(
 }
 
 /**
- * After a replay: puts the leader right (roster and placement go out) and reads back what it believes, so
- * anything that changed while Deplo was away and was not buffered is still corrected.
+ * After a replay: what the leader moved on its own is read back first, then the roster and placement go out, so a
+ * mirror that missed a failover never overwrites it. `lost` is the range of events the watch said were dropped.
  */
-export async function reconcileCluster(clusterId: string): Promise<void> {
+export async function reconcileCluster(
+  clusterId: string,
+  lost: { after: number; before: number } | null = null,
+): Promise<void> {
   const cluster = await getClusterById(clusterId);
   if (!cluster || (await instanceFrozen())) return;
+  const before = (await readLeaderSnapshot(cluster))?.clusters[clusterId];
+  if (before) await adoptLeaderMoves(cluster, before, lost);
   forgetLeaderRoster(clusterId);
   await pushLeaderRoster(cluster);
-  const snap = await readLeaderSnapshot(cluster);
-  const view = snap?.clusters[clusterId];
+  // A leader that had no roster yet knows the cluster only now.
+  const view =
+    before ?? (await readLeaderSnapshot(cluster))?.clusters[clusterId];
   if (!view) return;
   for (const m of view.members)
     if (LEASE_STATES.has(m.state))
@@ -218,10 +239,13 @@ export async function watchClusterOnce(
   let seq = cluster.eventSeq;
   let head: number | null = null;
   let reconciled = false;
+  // Set when the leader's buffer dropped events this watch never read: what happened in between is in the snapshot.
+  let lost: { after: number; before: number } | null = null;
+  let sawEvent = false;
   const reconcile = async () => {
     reconciled = true;
     try {
-      await reconcileCluster(clusterId);
+      await reconcileCluster(clusterId, lost);
     } catch (e) {
       console.warn(
         `[cluster-watch] ${clusterId}: could not reconcile: ${e instanceof Error ? e.message : String(e)}`,
@@ -243,12 +267,17 @@ export async function watchClusterOnce(
           return "reset";
         }
         head = line.head;
-      } else if (line.event.cluster === clusterId) {
-        if ((await applyLeaderEvent(clusterId, line.event)) === "frozen")
-          return "frozen";
-        seq = Math.max(seq, line.event.seq);
+        if (line.gap) lost = { after: seq, before: line.head + 1 };
       } else {
-        // Another cluster's event on the same leader: nothing here, and the stored sequence need not move for it.
+        // The first event still in the buffer closes the range that was dropped.
+        if (lost && !sawEvent) lost.before = line.event.seq;
+        sawEvent = true;
+        // Another cluster's event on the same leader applies nothing here; only the position moves.
+        if (
+          line.event.cluster === clusterId &&
+          (await applyLeaderEvent(clusterId, line.event)) === "frozen"
+        )
+          return "frozen";
         seq = Math.max(seq, line.event.seq);
       }
       if (!reconciled && head !== null && seq >= head) await reconcile();
