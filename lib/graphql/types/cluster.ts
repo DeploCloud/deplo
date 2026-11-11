@@ -92,6 +92,10 @@ const ClusterLeaderRef = builder
         description:
           "One plain sentence while Deplo cannot update a leader this cluster relies on; empty otherwise. Deplo retries on its own.",
       }),
+      ownServerWarning: t.exposeString("ownServerWarning", {
+        description:
+          "The warning while Deplo's own server is a member of the cluster and the leader runs on it; empty otherwise. moveClusterLeader fixes it.",
+      }),
     }),
   });
 

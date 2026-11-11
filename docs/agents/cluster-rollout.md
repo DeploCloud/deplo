@@ -104,10 +104,38 @@ it 20 s, because those last orders leave through the relay beside it.
 While Deplo restarts a leader, nobody stands in for it (`updatingClusterHost`): standing in would
 cost two changes of hands for a few seconds of silence.
 
-What it does not cover: a leader that extended its leases and then never came back. Deplo's machine
-takes over after two missed checks and does not know about the extension, so a member that is cut
-off from it, yet alive, could have its database started elsewhere up to 5 minutes early. Two
-failures at once; the `no_return` pause keeps a bad release from causing the first one twice.
+### A leader that extends its leases and never comes back
+
+Deplo's machine takes over after two missed checks, and it cannot read what the old leader extended:
+that file is on the server that is gone. So the rule holds without it. **A leader presumes that a
+member it has never heard holds the longest lease any leader may grant** (60 s + `lease.ExtendFor`,
+5 minutes), counted from the moment it first knew the member: a takeover, a hand-back, a moved
+leader, a leader that restarted, a member that just joined (`member.presumed` in `internal/leader`).
+
+- **A member that answers** the new leader once holds a plain 60 s lease from it, and the usual
+  clock applies from then on: 81 s of silence, then its work moves.
+- **A member that never answers** keeps its databases and Apps with a Volume for
+  60 s + 5 min + the 21 s margin = **6 min 21 s after the leader started leading**, then they move
+  (or are promoted, or wait for a backup) as in any failover. A person's "bring it back from a
+  backup" is refused for the same time (`still_answering`). Its Apps without a Volume still move
+  after 81 s: two copies of those harm nothing, and the member removes its own when it returns.
+- So a server that stops **together with the leader that ran on it** gets its Apps back after about
+  2 minutes (half a minute to notice, 81 s) and its databases after about 7. That is the honest
+  number for this case; the 81 s everywhere else is for a leader that was already leading.
+
+Why it is safe: an older epoch is refused by a member that heard the new one, and a leader that
+hears that refusal stops sending within one renewal, so the last extension an old leader can still
+land comes seconds after the takeover; the 21 s margin covers it, as it covers a plain lease. And
+the bound does not rest on the leader's version: **the agent cuts `extendSeconds` to 5 minutes
+itself** (`lease.ExtendFor` in `deplo-agent`), so raise it in `deplo-cluster` first and in the agent
+last, never the agent alone.
+
+What this does not cover, and no extension is involved: an old leader that keeps running on the
+smaller side of a network split, where no member that answers the new leader reaches it, never
+hears the refusal and goes on renewing the members beside it. Closing that needs the old leader to
+stop on its own when it hears too few members.
+
+The `no_return` pause still matters: it keeps a bad release from taking the second leader down too.
 
 ## 6. Below the floor
 

@@ -16,7 +16,10 @@ import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
 import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
-import { getClusterById } from "./roster";
+import { clusterMemberServerIds, getClusterById } from "./roster";
+
+export const OWN_SERVER_WARNING =
+  "If Deplo's own server stops, its Apps cannot move. Run the leader on another server to fix this.";
 
 const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so there is nowhere to start the leader.";
@@ -35,6 +38,7 @@ function down(
     message,
     takenOverAt: null,
     updateMessage: "",
+    ownServerWarning: "",
   };
 }
 
@@ -86,7 +90,15 @@ export async function getClusterLeader(
     ...leader,
     takenOverAt: cluster.leaderServerId ? cluster.leaderTakeoverAt : null,
     updateMessage: await updateMessage(host),
+    ownServerWarning: (await ledFromAMember(cluster)) ? OWN_SERVER_WARNING : "",
   };
+}
+
+// Deplo's own server is a member and the leader was put there: when it stops, nobody is left to move its Apps.
+async function ledFromAMember(cluster: Cluster): Promise<boolean> {
+  if (cluster.leaderServerId) return false;
+  const own = await leaderHostOf(null);
+  return !!own && (await clusterMemberServerIds(cluster.id)).includes(own.id);
 }
 
 // Deplo's own machine stands in for a leader elsewhere, so its failing update is this cluster's too.
