@@ -231,7 +231,8 @@ test("a watch that lost events reads the missed failover from the snapshot: Acti
   assert.equal(lab.capture.calls.length, 1);
   assert.match(
     String((lab.capture.calls[0].body as { title?: string }).title),
-    /prj_two waiting for room in eu/,
+    // The leader's picture no longer says why it waits, so the alert does not claim it is room.
+    /prj_two waiting to move in eu/,
   );
 });
 
