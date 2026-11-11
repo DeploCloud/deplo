@@ -259,9 +259,11 @@ async function writeDatabasePlacement(
   if (moveWarning) console.warn(`[databases] ${moveWarning}`);
   if (movingFrom && db.clusterId && !cluster)
     await clearPlacement("database", id);
-  const where = cluster
-    ? `cluster ${cluster.name}, now on ${targetServer.name}`
-    : targetServer.name;
+  // A move inside the cluster names the server only; arriving on it names both.
+  const where =
+    cluster && db.clusterId !== cluster.id
+      ? `cluster ${cluster.name}, now on ${targetServer.name}`
+      : targetServer.name;
   await recordActivity(
     "database",
     movingFrom
