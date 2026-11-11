@@ -22,6 +22,7 @@ export function clusterRpc(
   | "setClusterMember"
   | "clusterWatch"
   | "copyClusterImage"
+  | "setClusterForwarders"
 > {
   const { client } = channel;
   return {
@@ -84,6 +85,14 @@ export function clusterRpc(
         bytes: Number(r.bytes),
         pruned: r.pruned,
       };
+    },
+    async setClusterForwarders(table) {
+      const r = await unary(
+        client.setClusterForwarders.bind(client),
+        table,
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return { held: r.held, served: r.served };
     },
     async clusterCall(method, payload) {
       const r = await unary(

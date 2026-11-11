@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq, inArray, lte, ne, notInArray, sql } from "drizzle-orm";
 import { completePendingAppMigration } from "../../data/app-migration";
 import { appendLog, finalizeDeploymentLogs } from "../../data/deployment-logs";
+import { syncNameForwardersAfterDeploy } from "../../data/clusters/forwarders";
 import { copyImageAfterDeploy } from "../../data/clusters/images";
 import { sweepSupersededAppImages } from "../../data/docker-cleanup/deploy-sweep";
 import { getDb } from "../../db/client";
@@ -288,6 +289,7 @@ export async function commitOutcome(
 export function afterDeployReady(depId: string, serverId: string): void {
   captureAfterReady(depId);
   copyImageAfterDeploy(depId, serverId);
+  syncNameForwardersAfterDeploy(depId);
   void sweepSupersededAppImages(serverId).then((freed) => {
     if (freed <= 0) return;
     log(

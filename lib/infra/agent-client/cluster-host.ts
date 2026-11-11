@@ -9,12 +9,18 @@ import {
   versionAtLeast,
 } from "../../version";
 import { connectAgent } from "./connect";
-import type { AgentConnection, ClusterHostStatus } from "./connection";
+import type {
+  AgentConnection,
+  ClusterForwarderTable,
+  ClusterHostStatus,
+} from "./connection";
 import {
+  AgentClusterForwardersUnsupportedError,
   AgentClusterImagesUnsupportedError,
   AgentClusterMemberUnsupportedError,
   AgentClusterUnsupportedError,
   AgentTooOldError,
+  CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
   CLUSTER_HOST_UNSUPPORTED_MESSAGE,
   CLUSTER_IMAGES_UNSUPPORTED_MESSAGE,
   CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
@@ -24,6 +30,7 @@ import {
 import {
   CLUSTER_CAPABILITY,
   CLUSTER_FAILOVER_CAPABILITY,
+  CLUSTER_FORWARDERS_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
 } from "./hello-capabilities";
@@ -256,6 +263,33 @@ export async function setClusterMember(
     )
       throw new AgentClusterMemberUnsupportedError(
         CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
+      );
+    throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+/** Hands one member the names it holds and the streams it serves for its cluster's Environments (#200). */
+export async function setClusterForwarders(
+  serverId: string,
+  table: ClusterForwarderTable,
+): Promise<{ held: number; served: number }> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_FORWARDERS_CAPABILITY))
+      throw new AgentClusterForwardersUnsupportedError(
+        CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
+      );
+    return await conn.setClusterForwarders(table);
+  } catch (e) {
+    if (
+      !(e instanceof AgentClusterForwardersUnsupportedError) &&
+      (e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED
+    )
+      throw new AgentClusterForwardersUnsupportedError(
+        CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
       );
     throw e;
   } finally {

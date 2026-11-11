@@ -3035,6 +3035,52 @@ export interface CopyClusterImageResponse {
   pruned: string[];
 }
 
+/** A cluster member's certificate, by the server id the leader's placement names it with. */
+export interface ClusterForwarderMember {
+  serverId: string;
+  /** sha256 hex of the member's certificate DER. */
+  fingerprint: string;
+}
+
+/**
+ * The public name of a workload that runs on ANOTHER member, held on this member's network for
+ * the Environment. The workload is addressed by id: the leader's placement says where it runs.
+ */
+export interface ClusterHeldName {
+  /** The Environment's network (deplo-env-<id>, or deplo-team-<id> for an App with none). */
+  network: string;
+  /** "app" | "database". */
+  kind: string;
+  /** The workload's id, which is also the deplo.project label of its containers. */
+  workloadId: string;
+  /** The public name (db-<slug>, or the App's name). */
+  name: string;
+  /** The port the workload answers on. */
+  port: number;
+}
+
+/** A workload placed on THIS member that other members of its Environment may reach over the relay. */
+export interface ClusterServedName {
+  network: string;
+  kind: string;
+  workloadId: string;
+  port: number;
+  /** Certificate fingerprints of the other members of the same Environment, and no one else. */
+  sourceFingerprints: string[];
+}
+
+export interface SetClusterForwardersRequest {
+  clusterId: string;
+  members: ClusterForwarderMember[];
+  hold: ClusterHeldName[];
+  serve: ClusterServedName[];
+}
+
+export interface SetClusterForwardersResponse {
+  held: number;
+  served: number;
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -22863,6 +22909,581 @@ export const CopyClusterImageResponse: MessageFns<CopyClusterImageResponse> = {
   },
 };
 
+function createBaseClusterForwarderMember(): ClusterForwarderMember {
+  return { serverId: "", fingerprint: "" };
+}
+
+export const ClusterForwarderMember: MessageFns<ClusterForwarderMember> = {
+  encode(message: ClusterForwarderMember, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.serverId !== "") {
+      writer.uint32(10).string(message.serverId);
+    }
+    if (message.fingerprint !== "") {
+      writer.uint32(18).string(message.fingerprint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterForwarderMember {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterForwarderMember();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.serverId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.fingerprint = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterForwarderMember {
+    return {
+      serverId: isSet(object.serverId)
+        ? globalThis.String(object.serverId)
+        : isSet(object.server_id)
+        ? globalThis.String(object.server_id)
+        : "",
+      fingerprint: isSet(object.fingerprint) ? globalThis.String(object.fingerprint) : "",
+    };
+  },
+
+  toJSON(message: ClusterForwarderMember): unknown {
+    const obj: any = {};
+    if (message.serverId !== "") {
+      obj.serverId = message.serverId;
+    }
+    if (message.fingerprint !== "") {
+      obj.fingerprint = message.fingerprint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterForwarderMember>, I>>(base?: I): ClusterForwarderMember {
+    return ClusterForwarderMember.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterForwarderMember>, I>>(object: I): ClusterForwarderMember {
+    const message = createBaseClusterForwarderMember();
+    message.serverId = object.serverId ?? "";
+    message.fingerprint = object.fingerprint ?? "";
+    return message;
+  },
+};
+
+function createBaseClusterHeldName(): ClusterHeldName {
+  return { network: "", kind: "", workloadId: "", name: "", port: 0 };
+}
+
+export const ClusterHeldName: MessageFns<ClusterHeldName> = {
+  encode(message: ClusterHeldName, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.network !== "") {
+      writer.uint32(10).string(message.network);
+    }
+    if (message.kind !== "") {
+      writer.uint32(18).string(message.kind);
+    }
+    if (message.workloadId !== "") {
+      writer.uint32(26).string(message.workloadId);
+    }
+    if (message.name !== "") {
+      writer.uint32(34).string(message.name);
+    }
+    if (message.port !== 0) {
+      writer.uint32(40).uint32(message.port);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterHeldName {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterHeldName();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.network = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.kind = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.workloadId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.port = reader.uint32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterHeldName {
+    return {
+      network: isSet(object.network) ? globalThis.String(object.network) : "",
+      kind: isSet(object.kind) ? globalThis.String(object.kind) : "",
+      workloadId: isSet(object.workloadId)
+        ? globalThis.String(object.workloadId)
+        : isSet(object.workload_id)
+        ? globalThis.String(object.workload_id)
+        : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+    };
+  },
+
+  toJSON(message: ClusterHeldName): unknown {
+    const obj: any = {};
+    if (message.network !== "") {
+      obj.network = message.network;
+    }
+    if (message.kind !== "") {
+      obj.kind = message.kind;
+    }
+    if (message.workloadId !== "") {
+      obj.workloadId = message.workloadId;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterHeldName>, I>>(base?: I): ClusterHeldName {
+    return ClusterHeldName.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterHeldName>, I>>(object: I): ClusterHeldName {
+    const message = createBaseClusterHeldName();
+    message.network = object.network ?? "";
+    message.kind = object.kind ?? "";
+    message.workloadId = object.workloadId ?? "";
+    message.name = object.name ?? "";
+    message.port = object.port ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterServedName(): ClusterServedName {
+  return { network: "", kind: "", workloadId: "", port: 0, sourceFingerprints: [] };
+}
+
+export const ClusterServedName: MessageFns<ClusterServedName> = {
+  encode(message: ClusterServedName, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.network !== "") {
+      writer.uint32(10).string(message.network);
+    }
+    if (message.kind !== "") {
+      writer.uint32(18).string(message.kind);
+    }
+    if (message.workloadId !== "") {
+      writer.uint32(26).string(message.workloadId);
+    }
+    if (message.port !== 0) {
+      writer.uint32(32).uint32(message.port);
+    }
+    for (const v of message.sourceFingerprints) {
+      writer.uint32(42).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterServedName {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterServedName();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.network = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.kind = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.workloadId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.port = reader.uint32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.sourceFingerprints.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterServedName {
+    return {
+      network: isSet(object.network) ? globalThis.String(object.network) : "",
+      kind: isSet(object.kind) ? globalThis.String(object.kind) : "",
+      workloadId: isSet(object.workloadId)
+        ? globalThis.String(object.workloadId)
+        : isSet(object.workload_id)
+        ? globalThis.String(object.workload_id)
+        : "",
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      sourceFingerprints: globalThis.Array.isArray(object?.sourceFingerprints)
+        ? object.sourceFingerprints.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.source_fingerprints)
+        ? object.source_fingerprints.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ClusterServedName): unknown {
+    const obj: any = {};
+    if (message.network !== "") {
+      obj.network = message.network;
+    }
+    if (message.kind !== "") {
+      obj.kind = message.kind;
+    }
+    if (message.workloadId !== "") {
+      obj.workloadId = message.workloadId;
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.sourceFingerprints?.length) {
+      obj.sourceFingerprints = message.sourceFingerprints;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterServedName>, I>>(base?: I): ClusterServedName {
+    return ClusterServedName.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterServedName>, I>>(object: I): ClusterServedName {
+    const message = createBaseClusterServedName();
+    message.network = object.network ?? "";
+    message.kind = object.kind ?? "";
+    message.workloadId = object.workloadId ?? "";
+    message.port = object.port ?? 0;
+    message.sourceFingerprints = object.sourceFingerprints?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterForwardersRequest(): SetClusterForwardersRequest {
+  return { clusterId: "", members: [], hold: [], serve: [] };
+}
+
+export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest> = {
+  encode(message: SetClusterForwardersRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.clusterId !== "") {
+      writer.uint32(10).string(message.clusterId);
+    }
+    for (const v of message.members) {
+      ClusterForwarderMember.encode(v!, writer.uint32(18).fork()).join();
+    }
+    for (const v of message.hold) {
+      ClusterHeldName.encode(v!, writer.uint32(26).fork()).join();
+    }
+    for (const v of message.serve) {
+      ClusterServedName.encode(v!, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterForwardersRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterForwardersRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.members.push(ClusterForwarderMember.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.hold.push(ClusterHeldName.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.serve.push(ClusterServedName.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterForwardersRequest {
+    return {
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      members: globalThis.Array.isArray(object?.members)
+        ? object.members.map((e: any) => ClusterForwarderMember.fromJSON(e))
+        : [],
+      hold: globalThis.Array.isArray(object?.hold) ? object.hold.map((e: any) => ClusterHeldName.fromJSON(e)) : [],
+      serve: globalThis.Array.isArray(object?.serve) ? object.serve.map((e: any) => ClusterServedName.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: SetClusterForwardersRequest): unknown {
+    const obj: any = {};
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.members?.length) {
+      obj.members = message.members.map((e) => ClusterForwarderMember.toJSON(e));
+    }
+    if (message.hold?.length) {
+      obj.hold = message.hold.map((e) => ClusterHeldName.toJSON(e));
+    }
+    if (message.serve?.length) {
+      obj.serve = message.serve.map((e) => ClusterServedName.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterForwardersRequest>, I>>(base?: I): SetClusterForwardersRequest {
+    return SetClusterForwardersRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterForwardersRequest>, I>>(object: I): SetClusterForwardersRequest {
+    const message = createBaseSetClusterForwardersRequest();
+    message.clusterId = object.clusterId ?? "";
+    message.members = object.members?.map((e) => ClusterForwarderMember.fromPartial(e)) || [];
+    message.hold = object.hold?.map((e) => ClusterHeldName.fromPartial(e)) || [];
+    message.serve = object.serve?.map((e) => ClusterServedName.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterForwardersResponse(): SetClusterForwardersResponse {
+  return { held: 0, served: 0 };
+}
+
+export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersResponse> = {
+  encode(message: SetClusterForwardersResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.held !== 0) {
+      writer.uint32(8).int32(message.held);
+    }
+    if (message.served !== 0) {
+      writer.uint32(16).int32(message.served);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterForwardersResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterForwardersResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.held = reader.int32();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.served = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterForwardersResponse {
+    return {
+      held: isSet(object.held) ? globalThis.Number(object.held) : 0,
+      served: isSet(object.served) ? globalThis.Number(object.served) : 0,
+    };
+  },
+
+  toJSON(message: SetClusterForwardersResponse): unknown {
+    const obj: any = {};
+    if (message.held !== 0) {
+      obj.held = Math.round(message.held);
+    }
+    if (message.served !== 0) {
+      obj.served = Math.round(message.served);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterForwardersResponse>, I>>(base?: I): SetClusterForwardersResponse {
+    return SetClusterForwardersResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterForwardersResponse>, I>>(object: I): SetClusterForwardersResponse {
+    const message = createBaseSetClusterForwardersResponse();
+    message.held = object.held ?? 0;
+    message.served = object.served ?? 0;
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -23314,6 +23935,22 @@ export const AgentService = {
     responseSerialize: (value: CopyClusterImageResponse): Buffer =>
       Buffer.from(CopyClusterImageResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): CopyClusterImageResponse => CopyClusterImageResponse.decode(value),
+  },
+  /**
+   * Hand this member the names it holds on its Environments' networks and the streams it accepts
+   * for its own workloads. The full set each time; one not listed is removed. Never sent to a
+   * member that is not in a cluster.
+   */
+  setClusterForwarders: {
+    path: "/deplo.agent.v1.Agent/SetClusterForwarders" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterForwardersRequest): Buffer =>
+      Buffer.from(SetClusterForwardersRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterForwardersRequest => SetClusterForwardersRequest.decode(value),
+    responseSerialize: (value: SetClusterForwardersResponse): Buffer =>
+      Buffer.from(SetClusterForwardersResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterForwardersResponse => SetClusterForwardersResponse.decode(value),
   },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
@@ -24052,6 +24689,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * older ones. A member that already holds the ref answers without a transfer.
    */
   copyClusterImage: handleUnaryCall<CopyClusterImageRequest, CopyClusterImageResponse>;
+  /**
+   * Hand this member the names it holds on its Environments' networks and the streams it accepts
+   * for its own workloads. The full set each time; one not listed is removed. Never sent to a
+   * member that is not in a cluster.
+   */
+  setClusterForwarders: handleUnaryCall<SetClusterForwardersRequest, SetClusterForwardersResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -24788,6 +25431,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Hand this member the names it holds on its Environments' networks and the streams it accepts
+   * for its own workloads. The full set each time; one not listed is removed. Never sent to a
+   * member that is not in a cluster.
+   */
+  setClusterForwarders(
+    request: SetClusterForwardersRequest,
+    callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
+  ): ClientUnaryCall;
+  setClusterForwarders(
+    request: SetClusterForwardersRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
+  ): ClientUnaryCall;
+  setClusterForwarders(
+    request: SetClusterForwardersRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

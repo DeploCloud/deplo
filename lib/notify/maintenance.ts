@@ -20,6 +20,7 @@ import {
   type AccessRequirement,
 } from "../git/provider-access";
 import { sweepDomainDns } from "../data/domains/dns-check";
+import { reconcileNameForwarders } from "../data/clusters/forwarders";
 import { reconcileClusterImages } from "../data/clusters/images";
 import { reconcileFailoverBundles } from "../data/clusters/bundles";
 import { rehostClusterAddresses } from "../data/clusters/failover-address";
@@ -51,6 +52,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("domain dns", sweepDomainDns);
   await settle("cluster relay", reconcileClusterRelay);
   await settle("cluster images", reconcileClusterImages);
+  await settle("name forwarders", reconcileNameForwarders);
   await settle("failover bundles", reconcileFailoverBundles);
   await settle("cluster addresses", rehostClusterAddresses);
   await settle("cloudflare certificates", sweepCloudflareCertificates);

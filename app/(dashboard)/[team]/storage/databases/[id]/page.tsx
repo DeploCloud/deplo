@@ -8,6 +8,7 @@ import { getServerById } from "@/lib/data/servers/roster";
 import { canExposePorts, currentCapabilities } from "@/lib/membership";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { listDatabaseAppLinks } from "@/lib/data/database-links";
+import { DatabaseRelayNotice } from "@/components/storage/database-relay-notice";
 import { DatabaseOverview } from "@/components/storage/database-overview";
 import { DataStat } from "@/components/storage/database-stats";
 import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat";
@@ -57,6 +58,9 @@ export default async function DatabaseOverviewPage(
         canAccept={can.has("control_databases")}
       />
       <DatabaseRelabelNotice id={db.id} status={db.status} />
+      <Suspense fallback={null}>
+        <DatabaseRelayNotice id={db.id} />
+      </Suspense>
       <Suspense fallback={null}>
         <SecurityUpdatesNotice kind="database" id={db.id} name={db.name} />
       </Suspense>
