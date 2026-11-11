@@ -20,6 +20,10 @@ import {
   recoverySentence,
 } from "../../databases/failover-copy";
 import { archivesChangeLog } from "../../databases/change-log";
+import {
+  STANDBY_ENGINES,
+  standbyMembersRefusal,
+} from "../../databases/standby";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { isDeploHostServer } from "../../deploy/domains";
 import { newId, nowIso } from "../../ids";
@@ -303,6 +307,15 @@ export async function getDatabaseFailover(
     (d) => d.kind === "server" && d.serverId === db.serverId,
   );
   const copyOn = db.standby ? await standbyMemberOf(db.id) : null;
+  const engine = STANDBY_ENGINES[db.type];
+  const small =
+    db.standby && engine
+      ? standbyMembersRefusal(engine, {
+          cluster: cluster.name,
+          name: db.name,
+          members: (await clusterMemberServerIds(cluster.id)).length,
+        })
+      : null;
   const standbyOn =
     copyOn && copyOn !== db.serverId
       ? ((await getServerById(copyOn))?.name ?? "another server")
@@ -313,7 +326,7 @@ export async function getDatabaseFailover(
     standbyOn,
     standbyNote:
       db.standby && !standbyOn
-        ? "There is no standby copy right now, so a failover restores the latest backup. Deplo makes a new copy as soon as another server has room."
+        ? `There is no standby copy right now, so a failover restores the latest backup. ${small ?? "Deplo makes a new copy as soon as another server has room."}`
         : null,
     ...(standbyOn
       ? {

@@ -15,7 +15,6 @@ import { DB_DATA_DIRS } from "@/lib/deploy/database-compose";
 import { DatabaseDanger } from "@/components/storage/database-danger";
 import { DatabaseStandbyForm } from "@/components/storage/database-standby-form";
 import { getDatabaseStandby } from "@/lib/data/databases/standby";
-import { STANDBY_ENGINES } from "@/lib/databases/standby";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { Button } from "@/components/ui/button";
@@ -34,10 +33,8 @@ export default async function DatabaseAdvancedSettingsPage(
       hasCapability("manage_crons"),
       hasCapability("move_databases"),
       hasCapability("configure_databases"),
-      // Expert only: offered to a database on a cluster whose engine can keep a copy.
-      db.clusterId && STANDBY_ENGINES[db.type]
-        ? getDatabaseStandby(db.id)
-        : null,
+      // Expert only: a database on a cluster. An engine that keeps no copy says why instead.
+      db.clusterId ? getDatabaseStandby(db.id) : null,
     ]);
   const cron = canConsole && canCron ? await listDatabaseCronJobs(db.id) : null;
 

@@ -43,6 +43,7 @@ export function renderDatabaseStackYaml(
 ): string {
   return generateDatabaseCompose({
     standby,
+    keepsStandby: Boolean(db.standby),
     name: db.host,
     databaseId: db.id,
     type: db.type,

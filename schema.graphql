@@ -5189,7 +5189,7 @@ type Mutation {
   setDatabaseRunning(id: String!, running: Boolean!): Database
 
   """
-  Keep a standby copy of a PostgreSQL database on another server of its cluster, or stop keeping one. The copy uses as much memory as the database and a second copy of its data. A cluster with one server, or no room on another, answers with the sentence that says what to change.
+  Keep a standby copy of a database on another server of its cluster, or stop keeping one: PostgreSQL, MySQL, MariaDB and Redis, MongoDB on a cluster of three servers or more, never ClickHouse. The copy uses as much memory as the database and a second copy of its data; turning it on or off restarts a MariaDB database. A refusal answers with the sentence that says what to change.
   """
   setDatabaseStandby(enabled: Boolean!, id: String!): Database
 

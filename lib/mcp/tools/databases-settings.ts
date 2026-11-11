@@ -74,7 +74,7 @@ export const DATABASES_SETTINGS: McpToolDef[] = [
     name: "set_database_standby",
     title: "Keep a standby copy of a database",
     description:
-      "Turn a PostgreSQL database's standby copy on or off. It runs on another server of its cluster and a failover promotes it, losing about a second of writes. It costs the database's memory and disk a second time.",
+      "Turn a database's standby copy on or off. Another server of its cluster runs it and a failover promotes it, losing about a second of writes. Never ClickHouse; MongoDB from three servers. Costs its memory and disk twice.",
     group: "Databases",
     requires: "configure_databases",
     idempotent: true,
