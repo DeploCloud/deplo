@@ -101,6 +101,9 @@ export const CLUSTER_IMAGES_CAPABILITY = "cluster.images";
 // The agent starts a workload its cluster's leader moves to it; without it the leader's order is renewed and ignored.
 export const CLUSTER_FAILOVER_CAPABILITY = "cluster.failover";
 
+// The agent restores the bundle's backup into a moved workload before it counts as started (#202).
+export const CLUSTER_FAILOVER_RESTORE_CAPABILITY = "cluster.failover.restore";
+
 // The agent holds workloads' names on its Environments' networks and relays them to the member that runs them (#200).
 export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";
 

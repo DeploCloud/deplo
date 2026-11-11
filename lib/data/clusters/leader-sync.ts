@@ -17,9 +17,13 @@ import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
 import {
   callClusterLeader,
+  memberRestores,
   memberTakesOver,
 } from "../../infra/agent-client/cluster-host";
-import { clusterFailoverUnsupportedMessage } from "../../infra/agent-client/errors";
+import {
+  clusterFailoverUnsupportedMessage,
+  clusterRestoreUnsupportedMessage,
+} from "../../infra/agent-client/errors";
 import type { Cluster, ClusterLeaseState } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { clusterMemberFacts } from "./facts";
@@ -109,6 +113,9 @@ export interface LeaderMove extends LeaderEntry {
   reason: string;
   /** The leader's event that reported it. */
   seq: number;
+  /** The backup a moved workload was restored from, when it was. */
+  backupId?: string;
+  backupAt?: string;
 }
 
 export interface LeaderSnapshot {
@@ -135,14 +142,18 @@ export async function readLeaderSnapshot(
 }
 
 /** Says once a day which member cannot take over, so the gap is read in Activity and not found in a failover. */
-async function nameOldAgent(cluster: Cluster, serverId: string): Promise<void> {
+async function nameOldAgent(
+  cluster: Cluster,
+  serverId: string,
+  sentence = clusterFailoverUnsupportedMessage,
+): Promise<void> {
   const [server] = await getDb()
     .select({ name: serversTable.name })
     .from(serversTable)
     .where(eq(serversTable.id, serverId))
     .limit(1);
   if (!server) return;
-  const message = clusterFailoverUnsupportedMessage(server.name, cluster.name);
+  const message = sentence(server.name, cluster.name);
   const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
   const seen = await getDb()
     .select({ id: activities.id })
@@ -183,6 +194,9 @@ export async function pushLeaderRoster(
     const f = facts.get(id);
     const tooOld = !(await memberTakesOver(id));
     if (tooOld) await nameOldAgent(cluster, id);
+    const noRestore = !tooOld && !(await memberRestores(id));
+    if (noRestore)
+      await nameOldAgent(cluster, id, clusterRestoreUnsupportedMessage);
     // The facts ride along so the leader can place work while Deplo is away.
     members.push({
       id,
@@ -194,6 +208,8 @@ export async function pushLeaderRoster(
       databaseEnvs: f?.databaseEnvs ?? [],
       // The leader never hands a moved workload to an agent that would not start it.
       ...(tooOld ? { noFailover: true } : {}),
+      // Nor a database to an agent that would start it empty.
+      ...(noRestore ? { noRestore: true } : {}),
     });
   }
   const placement = await placementEntries(cluster.id);

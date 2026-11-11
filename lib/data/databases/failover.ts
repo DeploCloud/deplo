@@ -50,13 +50,13 @@ async function teamDestinations(teamId: string): Promise<BackupDestination[]> {
   return rows.map(assembleDestination);
 }
 
-/** Never the member the database runs on (ADR-0019): a bucket, then a server outside the cluster, then another member. */
+/** Never the member the database runs on (ADR-0019): a bucket, then another member, then a server outside the cluster, which no failover can read. */
 async function failoverDestination(
   db: Placed & { clusterId: string },
 ): Promise<BackupDestination | null> {
   const members = await clusterMemberServerIds(db.clusterId);
   const rank = (d: BackupDestination) =>
-    d.kind === "s3" ? 0 : members.includes(d.serverId ?? "") ? 2 : 1;
+    d.kind === "s3" ? 0 : members.includes(d.serverId ?? "") ? 1 : 2;
   const usable = (await teamDestinations(db.teamId))
     .filter(
       (d) =>

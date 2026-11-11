@@ -9,6 +9,7 @@ import {
   clusters as clustersTable,
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { ensureFailoverBackup } from "../databases/failover";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { getCurrentUser } from "../../auth/current-user";
@@ -356,6 +357,19 @@ export async function addClusterMember(
     null,
     teamId,
   );
+  // A database that came with its server needs the backup a failover restores, once there is a second member (#202).
+  if (failoverOn(members.length))
+    for (const d of await getDb()
+      .select({
+        id: databasesTable.id,
+        teamId: databasesTable.teamId,
+        name: databasesTable.name,
+        serverId: databasesTable.serverId,
+        clusterId: databasesTable.clusterId,
+      })
+      .from(databasesTable)
+      .where(eq(databasesTable.clusterId, clusterId)))
+      await ensureFailoverBackup(d);
   // The member's own change already happened: the sweep puts the roster right if a relay is down.
   try {
     const push = await pushClusterRoster(

@@ -30,6 +30,7 @@ import {
 import {
   CLUSTER_CAPABILITY,
   CLUSTER_FAILOVER_CAPABILITY,
+  CLUSTER_FAILOVER_RESTORE_CAPABILITY,
   CLUSTER_FORWARDERS_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
@@ -206,41 +207,53 @@ export async function probeClusterMember(
   }
 }
 
-const takesOver = new Map<string, { can: boolean; until: number }>();
+const FAILOVER_CAPABILITIES = [
+  CLUSTER_FAILOVER_CAPABILITY,
+  CLUSTER_FAILOVER_RESTORE_CAPABILITY,
+];
+// What each agent last said it can do; null is one that did not answer.
+const probes = new Map<string, { caps: string[] | null; until: number }>();
 
 /** Test seam: forget what each agent was last seen able to do. */
 export function __forgetMemberProbes(): void {
-  takesOver.clear();
+  probes.clear();
+}
+
+async function memberCan(
+  serverId: string,
+  capability: string,
+): Promise<boolean> {
+  let seen = probes.get(serverId);
+  if (!seen || seen.until <= Date.now()) {
+    let caps: string[] | null = null;
+    try {
+      const conn = await connectAgent(serverId);
+      try {
+        caps = (await conn.hello()).capabilities ?? [];
+      } finally {
+        conn.close();
+      }
+    } catch {
+      // unknown: asked again in a minute
+    }
+    // An agent never loses a capability, so one that has them all is kept; anything less is asked again.
+    const all = FAILOVER_CAPABILITIES.every((c) => caps?.includes(c));
+    seen = { caps, until: all ? Infinity : Date.now() + 60_000 };
+    probes.set(serverId, seen);
+  }
+  return !seen.caps || seen.caps.includes(capability);
 }
 
 /**
  * Whether the member's agent can start a workload its leader moves to it (Hello `cluster.failover`).
  * An agent that does not answer counts as able: the leader believes only a member that says it started.
  */
-export async function memberTakesOver(serverId: string): Promise<boolean> {
-  const seen = takesOver.get(serverId);
-  if (seen && seen.until > Date.now()) return seen.can;
-  let can = true;
-  let answered = false;
-  try {
-    const conn = await connectAgent(serverId);
-    try {
-      const hello = await conn.hello();
-      answered = true;
-      can = Boolean(hello.capabilities?.includes(CLUSTER_FAILOVER_CAPABILITY));
-    } finally {
-      conn.close();
-    }
-  } catch {
-    // unknown: asked again in a minute
-  }
-  // An agent never loses a capability, so a yes is kept; a no or no answer is asked again.
-  takesOver.set(serverId, {
-    can,
-    until: answered && can ? Infinity : Date.now() + 60_000,
-  });
-  return can;
-}
+export const memberTakesOver = (serverId: string): Promise<boolean> =>
+  memberCan(serverId, CLUSTER_FAILOVER_CAPABILITY);
+
+/** Whether it can also restore a backup first (Hello `cluster.failover.restore`); no answer counts as able, as above. */
+export const memberRestores = (serverId: string): Promise<boolean> =>
+  memberCan(serverId, CLUSTER_FAILOVER_RESTORE_CAPABILITY);
 
 /** Makes the server's agent a cluster party that dials every relay it knows, or stops it (ADR-0044). */
 export async function setClusterMember(

@@ -31,6 +31,7 @@ import { getClusterById } from "./roster";
 
 const ACTOR = "Deplo";
 const KIND = "app";
+export type BundleKind = "app" | "database";
 
 /** What a member's deploy received, and so all a leader needs to redeploy it. Nothing else goes in. */
 export interface FailoverStack {
@@ -53,12 +54,25 @@ export interface FailoverStack {
   filesBindSources?: string[];
 }
 
+/** The backup a member restores before a moved workload counts as started; a workload that keeps data moves only with one. */
+export interface FailoverRestore {
+  /** The backup run, and when it was taken. */
+  backupId: string;
+  takenAt: string;
+  /** The member whose disk holds it; absent for a bucket every member reaches. */
+  storeMember?: string;
+  /** The agent's own restore request as JSON, credentials included: the leader passes it on unread. */
+  request: unknown;
+}
+
 export interface FailoverBundle {
   v: 1;
-  kind: typeof KIND;
+  kind: BundleKind;
   workload: string;
+  /** For a database, the revision of what the bundle holds. */
   deploymentId: string;
   stack: FailoverStack;
+  restore?: FailoverRestore;
 }
 
 export function keyFingerprint(publicKey: string): string {
@@ -76,16 +90,16 @@ export async function sealBundle(
   return e.encrypt(JSON.stringify(bundle));
 }
 
-type KeyRow = typeof clusterLeaderKeys.$inferSelect;
+export type KeyRow = typeof clusterLeaderKeys.$inferSelect;
 
-async function keyRows(clusterId: string): Promise<KeyRow[]> {
+export async function keyRows(clusterId: string): Promise<KeyRow[]> {
   return getDb()
     .select()
     .from(clusterLeaderKeys)
     .where(eq(clusterLeaderKeys.clusterId, clusterId));
 }
 
-async function hostFor(
+export async function hostFor(
   cluster: Cluster,
   serverId: string | null,
 ): Promise<string | null> {
@@ -132,9 +146,11 @@ export async function refreshLeaderKey(cluster: Cluster): Promise<void> {
   });
 }
 
-async function recordOnce(
-  app: { id: string; name: string; teamId: string },
+/** Says it on the workload's Activity, by Deplo, at most once a day. */
+export async function recordOnce(
+  w: { id: string; teamId: string },
   message: string,
+  kind: BundleKind = KIND,
 ): Promise<void> {
   const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
   const seen = await getDb()
@@ -142,17 +158,28 @@ async function recordOnce(
     .from(activities)
     .where(
       and(
-        eq(activities.appId, app.id),
+        eq(kind === "app" ? activities.appId : activities.databaseId, w.id),
         eq(activities.message, message),
         gte(activities.createdAt, since),
       ),
     )
     .limit(1);
-  if (seen.length === 0)
-    await recordActivity("app", message, ACTOR, app.id, app.teamId);
+  if (seen.length > 0) return;
+  if (kind === "app")
+    await recordActivity("app", message, ACTOR, w.id, w.teamId);
+  else
+    await recordActivity(
+      "database",
+      message,
+      ACTOR,
+      null,
+      w.teamId,
+      null,
+      w.id,
+    );
 }
 
-const cannotFailOver = (name: string, cluster: string, why: string) =>
+export const cannotFailOver = (name: string, cluster: string, why: string) =>
   `${name} cannot fail over yet: ${why} Cluster ${cluster} will not move it to another server until that is fixed.`;
 
 type AppRow = { id: string; name: string; teamId: string };
@@ -193,24 +220,26 @@ async function bundleMeta(
   };
 }
 
-async function deliver(
+/** Stores the bundle for each key and sends it sealed; returns the keys whose leader did not take it. */
+export async function deliver(
   cluster: Cluster,
-  app: AppRow,
   bundle: FailoverBundle,
   blob: string,
   keys: KeyRow[],
+  meta: BundleMeta,
 ): Promise<string[]> {
   const failed: string[] = [];
   const db = getDb();
-  const meta = await bundleMeta(app.id, bundle.stack.imageRef);
+  const kind = bundle.kind;
+  const id = bundle.workload;
   for (const k of keys) {
     const fp = keyFingerprint(k.publicKey);
     const now = nowIso();
     await db
       .insert(pushes)
       .values({
-        workloadKind: KIND,
-        workloadId: app.id,
+        workloadKind: kind,
+        workloadId: id,
         keyFingerprint: fp,
         deploymentId: bundle.deploymentId,
         bundleEnc: blob,
@@ -229,8 +258,8 @@ async function deliver(
       if (!hostId) throw new Error("no leader host");
       await putLeaderBundle(hostId, {
         cluster: cluster.id,
-        kind: KIND,
-        id: app.id,
+        kind,
+        id,
         deploymentId: bundle.deploymentId,
         sealed: await sealBundle(bundle, k.publicKey),
         meta,
@@ -240,8 +269,8 @@ async function deliver(
         .set({ pushedAt: now })
         .where(
           and(
-            eq(pushes.workloadKind, KIND),
-            eq(pushes.workloadId, app.id),
+            eq(pushes.workloadKind, kind),
+            eq(pushes.workloadId, id),
             eq(pushes.keyFingerprint, fp),
           ),
         );
@@ -303,10 +332,10 @@ export async function pushFailoverBundle(input: {
   };
   const failed = await deliver(
     cluster,
-    app,
     bundle,
     encryptSecret(JSON.stringify(bundle)),
     keys,
+    await bundleMeta(app.id, bundle.stack.imageRef),
   );
   await db.delete(pushes).where(
     and(
@@ -354,15 +383,16 @@ export async function flushFailoverBundles(): Promise<void> {
 export async function dropFailoverBundle(
   appId: string,
   clusterId: string | null,
+  kind: BundleKind = KIND,
 ): Promise<void> {
   const db = getDb();
   const rows = await db
     .select({ fp: pushes.keyFingerprint })
     .from(pushes)
-    .where(and(eq(pushes.workloadKind, KIND), eq(pushes.workloadId, appId)));
+    .where(and(eq(pushes.workloadKind, kind), eq(pushes.workloadId, appId)));
   await db
     .delete(pushes)
-    .where(and(eq(pushes.workloadKind, KIND), eq(pushes.workloadId, appId)));
+    .where(and(eq(pushes.workloadKind, kind), eq(pushes.workloadId, appId)));
   const cluster = clusterId ? await getClusterById(clusterId) : null;
   if (!cluster || rows.length === 0) return;
   for (const k of await keyRows(cluster.id)) {
@@ -371,7 +401,7 @@ export async function dropFailoverBundle(
       if (hostId)
         await dropLeaderBundle(hostId, {
           cluster: cluster.id,
-          kind: KIND,
+          kind,
           id: appId,
         });
     } catch {
@@ -483,10 +513,10 @@ export async function reconcileClusterBundles(
     ) as FailoverBundle;
     const failed = await deliver(
       cluster,
-      app,
       bundle,
       source.bundleEnc,
       lacking,
+      await bundleMeta(app.id, bundle.stack.imageRef),
     );
     if (failed.length > 0)
       await recordOnce(

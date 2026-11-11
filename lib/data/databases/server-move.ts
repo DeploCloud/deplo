@@ -36,6 +36,7 @@ import {
   renderDatabaseStackYaml,
   rerouteRequest,
 } from "./stack";
+import { dropFailoverBundle } from "../clusters/bundles";
 import { assertServerNotInCluster } from "../clusters/members";
 import {
   askLeaderToPlace,
@@ -257,8 +258,10 @@ async function writeDatabasePlacement(
     publishDatabaseChanged(id);
   });
   if (moveWarning) console.warn(`[databases] ${moveWarning}`);
-  if (movingFrom && db.clusterId && !cluster)
+  if (movingFrom && db.clusterId && !cluster) {
     await clearPlacement("database", id);
+    await dropFailoverBundle(id, db.clusterId, "database").catch(() => {});
+  }
   // A move inside the cluster names the server only; arriving on it names both.
   const where =
     cluster && db.clusterId !== cluster.id
