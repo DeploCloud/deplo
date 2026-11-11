@@ -2251,6 +2251,11 @@ export interface PollJobResponse {
   startedAtUnix: number;
   /** 0 while running */
   finishedAtUnix: number;
+  /**
+   * The agent stopped the job itself because this member's cluster lease ran out.
+   * The control plane records the run as lost with its server and never retries it.
+   */
+  fenced: boolean;
 }
 
 export interface KillJobRequest {
@@ -15029,6 +15034,7 @@ function createBasePollJobResponse(): PollJobResponse {
     timedOut: false,
     startedAtUnix: 0,
     finishedAtUnix: 0,
+    fenced: false,
   };
 }
 
@@ -15057,6 +15063,9 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
     }
     if (message.finishedAtUnix !== 0) {
       writer.uint32(64).int64(message.finishedAtUnix);
+    }
+    if (message.fenced !== false) {
+      writer.uint32(72).bool(message.fenced);
     }
     return writer;
   },
@@ -15138,6 +15147,14 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
             message.finishedAtUnix = longToNumber(reader.int64());
             continue;
           }
+          case 9: {
+            if (tag !== 72) {
+              break;
+            }
+
+            message.fenced = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -15176,6 +15193,7 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
         : isSet(object.finished_at_unix)
         ? globalThis.Number(object.finished_at_unix)
         : 0,
+      fenced: isSet(object.fenced) ? globalThis.Boolean(object.fenced) : false,
     };
   },
 
@@ -15205,6 +15223,9 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
     if (message.finishedAtUnix !== 0) {
       obj.finishedAtUnix = Math.round(message.finishedAtUnix);
     }
+    if (message.fenced !== false) {
+      obj.fenced = message.fenced;
+    }
     return obj;
   },
 
@@ -15221,6 +15242,7 @@ export const PollJobResponse: MessageFns<PollJobResponse> = {
     message.timedOut = object.timedOut ?? false;
     message.startedAtUnix = object.startedAtUnix ?? 0;
     message.finishedAtUnix = object.finishedAtUnix ?? 0;
+    message.fenced = object.fenced ?? false;
     return message;
   },
 };

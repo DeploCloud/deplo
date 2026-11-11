@@ -238,6 +238,7 @@ const GOOD = new Set<AlertKey>([
 ]);
 const WARN = new Set<AlertKey>([
   "cluster_failover_waiting",
+  "cron_run_lost",
   "app_unresponsive",
   "app_out_of_memory",
   "security_update_available",

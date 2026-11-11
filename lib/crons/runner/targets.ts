@@ -4,6 +4,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { clusterMembers } from "../../db/schema/control-plane/clusters";
 import {
   cronJobs as cronJobsTable,
   cronRuns as cronRunsTable,
@@ -163,6 +164,22 @@ export async function listInFlightRuns(): Promise<InFlightRun[]> {
     if (target) out.push({ run: r.run, job: r.job, target });
   }
   return out;
+}
+
+/** Where the attempt in flight runs: the server it was launched on, else the one the target runs on now. */
+export function serverOf(r: InFlightRun): string {
+  return r.run.agentJobId
+    ? (r.run.serverId ?? r.target.serverId)
+    : r.target.serverId;
+}
+
+/** Cluster members whose lease ran out: each has stopped its running jobs by now, or is down (spec #176). */
+export async function listStoppedMembers(): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ serverId: clusterMembers.serverId })
+    .from(clusterMembers)
+    .where(eq(clusterMembers.leaseState, "fenced"));
+  return new Set(rows.map((r) => r.serverId));
 }
 
 export async function loadSchedulableJob(

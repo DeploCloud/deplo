@@ -3,11 +3,12 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Loader2, Square } from "lucide-react";
+import { Loader2, Play, Square } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { CRON_RUN_STATUS } from "@/lib/crons/run-status";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { CronRunDTO } from "@/lib/data/crons/dto";
@@ -41,47 +42,23 @@ const CANCEL = /* GraphQL */ `
   }
 `;
 
-const STATUS: Record<
-  string,
-  {
-    variant: "success" | "destructive" | "warning" | "muted";
-    label: string;
-    note?: string;
-  }
-> = {
-  running: { variant: "warning", label: "Running" },
-  succeeded: { variant: "success", label: "Succeeded" },
-  failed: { variant: "destructive", label: "Failed" },
-  timedout: {
-    variant: "destructive",
-    label: "Timed out",
-    note: "Stopped at the job's timeout. Raise it under Advanced if the command legitimately takes this long.",
-  },
-  skipped: {
-    variant: "muted",
-    label: "Skipped",
-    note: "This run never started, so nothing failed.",
-  },
-  lost: {
-    variant: "warning",
-    label: "Unknown",
-    note: "Deplo lost track of this run when the server's agent restarted. The command may or may not have completed.",
-  },
-};
-
 function RunRow({
   run,
   canManage,
   onChanged,
+  onRunNow,
+  runningNow,
 }: {
   run: CronRunDTO;
   canManage: boolean;
   onChanged: () => void;
+  onRunNow?: () => void;
+  runningNow?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-  const meta = STATUS[run.status] ?? {
+  const meta = CRON_RUN_STATUS[run.status] ?? {
     variant: "muted" as const,
     label: run.status,
   };
@@ -141,6 +118,23 @@ function RunRow({
             </Button>
           </SimpleTooltip>
         )}
+        {canManage && onRunNow && run.status === "server_lost" && (
+          <SimpleTooltip content="Run now">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onRunNow}
+              disabled={runningNow}
+              aria-label="Run now"
+            >
+              {runningNow ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Play className="size-4" />
+              )}
+            </Button>
+          </SimpleTooltip>
+        )}
       </div>
       {open && (
         <div className="space-y-2 border-t border-border px-3 py-2">
@@ -175,9 +169,14 @@ function RunRow({
 export function CronRunHistory({
   jobId,
   canManage,
+  onRunNow,
+  runningNow,
 }: {
   jobId: string;
   canManage: boolean;
+  /** Offered on a run lost with its server, which Deplo never runs again on its own. */
+  onRunNow?: () => void;
+  runningNow?: boolean;
 }) {
   const [runs, setRuns] = React.useState<CronRunDTO[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -226,7 +225,14 @@ export function CronRunHistory({
   return (
     <div className="space-y-2">
       {runs.map((run) => (
-        <RunRow key={run.id} run={run} canManage={canManage} onChanged={load} />
+        <RunRow
+          key={run.id}
+          run={run}
+          canManage={canManage}
+          onChanged={load}
+          onRunNow={onRunNow}
+          runningNow={runningNow}
+        />
       ))}
     </div>
   );

@@ -34,6 +34,7 @@ export type AlertKey =
   | "security_update_available"
   | "cron_job_failed"
   | "cron_job_succeeded"
+  | "cron_run_lost"
   | "database_ready"
   | "database_failed"
   | "database_rebuilt"
@@ -82,6 +83,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "security_update_available",
   "cron_job_failed",
   "cron_job_succeeded",
+  "cron_run_lost",
   "database_ready",
   "database_failed",
   "database_rebuilt",

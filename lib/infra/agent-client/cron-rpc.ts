@@ -42,6 +42,7 @@ export function cronRpc(
                   stdout: resp.stdout,
                   stderr: resp.stderr,
                   timedOut: resp.timedOut,
+                  fenced: resp.fenced,
                 }),
         );
       });

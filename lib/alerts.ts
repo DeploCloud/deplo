@@ -114,6 +114,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "cron schedule scheduled task command ok",
     defaultOn: false,
   },
+  cron_run_lost: {
+    label: "Cron job lost with its server",
+    description:
+      "The server running a scheduled command stopped before it finished. Deplo does not run it again on its own. You hear once per run.",
+    keywords: "cron schedule scheduled task lost server stopped cluster",
+    defaultOn: true,
+  },
 
   backup_succeeded: {
     label: "Backup finished",
@@ -345,7 +352,7 @@ export const ALERT_CATEGORIES: {
     key: "crons",
     label: "Cron jobs",
     description: "Scheduled commands running inside your containers.",
-    alerts: ["cron_job_failed", "cron_job_succeeded"],
+    alerts: ["cron_job_failed", "cron_job_succeeded", "cron_run_lost"],
   },
   {
     key: "databases",
