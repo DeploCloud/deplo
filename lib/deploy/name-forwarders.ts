@@ -1,15 +1,10 @@
+import { isReservedSharedName } from "./compose-lint/networks";
 import { usesComposeStack } from "../utils";
 
-// https://deplo.build/docs/guides/clusters (#200, ADR-0028 amendment)
-// On a cluster a workload keeps its public name wherever it runs: a NAME FORWARDER on each member holds
-// the name on the Environment's network and the workload's own container answers under its origin name.
+// ADR-0028 amendment (#200): on a cluster, a member holds the names of its Environment's workloads that run
+// on another member, and a NAME FORWARDER carries each connection there over the relay.
 
-/** `.` never ends a slug, so no other workload's name can equal an origin name. */
-export function originName(name: string): string {
-  return `${name}.origin`;
-}
-
-/** A single-image App on a cluster; a compose stack is one workload on one member and keeps its own names. */
+/** A single-image App on a cluster: its name is forwarded. A compose stack stays on one member and keeps its own names. */
 export function isForwardedApp(
   app: Parameters<typeof usesComposeStack>[0] & { clusterId?: string | null },
   preview = false,
@@ -24,8 +19,8 @@ export interface ForwardedWorkload {
   id: string;
   /** The Environment's network (`deplo-env-<id>`), from the one network seam. */
   network: string;
-  /** The public name: `db-<slug>`, or the App's name. */
-  name: string;
+  /** The public name: `db-<slug>`, or the App's name. Null for a compose stack, which reaches names and offers none. */
+  name: string | null;
   /** The port the workload answers on (`portFor`, or the engine's). */
   port: number;
   /** Where each replica runs now, in placement order; the leader's mirror. */
@@ -38,7 +33,6 @@ export interface HeldName {
   workloadId: string;
   name: string;
   port: number;
-  origin: string;
 }
 
 export interface ServedName {
@@ -46,7 +40,6 @@ export interface ServedName {
   kind: ForwardedKind;
   workloadId: string;
   port: number;
-  origin: string;
   /** Fingerprints of the OTHER members running a workload of the same Environment. */
   sourceFingerprints: string[];
 }
@@ -63,9 +56,8 @@ const byKey =
     key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0;
 
 /**
- * Which names go on which member. Per network: every member running a workload of it holds every name of it
- * (no other network's), and serves the workloads placed on it to the other members of that same network.
- * A workload waiting for room has no member and so no entry of its own.
+ * Which names go on which member. Per network: a member running a workload of it holds the names of that
+ * network's workloads placed elsewhere, and serves its own to the other members of that same network.
  */
 export function planNameForwarding(input: {
   workloads: ForwardedWorkload[];
@@ -94,23 +86,13 @@ export function planNameForwarding(input: {
         .filter((f): f is string => Boolean(f))
         .sort();
       for (const w of group) {
-        m.hold.push({
-          network,
-          kind: w.kind,
-          workloadId: w.id,
-          name: w.name,
-          port: w.port,
-          origin: originName(w.name),
-        });
+        // A name the proxy resolves on every network is never held, whatever a workload is called.
+        if (w.name === null || isReservedSharedName(w.name)) continue;
+        const base = { network, kind: w.kind, workloadId: w.id, port: w.port };
+        // Where it runs, its own container already answers to the name.
         if (w.members.includes(serverId))
-          m.serve.push({
-            network,
-            kind: w.kind,
-            workloadId: w.id,
-            port: w.port,
-            origin: originName(w.name),
-            sourceFingerprints: sources,
-          });
+          m.serve.push({ ...base, sourceFingerprints: sources });
+        else m.hold.push({ ...base, name: w.name });
       }
     }
   }

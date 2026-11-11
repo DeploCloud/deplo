@@ -24,7 +24,6 @@ import {
 } from "../health-check";
 import type { OverlapStacks } from "../overlap";
 import { replicasRefusal } from "../replicas";
-import { isForwardedApp, originName } from "../name-forwarders";
 import { portProbeCommand } from "../port-probe";
 import { deployNetwork } from "../network";
 import { defaultLogging, renderResourceLimitsYaml } from "../resources";
@@ -51,7 +50,7 @@ export function renderOverlapStacks(opts: RenderComposeOptions): {
     ...opts,
     healthCheckKeys,
     serviceName: standInName(opts.name),
-    aliases: [opts.forwarded ? originName(opts.name) : opts.name],
+    aliases: [opts.name],
     extraLabels: [STAND_IN_LABEL],
   });
   return { live, standIn };
@@ -90,8 +89,6 @@ export function renderCompose(opts: {
   // The compose service and container, when it is not `name` (the stand-in of an overlap deploy).
   serviceName?: string;
   aliases?: string[];
-  // On a cluster the public name belongs to a name forwarder, so the App's own container answers under its origin name.
-  forwarded?: boolean;
   extraLabels?: string[];
   // More than one copy: no fixed container name, and Compose starts that many.
   replicas?: number;
@@ -211,8 +208,7 @@ export function renderCompose(opts: {
     ? renderYamlKeys({ healthcheck: opts.healthCheckKeys }, 4)
     : renderHealthCheckYaml(opts.healthCheck, 4);
 
-  const service =
-    opts.serviceName ?? (opts.forwarded ? originName(name) : name);
+  const service = opts.serviceName ?? name;
   const replicas = opts.replicas ?? 1;
   const identityYaml =
     replicas > 1
@@ -293,7 +289,6 @@ export async function renderDeployStack(opts: {
     healthCheck: project.healthCheck,
     replicas,
     stickySessions: project.stickySessions,
-    forwarded: isForwardedApp(project, preview !== null),
   };
   return {
     composeYaml: renderCompose(stackOpts),

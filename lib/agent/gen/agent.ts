@@ -3036,21 +3036,20 @@ export interface ClusterForwarderMember {
 }
 
 /**
- * A workload's public name, held on this member's network for the Environment. The forwarder
- * answers it and addresses the workload by id: the leader's placement says where it runs now.
+ * The public name of a workload that runs on ANOTHER member, held on this member's network for
+ * the Environment. The workload is addressed by id: the leader's placement says where it runs.
  */
 export interface ClusterHeldName {
-  /** The Environment's network, deplo-env-<id>. */
+  /** The Environment's network (deplo-env-<id>, or deplo-team-<id> for an App with none). */
   network: string;
   /** "app" | "database". */
   kind: string;
+  /** The workload's id, which is also the deplo.project label of its containers. */
   workloadId: string;
   /** The public name (db-<slug>, or the App's name). */
   name: string;
   /** The port the workload answers on. */
   port: number;
-  /** The container that answers under the internal alias, for when the workload runs on this member. */
-  origin: string;
 }
 
 /** A workload placed on THIS member that other members of its Environment may reach over the relay. */
@@ -3059,7 +3058,6 @@ export interface ClusterServedName {
   kind: string;
   workloadId: string;
   port: number;
-  origin: string;
   /** Certificate fingerprints of the other members of the same Environment, and no one else. */
   sourceFingerprints: string[];
 }
@@ -22973,7 +22971,7 @@ export const ClusterForwarderMember: MessageFns<ClusterForwarderMember> = {
 };
 
 function createBaseClusterHeldName(): ClusterHeldName {
-  return { network: "", kind: "", workloadId: "", name: "", port: 0, origin: "" };
+  return { network: "", kind: "", workloadId: "", name: "", port: 0 };
 }
 
 export const ClusterHeldName: MessageFns<ClusterHeldName> = {
@@ -22992,9 +22990,6 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
     }
     if (message.port !== 0) {
       writer.uint32(40).uint32(message.port);
-    }
-    if (message.origin !== "") {
-      writer.uint32(50).string(message.origin);
     }
     return writer;
   },
@@ -23052,14 +23047,6 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
             message.port = reader.uint32();
             continue;
           }
-          case 6: {
-            if (tag !== 50) {
-              break;
-            }
-
-            message.origin = reader.string();
-            continue;
-          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -23083,7 +23070,6 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
         : "",
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       port: isSet(object.port) ? globalThis.Number(object.port) : 0,
-      origin: isSet(object.origin) ? globalThis.String(object.origin) : "",
     };
   },
 
@@ -23104,9 +23090,6 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
     if (message.port !== 0) {
       obj.port = Math.round(message.port);
     }
-    if (message.origin !== "") {
-      obj.origin = message.origin;
-    }
     return obj;
   },
 
@@ -23120,13 +23103,12 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
     message.workloadId = object.workloadId ?? "";
     message.name = object.name ?? "";
     message.port = object.port ?? 0;
-    message.origin = object.origin ?? "";
     return message;
   },
 };
 
 function createBaseClusterServedName(): ClusterServedName {
-  return { network: "", kind: "", workloadId: "", port: 0, origin: "", sourceFingerprints: [] };
+  return { network: "", kind: "", workloadId: "", port: 0, sourceFingerprints: [] };
 }
 
 export const ClusterServedName: MessageFns<ClusterServedName> = {
@@ -23143,11 +23125,8 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
     if (message.port !== 0) {
       writer.uint32(32).uint32(message.port);
     }
-    if (message.origin !== "") {
-      writer.uint32(42).string(message.origin);
-    }
     for (const v of message.sourceFingerprints) {
-      writer.uint32(50).string(v!);
+      writer.uint32(42).string(v!);
     }
     return writer;
   },
@@ -23202,14 +23181,6 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
               break;
             }
 
-            message.origin = reader.string();
-            continue;
-          }
-          case 6: {
-            if (tag !== 50) {
-              break;
-            }
-
             message.sourceFingerprints.push(reader.string());
             continue;
           }
@@ -23235,7 +23206,6 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
         ? globalThis.String(object.workload_id)
         : "",
       port: isSet(object.port) ? globalThis.Number(object.port) : 0,
-      origin: isSet(object.origin) ? globalThis.String(object.origin) : "",
       sourceFingerprints: globalThis.Array.isArray(object?.sourceFingerprints)
         ? object.sourceFingerprints.map((e: any) => globalThis.String(e))
         : globalThis.Array.isArray(object?.source_fingerprints)
@@ -23258,9 +23228,6 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
     if (message.port !== 0) {
       obj.port = Math.round(message.port);
     }
-    if (message.origin !== "") {
-      obj.origin = message.origin;
-    }
     if (message.sourceFingerprints?.length) {
       obj.sourceFingerprints = message.sourceFingerprints;
     }
@@ -23276,7 +23243,6 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
     message.kind = object.kind ?? "";
     message.workloadId = object.workloadId ?? "";
     message.port = object.port ?? 0;
-    message.origin = object.origin ?? "";
     message.sourceFingerprints = object.sourceFingerprints?.map((e) => e) || [];
     return message;
   },

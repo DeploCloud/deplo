@@ -47,14 +47,13 @@ export interface ClusterForwarderTable {
   clusterId: string;
   /** Every member of the cluster: server id and certificate fingerprint. */
   members: { serverId: string; fingerprint: string }[];
-  /** The names this member holds on its Environments' networks. */
+  /** The names this member holds on its Environments' networks, for workloads that run on another member. */
   hold: {
     network: string;
     kind: "app" | "database";
     workloadId: string;
     name: string;
     port: number;
-    origin: string;
   }[];
   /** The workloads placed here that other members of their Environment may reach. */
   serve: {
@@ -62,7 +61,6 @@ export interface ClusterForwarderTable {
     kind: "app" | "database";
     workloadId: string;
     port: number;
-    origin: string;
     sourceFingerprints: string[];
   }[];
 }

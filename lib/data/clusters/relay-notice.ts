@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { cache } from "react";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -9,10 +9,7 @@ import { relayNoticeText } from "../../databases/relay-notice";
 import { requireActiveTeamId } from "../../membership";
 import { listWorkloadPlacements } from "./placement";
 
-/**
- * The sentence the database page shows when Apps of its Environment run on another server of its cluster and so
- * reach it through Deplo's relay; null otherwise. Read-only, scoped to the active team.
- */
+/** The database page's sentence when Apps of its Environment run on another server of its cluster; null otherwise. */
 export const databaseRelayNotice = cache(
   async (databaseId: string): Promise<string | null> => {
     const teamId = await requireActiveTeamId();
@@ -33,7 +30,7 @@ export const databaseRelayNotice = cache(
         )
         .limit(1)
     )[0];
-    if (!row?.clusterId || !row.environmentId) return null;
+    if (!row?.clusterId) return null;
     const neighbours = await db
       .select({
         id: appsTable.id,
@@ -45,7 +42,10 @@ export const databaseRelayNotice = cache(
         and(
           eq(appsTable.teamId, teamId),
           eq(appsTable.clusterId, row.clusterId),
-          eq(appsTable.environmentId, row.environmentId),
+          // The same network (ADR-0028): its Environment, or the team's when it has none.
+          row.environmentId
+            ? eq(appsTable.environmentId, row.environmentId)
+            : isNull(appsTable.environmentId),
         ),
       );
     const [dbPlaced, appsPlaced] = await Promise.all([

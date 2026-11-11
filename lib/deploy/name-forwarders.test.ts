@@ -2,11 +2,10 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
 import yaml from "../yaml";
-import { renderCompose, renderOverlapStacks } from "./build/compose-render";
+import { renderCompose } from "./build/compose-render";
 import { generateDatabaseCompose } from "./database-compose";
 import {
   isForwardedApp,
-  originName,
   planNameForwarding,
   type ForwardedWorkload,
 } from "./name-forwarders";
@@ -41,38 +40,31 @@ describe("which names go on which member", () => {
     workloads: [
       db("shop", ["m1"]),
       app("web", ["m2"]),
-      // another Environment on the same members, and a third member of its own
+      // another team's Environment on the same member, and a third member of its own
       db("other", ["m1"], ENV_B),
       app("blog", ["m3"], ENV_B),
     ],
   });
+  const held = (member: string) =>
+    plan.get(member)!.hold.map((h) => [h.network, h.name, h.port]);
 
-  test("every member of an Environment holds exactly that Environment's names", () => {
-    assert.deepEqual(
-      plan
-        .get("m1")!
-        .hold.filter((h) => h.network === ENV_A)
-        .map((h) => h.name),
-      ["db-shop", "deplo-web"],
-    );
-    assert.deepEqual(
-      plan.get("m2")!.hold.map((h) => h.name),
-      ["db-shop", "deplo-web"],
-    );
-    assert.deepEqual(
-      plan.get("m3")!.hold.map((h) => [h.network, h.name]),
-      [
-        [ENV_B, "db-other"],
-        [ENV_B, "deplo-blog"],
-      ],
-    );
+  test("a member holds exactly its Environment's names that run on another member", () => {
+    assert.deepEqual(held("m1"), [
+      [ENV_A, "deplo-web", 3000],
+      [ENV_B, "deplo-blog", 3000],
+    ]);
+    assert.deepEqual(held("m2"), [[ENV_A, "db-shop", 5432]]);
+    assert.deepEqual(held("m3"), [[ENV_B, "db-other", 5432]]);
   });
 
-  test("the workload's own container answers under its internal alias", () => {
-    const held = plan.get("m2")!.hold.find((h) => h.name === "db-shop")!;
-    assert.equal(held.origin, "db-shop.origin");
-    assert.equal(held.origin, originName("db-shop"));
-    assert.equal(held.port, 5432);
+  test("a workload's own member holds no forwarder for it: its container keeps the name", () => {
+    for (const [member, own] of [
+      ["m1", "db-shop"],
+      ["m1", "db-other"],
+      ["m2", "deplo-web"],
+      ["m3", "deplo-blog"],
+    ] as const)
+      assert.ok(!plan.get(member)!.hold.some((h) => h.name === own));
   });
 
   test("a member serves only the workloads placed on it, to its Environment's other members", () => {
@@ -82,7 +74,6 @@ describe("which names go on which member", () => {
         kind: "app",
         workloadId: "web",
         port: 3000,
-        origin: "deplo-web.origin",
         sourceFingerprints: [FP.m1],
       },
     ]);
@@ -96,9 +87,11 @@ describe("which names go on which member", () => {
     );
   });
 
-  test("another Environment's member is never a source, even on a shared member", () => {
+  test("another team's member is never a source and never holds the name, even on a shared member", () => {
     const toShop = plan.get("m1")!.serve.find((s) => s.workloadId === "shop")!;
     assert.ok(!toShop.sourceFingerprints.includes(FP.m3));
+    assert.ok(!plan.get("m3")!.hold.some((h) => h.network === ENV_A));
+    assert.ok(!plan.get("m2")!.hold.some((h) => h.network === ENV_B));
     assert.deepEqual(
       plan.get("m3")!.serve.map((s) => s.workloadId),
       ["blog"],
@@ -113,21 +106,65 @@ describe("which names go on which member", () => {
     assert.deepEqual(p.get("m1")!.serve[0]!.sourceFingerprints, []);
     assert.deepEqual(
       p.get("m1")!.hold.map((h) => h.name),
-      ["db-shop", "deplo-idle", "deplo-web"],
+      ["deplo-idle", "deplo-web"],
     );
   });
 
-  test("replicas on several members are served by each", () => {
+  test("replicas on several members are served by each and held by the rest", () => {
     const p = planNameForwarding({
       fingerprints,
-      workloads: [app("web", ["m1", "m2"])],
+      workloads: [app("web", ["m1", "m2"]), db("shop", ["m3"])],
     });
-    assert.deepEqual([...p.keys()].sort(), ["m1", "m2"]);
-    assert.equal(p.get("m1")!.serve[0]!.sourceFingerprints[0], FP.m2);
+    assert.equal(
+      p.get("m1")!.serve[0]!.sourceFingerprints.join(),
+      [FP.m2, FP.m3].join(),
+    );
+    assert.deepEqual(
+      p.get("m3")!.hold.map((h) => h.name),
+      ["deplo-web"],
+    );
+    assert.ok(!p.get("m1")!.hold.some((h) => h.name === "deplo-web"));
+  });
+
+  test("a compose stack reaches its Environment's names from its member and offers none", () => {
+    const stack = { ...app("stack", ["m2"]), name: null };
+    const p = planNameForwarding({
+      fingerprints,
+      workloads: [db("shop", ["m1"]), stack],
+    });
+    assert.deepEqual(
+      p.get("m2")!.hold.map((h) => h.name),
+      ["db-shop"],
+    );
+    assert.deepEqual(p.get("m2")!.serve, []);
+    assert.deepEqual(p.get("m1")!.hold, []);
+    assert.deepEqual(p.get("m1")!.serve[0]!.sourceFingerprints, [FP.m2]);
+  });
+
+  test("a name the proxy resolves on every network is never held or served", () => {
+    for (const name of [
+      "deplo",
+      "postgres",
+      "traefik",
+      "deplo-traefik",
+      "docker-socket-proxy",
+      "deplo-socket-proxy",
+    ]) {
+      const p = planNameForwarding({
+        fingerprints,
+        workloads: [{ ...db("x", ["m1"]), name }, app("web", ["m2"])],
+      });
+      assert.deepEqual(p.get("m2")!.hold, [], name);
+      assert.deepEqual(
+        p.get("m1")!.serve.map((s) => s.workloadId),
+        [],
+        name,
+      );
+    }
   });
 });
 
-describe("what a forwarded workload renders", () => {
+describe("what a workload on a cluster renders", () => {
   const base = {
     network: ENV_A,
     name: "deplo-demo",
@@ -142,28 +179,16 @@ describe("what a forwarded workload renders", () => {
     (yaml.load(y) as { services: Record<string, Record<string, unknown>> })
       .services;
 
-  test("an App answers under its internal alias, and not under its public name", () => {
-    const s = services(renderCompose({ ...base, forwarded: true }));
-    assert.deepEqual(Object.keys(s), ["deplo-demo.origin"]);
-    assert.equal(s["deplo-demo.origin"]!.container_name, "deplo-demo.origin");
-  });
-
-  test("an App off a cluster renders as before", () => {
+  test("an App keeps its own name, so the server agent still finds its container", () => {
     const s = services(renderCompose(base));
     assert.deepEqual(Object.keys(s), ["deplo-demo"]);
-  });
-
-  test("the overlap stand-in takes the alias, never the public name", () => {
-    const { live, standIn } = renderOverlapStacks({ ...base, forwarded: true });
-    assert.deepEqual(Object.keys(services(live)), ["deplo-demo.origin"]);
-    const next = services(standIn)["deplo-demo_next"]!;
-    assert.deepEqual(
-      (next.networks as Record<string, { aliases: string[] }>).deplo.aliases,
-      ["deplo-demo.origin"],
+    assert.equal(s["deplo-demo"]!.container_name, "deplo-demo");
+    assert.ok(
+      (s["deplo-demo"]!.labels as string[]).includes("deplo.project=p1"),
     );
   });
 
-  test("a database answers under its internal alias", () => {
+  test("a database keeps its own name and carries the id a forwarder finds it by", () => {
     const y = generateDatabaseCompose({
       name: "db-shop",
       databaseId: "db1",
@@ -173,14 +198,13 @@ describe("what a forwarded workload renders", () => {
       password: "pw",
       dbName: "shop",
       network: ENV_A,
-      forwarded: true,
     });
     const s = services(y);
-    assert.deepEqual(Object.keys(s), ["db-shop.origin"]);
-    assert.equal(s["db-shop.origin"]!.container_name, "db-shop.origin");
+    assert.deepEqual(Object.keys(s), ["db-shop"]);
+    assert.ok((s["db-shop"]!.labels as string[]).includes("deplo.project=db1"));
   });
 
-  test("only a single-image App on a cluster is forwarded", () => {
+  test("only a single-image App on a cluster has its name forwarded", () => {
     const image = {
       source: "docker-image",
       compose: null,

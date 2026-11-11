@@ -166,6 +166,7 @@ async function place(
   environmentId: string,
   member: string,
   teamId = TEAM_A,
+  over: Partial<Parameters<typeof seedApp>[1]> = {},
 ) {
   await seedApp(db, {
     id,
@@ -174,6 +175,7 @@ async function place(
     serverId: member,
     projectId: teamId === TEAM_A ? "prc_a" : "prc_b",
     environmentId,
+    ...over,
   });
   await db.update(appsTable).set({ clusterId }).where(eq(appsTable.id, id));
   await recordPlacement({
@@ -208,33 +210,56 @@ async function placeDatabase(
 
 const last = (id: string) => hosts[id]!.forwarders.at(-1)!;
 
-test("each member is handed the names of the Environments it runs, and nobody else's", async () => {
+test("each member is handed its Environments' names that run elsewhere, and never another team's", async () => {
   const c = await cluster();
   await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
   await place(c.id, "web", "environ_a1", "srv_3");
+  // team B shares the cluster, and one of its Apps shares a server with team A's database
   await place(c.id, "blog", "environ_b1", "srv_4", TEAM_B);
+  await place(c.id, "feed", "environ_b1", "srv_2", TEAM_B);
 
   await syncNameForwarders(c.id);
 
   const names = (id: string) =>
     last(id).hold.map((h) => `${h.network}/${h.name}`);
   assert.deepEqual(names("srv_2"), [
-    "deplo-env-environ_a1/db-shop",
     "deplo-env-environ_a1/deplo-web",
+    "deplo-env-environ_b1/deplo-blog",
   ]);
-  assert.deepEqual(names("srv_3"), names("srv_2"));
-  assert.deepEqual(names("srv_4"), ["deplo-env-environ_b1/deplo-blog"]);
+  assert.deepEqual(names("srv_3"), ["deplo-env-environ_a1/db-shop"]);
+  // team B's other server holds team B's name and nothing of team A's Environment
+  assert.deepEqual(names("srv_4"), ["deplo-env-environ_b1/deplo-feed"]);
   assert.equal(last("srv_2").clusterId, c.id);
   assert.deepEqual(
     last("srv_4").members.map((m) => m.serverId),
     ["srv_2", "srv_3", "srv_4"],
   );
-  // the internal alias and the engine's port ride with the name
+  // the workload's id and the engine's port ride with the name
   const held = last("srv_3").hold.find((h) => h.name === "db-shop")!;
   assert.deepEqual(
-    [held.kind, held.origin, held.port, held.workloadId],
-    ["database", "db-shop.origin", 5432, "shop"],
+    [held.kind, held.port, held.workloadId],
+    ["database", 5432, "shop"],
   );
+});
+
+test("a compose stack on another member is handed its Environment's names and offers none", async () => {
+  const c = await cluster();
+  await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
+  await place(c.id, "stack", "environ_a1", "srv_3", TEAM_A, {
+    source: "compose",
+    repo: null,
+    compose: "services:\n  web:\n    image: nginx\n",
+  });
+
+  await syncNameForwarders(c.id);
+
+  assert.deepEqual(
+    last("srv_3").hold.map((h) => h.name),
+    ["db-shop"],
+  );
+  assert.deepEqual(last("srv_3").serve, []);
+  assert.deepEqual(last("srv_2").hold, []);
+  assert.deepEqual(last("srv_2").serve[0]!.sourceFingerprints, [fp(3)]);
 });
 
 test("a member's entries name only its own workloads, and only same-Environment members as sources", async () => {
@@ -289,11 +314,46 @@ test("a failover moves the serving entry with a new table and no stack render", 
     last("srv_4").serve.map((s) => s.workloadId),
     ["shop"],
   );
+  // the App's member still holds the database's name; the server that lost it now runs nothing of the Environment
   assert.deepEqual(
     last("srv_3").hold.map((h) => h.name),
-    ["db-shop", "deplo-web"],
+    ["db-shop"],
   );
+  assert.deepEqual(last("srv_2").hold, []);
+  assert.deepEqual(last("srv_4").serve[0]!.sourceFingerprints, [fp(3)]);
   assert.equal(hosts.srv_2!.deploys.length, 0);
+});
+
+test("another cluster's member is never a source, in the roster, or handed the name", async () => {
+  const eu = await asAdmin(() => createCluster("eu", everyone));
+  for (const m of ["srv_2", "srv_3"])
+    await asAdmin(() => addClusterMember(eu.id, m));
+  const us = await asAdmin(() => createCluster("us", everyone));
+  await asAdmin(() => addClusterMember(us.id, "srv_4"));
+  for (const h of Object.values(hosts)) h.forwarders.length = 0;
+  // one Environment, spread over two clusters: its names stay inside each
+  await placeDatabase(eu.id, "shop", "environ_a1", "srv_2");
+  await place(eu.id, "web", "environ_a1", "srv_3");
+  await place(us.id, "far", "environ_a1", "srv_4");
+
+  await syncNameForwarders(eu.id);
+  await syncNameForwarders(us.id);
+
+  assert.deepEqual(last("srv_2").serve[0]!.sourceFingerprints, [fp(3)]);
+  for (const id of ["srv_2", "srv_3"]) {
+    assert.equal(last(id).clusterId, eu.id);
+    assert.deepEqual(
+      last(id).members.map((m) => m.serverId),
+      ["srv_2", "srv_3"],
+    );
+    assert.ok(!last(id).hold.some((h) => h.name === "deplo-far"));
+  }
+  assert.equal(last("srv_4").clusterId, us.id);
+  assert.deepEqual(last("srv_4").hold, []);
+  assert.deepEqual(
+    last("srv_4").members.map((m) => m.serverId),
+    ["srv_4"],
+  );
 });
 
 test("a server outside the cluster is never handed a table, whatever a placement says", async () => {
@@ -359,7 +419,7 @@ test("the sweep hands every cluster its tables", async () => {
   const c = await cluster();
   await place(c.id, "web", "environ_a1", "srv_2");
   await reconcileNameForwarders();
-  assert.equal(last("srv_2").hold.length, 1);
+  assert.equal(last("srv_2").serve.length, 1);
 });
 
 test("the database page says when Apps reach it through the relay, and only to its own team", async () => {
@@ -384,6 +444,26 @@ test("the database page says when Apps reach it through the relay, and only to i
     epoch: 2,
   });
   assert.equal(await asAdmin(() => databaseRelayNotice("shop")), null);
+});
+
+test("a database with no Environment counts the team's Apps that have none either", async () => {
+  const c = await cluster();
+  await seedDatabase(db, { id: "loose", teamId: TEAM_A, serverId: "srv_2" });
+  await db
+    .update(databasesTable)
+    .set({ clusterId: c.id })
+    .where(eq(databasesTable.id, "loose"));
+  await seedApp(db, { id: "tool", slug: "tool", serverId: "srv_3" });
+  await db
+    .update(appsTable)
+    .set({ clusterId: c.id })
+    .where(eq(appsTable.id, "tool"));
+  await place(c.id, "web", "environ_a1", "srv_3");
+
+  assert.equal(
+    await asAdmin(() => databaseRelayNotice("loose")),
+    "tool reaches this database through Deplo's relay. It is faster on the same server.",
+  );
 });
 
 test("a database outside a cluster has no relay to mention", async () => {

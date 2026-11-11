@@ -14,7 +14,6 @@ import { buildComposeStack } from "../compose-stack/render";
 import { stackName } from "../deploy-key";
 import { fileBindsUnderFilesDir } from "../file-binds";
 import { deployNetwork, explainNetworkError } from "../network";
-import { isForwardedApp, originName } from "../name-forwarders";
 import { renderCompose } from "./compose-render";
 import { composeFilesDir, takenNamesForApp } from "./compose-stack-deploy";
 import { anchorSourcePaths, sourceComposeDir } from "./source-compose";
@@ -108,13 +107,11 @@ async function rerouteAppLocked(
         content: m.content,
       }));
     } else {
-      const forwarded = isForwardedApp(project);
-      const service = forwarded ? originName(name) : name;
-      const image = readStackImageFromYaml(current.yaml, service);
+      const image = readStackImageFromYaml(current.yaml, name);
       if (!image) return "deferred";
       const env =
-        readStackEnvFromYaml(current.yaml, service) ?? (await appEnv(appId));
-      const volumes = readStackVolumesFromYaml(current.yaml, service);
+        readStackEnvFromYaml(current.yaml, name) ?? (await appEnv(appId));
+      const volumes = readStackVolumesFromYaml(current.yaml, name);
       const basicAuthUsers = await basicAuthUsersValue(appId);
       rendered = renderCompose({
         ...(await appTraefikOverrides(appId)),
@@ -129,11 +126,10 @@ async function rerouteAppLocked(
         basicAuthUsers,
         injectPort: project.source !== "docker-image",
         volumes,
-        ports: parseStackPorts(current.yaml, service),
-        healthCheckKeys: parseStackHealthCheck(current.yaml, service),
-        resourceKeys: parseStackResources(current.yaml, service),
-        replicas: parseStackReplicas(current.yaml, service),
-        forwarded,
+        ports: parseStackPorts(current.yaml, name),
+        healthCheckKeys: parseStackHealthCheck(current.yaml, name),
+        resourceKeys: parseStackResources(current.yaml, name),
+        replicas: parseStackReplicas(current.yaml, name),
       });
     }
 

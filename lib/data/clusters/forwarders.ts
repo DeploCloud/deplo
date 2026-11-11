@@ -17,6 +17,7 @@ import {
   type MemberForwarding,
 } from "../../deploy/name-forwarders";
 import { appNetwork } from "../../deploy/network";
+import { portFor } from "../../deploy/ports";
 import { setClusterForwarders } from "../../infra/agent-client/cluster-host";
 import { AgentClusterForwardersUnsupportedError } from "../../infra/agent-client/errors";
 import { instanceFrozen } from "../deplo-move/freeze";
@@ -24,7 +25,7 @@ import { listWorkloadPlacements } from "./placement";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
 
-// The control plane renders which names go on which member; each agent only runs its own table (#200).
+// The control plane renders which names go on which member; each server agent only runs its own table (#200).
 
 async function workloadsOf(clusterId: string): Promise<ForwardedWorkload[]> {
   const db = getDb();
@@ -77,22 +78,20 @@ async function workloadsOf(clusterId: string): Promise<ForwardedWorkload[]> {
   };
   const out: ForwardedWorkload[] = [];
   for (const a of apps) {
-    if (
-      !isForwardedApp({
-        clusterId: a.clusterId,
-        source: a.source,
-        compose: a.compose,
-        dockerImage: a.dockerImage,
-        repo: a.repoUrl,
-      })
-    )
-      continue;
+    const forwarded = isForwardedApp({
+      clusterId: a.clusterId,
+      source: a.source,
+      compose: a.compose,
+      dockerImage: a.dockerImage,
+      repo: a.repoUrl,
+    });
     out.push({
       kind: "app",
       id: a.id,
       network: appNetwork(a),
-      name: stackName(a.slug),
-      port: a.port,
+      // A compose stack reaches its Environment's names from its one member and offers none.
+      name: forwarded ? stackName(a.slug) : null,
+      port: portFor({ build: a }),
       members: membersOf(appPlacements.get(a.id), a.serverId),
     });
   }
