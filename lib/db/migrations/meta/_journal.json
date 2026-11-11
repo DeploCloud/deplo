@@ -1632,6 +1632,13 @@
       "when": 1795240000000,
       "tag": "0237_app_failover_from_backup",
       "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1795308000000,
+      "tag": "0239_cluster_leave_pending",
+      "breakpoints": true
     }
   ]
 }

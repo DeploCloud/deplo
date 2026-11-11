@@ -22,15 +22,15 @@ import {
 } from "@/lib/types/cluster";
 import type { ServerStatus } from "@/lib/types/server";
 import {
-  ClusterActions,
   JoinClusterButton,
   MoveLeaderButton,
   StartLeaderButton,
 } from "./cluster-actions";
+import { ClusterHeaderActions } from "./cluster-delete";
 import {
-  MemberEmptyingActions,
+  MemberActions,
   type MemberEmptyingState,
-} from "./cluster-member-emptying";
+} from "./cluster-member-actions";
 import type { TeamOption } from "./server-team-access";
 
 const LEADER_BADGE: Record<
@@ -81,7 +81,8 @@ const EMPTYING_BADGE = {
   empty: { label: "Empty", variant: "muted" },
 } as const;
 
-async function Members({ clusterId }: { clusterId: string }) {
+async function Members({ cluster }: { cluster: Cluster }) {
+  const clusterId = cluster.id;
   const [members, candidates] = await Promise.all([
     listClusterMembers(clusterId),
     listClusterJoinCandidates(clusterId),
@@ -149,11 +150,14 @@ async function Members({ clusterId }: { clusterId: string }) {
                     </span>
                   )}
                   <div className="ml-auto flex shrink-0 items-center gap-1">
-                    <MemberEmptyingActions
+                    <MemberActions
                       clusterId={clusterId}
+                      clusterName={cluster.name}
                       serverId={m.serverId}
                       serverName={m.serverName}
                       state={state}
+                      held={m.held}
+                      memberCount={members.length}
                     />
                   </div>
                 </div>
@@ -268,7 +272,7 @@ export function ClusterCard({
             </Badge>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            <ClusterActions
+            <ClusterHeaderActions
               cluster={{
                 id: cluster.id,
                 name: cluster.name,
@@ -282,7 +286,7 @@ export function ClusterCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <Suspense fallback={<Bone>2 servers Failover on</Bone>}>
-          <Members clusterId={cluster.id} />
+          <Members cluster={cluster} />
         </Suspense>
         <Suspense fallback={null}>
           <Waiting cluster={cluster} />

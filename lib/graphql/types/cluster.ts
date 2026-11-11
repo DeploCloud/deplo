@@ -23,6 +23,11 @@ import {
 } from "@/lib/data/clusters/roster";
 import { listPlacementChoices } from "@/lib/data/clusters/choices";
 import {
+  deleteCluster,
+  getClusterDeletion,
+  removeClusterMember,
+} from "@/lib/data/clusters/dissolve";
+import {
   emptyClusterMember,
   stopEmptyingClusterMember,
 } from "@/lib/data/clusters/empty";
@@ -34,6 +39,7 @@ import {
 import {
   failoverOn,
   type Cluster,
+  type ClusterDeletion,
   type ClusterEmptying,
   type ClusterImageProgress,
   type ClusterJoin,
@@ -42,6 +48,7 @@ import {
   type ClusterLeader,
   type ClusterLeaderChoice,
   type ClusterMember,
+  type ClusterReleasedWorkload,
 } from "@/lib/types/cluster";
 
 const ClusterLeaderStateEnum = builder.enumType("ClusterLeaderState", {
@@ -175,6 +182,69 @@ const ClusterMemberRef = builder
         description:
           "What the cluster's leader last said: answering, not responding (15 seconds without an answer), or fenced (a minute: it has stopped its databases and Apps with files).",
         resolve: (m) => m.leaseState,
+      }),
+      held: t.exposeInt("held", {
+        description:
+          "How many Apps and databases it holds. Removing it needs 0, except for the last member, which may keep them.",
+      }),
+    }),
+  });
+
+const WorkloadKindEnum = builder.enumType("ClusterWorkloadKind", {
+  values: ["app", "database"] as const,
+});
+
+const ClusterReleasedWorkloadRef = builder
+  .objectRef<ClusterReleasedWorkload>("ClusterReleasedWorkload")
+  .implement({
+    description:
+      "An App or database a cluster lets go of when it is deleted. It stays on the server it runs on.",
+    fields: (t) => ({
+      kind: t.field({ type: WorkloadKindEnum, resolve: (w) => w.kind }),
+      name: t.exposeString("name"),
+      serverName: t.exposeString("serverName", {
+        description: "The server it stays on.",
+      }),
+      stopsOn: t.exposeStringList("stopsOn", {
+        description:
+          "The other servers a spread App also runs on. Its copies there stop.",
+      }),
+      waiting: t.exposeBoolean("waiting", {
+        description:
+          "It found no room after a server stopped, so it is not running now and stays stopped.",
+      }),
+    }),
+  });
+
+const ClusterDeletionTeamRef = builder
+  .objectRef<ClusterDeletion["otherTeams"][number]>("ClusterDeletionTeam")
+  .implement({
+    description:
+      "How much of another team's work a cluster holds: a count, never the names.",
+    fields: (t) => ({
+      teamName: t.exposeString("teamName"),
+      apps: t.exposeInt("apps"),
+      databases: t.exposeInt("databases"),
+    }),
+  });
+
+const ClusterDeletionRef = builder
+  .objectRef<ClusterDeletion>("ClusterDeletion")
+  .implement({
+    description:
+      "What deleting a cluster does, for the confirmation: the active team's Apps and databases by name, every other team's as a count.",
+    fields: (t) => ({
+      failoverOn: t.exposeBoolean("failoverOn", {
+        description:
+          "True when the cluster fails work over today, so deleting it takes that away.",
+      }),
+      workloads: t.field({
+        type: [ClusterReleasedWorkloadRef],
+        resolve: (d) => d.workloads,
+      }),
+      otherTeams: t.field({
+        type: [ClusterDeletionTeamRef],
+        resolve: (d) => d.otherTeams,
       }),
     }),
   });
@@ -355,6 +425,14 @@ builder.queryFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => getCluster(id),
   }),
+  clusterDeletion: t.field({
+    type: ClusterDeletionRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "What `deleteCluster` would do: which Apps and databases stop failing over. The active team's are named; another team's are counted. Requires instanceAdmin.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => getClusterDeletion(id),
+  }),
 }));
 
 builder.mutationFields((t) => ({
@@ -432,6 +510,32 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { clusterId, serverId }) =>
       stopEmptyingClusterMember(clusterId, serverId),
+  }),
+  removeClusterMember: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Remove a server from a cluster. It is cut off at once and is an ordinary server again. It must hold nothing (empty it first), except the last member: pass keepWorkloads to leave its Apps and databases on it as ordinary ones.",
+    args: {
+      clusterId: t.arg.string({ required: true }),
+      serverId: t.arg.string({ required: true }),
+      keepWorkloads: t.arg.boolean({ required: false }),
+    },
+    resolve: (_r, { clusterId, serverId, keepWorkloads }) =>
+      removeClusterMember(clusterId, serverId, {
+        keepWorkloads: keepWorkloads === true,
+      }),
+  }),
+  deleteCluster: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Delete a cluster. Every App and database stays on the server it runs on, as an ordinary one that nothing fails over; its servers stay connected. Read `clusterDeletion` first for what that covers. Refused while a server that still runs work does not answer.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await deleteCluster(id);
+      return true;
+    },
   }),
   moveClusterLeader: t.field({
     type: ClusterRef,

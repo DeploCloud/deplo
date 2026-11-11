@@ -110,6 +110,13 @@ export async function runClusterWatchTick(): Promise<void> {
   }
 }
 
+/** A deleted cluster's watch ends now, not at the next tick. */
+export function stopClusterWatch(clusterId: string): void {
+  state.watches.get(clusterId)?.abort();
+  state.watches.delete(clusterId);
+  state.leading?.delete(clusterId);
+}
+
 export function startClusterWatch(): void {
   if (state.started) return;
   state.started = true;

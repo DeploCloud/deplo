@@ -124,3 +124,15 @@ export async function askLeaderToMove(
   );
   return { ok: a.ok === true, reason: String(a.reason ?? "") };
 }
+
+/** `leader.forget`: the leader drops the cluster, its bundles included. A cluster it never led is not an error. */
+export async function forgetLeaderCluster(
+  serverId: string,
+  cluster: string,
+): Promise<void> {
+  await callClusterLeader(
+    serverId,
+    "leader.forget",
+    enc.encode(JSON.stringify({ cluster })),
+  );
+}

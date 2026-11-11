@@ -44,6 +44,7 @@ import { runAgentDeploy } from "../deploy/agent-deploy";
 import { applyDomainEditsMadeDuringBuild } from "../deploy/build/domain-edits-during-build";
 import { rerouteApp } from "../deploy/build/reroute";
 import { MASKED, redactComposeForDisplay } from "../deploy/compose-redact";
+import { deleteCluster } from "./clusters/dissolve";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { ADDRESS_CHANGES_NOTE } from "../clusters/address-note";
@@ -490,6 +491,41 @@ test("leaving the cluster points the domain back at the server and deletes the t
   assert.deepEqual(req.startAfterReady, []);
   assert.equal(
     (parse(req.composeYaml) as Stack).services[CONNECTOR],
+    undefined,
+  );
+});
+
+test("deleting the cluster points the domain back at the server the App runs on and takes the connector out of its stack", async () => {
+  const cluster = await eu();
+  await connectCloudflare();
+  const app = await soloApp();
+  await withDomain(app.id);
+  await asAdmin(() => moveAppToCluster(app.id, cluster.id));
+  await deployOn(app);
+  await reconcileAppTunnels();
+  assert.equal(records()[0].type, "CNAME");
+  const reroutes = hosts.srv_2.reroutes.length;
+
+  await asAdmin(() => deleteCluster(cluster.id));
+  assert.deepEqual(records(), [
+    { type: "A", content: "10.0.0.2", proxied: false },
+  ]);
+  const back = await domainNamed(app.id);
+  assert.equal(back.name, HOST);
+  assert.notEqual(back.tunnel, true);
+  assert.equal(cf.tunnels.size, 0);
+  assert.equal((await db.select().from(appTunnels)).length, 0);
+  assert.equal((await db.select().from(appTunnelDomains)).length, 0);
+  assert.ok(
+    (await activity(app.id)).includes(`Pointed ${HOST} back at web's server`),
+  );
+  // Nothing was redeployed: the stack that runs was sent again without the connector.
+  assert.equal(hosts.srv_2.deploys.length, 1);
+  assert.equal(hosts.srv_2.reroutes.length, reroutes + 1);
+  assert.equal(
+    (parse(hosts.srv_2.reroutes.at(-1)!.composeYaml) as Stack).services[
+      CONNECTOR
+    ],
     undefined,
   );
 });

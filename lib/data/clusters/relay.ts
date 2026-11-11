@@ -179,10 +179,28 @@ export async function pushClusterRosters(clusterIds: string[]): Promise<void> {
   }
 }
 
+/**
+ * Who is in a cluster changed: its relays, its leader and its other members hear now, not at their next check.
+ * A failure is logged, never thrown.
+ */
+export async function pushMembership(clusterIds: string[]): Promise<void> {
+  await pushClusterRosters(clusterIds);
+  const { pushLeaderRoster } = await import("./leader-sync");
+  const { syncNameForwarders } = await import("./forwarders");
+  for (const id of clusterIds) {
+    const cluster = await getClusterById(id);
+    if (!cluster) continue;
+    const warn = (e: unknown) =>
+      console.warn(`[cluster-relay] ${id}: ${messageOf(e)}`);
+    await pushLeaderRoster(cluster).catch(warn);
+    await syncNameForwarders(id).catch(warn);
+  }
+}
+
 /** A server's certificate changed (renewed, re-enrolled): the clusters it is a party of name the new one, and the old one is cut off. */
 export async function pushRostersForServer(serverId: string): Promise<void> {
   try {
-    await pushClusterRosters(await clustersOfServer(serverId));
+    await pushMembership(await clustersOfServer(serverId));
   } catch (e) {
     console.warn(`[cluster-relay] ${serverId}: ${messageOf(e)}`);
   }

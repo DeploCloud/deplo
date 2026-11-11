@@ -180,6 +180,8 @@ export const DOCS = {
   "servers.generatedAddresses":
     "operations/servers/maintenance-and-advanced#generated-addresses",
   "clusters.emptying": "operations/clusters#empty-a-server",
+  "clusters.removing": "operations/clusters#remove-a-server",
+  "clusters.deleting": "operations/clusters#delete-a-cluster",
   "clusters.overview": "operations/clusters",
   "clusters.teams": "operations/clusters#let-teams-use-it",
   "clusters.failover": "operations/clusters#when-a-server-stops",
