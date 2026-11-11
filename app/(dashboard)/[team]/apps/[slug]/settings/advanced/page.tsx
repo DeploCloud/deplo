@@ -19,6 +19,8 @@ import { RebuildContainerRow } from "@/components/apps/settings/rebuild-containe
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { RestartWhenUnresponsiveForm } from "@/components/apps/settings/restart-when-unresponsive-form";
+import { FailoverFromBackupForm } from "@/components/apps/settings/failover-from-backup-form";
+import { appDisk } from "@/lib/apps/failover-copy";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { ReplicasForm } from "@/components/apps/settings/replicas-form";
 import { StickySessionsForm } from "@/components/apps/settings/sticky-sessions-form";
@@ -124,6 +126,15 @@ export default async function AppAdvancedSettingsPage(
             needsNewerAgent={restartNeedsNewerAgent}
           />
         </CapabilityFieldset>
+
+        {project.clusterId && appDisk(project) === "volume" && (
+          <CapabilityFieldset cap="configure_apps">
+            <FailoverFromBackupForm
+              appId={project.id}
+              enabled={project.failoverFromBackup}
+            />
+          </CapabilityFieldset>
+        )}
 
         <CapabilityFieldset cap="configure_apps">
           <RestartLoopForm

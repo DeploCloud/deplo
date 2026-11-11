@@ -185,6 +185,7 @@ export const DOCS = {
   "clusters.failover": "operations/clusters#when-a-server-stops",
   "clusters.leader": "operations/clusters#run-the-leader-on-another-server",
   "clusters.databases": "operations/clusters#databases",
+  "clusters.appData": "operations/clusters#apps-that-keep-data",
   "clusters.addresses": "operations/clusters#addresses",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",

@@ -225,6 +225,16 @@ type App {
   deployments: [Deployment!]
   dockerImage: String
   domainCount: Int
+
+  """
+  How this app fails over when it keeps data on a cluster member; null for an app that keeps none or runs on one server.
+  """
+  failover: AppFailover
+
+  """
+  On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.
+  """
+  failoverFromBackup: Boolean
   folderId: ID
 
   """
@@ -348,6 +358,37 @@ input AppEnvInput {
   """
   type: String
   value: String!
+}
+
+"""
+How an app that keeps data on a cluster member fails over: a Volume waits for its server or comes back from a backup, a Bind never moves.
+"""
+type AppFailover {
+  """
+  Whether it moves on its own from its latest backup (failoverFromBackup).
+  """
+  automatic: Boolean
+
+  """
+  The one click bringAppBack offers, naming the backup it restores; null when it is not waiting or no other server can read a backup.
+  """
+  bringBack: String
+  cluster: String
+
+  """`volume` or `bind`: what ties it to that server."""
+  disk: String
+
+  """What its page says about how it fails over."""
+  sentence: String
+
+  """The member it runs on now."""
+  serverName: String
+
+  """Its server stopped answering and it waits for it."""
+  waiting: Boolean
+
+  """Why nothing can bring it back, while it waits."""
+  why: String
 }
 
 """An app the viewer may connect a database to."""
@@ -3988,6 +4029,11 @@ type Mutation {
   beginMigration(kind: MigrationPlatform, orgName: String, url: String!): String
 
   """
+  Bring a cluster app that waits for its stopped server back on another server, from its latest backup. Anything written after that backup is lost. Refused while its own server may still be running it.
+  """
+  bringAppBack(id: String!): App
+
+  """
   Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
   """
   bulkAppAction(action: BulkAppAction!, folderId: ID, projectId: ID): BulkAppActionResult
@@ -4880,6 +4926,11 @@ type Mutation {
   Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; existing secrets are left untouched. Returns the resulting variable count.
   """
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
+
+  """
+  Fail over automatically from the latest backup: on, a cluster app with a Volume moves to another server on its own when its server stops, restored from its latest backup; off (the default) it waits for its server. Refused for an app with a Bind.
+  """
+  setAppFailoverFromBackup(id: String!, value: Boolean!): App
 
   """
   Correct the framework Deplo recognised in this app's source (a catalog id such as "vite"), or pass null to go back to trusting detection. The correction survives every later deploy's re-detection.

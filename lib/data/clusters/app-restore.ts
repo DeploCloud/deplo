@@ -94,7 +94,9 @@ export async function pushAppBundle(input: {
 export async function refreshAppBundle(appId: string): Promise<void> {
   const held = await storedBundle(appId);
   if (!held) return;
-  const { tunnelToken: _, ...stack } = held.stack;
+  // The tunnel's token is read again at the push: the kept one may be of a tunnel that is gone.
+  const stack = { ...held.stack };
+  delete stack.tunnelToken;
   await pushAppBundle({ appId, deploymentId: held.deploymentId, stack });
 }
 
