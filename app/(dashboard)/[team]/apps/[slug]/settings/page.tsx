@@ -3,6 +3,7 @@ import { Settings2 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { getServerById } from "@/lib/data/servers/roster";
 import { clusterAddressNote } from "@/lib/data/clusters/app-tunnel";
+import { appFailoverReach } from "@/lib/data/clusters/architectures";
 import { listPlacementChoices } from "@/lib/data/clusters/choices";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
 import { getCluster } from "@/lib/data/clusters/roster";
@@ -37,6 +38,7 @@ export default async function AppGeneralSettingsPage(
     project.clusterId ? getServerById(project.serverId) : null,
     appWaitingNote(project),
   ]);
+  const reach = await appFailoverReach(project);
   // Only where a cluster can be picked: what placing it there does to its address.
   const addressNote = servers.some((c) => c.kind === "cluster")
     ? await clusterAddressNote(project)
@@ -70,6 +72,7 @@ export default async function AppGeneralSettingsPage(
                   name: cluster.name,
                   serverName: member?.name ?? "a server in it",
                   waiting,
+                  reach,
                 }
               : null
           }

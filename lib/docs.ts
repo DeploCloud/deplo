@@ -192,6 +192,7 @@ export const DOCS = {
   "clusters.addresses": "operations/clusters#addresses",
   "clusters.replicas": "operations/clusters#replicas-across-servers",
   "clusters.updates": "operations/clusters#updates",
+  "clusters.architectures": "operations/clusters#mix-arm-and-x86-servers",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",
 
