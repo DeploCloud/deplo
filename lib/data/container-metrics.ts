@@ -18,6 +18,7 @@ import {
 } from "../deploy/replica-names";
 import { listAppMembers } from "./clusters/placement";
 import { getServerById } from "./servers/roster";
+import { healthOf } from "../monitoring/answer-health";
 import { metricsStreamUnsupported } from "../monitoring/stream-modes";
 
 export interface ContainerInstanceMetrics {
@@ -119,7 +120,7 @@ function toInstance(s: PbContainerStat): ContainerInstanceMetrics {
     blockWrite: s.blockWrite,
     pids: s.pids,
     state: s.state,
-    health: s.health,
+    health: healthOf(s),
     restartCount: s.restartCount,
     netNsId: s.netNsId,
     netNsHost: s.netNsHost,

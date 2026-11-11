@@ -34,6 +34,7 @@ test("an app with a domain and no check gets GET / on its port", () => {
     retries: 3,
     startPeriodS: 60,
     service: "",
+    failOnErrorStatus: false,
   });
 });
 
@@ -49,6 +50,8 @@ test("the app's own http check replaces the default", () => {
   assert.equal(rule?.retries, 5);
   assert.equal(rule?.intervalS, 15);
   assert.equal(rule?.startPeriodS, 20);
+  // "Alive" means what the owner said: a 503 from their /healthz is a failure.
+  assert.equal(rule?.failOnErrorStatus, true);
 });
 
 test("an http check with no port of its own uses the routed one", () => {

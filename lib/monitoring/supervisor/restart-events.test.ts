@@ -240,6 +240,20 @@ test("the agent's resume clears the pause", async () => {
   );
 });
 
+test("a server agent that started again resumes a paused App, and says nothing about one that was not", async () => {
+  const feed = await setup();
+  // Every App with a rule gets this event when its server agent starts: only a paused one is news.
+  await send(feed, ev(RestartEvent_Kind.KIND_RESUMED, { reason: "agent" }));
+  await send(feed, ev(RestartEvent_Kind.KIND_PAUSED, { restarts: 5 }));
+  await waitFor(async () => (await paused()) !== null, "paused state");
+  await send(feed, ev(RestartEvent_Kind.KIND_RESUMED, { reason: "agent" }));
+  await waitFor(async () => (await paused()) === null, "pause cleared");
+  assert.deepEqual(
+    (await messages()).filter((m) => /Resumed restarts/.test(m)),
+    ["Resumed restarts for web after its server agent restarted"],
+  );
+});
+
 test("a recovery after a restart alert says it answers again, once", async () => {
   const feed = await setup();
   await send(feed, ev(RestartEvent_Kind.KIND_RESTARTED, { unansweredS: 90 }));

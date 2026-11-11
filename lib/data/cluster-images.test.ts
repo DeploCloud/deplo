@@ -180,6 +180,38 @@ test("a built image is copied from the server that ran it to every other member 
   ]);
 });
 
+test("each target is told to expect the image from the source before the source sends it", async () => {
+  await clusterWithApp();
+  hostOf("srv_2").imageCopy = (imageRef, targetFingerprint) => {
+    const target = targetFingerprint[0] === "3" ? "srv_3" : "srv_4";
+    assert.deepEqual(hostOf(target).imageExpects, [
+      { imageRef, sourceFingerprint: "2".repeat(64), keep: 2 },
+    ]);
+    return { alreadyPresent: false, bytes: 1, pruned: [] };
+  };
+  await copyReleaseToMembers("app_web", REL1, "srv_2");
+  assert.deepEqual(await states(REL1), {
+    srv_2: "held",
+    srv_3: "held",
+    srv_4: "held",
+  });
+});
+
+test("a target that cannot be told to expect the image is sent nothing", async () => {
+  await clusterWithApp();
+  hostOf("srv_3").unreachable = true;
+  await copyReleaseToMembers("app_web", REL1, "srv_2");
+  assert.deepEqual(
+    hostOf("srv_2").imageCopies.map((c) => c.targetFingerprint),
+    ["4".repeat(64)],
+  );
+  assert.deepEqual(await states(REL1), {
+    srv_2: "held",
+    srv_3: "failed",
+    srv_4: "held",
+  });
+});
+
 test("the deploy's tail asks for the copies after a successful build, in the background", async () => {
   await clusterWithApp();
   await seedDeployment(db, {

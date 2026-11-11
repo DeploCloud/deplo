@@ -55,7 +55,10 @@ test("each call sends its fields and answers with the agent's", async () => {
     relayLinks: 2,
   });
   assert.deepEqual(
-    await rpc.setClusterMember(true, ["https://r.example.com"]),
+    await rpc.setClusterMember(true, ["https://r.example.com"], {
+      clusterId: "clu_1",
+      leaders: ["f".repeat(64)],
+    }),
     {
       member: true,
       relayLinks: 1,
@@ -64,6 +67,8 @@ test("each call sends its fields and answers with the agent's", async () => {
   assert.deepEqual(sent.member.req, {
     member: true,
     relays: ["https://r.example.com"],
+    clusterId: "clu_1",
+    leaderFingerprints: ["f".repeat(64)],
   });
   assert.deepEqual(
     [...(await rpc.clusterCall("place", new Uint8Array([1])))],

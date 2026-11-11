@@ -1038,11 +1038,16 @@ export interface RestartRule {
   startPeriodS: number;
   /** Compose stacks: the service to watch. Empty => the app's single container. */
   service: string;
+  /**
+   * The App's own http check: a status of 400 or more is a failure. Unset (the default GET /)
+   * counts any HTTP status as alive.
+   */
+  failOnErrorStatus: boolean;
 }
 
 export enum RestartRule_Probe {
   PROBE_UNSPECIFIED = 0,
-  /** PROBE_HTTP - GET port+path from the host; any HTTP status counts as alive. */
+  /** PROBE_HTTP - GET port+path from the host; see fail_on_error_status. */
   PROBE_HTTP = 1,
   /** PROBE_DOCKER_HEALTH - Docker's own health verdict (the app's command check); `unhealthy` is a failure. */
   PROBE_DOCKER_HEALTH = 2,
@@ -2715,6 +2720,11 @@ export interface ContainerStat {
    * started. Keyed by container_id, so it never goes down for the same id.
    */
   oomKills: number;
+  /**
+   * ADDITIVE. What the restart rule's last check said about this container: "starting",
+   * "answering" or "not_answering", as InstanceInfo.answer. Empty when no rule watches it.
+   */
+  answer: string;
 }
 
 export interface ContainerStatsResponse {
@@ -3042,6 +3052,13 @@ export interface SetClusterMemberRequest {
    * host and the panel's own. Only read when member is true.
    */
   relays: string[];
+  /** The cluster this server is a member of. */
+  clusterId: string;
+  /**
+   * Certificates (sha256 hex of the DER) that may lead that cluster. An order from any other
+   * certificate, or naming another cluster, is refused whatever the relay says.
+   */
+  leaderFingerprints: string[];
 }
 
 export interface SetClusterMemberResponse {
@@ -3090,6 +3107,18 @@ export interface CopyClusterImageResponse {
   bytes: number;
   /** Releases the target removed to stay within keep. */
   pruned: string[];
+}
+
+export interface ExpectClusterImageRequest {
+  /** The deplo/<key>:<tag> image the source is about to send. */
+  imageRef: string;
+  /** The sending member's certificate fingerprint (sha256 hex of its DER). */
+  sourceFingerprint: string;
+  /** How many releases of the App this member keeps, this one included. 0 means 2. */
+  keep: number;
+}
+
+export interface ExpectClusterImageResponse {
 }
 
 /** A cluster member's certificate, by the server id the leader's placement names it with. */
@@ -5953,7 +5982,17 @@ export const DeployRequest_EnvEntry: MessageFns<DeployRequest_EnvEntry> = {
 };
 
 function createBaseRestartRule(): RestartRule {
-  return { probe: 0, port: 0, path: "", intervalS: 0, timeoutS: 0, retries: 0, startPeriodS: 0, service: "" };
+  return {
+    probe: 0,
+    port: 0,
+    path: "",
+    intervalS: 0,
+    timeoutS: 0,
+    retries: 0,
+    startPeriodS: 0,
+    service: "",
+    failOnErrorStatus: false,
+  };
 }
 
 export const RestartRule: MessageFns<RestartRule> = {
@@ -5981,6 +6020,9 @@ export const RestartRule: MessageFns<RestartRule> = {
     }
     if (message.service !== "") {
       writer.uint32(66).string(message.service);
+    }
+    if (message.failOnErrorStatus !== false) {
+      writer.uint32(72).bool(message.failOnErrorStatus);
     }
     return writer;
   },
@@ -6062,6 +6104,14 @@ export const RestartRule: MessageFns<RestartRule> = {
             message.service = reader.string();
             continue;
           }
+          case 9: {
+            if (tag !== 72) {
+              break;
+            }
+
+            message.failOnErrorStatus = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -6096,6 +6146,11 @@ export const RestartRule: MessageFns<RestartRule> = {
         ? globalThis.Number(object.start_period_s)
         : 0,
       service: isSet(object.service) ? globalThis.String(object.service) : "",
+      failOnErrorStatus: isSet(object.failOnErrorStatus)
+        ? globalThis.Boolean(object.failOnErrorStatus)
+        : isSet(object.fail_on_error_status)
+        ? globalThis.Boolean(object.fail_on_error_status)
+        : false,
     };
   },
 
@@ -6125,6 +6180,9 @@ export const RestartRule: MessageFns<RestartRule> = {
     if (message.service !== "") {
       obj.service = message.service;
     }
+    if (message.failOnErrorStatus !== false) {
+      obj.failOnErrorStatus = message.failOnErrorStatus;
+    }
     return obj;
   },
 
@@ -6141,6 +6199,7 @@ export const RestartRule: MessageFns<RestartRule> = {
     message.retries = object.retries ?? 0;
     message.startPeriodS = object.startPeriodS ?? 0;
     message.service = object.service ?? "";
+    message.failOnErrorStatus = object.failOnErrorStatus ?? false;
     return message;
   },
 };
@@ -18503,6 +18562,7 @@ function createBaseContainerStat(): ContainerStat {
     netNsId: 0,
     netNsHost: false,
     oomKills: 0,
+    answer: "",
   };
 }
 
@@ -18564,6 +18624,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     }
     if (message.oomKills !== 0) {
       writer.uint32(152).int32(message.oomKills);
+    }
+    if (message.answer !== "") {
+      writer.uint32(162).string(message.answer);
     }
     return writer;
   },
@@ -18733,6 +18796,14 @@ export const ContainerStat: MessageFns<ContainerStat> = {
             message.oomKills = reader.int32();
             continue;
           }
+          case 20: {
+            if (tag !== 162) {
+              break;
+            }
+
+            message.answer = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -18822,6 +18893,7 @@ export const ContainerStat: MessageFns<ContainerStat> = {
         : isSet(object.oom_kills)
         ? globalThis.Number(object.oom_kills)
         : 0,
+      answer: isSet(object.answer) ? globalThis.String(object.answer) : "",
     };
   },
 
@@ -18884,6 +18956,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     if (message.oomKills !== 0) {
       obj.oomKills = Math.round(message.oomKills);
     }
+    if (message.answer !== "") {
+      obj.answer = message.answer;
+    }
     return obj;
   },
 
@@ -18911,6 +18986,7 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     message.netNsId = object.netNsId ?? 0;
     message.netNsHost = object.netNsHost ?? false;
     message.oomKills = object.oomKills ?? 0;
+    message.answer = object.answer ?? "";
     return message;
   },
 };
@@ -22348,7 +22424,7 @@ export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
 };
 
 function createBaseSetClusterMemberRequest(): SetClusterMemberRequest {
-  return { member: false, relays: [] };
+  return { member: false, relays: [], clusterId: "", leaderFingerprints: [] };
 }
 
 export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
@@ -22358,6 +22434,12 @@ export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
     }
     for (const v of message.relays) {
       writer.uint32(18).string(v!);
+    }
+    if (message.clusterId !== "") {
+      writer.uint32(26).string(message.clusterId);
+    }
+    for (const v of message.leaderFingerprints) {
+      writer.uint32(34).string(v!);
     }
     return writer;
   },
@@ -22391,6 +22473,22 @@ export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
             message.relays.push(reader.string());
             continue;
           }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.leaderFingerprints.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -22407,6 +22505,16 @@ export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
     return {
       member: isSet(object.member) ? globalThis.Boolean(object.member) : false,
       relays: globalThis.Array.isArray(object?.relays) ? object.relays.map((e: any) => globalThis.String(e)) : [],
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      leaderFingerprints: globalThis.Array.isArray(object?.leaderFingerprints)
+        ? object.leaderFingerprints.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.leader_fingerprints)
+        ? object.leader_fingerprints.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -22418,6 +22526,12 @@ export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
     if (message.relays?.length) {
       obj.relays = message.relays;
     }
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.leaderFingerprints?.length) {
+      obj.leaderFingerprints = message.leaderFingerprints;
+    }
     return obj;
   },
 
@@ -22428,6 +22542,8 @@ export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
     const message = createBaseSetClusterMemberRequest();
     message.member = object.member ?? false;
     message.relays = object.relays?.map((e) => e) || [];
+    message.clusterId = object.clusterId ?? "";
+    message.leaderFingerprints = object.leaderFingerprints?.map((e) => e) || [];
     return message;
   },
 };
@@ -23017,6 +23133,167 @@ export const CopyClusterImageResponse: MessageFns<CopyClusterImageResponse> = {
     message.alreadyPresent = object.alreadyPresent ?? false;
     message.bytes = object.bytes ?? 0;
     message.pruned = object.pruned?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseExpectClusterImageRequest(): ExpectClusterImageRequest {
+  return { imageRef: "", sourceFingerprint: "", keep: 0 };
+}
+
+export const ExpectClusterImageRequest: MessageFns<ExpectClusterImageRequest> = {
+  encode(message: ExpectClusterImageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.sourceFingerprint !== "") {
+      writer.uint32(18).string(message.sourceFingerprint);
+    }
+    if (message.keep !== 0) {
+      writer.uint32(24).int32(message.keep);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterImageRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterImageRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.sourceFingerprint = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.keep = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ExpectClusterImageRequest {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      sourceFingerprint: isSet(object.sourceFingerprint)
+        ? globalThis.String(object.sourceFingerprint)
+        : isSet(object.source_fingerprint)
+        ? globalThis.String(object.source_fingerprint)
+        : "",
+      keep: isSet(object.keep) ? globalThis.Number(object.keep) : 0,
+    };
+  },
+
+  toJSON(message: ExpectClusterImageRequest): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.sourceFingerprint !== "") {
+      obj.sourceFingerprint = message.sourceFingerprint;
+    }
+    if (message.keep !== 0) {
+      obj.keep = Math.round(message.keep);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterImageRequest>, I>>(base?: I): ExpectClusterImageRequest {
+    return ExpectClusterImageRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterImageRequest>, I>>(object: I): ExpectClusterImageRequest {
+    const message = createBaseExpectClusterImageRequest();
+    message.imageRef = object.imageRef ?? "";
+    message.sourceFingerprint = object.sourceFingerprint ?? "";
+    message.keep = object.keep ?? 0;
+    return message;
+  },
+};
+
+function createBaseExpectClusterImageResponse(): ExpectClusterImageResponse {
+  return {};
+}
+
+export const ExpectClusterImageResponse: MessageFns<ExpectClusterImageResponse> = {
+  encode(_: ExpectClusterImageResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterImageResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterImageResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ExpectClusterImageResponse {
+    return {};
+  },
+
+  toJSON(_: ExpectClusterImageResponse): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterImageResponse>, I>>(base?: I): ExpectClusterImageResponse {
+    return ExpectClusterImageResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterImageResponse>, I>>(_: I): ExpectClusterImageResponse {
+    const message = createBaseExpectClusterImageResponse();
     return message;
   },
 };
@@ -24049,6 +24326,21 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): CopyClusterImageResponse => CopyClusterImageResponse.decode(value),
   },
   /**
+   * Tell this member to accept one image from one member, once, within the copy's time limit.
+   * An image stream that matches no such entry is refused.
+   */
+  expectClusterImage: {
+    path: "/deplo.agent.v1.Agent/ExpectClusterImage" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ExpectClusterImageRequest): Buffer =>
+      Buffer.from(ExpectClusterImageRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExpectClusterImageRequest => ExpectClusterImageRequest.decode(value),
+    responseSerialize: (value: ExpectClusterImageResponse): Buffer =>
+      Buffer.from(ExpectClusterImageResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ExpectClusterImageResponse => ExpectClusterImageResponse.decode(value),
+  },
+  /**
    * Hand this member the names it holds on its Environments' networks and the streams it accepts
    * for its own workloads. The full set each time; one not listed is removed. Never sent to a
    * member that is not in a cluster.
@@ -24802,6 +25094,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   copyClusterImage: handleUnaryCall<CopyClusterImageRequest, CopyClusterImageResponse>;
   /**
+   * Tell this member to accept one image from one member, once, within the copy's time limit.
+   * An image stream that matches no such entry is refused.
+   */
+  expectClusterImage: handleUnaryCall<ExpectClusterImageRequest, ExpectClusterImageResponse>;
+  /**
    * Hand this member the names it holds on its Environments' networks and the streams it accepts
    * for its own workloads. The full set each time; one not listed is removed. Never sent to a
    * member that is not in a cluster.
@@ -25543,6 +25840,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Tell this member to accept one image from one member, once, within the copy's time limit.
+   * An image stream that matches no such entry is refused.
+   */
+  expectClusterImage(
+    request: ExpectClusterImageRequest,
+    callback: (error: ServiceError | null, response: ExpectClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterImage(
+    request: ExpectClusterImageRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ExpectClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterImage(
+    request: ExpectClusterImageRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ExpectClusterImageResponse) => void,
   ): ClientUnaryCall;
   /**
    * Hand this member the names it holds on its Environments' networks and the streams it accepts
