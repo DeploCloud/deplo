@@ -51,6 +51,22 @@ export function composeReplicasConflicts(composeYaml: string): string[] {
   return out;
 }
 
+/** Why a stack cannot start beside itself because of this service, as the deploy log and the editor both say it. */
+export const oneCopyServiceReason = (name: string) =>
+  `Service \`${name}\` keeps data on the server's disk or opens a port on it, and two copies of the stack can't share that`;
+
+/** A stack that asks for replicas beside a service that keeps data or a host port: that service, or null. */
+export function composeReplicasBesideOneCopy(
+  composeYaml: string,
+): string | null {
+  const services = Object.entries(servicesOf(composeYaml) ?? {});
+  if (!services.some(([, svc]) => composeServiceReplicas(svc) > 1)) return null;
+  const held = services.find(
+    ([, svc]) => composeServiceReplicas(svc) === 1 && serviceKeepsOneCopy(svc),
+  );
+  return held ? held[0] : null;
+}
+
 // A named volume, a host path or a published host port: what two copies of a service cannot share.
 export function serviceKeepsOneCopy(raw: unknown): boolean {
   const svc = raw as { volumes?: unknown; ports?: unknown } | null;

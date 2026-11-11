@@ -93,6 +93,39 @@ describe("compose stacks", () => {
   });
 });
 
+describe("a stack with replicas beside a service that keeps data", () => {
+  const yamlOf = (db: string) =>
+    `services:\n  web:\n    image: x\n    deploy:\n      replicas: 3\n  db:\n    image: postgres:17\n${db}`;
+  const note = (source: string) =>
+    lintCompose(source).find((d) => d.rule === "replicas-offline-deploy");
+
+  test("the editor says every deploy takes it offline briefly, on the service that causes it", () => {
+    const diag = note(
+      yamlOf("    volumes:\n      - data:/var/lib/postgresql\n"),
+    );
+    assert.equal(diag?.severity, "info");
+    assert.equal(
+      diag?.message,
+      "Service `db` keeps data on the server's disk or opens a port on it, and two copies of the stack can't share that, so every deploy takes this stack offline briefly, its replicas included.",
+    );
+    assert.equal(diag?.line, 6);
+  });
+
+  test("a published port does the same, and a stack with neither says nothing", () => {
+    assert.ok(note(yamlOf('    ports:\n      - "5432:5432"\n')));
+    assert.equal(note(yamlOf("")), undefined);
+  });
+
+  test("one replica has nothing to keep online, so nothing is said", () => {
+    assert.equal(
+      note(
+        "services:\n  web:\n    image: x\n  db:\n    image: postgres:17\n    volumes:\n      - data:/d\n",
+      ),
+      undefined,
+    );
+  });
+});
+
 describe("a compose stack with replicas", () => {
   const stackYaml = (extra: string, replicas = 3) =>
     `services:\n  web:\n    image: x\n    deploy:\n      replicas: ${replicas}\n${extra}`;
