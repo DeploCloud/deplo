@@ -12,12 +12,8 @@ import { listAppMembers } from "../clusters/placement";
 import { primaryDomainApp } from "../domains/primary-domain";
 import { requireAppCapability } from "../node-access";
 import { getServerById } from "../servers/roster";
-import {
-  containerName,
-  ON_SERVER,
-  orderInstances,
-  type ConsoleInstance,
-} from "./instances";
+import { healthOf } from "../../monitoring/answer-health";
+import { containerName, ON_SERVER, orderInstances } from "./instances";
 import {
   loadOverviewAppStates,
   type OverviewAppState,
@@ -162,20 +158,6 @@ async function probeRuntimeOn(p: App): Promise<AppRuntime> {
   } finally {
     conn.close();
   }
-}
-
-// The server agent's own check result, so "healthy" here is what the restart rule acts on.
-// No result (no rule, switch off, older agent) leaves Docker's verdict: never a made-up "healthy".
-const ANSWER_HEALTH: Record<string, string> = {
-  answering: "healthy",
-  not_answering: "unhealthy",
-  starting: "starting",
-};
-
-function healthOf(i: ConsoleInstance): string {
-  const seen = ANSWER_HEALTH[i.answer ?? ""];
-  if (!seen || i.health === "unhealthy") return i.health;
-  return seen;
 }
 
 function unknownRuntime(): AppRuntime {

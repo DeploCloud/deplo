@@ -156,6 +156,7 @@ export function containerStat(
     netNsId: 0,
     netNsHost: false,
     oomKills: 0,
+    answer: "",
     ...over,
   };
 }

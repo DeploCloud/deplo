@@ -2720,6 +2720,11 @@ export interface ContainerStat {
    * started. Keyed by container_id, so it never goes down for the same id.
    */
   oomKills: number;
+  /**
+   * ADDITIVE. What the restart rule's last check said about this container: "starting",
+   * "answering" or "not_answering", as InstanceInfo.answer. Empty when no rule watches it.
+   */
+  answer: string;
 }
 
 export interface ContainerStatsResponse {
@@ -18557,6 +18562,7 @@ function createBaseContainerStat(): ContainerStat {
     netNsId: 0,
     netNsHost: false,
     oomKills: 0,
+    answer: "",
   };
 }
 
@@ -18618,6 +18624,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     }
     if (message.oomKills !== 0) {
       writer.uint32(152).int32(message.oomKills);
+    }
+    if (message.answer !== "") {
+      writer.uint32(162).string(message.answer);
     }
     return writer;
   },
@@ -18787,6 +18796,14 @@ export const ContainerStat: MessageFns<ContainerStat> = {
             message.oomKills = reader.int32();
             continue;
           }
+          case 20: {
+            if (tag !== 162) {
+              break;
+            }
+
+            message.answer = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -18876,6 +18893,7 @@ export const ContainerStat: MessageFns<ContainerStat> = {
         : isSet(object.oom_kills)
         ? globalThis.Number(object.oom_kills)
         : 0,
+      answer: isSet(object.answer) ? globalThis.String(object.answer) : "",
     };
   },
 
@@ -18938,6 +18956,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     if (message.oomKills !== 0) {
       obj.oomKills = Math.round(message.oomKills);
     }
+    if (message.answer !== "") {
+      obj.answer = message.answer;
+    }
     return obj;
   },
 
@@ -18965,6 +18986,7 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     message.netNsId = object.netNsId ?? 0;
     message.netNsHost = object.netNsHost ?? false;
     message.oomKills = object.oomKills ?? 0;
+    message.answer = object.answer ?? "";
     return message;
   },
 };

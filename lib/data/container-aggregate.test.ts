@@ -30,6 +30,7 @@ function stat(name: string, over: Partial<ContainerStat> = {}): ContainerStat {
     netNsId: 0,
     netNsHost: false,
     oomKills: 0,
+    answer: "",
     ...over,
   };
 }
@@ -178,5 +179,23 @@ test("a stack of single containers has no replica names and keeps its order", ()
       ["deplo-shop-db-1", null],
       ["deplo-shop-api-1", null],
     ],
+  );
+});
+
+test("a container the server agent's check calls not answering reads unhealthy", () => {
+  const agg = aggregateContainerStats(
+    "prj_1",
+    [
+      stat("web-1", { health: "healthy", answer: "not_answering" }),
+      stat("web-2", { health: "", answer: "answering" }),
+      stat("web-3", { health: "unhealthy", answer: "answering" }),
+      stat("worker", { health: "healthy" }),
+    ],
+    1,
+    HOST,
+  );
+  assert.deepEqual(
+    agg.instances.map((i) => i.health),
+    ["unhealthy", "healthy", "unhealthy", "healthy"],
   );
 });
