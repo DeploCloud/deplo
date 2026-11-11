@@ -56,6 +56,7 @@ export const DATABASES: McpToolDef[] = [
       query McpGetDatabase($id: String!) {
         database(id: $id) {
           ${DATABASE_FIELDS}
+          failoverReach { line warning }
           customImage
           customCommand
           resources { memoryMb cpuMilli pidsLimit storageGb }

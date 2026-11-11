@@ -1,10 +1,12 @@
 import { builder } from "../../builder";
 import { ResourceLimitsRef } from "../resource-limits";
 import { HealthCheckRef } from "../health-check";
+import { FailoverReachRef, reachOrNull } from "../failover-reach";
 import { DeploySourceEnum, AppStatusEnum } from "../enums";
 import { DeploymentRef } from "./deployment-object";
 import { type AppFailover, getAppFailover } from "@/lib/data/apps/failover";
 import { listApps } from "@/lib/data/apps/listing";
+import { appFailoverReach } from "@/lib/data/clusters/architectures";
 import { getCluster } from "@/lib/data/clusters/roster";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
 import type { AppSummary } from "@/lib/data/apps/summary";
@@ -146,6 +148,14 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         'The name of that cluster, for the line "Runs on eu, now on server-b".',
       resolve: async (p) =>
         p.clusterId ? ((await getCluster(p.clusterId))?.name ?? null) : null,
+    }),
+    failoverReach: t.field({
+      type: FailoverReachRef,
+      nullable: true,
+      description:
+        "On a cluster of ARM and x86 servers, which ones this app can fail over to; null when every server can take it or it runs on one server.",
+      resolve: async (p) =>
+        p.clusterId ? reachOrNull(await appFailoverReach(p)) : null,
     }),
     buildServerId: t.id({
       nullable: true,

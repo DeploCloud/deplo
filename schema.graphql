@@ -235,6 +235,11 @@ type App {
   On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.
   """
   failoverFromBackup: Boolean
+
+  """
+  On a cluster of ARM and x86 servers, which ones this app can fail over to; null when every server can take it or it runs on one server.
+  """
+  failoverReach: FailoverReach
   folderId: ID
 
   """
@@ -1960,6 +1965,11 @@ type Database {
   environmentId: ID
   exposedPort: Int
   exposedPublicly: Boolean
+
+  """
+  On a cluster of ARM and x86 servers, which ones this database can fail over to; null when every server can take it or it runs on one server.
+  """
+  failoverReach: FailoverReach
   host: String
   id: ID
 
@@ -3084,6 +3094,19 @@ input ExtraDomainInput {
   path: String
   port: Int!
   service: String!
+}
+
+"""
+On a cluster of ARM and x86 servers: which of them an app or database can fail over to.
+"""
+type FailoverReach {
+  """"Fails over to x86 servers only (2 of 3)"."""
+  line: String
+
+  """
+  Set instead of the line when a single server can run it, so it has nowhere to go if that one stops.
+  """
+  warning: String
 }
 
 """One server whose agent is older than the fleet version."""

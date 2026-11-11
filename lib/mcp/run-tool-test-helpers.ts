@@ -22,5 +22,5 @@ export async function runTool(
       identity,
     }),
   );
-  return runGraphql(tool.query, tool.variables!(args as never), ctx);
+  return runGraphql(tool.query, tool.variables?.(args as never) ?? args, ctx);
 }

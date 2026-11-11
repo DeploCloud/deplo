@@ -26,18 +26,24 @@ import {
   main,
   web,
 } from "./cluster-database-test-helpers";
-import { appFailoverReach, imageArchs } from "./clusters/architectures";
+import {
+  appFailoverReach,
+  databaseFailoverReach,
+  imageArchs,
+} from "./clusters/architectures";
 import { flushFailoverBundles, pushFailoverBundle } from "./clusters/bundles";
 import { pushDatabaseBundle } from "./clusters/database-bundles";
 import { setClusterTeams } from "./clusters/manage";
 import { createDatabase } from "./databases/provision";
 import { moveDatabaseToCluster } from "./databases/server-move";
-import { TEAM_A, TEAM_B } from "./identity-test-helpers";
+import { TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { saveNotificationChannel } from "./notifications";
 import { __resetCooldowns } from "../notify/cooldown";
 import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
+import { runTool } from "../mcp/run-tool-test-helpers";
+import { getDatabase } from "./databases/rows";
 
 databaseLab();
 
@@ -422,4 +428,70 @@ test("App page: a team the cluster was taken from is told nothing about its serv
     setClusterTeams(cluster.id, { allTeams: false, teamIds: [TEAM_A] }),
   );
   assert.deepEqual(await theirs(), { line: null, warning: null });
+});
+
+const me = { userId: USER_1, teamId: TEAM_A };
+const viaMcp = async (tool: string, args: Record<string, unknown>) => {
+  const got = await runTool(me, tool, args);
+  assert.equal(got.error, undefined, got.error ?? "");
+  // As it goes over the wire: graphql's own objects have no prototype.
+  return JSON.parse(JSON.stringify(got.data)) as Record<
+    string,
+    { failoverReach: unknown } | null
+  >;
+};
+
+test("GraphQL and MCP read which servers an App can fail over to", async () => {
+  const cluster = await mixed();
+  await web(cluster.id, "srv_2");
+  assert.deepEqual(
+    (await viaMcp("get_app", { slug: "web" })).app!.failoverReach,
+    { line: "Fails over to x86 servers only (2 of 3)", warning: null },
+  );
+
+  // An image for both kinds is not restricted: nothing to say.
+  await pulls("prj_web", WEB);
+  fakeRegistry({ "acme/web:1": BOTH });
+  await imageArchs(WEB, "srv_2");
+  assert.equal(
+    (await viaMcp("get_app", { slug: "web" })).app!.failoverReach,
+    null,
+  );
+});
+
+const dbReach = () =>
+  asAdmin(async () => databaseFailoverReach((await getDatabase("db_main"))!));
+
+test("Database page: a mixed cluster says which servers the database can fail over to", async () => {
+  const cluster = await mixed();
+  await main(cluster.id);
+  // Nobody read its image yet: it is kept on the kind of server it runs on.
+  assert.deepEqual(await dbReach(), {
+    line: "Fails over to x86 servers only (2 of 3)",
+    warning: null,
+  });
+  assert.deepEqual(
+    (await viaMcp("get_database", { id: "db_main" })).database!.failoverReach,
+    { line: "Fails over to x86 servers only (2 of 3)", warning: null },
+  );
+
+  fakeRegistry({ "library/postgres:16-alpine": BOTH });
+  await imageArchs("postgres:16-alpine", "srv_2");
+  assert.deepEqual(await dbReach(), { line: null, warning: null });
+});
+
+test("Database page: the only server of its kind warns, and a database on one server says nothing", async () => {
+  const cluster = await mixed({ srv_3: "arm64" });
+  await main(cluster.id);
+  assert.deepEqual(await dbReach(), {
+    line: null,
+    warning:
+      "If server-2 stops, main has nowhere to go. It is the only x86 server in eu.",
+  });
+
+  await db
+    .update(databasesTable)
+    .set({ clusterId: null })
+    .where(eq(databasesTable.id, "db_main"));
+  assert.deepEqual(await dbReach(), { line: null, warning: null });
 });

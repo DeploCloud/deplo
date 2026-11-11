@@ -32,7 +32,9 @@ import {
   getDatabaseStandby,
   setDatabaseStandby,
 } from "@/lib/data/databases/standby";
+import { databaseFailoverReach } from "@/lib/data/clusters/architectures";
 import { getCluster } from "@/lib/data/clusters/roster";
+import { FailoverReachRef, reachOrNull } from "./failover-reach";
 import {
   generateAvailableDbPort,
   hostPortsInUse,
@@ -96,6 +98,14 @@ export const DatabaseRef = builder
           'The name of that cluster, for the line "Runs on eu, now on server-b".',
         resolve: async (d) =>
           d.clusterId ? ((await getCluster(d.clusterId))?.name ?? null) : null,
+      }),
+      failoverReach: t.field({
+        type: FailoverReachRef,
+        nullable: true,
+        description:
+          "On a cluster of ARM and x86 servers, which ones this database can fail over to; null when every server can take it or it runs on one server.",
+        resolve: async (d) =>
+          d.clusterId ? reachOrNull(await databaseFailoverReach(d)) : null,
       }),
       environmentId: t.exposeID("environmentId", {
         nullable: true,
