@@ -220,23 +220,36 @@ interface MemberRow {
   leaseState: string;
 }
 
+/** Who reads the card: an instance admin reads all of it, a team only the names of its own work. */
+interface Viewer {
+  admin: boolean;
+  teamId: string | null;
+}
+
+const EMPTYING_STOPPED =
+  "Emptying this server stopped. An instance admin can see why and continue it.";
+
 function emptyingOf(
   r: MemberRow,
   held: MemberWorkload[],
+  viewer: Viewer,
 ): ClusterEmptying | null {
   if (!r.emptyingSince) return null;
   const moving = held.find((w) => `${w.kind}:${w.id}` === r.emptyingWorkload);
+  const mine = viewer.admin || moving?.teamId === viewer.teamId;
   return {
     since: r.emptyingSince,
     // Work that landed after the start still counts, so "moved" never goes below zero.
     total: Math.max(r.emptyingTotal, held.length),
     left: held.length,
-    moving: moving?.name ?? "",
-    error: r.emptyingError,
+    moving: mine ? (moving?.name ?? "") : "",
+    // The reason names the workload that stopped it, which may be another team's.
+    error:
+      viewer.admin || !r.emptyingError ? r.emptyingError : EMPTYING_STOPPED,
   };
 }
 
-async function toMember(r: MemberRow): Promise<ClusterMember> {
+async function toMember(r: MemberRow, viewer: Viewer): Promise<ClusterMember> {
   const held = await listMemberWorkloads(r.serverId);
   return {
     serverId: r.serverId,
@@ -244,7 +257,7 @@ async function toMember(r: MemberRow): Promise<ClusterMember> {
     status: r.status as ServerStatus,
     joinedAt: r.joinedAt,
     emptyingSince: r.emptyingSince,
-    emptying: emptyingOf(r, held),
+    emptying: emptyingOf(r, held, viewer),
     held: held.length,
     leaseState: toLeaseState(r.leaseState),
   };
@@ -254,7 +267,10 @@ function toLeaseState(s: string): ClusterLeaseState {
   return s === "not_responding" || s === "fenced" ? s : "ok";
 }
 
-async function readMembers(clusterId: string): Promise<ClusterMember[]> {
+async function readMembers(
+  clusterId: string,
+  viewer: Viewer,
+): Promise<ClusterMember[]> {
   const rows = await getDb()
     .select({
       serverId: membersTable.serverId,
@@ -271,17 +287,22 @@ async function readMembers(clusterId: string): Promise<ClusterMember[]> {
     .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
     .where(eq(membersTable.clusterId, clusterId))
     .orderBy(asc(membersTable.joinedAt), asc(membersTable.serverId));
-  return Promise.all(rows.map(toMember));
+  return Promise.all(rows.map((r) => toMember(r, viewer)));
 }
 
 /** A cluster's members, for whoever may see the cluster: an instance admin, or a team it is shared with. */
 export async function listClusterMembers(
   clusterId: string,
 ): Promise<ClusterMember[]> {
-  const visible = (await isInstanceAdmin())
+  const admin = await isInstanceAdmin();
+  const visible = admin
     ? await getClusterById(clusterId)
     : await getCluster(clusterId);
-  return visible ? readMembers(clusterId) : [];
+  if (!visible) return [];
+  return readMembers(clusterId, {
+    admin,
+    teamId: admin ? null : await requireActiveTeamId(),
+  });
 }
 
 /**
@@ -352,7 +373,7 @@ export async function addClusterMember(
     return { apps: apps.length, databases: dbs.length };
   });
 
-  const members = await readMembers(clusterId);
+  const members = await readMembers(clusterId, { admin: true, teamId });
   const member = members.find((m) => m.serverId === serverId)!;
   await recordActivity(
     "server",
