@@ -134,6 +134,49 @@ test("the generated address waits until the App's stack is on the new member, an
   assert.equal(lab.members.srv_3.reroutes.length, 1);
 });
 
+test("a generated address another team already routes is left alone, and Activity says so once", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  await web(cluster.id);
+  await autoDomain();
+  await seedApp(lab.db, { id: "prj_b", serverId: "srv_3", teamId: TEAM_B });
+  await lab.db.insert(domainsTable).values({
+    id: "dom_b",
+    appId: "prj_b",
+    name: "web-word-0a000003.deplo.site",
+    pathPrefix: "/api",
+    status: "valid",
+    isPrimary: true,
+    ssl: false,
+    source: "custom",
+    createdAt: AT,
+  });
+  startedOn("srv_3");
+  await lab.db
+    .update(appsTable)
+    .set({ serverId: "srv_3" })
+    .where(eq(appsTable.id, "prj_web"));
+
+  await rehostClusterAddresses();
+  await rehostClusterAddresses();
+  const [mine] = await lab.db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, "dom_prj_web"));
+  assert.equal(mine.name, "web-word-0a000002.deplo.site");
+  assert.equal(lab.members.srv_3.reroutes.length, 0);
+  assert.deepEqual(
+    (await messages()).filter((m) => /generated address/.test(m.message)),
+    [
+      {
+        message:
+          "web moved to another server of its cluster, but its generated address stays web-word-0a000002.deplo.site: web-word-0a000003.deplo.site is already routed by another team on this Deplo. A hostname belongs to one team.",
+        actor: "Deplo",
+      },
+    ],
+  );
+});
+
 test("a member that refuses the new routes leaves the old address in place and says so", async () => {
   const cluster = await eu();
   lab.seq = 0;

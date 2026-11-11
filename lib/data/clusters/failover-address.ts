@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -10,11 +10,13 @@ import { rehostWildcard, wildcardEmbeddedIp } from "../../deploy/domains";
 import { recordActivity } from "../activity";
 import { loadAppGraph, loadDomainsForApp } from "../app-graph-load";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { assertHostnameNotAnotherTeams } from "../domains/hostname-claim";
 import { syncProductionUrl } from "../domains/primary-domain";
 import { repointRedirects } from "../domains/www-pairing";
 import { withKeyedLock } from "../keyed-mutex";
 import { serverWildcardIp } from "../servers/addresses";
 import { getServerById } from "../servers/roster";
+import { recordOnce } from "./bundles";
 
 /**
  * A generated address carries its server's IP, so an App the leader moved answers on a name that points at the
@@ -33,7 +35,16 @@ export async function rehostClusterApp(appId: string): Promise<string[]> {
       const held = d.source === "auto" ? wildcardEmbeddedIp(d.name) : null;
       if (!held || held === ip) continue;
       const to = rehostWildcard(d.name, ip);
-      if (to !== d.name) moved.push({ id: d.id, from: d.name, to });
+      if (to === d.name) continue;
+      try {
+        await assertHostnameNotAnotherTeams(to, app.teamId, d.id);
+        moved.push({ id: d.id, from: d.name, to });
+      } catch (e) {
+        await recordOnce(
+          app,
+          `${app.name} moved to another server of its cluster, but its generated address stays ${d.name}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     }
     if (moved.length === 0) return [];
     const rename = async (dir: "to" | "from") => {
@@ -41,7 +52,7 @@ export async function rehostClusterApp(appId: string): Promise<string[]> {
         await getDb()
           .update(domainsTable)
           .set({ name: m[dir] })
-          .where(eq(domainsTable.id, m.id));
+          .where(and(eq(domainsTable.id, m.id), eq(domainsTable.appId, appId)));
         await repointRedirects(
           appId,
           dir === "to" ? m.from : m.to,
