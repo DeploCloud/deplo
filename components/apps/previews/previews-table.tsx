@@ -117,7 +117,8 @@ export function PreviewsTable({
         {rows.map((p) => {
           const blocked = p.isFork && !p.approved;
           const review = blocked && canDeploy;
-          const openUrl = !review && !p.closed ? p.url : null;
+          const openUrl =
+            !review && !p.closed && p.status !== "offline" ? p.url : null;
           const logsHref = p.latestDeploymentId
             ? `/apps/${appSlug}/deployments/${p.latestDeploymentId}`
             : null;
@@ -201,14 +202,20 @@ export function PreviewsTable({
                     </span>
                   </SimpleTooltip>
                 ) : (
-                  <StatusBadge status={p.status} />
+                  <StatusBadge
+                    status={p.status}
+                    labels={{ offline: "Offline: its server stopped" }}
+                  />
                 )}
               </TableCell>
 
               <TableCell>
                 {p.status === "building" || p.status === "queued" ? (
                   <Skeleton className="h-4 w-40" />
-                ) : p.url && !p.closed && p.status !== "evicted" ? (
+                ) : p.url &&
+                  !p.closed &&
+                  p.status !== "evicted" &&
+                  p.status !== "offline" ? (
                   <a
                     href={p.url}
                     target="_blank"
@@ -217,10 +224,14 @@ export function PreviewsTable({
                   >
                     {p.host}
                   </a>
-                ) : p.status === "evicted" ? (
+                ) : p.status === "evicted" || p.status === "offline" ? (
                   <span
                     className="font-mono text-xs text-muted-foreground"
-                    title="Redeploy to bring this address back"
+                    title={
+                      p.status === "offline"
+                        ? "Redeploy to run it on another server"
+                        : "Redeploy to bring this address back"
+                    }
                   >
                     {p.host}
                   </span>

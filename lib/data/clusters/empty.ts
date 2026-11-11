@@ -8,6 +8,7 @@ import { clusterMembers as membersTable } from "../../db/schema/control-plane/cl
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { startDeployment } from "../../deploy/build/deploy-start";
+import { movePreviewsOff } from "../../deploy/preview-lifecycle/cluster-member";
 import { nowIso } from "../../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster } from "../../types/cluster";
@@ -159,6 +160,10 @@ export async function emptyClusterMember(
     teamId,
   );
   await tellLeader(cluster);
+  // A preview is no workload of the cluster, so nothing else moves it (#212).
+  await movePreviewsOff(serverId).catch((e) =>
+    console.warn(`[cluster-empty] ${cluster.id}: previews: ${message(e)}`),
+  );
   return cluster;
 }
 

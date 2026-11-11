@@ -19,6 +19,8 @@ export const PREVIEWS: McpToolDef[] = [
           autoDeploy
           maxActive
           unavailable
+          serverId
+          clusterName
           previews {
             id
             prNumber
@@ -116,7 +118,12 @@ export const PREVIEWS_ADMIN: McpToolDef[] = [
       maxActive: z.number().int().optional(),
       ttlDays: z.number().int().optional(),
       port: z.number().int().optional(),
-      serverId: z.string().optional(),
+      serverId: z
+        .string()
+        .optional()
+        .describe(
+          "Empty: where the app runs, its cluster included. Never a server in a cluster.",
+        ),
     }),
     variables: ({ appId: id, ...input }) => ({ appId: id, input }),
     query: /* GraphQL */ `

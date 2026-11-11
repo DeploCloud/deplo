@@ -63,6 +63,8 @@ export interface PreviewSettingsFormProps {
   comment: boolean;
   requiredLabels: string[];
   appServerId: string;
+  /** The App's cluster, when it runs on one this team can see: previews are placed on it, never on one server of it. */
+  clusterName?: string | null;
   appPort: number;
   servers: { id: string; name: string; isDeploHost: boolean }[];
   activeCount: number;
@@ -403,7 +405,14 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__app__">
-                          Same as the app{serverName ? ` (${serverName})` : ""}
+                          {props.clusterName ? (
+                            <span className="flex items-center gap-2">
+                              Same as the app ({props.clusterName})
+                              <Badge variant="outline">Cluster</Badge>
+                            </span>
+                          ) : (
+                            `Same as the app${serverName ? ` (${serverName})` : ""}`
+                          )}
                         </SelectItem>
                         {props.servers
                           .filter((s) => s.id !== props.appServerId)

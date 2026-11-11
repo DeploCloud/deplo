@@ -429,7 +429,9 @@ type AppPreview {
   prNumber: Int
   pullRequestUrl: String
 
-  """blocked | queued | building | active | error | idle."""
+  """
+  blocked | queued | building | active | error | idle | evicted | offline. `offline`: its server, a member of the App's cluster, stopped; the next push or a redeploy places it again.
+  """
   status: String
   title: String
   updatedAt: String
@@ -465,7 +467,9 @@ input AppPreviewSettingsInput {
   """Newline-separated labels a pull request must carry. Empty ⇒ no filter."""
   requiredLabels: String
 
-  """Where previews run. Empty ⇒ the app's own server."""
+  """
+  Where previews run. Empty ⇒ the app's own server, or its cluster when it runs on one. Never a server that is a member of a cluster.
+  """
   serverId: String
   ttlDays: Int
 }
@@ -481,6 +485,12 @@ type AppPreviewsView {
   """Pull requests must target this branch to get a preview."""
   branch: String
   buildDrafts: Boolean
+
+  """
+  The App's cluster, where previews are placed while `serverId` is null: its leader picks a server for each. Null off a cluster, or on one this team cannot see.
+  """
+  clusterId: String
+  clusterName: String
   comment: Boolean
   enabled: Boolean
   forkPolicy: String

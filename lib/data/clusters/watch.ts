@@ -23,6 +23,7 @@ import {
 import { recordPlacement } from "./placement";
 import { applyMemberReturned } from "./returned";
 import { getClusterById } from "./roster";
+import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
@@ -86,6 +87,8 @@ async function memberLeaseChanged(
   state: ClusterLeaseState,
 ): Promise<void> {
   if (!(await setMemberLease(clusterId, serverId, state))) return;
+  // A preview never fails over: it reads offline until it is deployed again (#212).
+  if (state === "fenced") await markPreviewsOffline(serverId);
   const name = (await getServerById(serverId))?.name ?? "A server";
   const text =
     state === "ok"

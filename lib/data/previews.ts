@@ -18,6 +18,7 @@ import {
 import { deployPreviewRow } from "../deploy/preview-lifecycle/deploy";
 import { refusalMessage } from "../deploy/preview-lifecycle/fork-guard";
 import { openOrSyncPreview } from "../deploy/preview-lifecycle/open-sync";
+import { CLUSTER_NOT_AVAILABLE } from "../deploy/preview-lifecycle/placement";
 import {
   forkPolicyOf,
   parseRequiredLabels,
@@ -38,12 +39,21 @@ import { loadAppGraph } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { assertPreviewBaseNotAnotherTeams } from "./domains/hostname-claim";
 import { assertServerNotInCluster } from "./clusters/members";
+import { getCluster } from "./clusters/roster";
 import { canHostWorkloads, listServersForTeam } from "./servers/roster";
 import { requireAppCapability } from "./node-access";
 import { secretImmutable } from "../types/env";
 
+/** `offline`: its server, a member of the App's cluster, stopped; the next push or a redeploy places it again. */
 export type PreviewState =
-  "blocked" | "queued" | "building" | "active" | "error" | "idle" | "evicted";
+  | "blocked"
+  | "queued"
+  | "building"
+  | "active"
+  | "error"
+  | "idle"
+  | "evicted"
+  | "offline";
 
 export interface AppPreviewDTO {
   id: string;
@@ -84,6 +94,9 @@ export interface AppPreviewsView {
   ttlDays: number;
   forkPolicy: PreviewForkPolicy;
   serverId: string | null;
+  /** The App's cluster, where previews are placed while `serverId` is null; null off a cluster or one this team cannot see. */
+  clusterId: string | null;
+  clusterName: string | null;
   https: boolean;
   autoDeploy: boolean;
   port: number | null;
@@ -158,6 +171,7 @@ export const listAppPreviews = cache(
         ),
         desc(appPreviewsTable.lastActivityAt),
       );
+    const cluster = app.clusterId ? await getCluster(app.clusterId) : null;
     return {
       appId,
       unavailable,
@@ -170,6 +184,8 @@ export const listAppPreviews = cache(
       ttlDays: settings.ttlDays,
       forkPolicy: settings.forkPolicy,
       serverId: settings.serverId,
+      clusterId: cluster?.id ?? null,
+      clusterName: cluster?.name ?? null,
       https: settings.https,
       autoDeploy: settings.autoDeploy,
       port: settings.port,
@@ -390,7 +406,11 @@ export async function setAppPreviewSettings(
       await assertServerNotInCluster(picked.id);
     }
     patch.previewServerId = wanted && wanted !== app.serverId ? wanted : null;
-    const current = (await previewSettings(appId))?.serverId ?? app.serverId;
+    const own = (await previewSettings(appId))?.serverId ?? null;
+    // Back onto the App's cluster is placing on it: only a team the cluster is shared with may.
+    if (!wanted && own && app.clusterId && !(await getCluster(app.clusterId)))
+      throw new Error(CLUSTER_NOT_AVAILABLE);
+    const current = own ?? app.serverId;
     const next = patch.previewServerId ?? app.serverId;
     if (next !== current) await stopPreviewsForServerChange(appId, next);
   }

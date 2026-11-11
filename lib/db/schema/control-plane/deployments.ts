@@ -152,6 +152,10 @@ export const appPreviews = pgTable(
     state: text("state").notNull().default("open"),
     closedAt: isoTimestamptz("closed_at"),
     tornDownAt: isoTimestamptz("torn_down_at"),
+    // Where its stack was last deployed; null on a row older than the column.
+    serverId: text("server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
     lastActivityAt: isoTimestamptz("last_activity_at").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
@@ -161,6 +165,7 @@ export const appPreviews = pgTable(
     uniqueIndex("app_previews_deploy_key_uq").on(t.deployKey),
     uniqueIndex("app_previews_host_uq").on(t.host),
     index("app_previews_app_idx").on(t.appId),
+    index("app_previews_server_idx").on(t.serverId),
     index("app_previews_open_idx")
       .on(t.lastActivityAt)
       .where(sql`${t.state} = 'open'`),

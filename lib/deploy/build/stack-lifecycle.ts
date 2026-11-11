@@ -1,9 +1,10 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getServerById } from "../../data/servers/roster";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { appPreviews as appPreviewsTable } from "../../db/schema/control-plane/deployments";
 import { listAppMembers } from "../../data/clusters/placement";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
@@ -17,12 +18,23 @@ export async function owningServerIdForDeployKey(
   if (!p) return null;
   let serverId = p.serverId;
   if (prNumberFromDeployKey(deployKey) !== null) {
+    // Where the preview was last deployed; a cluster places each one on a member of its own.
     const rows = await getDb()
-      .select({ previewServerId: appsTable.previewServerId })
+      .select({
+        on: appPreviewsTable.serverId,
+        previewServerId: appsTable.previewServerId,
+      })
       .from(appsTable)
+      .leftJoin(
+        appPreviewsTable,
+        and(
+          eq(appPreviewsTable.appId, appsTable.id),
+          eq(appPreviewsTable.deployKey, deployKey),
+        ),
+      )
       .where(eq(appsTable.id, p.id))
       .limit(1);
-    serverId = rows[0]?.previewServerId ?? p.serverId;
+    serverId = rows[0]?.on ?? rows[0]?.previewServerId ?? p.serverId;
   }
   const server = await getServerById(serverId);
   return server ? server.id : null;

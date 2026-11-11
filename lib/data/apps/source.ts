@@ -210,7 +210,11 @@ async function writeAppSource(
   }
 
   // A preview's teardown resolves the host from the app row: once it names the new machine, the old stacks are unreachable.
-  if (current && moving && !current.previewServerId) {
+  // Inside one cluster a preview runs on a member of its own and records it, so it stays where it is.
+  const sameCluster = Boolean(
+    move?.cluster && move.cluster.id === current?.clusterId,
+  );
+  if (current && moving && !current.previewServerId && !sameCluster) {
     await stopPreviewsForServerChange(id, input.serverId!);
   }
   const after: {

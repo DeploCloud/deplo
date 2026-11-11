@@ -373,10 +373,14 @@ async function relocate(
     }
   });
   const [row] = await getDb()
-    .select({ previewServerId: appsTable.previewServerId })
+    .select({
+      previewServerId: appsTable.previewServerId,
+      clusterId: appsTable.clusterId,
+    })
     .from(appsTable)
     .where(eq(appsTable.id, app.id));
-  if (row && !row.previewServerId)
+  // On a cluster each preview records the member it runs on, so none is left behind.
+  if (row && !row.previewServerId && !row.clusterId)
     await stopPreviewsForServerChange(app.id, serverId).catch(() => {});
 }
 

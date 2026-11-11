@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, eq } from "drizzle-orm";
 
+import { loadAppGraph } from "../../data/app-graph-load";
 import { withKeyedLock } from "../../data/keyed-mutex";
 import { getDb } from "../../db/client";
 import { appPreviews as appPreviewsTable } from "../../db/schema/control-plane/deployments";
@@ -10,6 +11,7 @@ import { publishAppChanged } from "../../graphql/pubsub";
 import type { CertProvider } from "../../types/domain";
 import { startDeployment } from "../build/deploy-start";
 import { forkRefusal, refusalMessage } from "./fork-guard";
+import { placePreview } from "./placement";
 import { PREVIEW_MAX_ACTIVE_DEFAULT, previewSettings } from "./settings";
 import { SLOTLESS, countOpenPreviews, evictToFit } from "./slots";
 
@@ -69,6 +71,9 @@ async function startPreviewDeployment(
       const refusal = await forkRefusal(p.appId);
       if (refusal) throw new Error(refusalMessage(refusal));
     }
+    const app = await loadAppGraph(p.appId);
+    if (!app) throw new Error("App not found");
+    const placed = await placePreview(p.id, app);
     return await startDeployment(p.appId, {
       environment: "preview",
       creator: opts.actor,
@@ -79,11 +84,11 @@ async function startPreviewDeployment(
       preview: {
         id: p.id,
         deployKey: p.deployKey,
-        host: p.host,
+        host: placed.host,
         certProvider: p.certProvider as CertProvider,
         prNumber: p.prNumber,
         headSha: p.headSha,
-        serverId: (await previewSettings(p.appId))?.serverId ?? null,
+        serverId: placed.serverId,
       },
     });
   } catch (e) {

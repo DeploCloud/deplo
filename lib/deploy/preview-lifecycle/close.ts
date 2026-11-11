@@ -118,7 +118,7 @@ export async function destroyPreviewsForApp(appId: string): Promise<void> {
       prNumber: appPreviewsTable.prNumber,
       appName: appsTable.name,
       teamId: appsTable.teamId,
-      serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
+      serverId: sql<string>`coalesce(${appPreviewsTable.serverId}, ${appsTable.previewServerId}, ${appsTable.serverId})`,
     })
     .from(appPreviewsTable)
     .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
