@@ -9,6 +9,7 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { teamAvatarUrl } from "../../avatar";
+import { getCurrentUser } from "../../auth/current-user";
 import { narrowedScope } from "../../auth/request-context";
 import {
   isInstanceAdmin,
@@ -180,4 +181,12 @@ export async function getClusterTeams(clusterId: string): Promise<Team[]> {
     avatarUrl: teamAvatarUrl(r.image),
     createdAt: r.createdAt,
   }));
+}
+
+/** The gate of a cluster mutation: an instance admin, with the active team and the person Activity names. */
+export async function requireClusterAdmin() {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  return { teamId, user };
 }

@@ -1,6 +1,5 @@
 import "server-only";
 
-import { getCurrentUser } from "../../auth/current-user";
 import { isDeploHostServer } from "../../deploy/domains";
 import {
   clusterLeaderStatus,
@@ -8,7 +7,7 @@ import {
   installClusterLeader,
 } from "../../infra/agent-client/cluster-host";
 import { AgentClusterUnsupportedError } from "../../infra/agent-client/errors";
-import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
+import { requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeader } from "../../types/cluster";
 import type { Server } from "../../types/server";
 import { messageOf } from "../../utils";
@@ -17,7 +16,11 @@ import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
 import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
-import { clusterMemberServerIds, getClusterById } from "./roster";
+import {
+  clusterMemberServerIds,
+  getClusterById,
+  requireClusterAdmin,
+} from "./roster";
 
 export const OWN_SERVER_WARNING =
   "If Deplo's own server stops, its Apps cannot move. Run the leader on another server to fix this.";
@@ -120,9 +123,7 @@ async function updateMessage(host: Server | null): Promise<string> {
 export async function ensureClusterLeader(
   clusterId: string,
 ): Promise<ClusterLeader> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const leader = await startLeader(cluster, user.name, teamId);

@@ -9,13 +9,11 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
-import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
-import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { ensureClusterLeader } from "./leader";
-import { getClusterById } from "./roster";
+import { getClusterById, requireClusterAdmin } from "./roster";
 
 export interface ClusterSharingInput {
   allTeams: boolean;
@@ -60,9 +58,7 @@ export async function createCluster(
   name: string,
   sharing: ClusterSharingInput,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const clean = cleanClusterName(name);
   const teamIds = sharing.allTeams ? [] : [...new Set(sharing.teamIds)];
   await assertNameFree(clean);
@@ -97,9 +93,7 @@ export async function renameCluster(
   id: string,
   name: string,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const clean = cleanClusterName(name);
   const cluster = await getClusterById(id);
   if (!cluster) throw new Error("Cluster not found");
@@ -124,9 +118,7 @@ export async function setClusterTeams(
   id: string,
   sharing: ClusterSharingInput,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(id);
   if (!cluster) throw new Error("Cluster not found");
   const teamIds = sharing.allTeams ? [] : [...new Set(sharing.teamIds)];

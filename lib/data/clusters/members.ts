@@ -18,7 +18,6 @@ import { joinAppTunnels } from "./app-tunnel";
 import { inBackground } from "./bundles";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
-import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
 import {
   isInstanceAdmin,
@@ -44,7 +43,7 @@ import { getServerById, listAllServers } from "../servers/roster";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
-import { getCluster, getClusterById } from "./roster";
+import { getCluster, getClusterById, requireClusterAdmin } from "./roster";
 import { messageOf } from "../../utils";
 
 /** A join refused: `reasons` lists every blocker found, so the admin fixes them in one pass. */
@@ -319,9 +318,7 @@ export async function addClusterMember(
   clusterId: string,
   serverId: string,
 ): Promise<ClusterJoin> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const server = await getServerById(serverId);

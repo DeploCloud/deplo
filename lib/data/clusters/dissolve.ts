@@ -1,7 +1,6 @@
 import "server-only";
 
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
-import { getCurrentUser } from "../../auth/current-user";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
@@ -51,7 +50,11 @@ import {
   releaseClusterMember,
   syncClusterRelayRoute,
 } from "./relay";
-import { clusterMemberServerIds, getClusterById } from "./roster";
+import {
+  clusterMemberServerIds,
+  getClusterById,
+  requireClusterAdmin,
+} from "./roster";
 import { stopClusterWatch } from "./watch-scheduler";
 import { messageOf } from "../../utils";
 
@@ -407,9 +410,7 @@ export async function removeClusterMember(
   serverId: string,
   opts: { keepWorkloads?: boolean } = {},
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const server = await getServerById(serverId);
@@ -522,9 +523,7 @@ async function retireCluster(cluster: Cluster): Promise<void> {
  * Their failover backups stay as ordinary schedules; nothing is stopped, redeployed or deleted.
  */
 export async function deleteCluster(clusterId: string): Promise<void> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const members = await clusterMemberServerIds(clusterId);

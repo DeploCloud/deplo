@@ -1,7 +1,6 @@
 import "server-only";
 
 import { and, eq, isNotNull } from "drizzle-orm";
-import { getCurrentUser } from "../../auth/current-user";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
@@ -13,7 +12,7 @@ import {
 } from "../../infra/agent-client/cluster-host";
 import { CLUSTER_HOST_UNSUPPORTED_MESSAGE } from "../../infra/agent-client/errors";
 import { nowIso } from "../../ids";
-import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
+import { requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeaderChoice } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { getServerById, listAllServers } from "../servers/roster";
@@ -27,7 +26,7 @@ import {
   readLeaderSnapshot,
 } from "./leader-sync";
 import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
-import { getClusterById } from "./roster";
+import { getClusterById, requireClusterAdmin } from "./roster";
 import { messageOf } from "../../utils";
 
 // Running the leader on another server (spec #176).
@@ -189,9 +188,7 @@ export async function moveClusterLeader(
   clusterId: string,
   serverId: string | null,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const own = await leaderHostOf(null);

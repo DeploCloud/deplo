@@ -1,7 +1,6 @@
 import "server-only";
 
 import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
-import { getCurrentUser } from "../../auth/current-user";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { clusterMembers as membersTable } from "../../db/schema/control-plane/clusters";
@@ -10,7 +9,6 @@ import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import { movePreviewsOff } from "../../deploy/preview-lifecycle/cluster-member";
 import { nowIso } from "../../ids";
-import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { relocateClusterApp } from "../apps/source";
@@ -29,7 +27,7 @@ import {
   recordPlacement,
   refusalSentence,
 } from "./placement";
-import { getClusterById } from "./roster";
+import { getClusterById, requireClusterAdmin } from "./roster";
 import { messageOf } from "../../utils";
 
 // https://deplo.build/docs/operations/clusters/manage-servers#empty-a-server
@@ -51,9 +49,7 @@ async function memberOf(clusterId: string, serverId: string) {
 }
 
 async function admin(clusterId: string, serverId: string) {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const server = await getServerById(serverId);
