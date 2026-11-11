@@ -18,6 +18,7 @@ import { applyLeaderEvent } from "./clusters/watch";
 import { saveNotificationChannel } from "./notifications";
 import { AT, failoverLab } from "./cluster-failover-test-helpers";
 import { USER_1 } from "./identity-test-helpers";
+import { SERVER_1 } from "./app-graph-test-helpers";
 
 const lab = failoverLab();
 const { asAdmin, eu, web, watchUntil, event } = lab;
@@ -332,8 +333,9 @@ test("what could not be saved stays on the server, and the entry and alert say w
 
   const body =
     "Its copies of shop and web were stopped: they run on other servers now. " +
-    "What it still held of shop could not be saved as a backup, so it stays on server-2: its backups are kept on server-3, which server-2 cannot reach on its own. " +
-    "What it still held of web could not be saved as a backup, so it stays on server-2: the backup failed (no space left on device).";
+    "What it still held of shop could not be saved as a backup, so it stays on server-2: its backups are kept on server-3, and server-2 could not send it there. " +
+    "What it still held of web could not be saved as a backup, so it stays on server-2: the backup failed (no space left on device). " +
+    "server-2 tries again on its own, and Activity says when it is saved.";
   assert.equal(
     (await entries(TEAM_A))[0].message,
     `server-2 is back in cluster eu. ${body}`,
@@ -390,4 +392,160 @@ test("a saved file is recorded only for the team that owns the workload, in its 
     /What it still held of shop was saved as a backup, labelled "Left on server-2"\.$/,
   );
   assert.doesNotMatch((await entries(TEAM_B))[0].message, /could not/);
+});
+
+test("data that stays for a reason no retry fixes says so and promises nothing", async () => {
+  const cluster = await eu();
+  await shop(cluster.id);
+  await web(cluster.id);
+  // The team keeps its backups on a server that is not in the cluster.
+  await seedDestination(lab.db, {
+    id: "dst_out",
+    kind: "server",
+    serverId: SERVER_1,
+  });
+  lab.seq = 0;
+
+  await applyLeaderEvent(
+    cluster.id,
+    event(cluster.id, "member_returned", {
+      member: "srv_2",
+      stopped: [
+        { kind: "database", workloadId: "db_shop" },
+        { kind: "app", workloadId: "prj_web" },
+      ],
+      kept: [
+        {
+          kind: "database",
+          workloadId: "db_shop",
+          ref: "dst_out",
+          reason: "store_elsewhere",
+        },
+        { kind: "app", workloadId: "prj_web", reason: "no_destination" },
+      ],
+    }),
+  );
+
+  assert.equal(
+    (await entries(TEAM_A))[0].message,
+    "server-2 is back in cluster eu. Its copies of shop and web were stopped: they run on other servers now. " +
+      `What it still held of shop could not be saved as a backup, so it stays on server-2: its backups are kept on ${SERVER_1}, which is not in cluster eu. ` +
+      "What it still held of web could not be saved as a backup, so it stays on server-2: the cluster had no backup destination for it.",
+  );
+});
+
+const saves = async (teamId: string) =>
+  (await lab.db.select().from(activities))
+    .filter(
+      (a) =>
+        a.teamId === teamId && / saved what it still held /.test(a.message),
+    )
+    .map((a) => ({ message: a.message, actor: a.actor }));
+
+test("data saved after the return becomes a left-behind backup and one Activity line, with no second alert", async () => {
+  const cluster = await eu();
+  await shop(cluster.id);
+  await seedDestination(lab.db, { id: "dst_s3", name: "bucket" });
+  await asAdmin(() => saveNotificationChannel(null, hook("https://ops/hook")));
+  lab.capture = captureFetch();
+  lab.seq = 0;
+
+  await applyLeaderEvent(
+    cluster.id,
+    event(cluster.id, "member_returned", {
+      member: "srv_2",
+      stopped: [{ kind: "database", workloadId: "db_shop" }],
+      kept: [
+        {
+          kind: "database",
+          workloadId: "db_shop",
+          ref: "dst_s3",
+          reason: "backup_failed",
+          error: "the bucket did not answer",
+        },
+      ],
+    }),
+  );
+  await __settleAlertsForTest();
+  // Nothing is listed while the file does not exist.
+  assert.deepEqual(await lab.db.select().from(backupRuns), []);
+  assert.equal(lab.capture.calls.length, 1);
+
+  const later = event(cluster.id, "left_saved", {
+    member: "srv_2",
+    saved: [{ ...SAVED, at: "2026-03-03T18:20:00.000Z" }],
+  });
+  assert.equal(await applyLeaderEvent(cluster.id, later), "applied");
+  await __settleAlertsForTest();
+
+  assert.deepEqual(await saves(TEAM_A), [
+    {
+      message:
+        'server-2 saved what it still held of shop as a backup, labelled "Left on server-2".',
+      actor: "Deplo",
+    },
+  ]);
+  assert.equal(lab.capture.calls.length, 1, "no second alert");
+  const runs = await lab.db.select().from(backupRuns);
+  assert.equal(runs.length, 1);
+  const [run] = runs;
+  assert.equal(run.databaseId, "db_shop");
+  assert.equal(run.destinationId, "dst_s3");
+  assert.equal(run.objectKey, SAVED.objectKey);
+  assert.equal(run.leftOnServerId, "srv_2");
+  // Labelled with the failover, not with the hour it was finally saved; and no schedule owns it.
+  assert.equal(run.leftAt, SAVED.failedOverAt);
+  assert.equal(run.startedAt, "2026-03-03T18:20:00.000Z");
+  assert.equal(run.backupId, null);
+
+  // Replayed after a reconnect: said once, listed once.
+  assert.equal(await applyLeaderEvent(cluster.id, later), "skipped");
+  assert.equal((await saves(TEAM_A)).length, 1);
+  assert.equal((await lab.db.select().from(backupRuns)).length, 1);
+});
+
+test("a late save is listed only for the team that owns the workload, in its own destination, and never for another cluster's", async () => {
+  const cluster = await eu();
+  await shop(cluster.id, TEAM_B, "db_theirs");
+  await shop(cluster.id);
+  // A database of the same team that is in no cluster.
+  await seedDatabase(lab.db, {
+    id: "db_solo",
+    name: "solo",
+    serverId: "srv_3",
+  });
+  await seedDestination(lab.db, { id: "dst_s3", name: "bucket" });
+  await seedDestination(lab.db, { id: "dst_b", teamId: TEAM_B });
+  lab.seq = 0;
+
+  await applyLeaderEvent(
+    cluster.id,
+    event(cluster.id, "left_saved", {
+      member: "srv_2",
+      saved: [
+        // Team A's database pointed at team B's destination, and at team B's folder.
+        { ...SAVED, ref: "dst_b" },
+        {
+          ...SAVED,
+          objectKey: `deplo/${TEAM_B}/database/db_theirs/left-x.tar.gz`,
+        },
+        // A workload this cluster does not hold.
+        {
+          ...SAVED,
+          workloadId: "db_solo",
+          objectKey: `deplo/${TEAM_A}/database/db_solo/left-20260303T143200Z-srv_2.tar.gz.age`,
+        },
+      ],
+    }),
+  );
+
+  assert.deepEqual(await lab.db.select().from(backupRuns), []);
+  assert.deepEqual(await saves(TEAM_B), []);
+  assert.deepEqual(await saves(TEAM_A), [
+    {
+      message:
+        "server-2 saved what it still held of shop, but Deplo could not match the file to shop's backups, so it is not listed.",
+      actor: "Deplo",
+    },
+  ]);
 });
