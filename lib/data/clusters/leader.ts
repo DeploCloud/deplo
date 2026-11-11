@@ -11,13 +11,13 @@ import { AgentClusterUnsupportedError } from "../../infra/agent-client/errors";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeader } from "../../types/cluster";
 import type { Server } from "../../types/server";
+import { messageOf } from "../../utils";
 import { versionAtLeast } from "../../version";
 import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
 import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
 import { clusterMemberServerIds, getClusterById } from "./roster";
-import { messageOf } from "../../utils";
 
 export const OWN_SERVER_WARNING =
   "If Deplo's own server stops, its Apps cannot move. Run the leader on another server to fix this.";

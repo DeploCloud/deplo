@@ -330,6 +330,7 @@ export async function addClusterMember(
   const reasons = await joinReasons(cluster, server);
   if (reasons.length > 0) throw new ClusterJoinRefusedError(reasons);
 
+  let cameApps: string[] = [];
   const came = await getDb().transaction(async (tx) => {
     const locked = await tx
       .select({ id: clustersTable.id })
@@ -376,11 +377,8 @@ export async function addClusterMember(
         })),
       ],
     );
-    return {
-      apps: apps.length,
-      databases: dbs.length,
-      appIds: apps.map((a) => a.id),
-    };
+    cameApps = apps.map((a) => a.id);
+    return { apps: apps.length, databases: dbs.length };
   });
 
   const members = await readMembers(clusterId, { admin: true, teamId });
@@ -442,12 +440,11 @@ export async function addClusterMember(
     console.warn(`[cluster-relay] ${clusterId}: ${messageOf(e)}`);
   }
   // An App that came along keeps its address wherever it runs from now: its domains switch without waiting for the sweep.
-  if (came.appIds.length > 0)
-    inBackground(serverId, () => joinAppTunnels(came.appIds, user));
+  if (cameApps.length > 0)
+    inBackground(serverId, () => joinAppTunnels(cameApps, user));
   return {
     member,
-    apps: came.apps,
-    databases: came.databases,
+    ...came,
     note: failoverOn(members.length)
       ? null
       : "Failover starts at two members. Add another server to turn it on.",
