@@ -14,6 +14,7 @@ import { users as usersTable } from "../db/schema/control-plane/identity";
 import { workloadPlacements } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import type { AgentConnection } from "../infra/agent-client/connection";
+import { removeClusterMember } from "./clusters/dissolve";
 import { planClusterForwarding } from "./clusters/forwarders";
 import {
   flushStandbySyncs,
@@ -707,6 +708,21 @@ test("a database that leaves its cluster keeps no copy and the switch goes off",
     execs.find((e) => e.on === "srv_4")!.command,
     /DROP ROLE IF EXISTS deplo_standby/,
   );
+});
+
+test("a server that holds only a copy leaves its cluster, and the copy is made again on another", async () => {
+  const cluster = await eu(["srv_2", "srv_3", "srv_4"]);
+  await main(cluster.id);
+  onSrv3();
+  await asAdmin(() => setDatabaseStandby("db_main", true));
+  lab(() => ({ member: "srv_4" }));
+
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_3"));
+  await reconcileStandbys();
+
+  assert.deepEqual(await copyOn(), ["srv_4"]);
+  assert.ok(host.srv_3.stack.includes("destroy:db-main"));
+  assert.equal((await row()).standby, true);
 });
 
 async function runTool(

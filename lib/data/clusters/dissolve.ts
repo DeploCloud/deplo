@@ -352,28 +352,13 @@ export async function removeClusterMember(
     );
   const last = members.length === 1;
   const held = await listMemberWorkloads(serverId);
-  // A replica placed here belongs to an App whose first replica runs on another member.
-  // ponytail: emptying moves only what a server's row names; moving these is #208's, so they block until then.
-  const replicas = await getDb()
-    .select({ id: workloadPlacements.workloadId })
-    .from(workloadPlacements)
-    .where(eq(workloadPlacements.memberServerId, serverId));
-  const heldIds = new Set(held.map((w) => w.id));
-  const elsewhere = new Set(
-    replicas.map((r) => r.id).filter((id) => !heldIds.has(id)),
-  );
   const keep = last && opts.keepWorkloads === true;
-  if ((held.length > 0 || elsewhere.size > 0) && !keep) {
-    const runs =
-      held.length > 0
-        ? `still runs ${workloadCount(held)}`
-        : `still runs part of ${elsewhere.size} App${elsewhere.size === 1 ? "" : "s"}`;
+  if (held.length > 0 && !keep)
     throw new Error(
       last
-        ? `${server.name} is the last server of ${cluster.name} and ${runs}. Choose "Keep its Apps on this server" to remove it.`
-        : `${server.name} ${runs}. Empty it first.`,
+        ? `${server.name} is the last server of ${cluster.name} and still runs ${workloadCount(held)}. Choose "Keep its Apps on this server" to remove it.`
+        : `${server.name} still runs ${workloadCount(held)}. Empty it first.`,
     );
-  }
   // With no member left, the cluster holds nothing: whatever it still names is released with the last one.
   const released = keep ? await clusterWorkloads(clusterId) : [];
   if (keep) await assertHoldersAnswer(cluster, released, "removing it from");

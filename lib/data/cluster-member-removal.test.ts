@@ -257,7 +257,7 @@ test("a member that holds only a spread App's other replicas is refused too", as
   await placed("web", ["srv_2", "srv_3"]);
   await assert.rejects(
     asAdmin(() => removeClusterMember(eu.id, "srv_3")),
-    { message: "srv_3 still runs part of 1 App. Empty it first." },
+    { message: "srv_3 still runs 1 App. Empty it first." },
   );
   assert.deepEqual(await memberIds(eu.id), ["srv_2", "srv_3"]);
 });
