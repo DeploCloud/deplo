@@ -55,6 +55,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "cluster failover waiting room server down capacity",
     defaultOn: true,
   },
+  cluster_member_returned: {
+    label: "Server back in its cluster",
+    description:
+      "A server that stopped answering came back, and its copies of the Apps and databases that had moved to other servers were stopped.",
+    keywords: "cluster failover server back returned copy stopped duplicate",
+    defaultOn: true,
+  },
   security_update_available: {
     label: "Security update available",
     description:
@@ -329,6 +336,7 @@ export const ALERT_CATEGORIES: {
       "app_unresponsive",
       "app_restarts_paused",
       "cluster_failover_waiting",
+      "cluster_member_returned",
       "app_out_of_memory",
       "security_update_available",
     ],
