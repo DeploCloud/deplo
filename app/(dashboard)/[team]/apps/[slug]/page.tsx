@@ -1,5 +1,8 @@
 import { Suspense } from "react";
-import { AppDomainNotices } from "@/components/domains/app-domain-notices";
+import {
+  AppAddressNotice,
+  AppDomainNotices,
+} from "@/components/domains/app-domain-notices";
 import { SecurityUpdatesNotice } from "@/components/security-updates/security-updates-notice";
 import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
@@ -46,6 +49,10 @@ export default async function AppOverview(
           repoName={project.repo.repo || project.repo.url}
         />
       )}
+
+      <Suspense fallback={null}>
+        <AppAddressNotice app={project} />
+      </Suspense>
 
       <Suspense fallback={null}>
         <AppDomainNotices app={project} />

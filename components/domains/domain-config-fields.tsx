@@ -4,6 +4,7 @@ import * as React from "react";
 import { Lock, Route, ShieldCheck, Signpost, Waypoints } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
+import { DocsLink } from "@/components/ui/docs-link";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -314,6 +315,14 @@ export function DomainConfigFields({
           className="[appearance:textfield] font-mono text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
+
+      {tunnel && (
+        <p className="text-xs text-muted-foreground">
+          Cloudflare serves this domain through a tunnel, HTTPS included: it
+          needs no certificate of its own.{" "}
+          <DocsLink topic="domains.automaticDnsTunnel" />
+        </p>
+      )}
 
       {!tunnel && (
         <FieldGroup icon={Lock} title="HTTPS">

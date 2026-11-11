@@ -184,6 +184,7 @@ export const DOCS = {
   "clusters.teams": "operations/clusters#let-teams-use-it",
   "clusters.failover": "operations/clusters#when-a-server-stops",
   "clusters.databases": "operations/clusters#databases",
+  "clusters.addresses": "operations/clusters#addresses",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",
 

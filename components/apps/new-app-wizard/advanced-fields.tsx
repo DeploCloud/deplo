@@ -1,5 +1,7 @@
 "use client";
 
+import { ClusterAddressNote } from "@/components/shared/cluster-address-note";
+import { ADDRESS_CHANGES_NOTE } from "@/lib/clusters/address-note";
 import { Boxes, Server as ServerIcon, Variable } from "lucide-react";
 
 import { BuildConfigFields } from "@/components/apps/build-config-fields";
@@ -117,6 +119,9 @@ export function WizardAdvanced({
             ))}
           </SelectContent>
         </Select>
+        {selectedServer?.kind === "cluster" && (
+          <ClusterAddressNote note={ADDRESS_CHANGES_NOTE} />
+        )}
       </AdvancedGroup>
 
       <AdvancedGroup title="Environment variables">
