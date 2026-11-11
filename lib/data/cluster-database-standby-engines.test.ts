@@ -1,16 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { runWithIdentity } from "../auth/request-context";
 import { TEAM_B } from "./identity-test-helpers";
-import {
-  clusterMembers,
-  workloadPlacements,
-} from "../db/schema/control-plane/clusters";
+import { clusterMembers } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
-import type { AgentConnection } from "../infra/agent-client/connection";
 import type { DatabaseType } from "../types/database";
 import { removeClusterMember } from "./clusters/dissolve";
 import { addClusterMember } from "./clusters/members";
@@ -28,53 +24,30 @@ import {
   deploSaid,
   eu,
   host,
-  leaderHost,
   main,
   open,
 } from "./cluster-database-test-helpers";
+import {
+  copyOn,
+  copyState,
+  execs,
+  row,
+  standbyLab,
+} from "./cluster-database-standby-test-helpers";
 
 // The standby copy of every engine but PostgreSQL (#219); PostgreSQL's own is in cluster-database-standby.test.ts.
 
 databaseLab();
 
-const enc = new TextEncoder();
-
-interface Exec {
-  on: string;
-  container: string;
-  command: string;
-  /** What that server's stacks had been asked to do when the script ran. */
-  after: string[];
-}
-let execs: Exec[] = [];
-let copyState: Record<string, string> = {};
 let asked = 0;
 
 /** The members answer the engine's scripts, and the leader places a copy on `member`. */
 function lab(member = "srv_3") {
-  execs = [];
-  copyState = {};
   asked = 0;
-  for (const [id, h] of Object.entries(host))
-    h.extra = {
-      exec: (async (_app, container, command) => {
-        execs.push({ on: id, container, command, after: [...h.stack] });
-        return {
-          stdout: container.endsWith("_standby")
-            ? (copyState[id] ?? "following")
-            : "",
-          stderr: "",
-          code: 0,
-          rawMode: false,
-        };
-      }) as AgentConnection["exec"],
-    };
-  const calls = leaderHost.leader;
-  leaderHost.leader = (method, payload) => {
-    if (method !== "placement.place") return calls(method, payload);
+  standbyLab(() => {
     asked++;
-    return enc.encode(JSON.stringify({ member }));
-  };
+    return { member };
+  });
 }
 
 const PORTS: Record<DatabaseType, number> = {
@@ -99,27 +72,6 @@ async function engineDb(clusterId: string, type: DatabaseType, version = "99") {
     })
     .where(eq(databasesTable.id, "db_main"));
 }
-
-const row = async () =>
-  (
-    await db
-      .select()
-      .from(databasesTable)
-      .where(eq(databasesTable.id, "db_main"))
-  )[0];
-
-const copyOn = async () =>
-  (
-    await db
-      .select()
-      .from(workloadPlacements)
-      .where(
-        and(
-          eq(workloadPlacements.kind, "standby"),
-          eq(workloadPlacements.workloadId, "db_main"),
-        ),
-      )
-  ).map((r) => r.memberServerId);
 
 /** Everything Deplo itself had a server run or start. */
 const sentToServers = () => [
@@ -220,7 +172,7 @@ test("a copy that waits for its database has the database prepared again, and ke
   await engineDb(cluster.id, "redis");
   lab();
   await asAdmin(() => setDatabaseStandby("db_main", true));
-  execs = [];
+  execs.length = 0;
 
   copyState.srv_3 = "following";
   await reconcileStandbys();
@@ -262,7 +214,7 @@ test("a MariaDB database is restarted once with its binary log before the copy i
   // What a failover starts on the copy's server keeps the log, so the next copy can follow it.
   assert.match((await open()).stack.composeYaml, /--log-bin=deplo-binlog/);
 
-  execs = [];
+  execs.length = 0;
   await asAdmin(() => setDatabaseStandby("db_main", false));
 
   const retired = execs.find((x) => x.on === "srv_2")!;
