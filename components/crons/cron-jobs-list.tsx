@@ -41,6 +41,7 @@ import {
 import { CronJobDialog } from "@/components/crons/cron-job-dialog";
 import { CronRunHistory } from "@/components/crons/cron-run-history";
 import { nextCronRunInZone } from "@/lib/crons/cron-tz";
+import { CRON_RUN_STATUS } from "@/lib/crons/run-status";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { CronJobDTO } from "@/lib/data/crons/dto";
@@ -76,18 +77,7 @@ function LastStatus({ job }: { job: CronJobDTO }) {
   if (!job.lastStatus) {
     return <span className="text-xs text-muted-foreground">Never run</span>;
   }
-  const map: Record<
-    string,
-    { variant: "success" | "destructive" | "warning" | "muted"; label: string }
-  > = {
-    succeeded: { variant: "success", label: "Succeeded" },
-    failed: { variant: "destructive", label: "Failed" },
-    timedout: { variant: "destructive", label: "Timed out" },
-    skipped: { variant: "muted", label: "Skipped" },
-    lost: { variant: "warning", label: "Unknown" },
-    running: { variant: "warning", label: "Running" },
-  };
-  const m = map[job.lastStatus] ?? {
+  const m = CRON_RUN_STATUS[job.lastStatus] ?? {
     variant: "muted" as const,
     label: job.lastStatus,
   };
@@ -277,6 +267,8 @@ function CronJobRow({
               key={historyKey}
               jobId={job.id}
               canManage={canManage}
+              onRunNow={runNow}
+              runningNow={pending}
             />
           </div>
         )}
