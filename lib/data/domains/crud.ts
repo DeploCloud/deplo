@@ -53,6 +53,7 @@ import { syncProductionUrl, successorPrimary } from "./primary-domain";
 import { applyWwwRedirect, repointRedirects } from "./www-pairing";
 import {
   managedDnsDomainIds,
+  providerForHostname,
   provisionDomainDns,
   deleteReleasedDns,
   takeDomainDns,
@@ -61,6 +62,10 @@ import {
   undoProvision,
   type ProvisionedDns,
 } from "../dns-providers/provision";
+import {
+  registerAppTunnelDomain,
+  settleAppTunnel,
+} from "../clusters/app-tunnel";
 
 export async function listDomains(
   appId?: string,
@@ -174,7 +179,11 @@ async function addDomainUnlocked(
     );
   await assertHostnameClaimable(clean, membership.teamId);
 
-  const tunnel = config.tunnel === true;
+  // A cluster App's domain in a connected Cloudflare zone is always served by the App's own tunnel.
+  const tunnel =
+    config.tunnel === true ||
+    (project.clusterId != null &&
+      (await providerForHostname(clean, membership.teamId, user.id)) != null);
   await assertTeamLetsencryptQuota(
     membership.teamId,
     tunnel ? "cloudflare" : (config.certProvider ?? "none"),
@@ -235,6 +244,8 @@ async function addDomainUnlocked(
     throw e;
   }
   if (dns) await rememberDomainDns(domain.id, dns);
+  if (dns?.appId)
+    await registerAppTunnelDomain(appId, domain.id, dns.providerId);
   if (config.www && config.www !== "none" && !tunnel)
     await applyWwwRedirect(domain, config.www, membership.teamId);
   await syncProductionUrl(appId);
@@ -427,6 +438,8 @@ async function updateDomainUnlocked(
   const dnsWarning = renamed
     ? await swapDomainDns(id, current.name, dns)
     : null;
+  if (renamed && dns?.appId)
+    await registerAppTunnelDomain(dom.appId, id, dns.providerId);
   if (renamed)
     await repointRedirects(
       dom.appId,
@@ -487,6 +500,7 @@ export async function removeDomain(id: string): Promise<string> {
   });
   await syncProductionUrl(dom.appId);
   const dnsWarning = await deleteReleasedDns(heldDns);
+  await settleAppTunnel(dom.appId).catch(() => {});
   await recordActivity(
     "domain",
     `Removed domain ${dom.name}` + (dnsWarning ? ` (${dnsWarning})` : ""),

@@ -11,6 +11,7 @@ import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 
 import { AddDomain } from "@/components/domains/add-domain";
+import { AppAddressNotice } from "@/components/domains/app-domain-notices";
 import { DomainNotices } from "@/components/domains/domain-notices";
 import { DomainGraphic } from "@/components/domains/domain-graphic";
 import { DomainTable, DomainsIntro } from "@/components/domains/domain-table";
@@ -73,6 +74,8 @@ export default async function AppDomainsPage(
             />
           }
         />
+
+        <AppAddressNotice app={project} />
 
         <DomainNotices
           appId={project.id}

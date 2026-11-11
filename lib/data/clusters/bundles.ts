@@ -17,6 +17,7 @@ import { nowIso } from "../../ids";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { loadAppConnectorToken } from "./app-tunnel";
 import {
   type BundleMeta,
   askLeaderKey,
@@ -292,12 +293,13 @@ export async function pushFailoverBundle(input: {
     );
     return;
   }
+  const tunnelToken = await loadAppConnectorToken(app.id);
   const bundle: FailoverBundle = {
     v: 1,
     kind: KIND,
     workload: app.id,
     deploymentId: input.deploymentId,
-    stack: input.stack,
+    stack: tunnelToken ? { ...input.stack, tunnelToken } : input.stack,
   };
   const failed = await deliver(
     cluster,

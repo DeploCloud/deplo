@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Settings2 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { getServerById } from "@/lib/data/servers/roster";
+import { clusterAddressNote } from "@/lib/data/clusters/app-tunnel";
 import { listPlacementChoices } from "@/lib/data/clusters/choices";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
 import { getCluster } from "@/lib/data/clusters/roster";
@@ -36,6 +37,10 @@ export default async function AppGeneralSettingsPage(
     project.clusterId ? getServerById(project.serverId) : null,
     appWaitingNote(project),
   ]);
+  // Only where a cluster can be picked: what placing it there does to its address.
+  const addressNote = servers.some((c) => c.kind === "cluster")
+    ? await clusterAddressNote(project)
+    : null;
 
   return (
     <section className="space-y-4">
@@ -69,6 +74,7 @@ export default async function AppGeneralSettingsPage(
               : null
           }
           neighbours={neighbours}
+          addressNote={addressNote}
         />
       </CapabilityFieldset>
     </section>

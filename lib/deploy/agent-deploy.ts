@@ -23,6 +23,7 @@ import {
   DEPLOY_PULL_BASE_CAPABILITY,
   FILES_BIND_CHECK_CAPABILITY,
   RESTART_CAPABILITY,
+  START_AFTER_READY_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
@@ -30,7 +31,12 @@ import { loadRegistryAuthsForApp } from "../data/registries";
 import { restartRuleForApp } from "./restart-rule-app";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
+import {
+  apps as appsTable,
+  appVolumes as appVolumesTable,
+} from "../db/schema/control-plane/apps";
+import { loadAppConnectorToken } from "../data/clusters/app-tunnel";
+import { appConnectorService, withAppConnector } from "./app-connector";
 import { tarDir, tarDirChunks } from "./context-tar";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
 import { autoComposeSkip } from "./build/source-compose";
@@ -344,6 +350,23 @@ export async function runAgentDeploy(opts: {
       );
     } else opts.sink.log("info", choice.reason);
   }
+  const connectorToken = opts.buildOnly
+    ? null
+    : await appConnectorToken(opts.appId, opts.slug);
+  if (connectorToken) {
+    // A HARD gate: an older agent starts it at once, and the tunnel would send visitors to an App that is not up.
+    if (!hello.capabilities.includes(START_AFTER_READY_CAPABILITY))
+      throw new AgentUnavailableError(
+        "this server's agent is too old to start the App's tunnel once it is ready - " +
+          "Deplo updates the agent on its own",
+      );
+    req.composeYaml = withAppConnector(
+      req.composeYaml,
+      opts.slug,
+      connectorToken,
+    );
+    req.startAfterReady = [appConnectorService(opts.slug)];
+  }
   if (opts.reuseFor)
     req.reuseImage = await offerBuiltImage(
       opts.reuseFor,
@@ -472,6 +495,19 @@ export async function runAgentDeploy(opts: {
     "Could not reconnect to the agent to follow the deploy.",
   );
   return { ready: false, commitSha: "" };
+}
+
+// Only the App's production stack carries its tunnel's connector; a preview is never served through it.
+async function appConnectorToken(
+  appId: string,
+  slug: string,
+): Promise<string | null> {
+  const [app] = await getDb()
+    .select({ slug: appsTable.slug })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  return app?.slug === slug ? loadAppConnectorToken(appId) : null;
 }
 
 function offerFailoverBundle(

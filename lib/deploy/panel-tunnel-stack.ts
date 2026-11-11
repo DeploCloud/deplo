@@ -9,6 +9,8 @@ import { linkTarget, TRAEFIK_CONTAINER } from "./traefik-stack";
 export const TUNNEL_SERVICE = "deplo-tunnel";
 export const CLOUDFLARED_IMAGE = "cloudflare/cloudflared:2026.9.3";
 const TOKEN_ENV = "TUNNEL_TOKEN";
+// KEEP IN SYNC with the agent's lateLabel (internal/server/start_after_ready.go).
+export const START_AFTER_READY_LABEL = "deplo.start-after-ready";
 // The platform's network: the panel and its proxy, and no tenant (ADR-0028).
 const PLATFORM_NETWORK = "deplo";
 
@@ -76,7 +78,7 @@ export function withTunnelConnector(
   currentYaml: string,
   service: string,
   token: string | null,
-  opts: { relay?: boolean } = {},
+  opts: { relay?: boolean; startAfterReady?: boolean } = {},
 ): string {
   const doc = parseStack(currentYaml);
   const services = doc.get("services", true);
@@ -103,6 +105,10 @@ export function withTunnelConnector(
       networks: [PLATFORM_NETWORK],
       // The relay is a process on the host: the connector reaches it by Docker's host gateway.
       ...(opts.relay ? { extra_hosts: [HOST_GATEWAY_ENTRY] } : {}),
+      // Kept in the stack file, so the agent holds it back on every later start too.
+      ...(opts.startAfterReady
+        ? { labels: { [START_AFTER_READY_LABEL]: "true" } }
+        : {}),
     }),
   );
   const networks = doc.get("networks", true);

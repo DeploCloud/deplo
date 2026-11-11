@@ -24,6 +24,7 @@ import type { ActionResult } from "@/lib/result";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import type { FailoverPreview } from "@/lib/data/databases/failover";
 import { FailoverNote } from "@/components/storage/database-failover";
+import { ClusterAddressNote } from "@/components/shared/cluster-address-note";
 
 type MoveServer = {
   id: string;
@@ -47,6 +48,7 @@ export function AppServerCard({
   servers,
   neighbours,
   cluster,
+  addressNote,
 }: {
   appId: string;
   name: string;
@@ -54,10 +56,15 @@ export function AppServerCard({
   servers: MoveServer[];
   neighbours: string[];
   cluster?: OnCluster | null;
+  /** Shown once a cluster is picked: no domain of the App is on Cloudflare. */
+  addressNote?: string | null;
 }) {
   return (
     <ServerMoveCard
       cluster={cluster ?? undefined}
+      onClusterNote={
+        addressNote ? <ClusterAddressNote note={addressNote} /> : undefined
+      }
       name={name}
       serverId={serverId}
       servers={servers}

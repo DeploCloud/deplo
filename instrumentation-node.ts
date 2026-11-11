@@ -244,6 +244,10 @@ export async function register(): Promise<void> {
         const n = await restoreTunnelConnectors();
         if (n > 0)
           console.log(`[deplo] restored ${n} Cloudflare Tunnel connector(s)`);
+        // A cluster App's own tunnel: taken in, and switched once its connector is connected.
+        const { reconcileAppTunnels } =
+          await import("./lib/data/clusters/app-tunnel");
+        await reconcileAppTunnels();
       };
       const tick = () =>
         void run().catch((e) =>

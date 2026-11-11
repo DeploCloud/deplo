@@ -22,6 +22,7 @@ import {
   CLUSTER_FORWARDERS_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
+  START_AFTER_READY_CAPABILITY,
 } from "./hello-capabilities";
 
 export interface FakeClusterHost {
@@ -321,6 +322,7 @@ export function fakeClusterHosts(): {
           CLUSTER_IMAGES_CAPABILITY,
           CLUSTER_FAILOVER_CAPABILITY,
           CLUSTER_FORWARDERS_CAPABILITY,
+          START_AFTER_READY_CAPABILITY,
           "hostops",
         ],
         unimplemented: false,
