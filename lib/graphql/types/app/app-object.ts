@@ -101,7 +101,7 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     placementNote: t.string({
       nullable: true,
       description:
-        'Set to "Waiting for room in eu" while the leader of its cluster has nowhere to run this app; null otherwise.',
+        'Set to "Waiting for room in eu" while the leader of its cluster has nowhere to run this app, or "2 of 3 replicas running · waiting for room" while only some replicas found a server; null otherwise.',
       resolve: (p) => appWaitingNote(p),
     }),
     clusterName: t.string({
