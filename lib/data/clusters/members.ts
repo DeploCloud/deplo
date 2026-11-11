@@ -221,6 +221,7 @@ interface MemberRow {
   emptyingSince: string | null;
   emptyingError: string;
   emptyingWorkload: string;
+  emptyingWorkloadKind: string;
   emptyingTotal: number;
   leaseState: string;
 }
@@ -240,7 +241,9 @@ function emptyingOf(
   viewer: Viewer,
 ): ClusterEmptying | null {
   if (!r.emptyingSince) return null;
-  const moving = held.find((w) => `${w.kind}:${w.id}` === r.emptyingWorkload);
+  const moving = held.find(
+    (w) => w.id === r.emptyingWorkload && w.kind === r.emptyingWorkloadKind,
+  );
   const mine = viewer.admin || moving?.teamId === viewer.teamId;
   return {
     since: r.emptyingSince,
@@ -285,6 +288,7 @@ async function readMembers(
       emptyingSince: membersTable.emptyingSince,
       emptyingError: membersTable.emptyingError,
       emptyingWorkload: membersTable.emptyingWorkload,
+      emptyingWorkloadKind: membersTable.emptyingWorkloadKind,
       emptyingTotal: membersTable.emptyingTotal,
       leaseState: membersTable.leaseState,
     })

@@ -277,9 +277,10 @@ async function redeploy(appId: string): Promise<void> {
 }
 
 async function settle(m: Member): Promise<Settled> {
-  const [kind, id] = m.emptyingWorkload.split(":") as [string, string];
   // A database moves inside one step, so one still named here was cut off by a restart: it is moved again.
-  return kind === "app" ? settleApp(m, id) : "moved";
+  return m.emptyingWorkloadKind === "app"
+    ? settleApp(m, m.emptyingWorkload)
+    : "moved";
 }
 
 async function move(
@@ -369,10 +370,13 @@ async function step(serverId: string): Promise<boolean> {
   if (!m?.emptyingSince || m.emptyingError) return false;
   const cluster = await getClusterById(m.clusterId);
   if (!cluster) return false;
-  const setMoving = (workload: string) =>
+  const setMoving = (w?: MemberWorkload) =>
     getDb()
       .update(membersTable)
-      .set({ emptyingWorkload: workload })
+      .set({
+        emptyingWorkload: w?.id ?? "",
+        emptyingWorkloadKind: w?.kind ?? "",
+      })
       .where(
         and(
           eq(membersTable.serverId, serverId),
@@ -397,14 +401,14 @@ async function step(serverId: string): Promise<boolean> {
         m.emptyingTeamId,
       );
     }
-    await setMoving("");
+    await setMoving();
     return left.length > 0;
   }
   const held = await listMemberWorkloads(serverId);
   // What is half-way goes first, so a member is never left holding only somebody's data.
   const next = held.find((w) => w.leaving) ?? held[0];
   if (!next) return false;
-  await setMoving(`${next.kind}:${next.id}`);
+  await setMoving(next);
   try {
     await move(cluster, m, next);
   } catch (e) {

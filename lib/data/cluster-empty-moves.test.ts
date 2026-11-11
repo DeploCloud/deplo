@@ -355,7 +355,7 @@ test("after a restart in the middle, the next pass picks up what was cut off", a
   // Deplo went away while the database was being copied: the row still names it, and it never left.
   await db
     .update(clusterMembers)
-    .set({ emptyingWorkload: "database:db_main" })
+    .set({ emptyingWorkloadKind: "database", emptyingWorkload: "db_main" })
     .where(eq(clusterMembers.serverId, "srv_2"));
   await runEmptyingPass();
   assert.equal((await dbRow("db_main")).serverId, "srv_3");
