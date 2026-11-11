@@ -5,7 +5,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openDeployStream, type AgentBuildPlan } from "./agent-deploy";
+import { openDeployStream } from "./agent-deploy";
+import type { AgentBuildPlan } from "./agent-deploy-request";
 import { stackRpc } from "../infra/agent-client/stack-rpc";
 import type { AgentChannel } from "../infra/agent-client/mtls-channel";
 import type {

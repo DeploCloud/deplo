@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDeployRequest } from "./agent-deploy";
+import { buildDeployRequest } from "./agent-deploy-request";
 import { SourceKind, BuildKind } from "../agent/gen/agent";
 import type { BuildConfig } from "../types/build";
 

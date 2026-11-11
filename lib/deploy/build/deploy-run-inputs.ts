@@ -8,7 +8,7 @@ import type { SourceCompose } from "../../agent/gen/agent";
 import { getDb } from "../../db/client";
 import { appPreviews as appPreviewsTable } from "../../db/schema/control-plane/deployments";
 import type { CertProvider } from "../../types/domain";
-import { findComposeFile } from "../agent-deploy";
+import { findComposeFile } from "../agent-deploy-request";
 
 export function forkFullName(cloneUrl: string): string {
   try {
