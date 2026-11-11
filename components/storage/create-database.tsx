@@ -44,6 +44,7 @@ import {
   lossSentence,
   recoverySentence,
 } from "@/lib/databases/failover-copy";
+import { environmentReachNote } from "@/lib/databases/relay-notice";
 import { FailoverNote } from "./database-failover";
 import { DB_NAMES, DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
 import { DatabaseLogo } from "./database-logo";
@@ -386,7 +387,7 @@ export function CreateDatabase({
             {environments.length > 0 && (
               <div className="space-y-2">
                 <FieldLabel
-                  info="Apps reach this database by name only from the same environment and the same server: a network does not span machines."
+                  info={environmentReachNote(onCluster)}
                   docs="network.isolation"
                 >
                   Environment

@@ -12,6 +12,14 @@ export interface PlacementChoice {
   isDeploHost: boolean;
 }
 
+/** A choice as a picker's option takes it: a cluster is marked, a server is not. */
+export const placementOption = (c: PlacementChoice) => ({
+  id: c.id,
+  name: c.name,
+  isDeploHost: c.isDeploHost,
+  ...(c.kind === "cluster" ? { kind: "cluster" as const } : {}),
+});
+
 /** Where an App may be placed: the team's servers (never a cluster member) then its clusters. */
 export async function listPlacementChoices(): Promise<PlacementChoice[]> {
   const teamId = await requireActiveTeamId();

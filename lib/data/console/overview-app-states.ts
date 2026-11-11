@@ -127,6 +127,19 @@ function mergeHealth(
   };
 }
 
+// Telemetry carries Docker's own health only. The server agent's verdict is read for an App with its own
+// http check, and for one the agent restarted for not answering, until it says the App answers again.
+function asksTheAgent(row: {
+  healthCheckEnabled: boolean;
+  healthCheckType: string | null;
+  recoveryAlertOwed: boolean;
+}): boolean {
+  return (
+    (row.healthCheckEnabled && row.healthCheckType === "http") ||
+    row.recoveryAlertOwed
+  );
+}
+
 function intervalMs(row: {
   healthCheckEnabled: boolean;
   healthCheckType: string | null;
@@ -205,6 +218,7 @@ export async function loadOverviewAppStates(
       environmentId: appsTable.environmentId,
       status: appsTable.status,
       restartsPausedAt: appsTable.restartsPausedAt,
+      recoveryAlertOwed: appsTable.recoveryAlertOwed,
       latestDeploymentId: appsTable.latestDeploymentId,
       healthCheckEnabled: appsTable.healthCheckEnabled,
       healthCheckType: appsTable.healthCheckType,
@@ -238,9 +252,7 @@ export async function loadOverviewAppStates(
         const legacy = metricsStreamUnsupported(row.serverId);
         if (
           row.status !== "active" ||
-          (!legacy &&
-            telemetry.get(row.id) != null &&
-            (!row.healthCheckEnabled || row.healthCheckType !== "http"))
+          (!legacy && telemetry.get(row.id) != null && !asksTheAgent(row))
         )
           return false;
         const cached = fallback.cache.get(row.id);
@@ -272,11 +284,7 @@ export async function loadOverviewAppStates(
         runtime: null,
       };
     }
-    if (
-      live &&
-      !legacy &&
-      (!row.healthCheckEnabled || row.healthCheckType !== "http")
-    )
+    if (live && !legacy && !asksTheAgent(row))
       return {
         appId: row.id,
         status: row.status as AppStatus,

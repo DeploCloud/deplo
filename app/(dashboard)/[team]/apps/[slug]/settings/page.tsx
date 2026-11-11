@@ -4,7 +4,10 @@ import { getAppBySlug } from "@/lib/data/apps/listing";
 import { getServerById } from "@/lib/data/servers/roster";
 import { clusterAddressNote } from "@/lib/data/clusters/app-tunnel";
 import { appFailoverReach } from "@/lib/data/clusters/architectures";
-import { listPlacementChoices } from "@/lib/data/clusters/choices";
+import {
+  listPlacementChoices,
+  placementOption,
+} from "@/lib/data/clusters/choices";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
 import { getCluster } from "@/lib/data/clusters/roster";
 import { neighboursOnNetwork } from "@/lib/data/name-clash";
@@ -59,12 +62,7 @@ export default async function AppGeneralSettingsPage(
           appId={project.id}
           name={project.name}
           serverId={project.serverId}
-          servers={servers.map((c) => ({
-            id: c.id,
-            name: c.name,
-            isDeploHost: c.isDeploHost,
-            ...(c.kind === "cluster" ? { kind: "cluster" as const } : {}),
-          }))}
+          servers={servers.map(placementOption)}
           cluster={
             cluster
               ? {

@@ -262,9 +262,9 @@ export const APPS_SETTINGS: McpToolDef[] = [
   }),
   tool({
     name: "set_app_replicas",
-    title: "Run an app as several copies",
+    title: "Run an app as several replicas",
     description:
-      "How many copies (1 to 10) of a single-image app run on its server. " +
+      "How many replicas (1 to 10) of a single-image app run on its server. " +
       "Refused with a Volume, a Bind or a published port. A deploy briefly uses twice the memory.",
     group: "Apps",
     requires: "configure_apps",
@@ -281,7 +281,7 @@ export const APPS_SETTINGS: McpToolDef[] = [
     name: "set_app_sticky_sessions",
     title: "Keep each visitor on the same replica",
     description:
-      "For an app with more than one replica: a cookie keeps each visitor on the same copy, " +
+      "For an app with more than one replica: a cookie keeps each visitor on the same replica, " +
       "for apps that hold a session in memory. Applies from the next deploy.",
     group: "Apps",
     requires: "configure_apps",

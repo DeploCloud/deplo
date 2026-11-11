@@ -8,7 +8,11 @@ import { probeEverySecondWhileStarting } from "../health-check";
 import { INFRA_NETWORK } from "../network";
 import { BRIEFLY, STAND_IN_LABEL, standInName } from "../overlap";
 import { portProbeHealthCheck } from "../port-probe";
-import { composeServiceReplicas, serviceKeepsOneCopy } from "../replicas";
+import {
+  composeServiceReplicas,
+  oneCopyServiceReason,
+  serviceKeepsOneCopy,
+} from "../replicas";
 import type { App, ComposeDoc } from "./types";
 
 // What ties a service to one container, one name, or another service's own namespace.
@@ -59,10 +63,7 @@ export function stackOverlapBlocker(
     );
   // Read as written: the render turns Files into paths on the server, which would read as a host path.
   for (const [name, svc] of Object.entries(servicesOf(authored) ?? {}))
-    if (serviceKeepsOneCopy(svc))
-      return why(
-        `Service \`${name}\` keeps data on the server's disk or opens a port on it, and two copies of the stack can't share that`,
-      );
+    if (serviceKeepsOneCopy(svc)) return why(oneCopyServiceReason(name));
   const services = rendered.services ?? {};
   const taken = new Set(takenNames.map((n) => n.toLowerCase()));
   for (const [name, svc] of Object.entries(services)) {

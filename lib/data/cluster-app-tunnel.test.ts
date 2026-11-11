@@ -373,7 +373,7 @@ test("an agent that cannot hold the connector back is refused before anything st
 
   await assert.rejects(
     () => deployOn(app),
-    /agent is too old to start the App's tunnel once it is ready/,
+    /the server agent on this server is too old to start the App's tunnel once it is ready - Deplo updates it on its own/,
   );
   assert.equal(hosts.srv_2.deploys.length, 0);
 });

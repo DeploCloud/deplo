@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { AppPreviewDTO } from "@/lib/data/previews";
-import { PreviewStatus } from "./previews-table";
+import { PreviewStatus, RedeployPreviewLabel } from "./previews-table";
 
 const preview = (
   status: AppPreviewDTO["status"],
@@ -55,5 +55,15 @@ test("a preview taken down when its server was emptied says so", () => {
   assert.equal(
     text("offline", "server_emptied"),
     "Offline: its server was emptied",
+  );
+});
+
+test("the menu item that brings a preview back reads Redeploy preview", () => {
+  assert.equal(
+    renderToStaticMarkup(createElement(RedeployPreviewLabel)).replace(
+      /<[^>]+>/g,
+      "",
+    ),
+    "Redeploy preview",
   );
 });

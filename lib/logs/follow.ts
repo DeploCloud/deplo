@@ -41,13 +41,13 @@ export function followGroup(
   return mergeReplicaLogs(sources, { timestamps: opts?.timestamps ?? false });
 }
 
-type Copy = { name: string; replica?: string | null };
+type LogContainer = { name: string; replica?: string | null };
 
 // What `resolveLogsTarget` found: one server's copies, or each member's when a cluster App is read on several.
 export interface LogsPlace {
   server: { id: string };
-  group: Copy[];
-  members?: { server: { id: string; name: string }; group: Copy[] }[];
+  group: LogContainer[];
+  members?: { server: { id: string; name: string }; group: LogContainer[] }[];
   unavailable?: string[];
 }
 

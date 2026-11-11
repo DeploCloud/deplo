@@ -178,7 +178,8 @@ function ServerMoveCard({
   const currentName =
     cluster?.serverName ?? current?.name ?? "its current server";
 
-  if (targets.length === 0) return null;
+  // Where a cluster App runs is always said; only the Move button needs somewhere to go.
+  if (targets.length === 0 && !cluster) return null;
 
   return (
     <Card>
@@ -223,72 +224,74 @@ function ServerMoveCard({
             </p>
           )}
         </div>
-        <ConfirmAction
-          trigger={
-            <Button variant="outline" size="sm" disabled={disabled}>
-              <ArrowRightLeft className="size-4" />
-              Move
-            </Button>
-          }
-          onOpenChange={(open) =>
-            setTarget(open && targets.length === 1 ? targets[0].id : "")
-          }
-          title={`Move ${name} to another server?`}
-          description={
-            <>
-              {verb} it on the server you pick and{" "}
-              <strong>copies its data across</strong>.
-            </>
-          }
-          consequence={`${name} is offline during the copy. If the copy fails, it stays on ${currentName}.`}
-          variant="default"
-          confirmLabel="Move"
-          confirmDisabled={!target}
-          successMessage={successMessage}
-          extra={
-            <div className="space-y-2">
-              <FieldLabel htmlFor={selectId}>Move to</FieldLabel>
-              <Select value={target} onValueChange={setTarget}>
-                <SelectTrigger id={selectId} className="w-full">
-                  <SelectValue placeholder="Pick a server" />
-                </SelectTrigger>
-                <SelectContent>
-                  {targets.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        {s.kind === "cluster" ? (
-                          <Boxes className="size-4 text-muted-foreground" />
-                        ) : (
-                          <ServerIcon className="size-4 text-muted-foreground" />
-                        )}
-                        {s.name}
-                        {s.kind === "cluster" ? (
-                          <Badge variant="outline">Cluster</Badge>
-                        ) : (
-                          <ServerRoleHint isDeploHost={s.isDeploHost} />
-                        )}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {targets.find((s) => s.id === target)?.kind === "cluster" &&
-                onClusterNote}
-              {neighbours.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Stops reaching {joinNames(neighbours)} by name:{" "}
-                  {neighbours.length === 1 ? "it stays" : "they stay"} on{" "}
-                  {currentName}.
-                </p>
-              )}
-            </div>
-          }
-          onConfirm={async () => {
-            const res = await move(target);
-            if (res.ok) router.refresh();
-            return res;
-          }}
-        />
+        {targets.length > 0 && (
+          <ConfirmAction
+            trigger={
+              <Button variant="outline" size="sm" disabled={disabled}>
+                <ArrowRightLeft className="size-4" />
+                Move
+              </Button>
+            }
+            onOpenChange={(open) =>
+              setTarget(open && targets.length === 1 ? targets[0].id : "")
+            }
+            title={`Move ${name} to another server?`}
+            description={
+              <>
+                {verb} it on the server you pick and{" "}
+                <strong>copies its data across</strong>.
+              </>
+            }
+            consequence={`${name} is offline during the copy. If the copy fails, it stays on ${currentName}.`}
+            variant="default"
+            confirmLabel="Move"
+            confirmDisabled={!target}
+            successMessage={successMessage}
+            extra={
+              <div className="space-y-2">
+                <FieldLabel htmlFor={selectId}>Move to</FieldLabel>
+                <Select value={target} onValueChange={setTarget}>
+                  <SelectTrigger id={selectId} className="w-full">
+                    <SelectValue placeholder="Pick a server" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {targets.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="flex items-center gap-2">
+                          {s.kind === "cluster" ? (
+                            <Boxes className="size-4 text-muted-foreground" />
+                          ) : (
+                            <ServerIcon className="size-4 text-muted-foreground" />
+                          )}
+                          {s.name}
+                          {s.kind === "cluster" ? (
+                            <Badge variant="outline">Cluster</Badge>
+                          ) : (
+                            <ServerRoleHint isDeploHost={s.isDeploHost} />
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {targets.find((s) => s.id === target)?.kind === "cluster" &&
+                  onClusterNote}
+                {neighbours.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Stops reaching {joinNames(neighbours)} by name:{" "}
+                    {neighbours.length === 1 ? "it stays" : "they stay"} on{" "}
+                    {currentName}.
+                  </p>
+                )}
+              </div>
+            }
+            onConfirm={async () => {
+              const res = await move(target);
+              if (res.ok) router.refresh();
+              return res;
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   );

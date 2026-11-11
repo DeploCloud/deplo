@@ -55,6 +55,16 @@ import { gitProfileUrl, timeAgo } from "@/lib/utils";
 import { SecurityShield } from "@/components/security-updates/security-shield";
 
 /** What a preview's row says it is doing; `offline` is one whose server, a member of the App's cluster, stopped. */
+// What brings an offline preview back besides the next push.
+export function RedeployPreviewLabel() {
+  return (
+    <>
+      <RotateCw className="size-4" />
+      Redeploy preview
+    </>
+  );
+}
+
 export function PreviewStatus({
   preview: p,
   maxActive,
@@ -359,8 +369,7 @@ export function PreviewsTable({
                             )
                           }
                         >
-                          <RotateCw className="size-4" />
-                          Redeploy
+                          <RedeployPreviewLabel />
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <a

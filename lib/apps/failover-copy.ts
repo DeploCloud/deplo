@@ -49,6 +49,10 @@ export function appDisk(app: Stored): AppDisk {
   return appHasBind(app) ? "bind" : appKeepsVolume(app) ? "volume" : null;
 }
 
+/** Shown with the two promises: a backup of files is taken with the App paused, so it is whole. */
+export const BACKUP_PAUSE_NOTE =
+  "Each backup pauses it for as long as its files take to copy.";
+
 export const AUTO_FAILOVER_LABEL =
   "Fail over automatically from the latest backup";
 

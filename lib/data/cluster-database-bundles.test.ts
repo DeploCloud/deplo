@@ -342,7 +342,7 @@ test("the leader is told which member's agent cannot restore a backup, and Activ
   assert.deepEqual(
     (await deploSaid()).filter((m) => /too old/.test(m)),
     [
-      "The agent on server-3 is too old to restore a database when another server in cluster eu stops. Update the agent on server-3.",
+      "The server agent on server-3 is too old to restore a database when another server in cluster eu stops. Deplo updates it on its own.",
     ],
   );
 });

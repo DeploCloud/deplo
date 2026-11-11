@@ -356,15 +356,15 @@ test("an App left waiting on a mixed cluster is told which kind of server it wai
   assert.deepEqual(
     capture.calls.map((c) => (c.body as { body?: string }).body),
     [
-      "server-2 stopped answering. No other server has room for main yet. There is no other x86 server to take web. Deplo tries again every 30 seconds.",
+      "server-2 stopped answering. No other server has room for main yet. No other x86 server has room for web yet. Deplo tries again every 30 seconds.",
     ],
   );
 
   assert.deepEqual(
-    (await deploSaid()).filter((m) => /is waiting/.test(m)),
+    (await deploSaid()).filter((m) => /waiting for room/.test(m)),
     [
       "main is waiting for room in eu: server-2 stopped answering and no other server has room yet",
-      "web is waiting in eu: server-2 stopped answering and there is no other x86 server to take it",
+      "web is waiting for room in eu: server-2 stopped answering and no other x86 server has room yet",
     ],
   );
 });

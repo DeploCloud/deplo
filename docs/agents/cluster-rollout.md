@@ -60,8 +60,8 @@ it. Nothing runs while `deplo.cluster` is empty or while the instance is frozen 
   of the admin who moved a leader there (`clusters.leader_team_id`), else the instance's first team,
   where the agent rollout's entries land.
 - **A failure is one row** in `cluster_binary_updates` (none means idle; success deletes it), so the
-  wait survives a restart. Retries back off 1, 2, 4 … 60 minutes and never stop. The first failure
-  is one Activity entry ("Could not update … Deplo retries on its own."), and the cluster card shows
+  wait survives a restart. Retries back off 1, 2, 4, up to 60 minutes and never stop. The first failure
+  is one Activity entry (it ends "Deplo retries on its own."), and the cluster card shows
   the sentence until it clears (`ClusterLeader.updateMessage`). A new pin ignores the old rows.
 - **`busy`**: a leader is not restarted while a server of a cluster it leads stopped answering in
   the last 45 minutes. A restart there starts the 81 s failover clock over and holds it for the 5

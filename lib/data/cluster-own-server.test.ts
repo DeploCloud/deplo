@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 import type { TestDb } from "../db/test-harness";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { clusterMembers } from "../db/schema/control-plane/clusters";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { seedApp, SERVER_1 } from "./app-graph-test-helpers";
@@ -35,6 +36,9 @@ const { asAdmin, asTeamB, eu, messages } = lab;
 const everyone = { allTeams: true, teamIds: [] as string[] };
 const WARNING =
   "If Deplo's own server stops, its Apps cannot move. Run the leader on another server to fix this.";
+// Under three servers a leader elsewhere moves nothing once Deplo's own server is gone: no fix is promised.
+const WARNING_SMALL =
+  "If Deplo's own server stops, its Apps cannot move. Fixing this takes three servers, with the leader on another one.";
 const FP1 = "1".repeat(64);
 const FP2 = "2".repeat(64);
 
@@ -141,7 +145,7 @@ test("a cluster Deplo's own server is not in never warns, whatever another clust
   const eu = await withOwnServer();
   const us = await asAdmin(() => createCluster("us", everyone));
   await asAdmin(() => addClusterMember(us.id, "srv_3"));
-  assert.equal(await warning(eu.id), WARNING);
+  assert.equal(await warning(eu.id), WARNING_SMALL);
   assert.equal(await warning(us.id), "");
 });
 
@@ -154,6 +158,62 @@ test("no warning while Deplo's own server only stands in for a leader that runs 
   const leader = await asAdmin(() => getClusterLeader(cluster.id));
   assert.ok(leader.takenOverAt);
   assert.equal(leader.ownServerWarning, "");
+});
+
+test("two servers never read the fix: it only works from three, with the leader on another one", async () => {
+  const cluster = await withOwnServer();
+  assert.equal(await warning(cluster.id), WARNING_SMALL);
+  await asAdmin(() => addClusterMember(cluster.id, "srv_3"));
+  assert.equal(await warning(cluster.id), WARNING);
+});
+
+const lease = (serverId: string, leaseState: string) =>
+  db
+    .update(clusterMembers)
+    .set({ leaseState })
+    .where(eq(clusterMembers.serverId, serverId));
+
+test("the card says whether a failover would work right now", async () => {
+  const cluster = await eu();
+  await asAdmin(() => addClusterMember(cluster.id, "srv_4"));
+  const read = async () => {
+    const l = await asAdmin(() => getClusterLeader(cluster.id));
+    return [l.state, l.failoverReady, l.message];
+  };
+  assert.deepEqual(await read(), ["running", true, ""]);
+
+  // One of three silent: the other two still answer, so its work moves.
+  await lease("srv_2", "fenced");
+  assert.deepEqual(await read(), ["running", true, ""]);
+
+  // Two of three: the leader answers, and moves nothing.
+  await lease("srv_3", "not_responding");
+  assert.deepEqual(await read(), [
+    "running",
+    false,
+    "Only 1 of 3 servers answers this leader, so nothing moves. Failover works again once 2 do.",
+  ]);
+
+  // A leader that does not run keeps its own sentence.
+  hosts[SERVER_1].status.running = false;
+  assert.deepEqual(await read(), [
+    "stopped",
+    false,
+    "The leader is installed but not running.",
+  ]);
+});
+
+test("half of an even cluster is enough while Deplo is up, and one server has no failover to speak of", async () => {
+  const cluster = await asAdmin(() => createCluster("eu", everyone));
+  await asAdmin(() => addClusterMember(cluster.id, "srv_2"));
+  const ready = async () =>
+    (await asAdmin(() => getClusterLeader(cluster.id))).failoverReady;
+  assert.equal(await ready(), null);
+  await asAdmin(() => addClusterMember(cluster.id, "srv_3"));
+  await lease("srv_3", "fenced");
+  assert.equal(await ready(), true);
+  await lease("srv_2", "fenced");
+  assert.equal(await ready(), false);
 });
 
 test("only an instance admin reads the leader and its warning, in another team too", async () => {
@@ -193,7 +253,7 @@ test("emptying Deplo's own server moves its App to another member and leaves the
   );
   assert.equal(hosts[SERVER_1].removes, 0);
   assert.equal(hosts[SERVER_1].status.running, true);
-  assert.equal(await warning(cluster.id), WARNING, "still a member");
+  assert.equal(await warning(cluster.id), WARNING_SMALL, "still a member");
 });
 
 test("removing Deplo's own server needs it empty, then its agent leaves and the leader keeps running there", async () => {

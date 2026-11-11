@@ -81,7 +81,13 @@ const ClusterLeaderRef = builder
       version: t.exposeString("version"),
       message: t.exposeString("message", {
         description:
-          "One plain sentence on why it is not running; empty when it is.",
+          "One plain sentence on why it is not running, or that it hears too few servers to move anything; empty otherwise.",
+      }),
+      failoverReady: t.boolean({
+        nullable: true,
+        description:
+          "Whether a failover would work right now: the leader answers and enough servers answer it. Null with fewer than two servers, or while Deplo's machine stands in for the leader.",
+        resolve: (l) => l.failoverReady,
       }),
       takenOverAt: t.exposeString("takenOverAt", {
         nullable: true,
@@ -117,6 +123,10 @@ const ClusterLeaderChoiceRef = builder
       blocked: t.exposeString("blocked", {
         description:
           "Why the leader cannot run there right now; empty when it can.",
+      }),
+      note: t.exposeString("note", {
+        description:
+          "What a leader there cannot do; empty when nothing. A server with no proxy still needs Deplo's machine up to move anything.",
       }),
     }),
   });
@@ -216,7 +226,7 @@ const ClusterReleasedWorkloadRef = builder
       }),
       stopsOn: t.exposeStringList("stopsOn", {
         description:
-          "The other servers a spread App also runs on. Its copies there stop.",
+          "The other servers a spread App also runs on. Its replicas there stop.",
       }),
       waiting: t.exposeBoolean("waiting", {
         description:

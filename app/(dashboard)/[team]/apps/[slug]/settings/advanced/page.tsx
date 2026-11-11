@@ -127,6 +127,7 @@ export default async function AppAdvancedSettingsPage(
             enabled={project.restartWhenUnresponsive}
             paused={project.restartsPausedAt != null}
             needsNewerAgent={restartNeedsNewerAgent}
+            ownCheck={project.healthCheck != null}
           />
         </CapabilityFieldset>
 

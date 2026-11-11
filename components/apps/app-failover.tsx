@@ -6,6 +6,9 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DocsLink } from "@/components/ui/docs-link";
+import { FailoverPromises } from "@/components/storage/database-failover";
+import { BACKUP_PAUSE_NOTE } from "@/lib/apps/failover-copy";
+import { FAILOVER_PROMISES } from "@/lib/databases/failover-copy";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppFailover } from "@/lib/data/apps/failover";
 
@@ -79,11 +82,21 @@ export function AppFailoverCard({
     <Card>
       <CardContent className="flex items-start gap-3 pt-6">
         <HardDrive className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div>
-          <p className="text-sm font-medium">Failover</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {failover.sentence} <DocsLink topic="clusters.appData" />
-          </p>
+        <div className="space-y-2">
+          <div>
+            <p className="text-sm font-medium">Failover</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {failover.sentence} <DocsLink topic="clusters.appData" />
+            </p>
+          </div>
+          {failover.disk === "volume" && (
+            <>
+              <FailoverPromises promises={FAILOVER_PROMISES} />
+              <p className="text-xs text-muted-foreground">
+                {BACKUP_PAUSE_NOTE}
+              </p>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -315,6 +315,7 @@ test("the picker offers every server, Deplo's own machine first, and says which 
       onDeploHost: true,
       current: false,
       blocked: "",
+      note: "",
     },
     {
       serverId: "srv_2",
@@ -322,6 +323,7 @@ test("the picker offers every server, Deplo's own machine first, and says which 
       onDeploHost: false,
       current: false,
       blocked: "",
+      note: "",
     },
     {
       serverId: "srv_3",
@@ -329,6 +331,7 @@ test("the picker offers every server, Deplo's own machine first, and says which 
       onDeploHost: false,
       current: true,
       blocked: "",
+      note: "",
     },
     {
       serverId: "srv_4",
@@ -336,8 +339,25 @@ test("the picker offers every server, Deplo's own machine first, and says which 
       onDeploHost: false,
       current: false,
       blocked: "srv_4 is offline. Bring it back online first.",
+      note: "",
     },
   ]);
+
+  // A server with no proxy can lead, and the picker says what that leader depends on.
+  await db
+    .update(serversTable)
+    .set({ traefikEnabled: false })
+    .where(eq(serversTable.id, "srv_2"));
+  const bare = await asAdmin(() => listClusterLeaderChoices(cluster.id));
+  assert.deepEqual(
+    bare.map((c) => c.note),
+    [
+      "",
+      "srv_2 has no proxy, so a leader there still needs Deplo's machine up to move anything.",
+      "",
+      "",
+    ],
+  );
   await assert.rejects(
     asTeamB(() => listClusterLeaderChoices(cluster.id)),
     /instance admin/i,

@@ -9,7 +9,15 @@ import {
 } from "../../infra/agent-client/cluster-host";
 import { AgentClusterUnsupportedError } from "../../infra/agent-client/errors";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
-import type { Cluster, ClusterLeader } from "../../types/cluster";
+import {
+  leaderHearsEnough,
+  tooFewSentence,
+} from "../../clusters/failover-reach";
+import {
+  FAILOVER_MIN_MEMBERS,
+  type Cluster,
+  type ClusterLeader,
+} from "../../types/cluster";
 import type { Server } from "../../types/server";
 import { messageOf } from "../../utils";
 import { versionAtLeast } from "../../version";
@@ -17,10 +25,18 @@ import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
 import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
-import { clusterMemberServerIds, getClusterById } from "./roster";
+import {
+  clusterLeaseStates,
+  clusterMemberServerIds,
+  getClusterById,
+} from "./roster";
 
 export const OWN_SERVER_WARNING =
   "If Deplo's own server stops, its Apps cannot move. Run the leader on another server to fix this.";
+
+// In a cluster of one or two, a leader elsewhere moves nothing once Deplo's own server is gone.
+export const OWN_SERVER_WARNING_SMALL =
+  "If Deplo's own server stops, its Apps cannot move. Fixing this takes three servers, with the leader on another one.";
 
 const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so there is nowhere to start the leader.";
@@ -37,6 +53,7 @@ function down(
     state,
     version: "",
     message,
+    failoverReady: null,
     takenOverAt: null,
     updateMessage: "",
     ownServerWarning: "",
@@ -87,12 +104,38 @@ export async function getClusterLeader(
   // Where it was put, not who stands in for it: the card says both.
   const host = await leaderHostOf(cluster.leaderServerId);
   const leader = await readLeader(host);
+  const leases = await clusterLeaseStates(cluster.id);
+  const takenOverAt = cluster.leaderServerId ? cluster.leaderTakeoverAt : null;
   return {
     ...leader,
-    takenOverAt: cluster.leaderServerId ? cluster.leaderTakeoverAt : null,
+    ...failoverNow(leader, leases, takenOverAt !== null),
+    takenOverAt,
     updateMessage: await updateMessage(host),
-    ownServerWarning: (await ledFromAMember(cluster)) ? OWN_SERVER_WARNING : "",
+    ownServerWarning: !(await ledFromAMember(cluster))
+      ? ""
+      : leases.length < 3
+        ? OWN_SERVER_WARNING_SMALL
+        : OWN_SERVER_WARNING,
   };
+}
+
+// A leader that answers moves nothing while too few servers answer it: the card says which it is.
+function failoverNow(
+  leader: ClusterLeader,
+  leases: string[],
+  stoodIn: boolean,
+): Pick<ClusterLeader, "failoverReady" | "message"> {
+  const { message } = leader;
+  if (leases.length < FAILOVER_MIN_MEMBERS || stoodIn)
+    return { failoverReady: null, message };
+  if (leader.state !== "running") return { failoverReady: false, message };
+  const answering = leases.filter((s) => s === "ok").length;
+  return leaderHearsEnough(answering, leases.length)
+    ? { failoverReady: true, message }
+    : {
+        failoverReady: false,
+        message: tooFewSentence(answering, leases.length),
+      };
 }
 
 // Deplo's own server is a member and the leader was put there: when it stops, nobody is left to move its Apps.

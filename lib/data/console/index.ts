@@ -115,31 +115,33 @@ async function listInstancesForDisplay(p: App): Promise<{
   }
 }
 
-// A copy the console can open: its own container name, the server it is on, and how the picker names it.
-interface Copy {
+// A container the console can open: its own container name, the server it is on, and how the picker names it.
+interface InstanceTarget {
   instance: ConsoleInstance;
   target: string;
   serverId: string;
 }
 
-// An App's copies wherever they run: one server's as before, every server's when its replicas are spread.
+// An App's targets wherever they run: one server's as before, every server's when its replicas are spread.
 // `down` names the servers that could not be asked; with none answering it throws as one server does.
-async function listCopies(p: App): Promise<{ copies: Copy[]; down: string[] }> {
+async function listInstanceTargets(
+  p: App,
+): Promise<{ targets: InstanceTarget[]; down: string[] }> {
   const memberIds = await listAppMembers(p);
   if (memberIds.length < 2)
     return {
-      copies: (await listInstances(p)).map((instance) => ({
+      targets: (await listInstances(p)).map((instance) => ({
         instance,
         target: instance.name,
         serverId: p.serverId,
       })),
       down: [],
     };
-  const { up, down, error } = await listMemberCopies(p, memberIds);
+  const { up, down, error } = await listMemberInstances(p, memberIds);
   if (up.length === 0)
     throw error ?? new AgentUnreachableError("No server of this App answered");
   return {
-    copies: up.flatMap((m) =>
+    targets: up.flatMap((m) =>
       m.instances.map((i) => ({
         instance: onServer(i, m.server),
         target: `${i.name}${ON_SERVER}${m.server.id}`,
@@ -150,21 +152,21 @@ async function listCopies(p: App): Promise<{ copies: Copy[]; down: string[] }> {
   };
 }
 
-// `web-1 · server-b`: how a picker names one server's copy.
+// `web-1 · server-b`: how a picker names one server's replica.
 const onServer = (i: ConsoleInstance, server: Server): ConsoleInstance => ({
   ...i,
   replica: `${i.replica ?? i.name} · ${server.name}`,
 });
 
-function pickCopy(
-  copies: Copy[],
+function pickTarget(
+  targets: InstanceTarget[],
   target: string | undefined,
   fallback: "running" | "first",
-): Copy | undefined {
-  if (target) return copies.find((c) => c.target === target);
+): InstanceTarget | undefined {
+  if (target) return targets.find((c) => c.target === target);
   return (
-    (fallback === "running" && copies.find((c) => c.instance.running)) ||
-    copies[0]
+    (fallback === "running" && targets.find((c) => c.instance.running)) ||
+    targets[0]
   );
 }
 
@@ -173,10 +175,10 @@ async function consoleInstancesForDisplay(p: App): Promise<{
   unavailable: string[];
 }> {
   try {
-    const { copies, down } = await listCopies(p);
+    const { targets, down } = await listInstanceTargets(p);
     return {
-      instances: copies.length
-        ? copies.map((c) => ({ ...c.instance, name: c.target }))
+      instances: targets.length
+        ? targets.map((c) => ({ ...c.instance, name: c.target }))
         : [displayFallback(p)],
       unavailable: down,
     };
@@ -196,7 +198,7 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const memberIds = await listAppLogMembers(p);
   const [found, supportsTimeline, maxDays] = await Promise.all([
     memberIds.length > 1
-      ? memberCopiesForDisplay(p, memberIds)
+      ? memberInstancesForDisplay(p, memberIds)
       : listInstancesForDisplay(p).then((f) => ({
           ...f,
           instances: withReplicaGroups(f.instances, p.slug),
@@ -249,9 +251,13 @@ export async function getShellLabel(
   const p = await loadTeamApp(appId, teamId);
   if (!p) return "raw exec (no shell)";
   await requireAppCapability(appId, "view");
-  let pick: Copy | undefined;
+  let pick: InstanceTarget | undefined;
   try {
-    pick = pickCopy((await listCopies(p)).copies, target, "running");
+    pick = pickTarget(
+      (await listInstanceTargets(p)).targets,
+      target,
+      "running",
+    );
   } catch (e) {
     if (!(e instanceof AgentUnreachableError)) throw e;
   }
@@ -285,11 +291,11 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
 
 async function probeShellLabel(
   p: App,
-  copy: Pick<Copy, "instance" | "serverId">,
+  at: Pick<InstanceTarget, "instance" | "serverId">,
 ): Promise<string> {
-  const conn = await connectAgent(copy.serverId);
+  const conn = await connectAgent(at.serverId);
   try {
-    return await conn.shellLabel(p.id, copy.instance.name, copy.instance.image);
+    return await conn.shellLabel(p.id, at.instance.name, at.instance.image);
   } catch (e) {
     if (e instanceof AgentUnreachableError) return "raw exec (no shell)";
     throw e;
@@ -317,15 +323,15 @@ export async function resolveAttachTarget(
   await requireAppCapability(appId, "open_app_console");
   if (!p.consoleEnabled) return { ok: false, reason: "not-found" };
 
-  let copies: Copy[];
+  let targets: InstanceTarget[];
   try {
-    ({ copies } = await listCopies(p));
+    ({ targets } = await listInstanceTargets(p));
   } catch (e) {
     if (e instanceof AgentUnreachableError)
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  const pick = pickCopy(copies, target, "running");
+  const pick = pickTarget(targets, target, "running");
   if (!pick) return { ok: false, reason: "no-instance" };
   if (!pick.instance.running) return { ok: false, reason: "stopped" };
   return {
@@ -402,14 +408,14 @@ export async function resolveLogsTarget(
   return { ok: true, instance: group[0]!, group, server: await serverOf(p) };
 }
 
-type MemberCopies = { server: Server; instances: ConsoleInstance[] };
+type MemberInstances = { server: Server; instances: ConsoleInstance[] };
 
 // A cluster App's copies on every server that holds some, each tagged as the replica it is; `down` are the servers
 // that could not be read. With none readable, `error` is why the server it runs on now was not.
-async function listMemberCopies(
+async function listMemberInstances(
   p: App,
   memberIds: string[],
-): Promise<{ up: MemberCopies[]; down: string[]; error?: unknown }> {
+): Promise<{ up: MemberInstances[]; down: string[]; error?: unknown }> {
   const listed = await Promise.all(
     memberIds.map(async (id) => {
       const server = await getServerById(id);
@@ -448,7 +454,7 @@ async function listMemberCopies(
 }
 
 // What the logs picker lists for an App on several servers: "all replicas" first, then each copy as `web-1 · server-b`.
-async function memberCopiesForDisplay(
+async function memberInstancesForDisplay(
   p: App,
   memberIds: string[],
 ): Promise<{
@@ -456,7 +462,7 @@ async function memberCopiesForDisplay(
   real: boolean;
   unreachable: boolean;
 }> {
-  const { up } = await listMemberCopies(p, memberIds);
+  const { up } = await listMemberInstances(p, memberIds);
   const all = up.flatMap((m) => m.instances);
   if (all.length === 0)
     return {
@@ -486,7 +492,7 @@ async function logsAcrossMembers(
   memberIds: string[],
   target?: string,
 ): Promise<LogsTarget> {
-  const { up, down, error } = await listMemberCopies(p, memberIds);
+  const { up, down, error } = await listMemberInstances(p, memberIds);
   if (up.length === 0) {
     if (!error || error instanceof AgentUnreachableError)
       return { ok: false, reason: "unreachable" };
@@ -535,7 +541,11 @@ export async function execInContainer(
   if (command === "clear") return { output: "\f" };
 
   try {
-    const pick = pickCopy((await listCopies(p)).copies, target, "first");
+    const pick = pickTarget(
+      (await listInstanceTargets(p)).targets,
+      target,
+      "first",
+    );
     if (!pick) return { output: `! no such instance: ${target}` };
 
     const res = await execOnAgent(p, pick, command);
@@ -567,17 +577,12 @@ export async function execInContainer(
 
 async function execOnAgent(
   p: App,
-  copy: Copy,
+  at: InstanceTarget,
   command: string,
 ): Promise<{ stdout: string; stderr: string; code: number; rawMode: boolean }> {
-  const conn: AgentConnection = await connectAgent(copy.serverId);
+  const conn: AgentConnection = await connectAgent(at.serverId);
   try {
-    return await conn.exec(
-      p.id,
-      copy.instance.name,
-      command,
-      copy.instance.image,
-    );
+    return await conn.exec(p.id, at.instance.name, command, at.instance.image);
   } finally {
     conn.close();
   }

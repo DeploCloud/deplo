@@ -35,7 +35,7 @@ export async function planDeployReplicas(
     : planAppReplicas(project, dep.id);
 }
 
-const copies = (n: number) => (n === 1 ? "1 replica" : `${n} replicas`);
+const replicaCount = (n: number) => (n === 1 ? "1 replica" : `${n} replicas`);
 
 /**
  * Deploys the release on every member after the first, and removes the stack from members that run none
@@ -86,7 +86,7 @@ export async function deployOtherMembers(opts: {
       log(depId, "error", kept);
       return false;
     }
-    log(depId, "info", `Starting ${copies(m.replicas)} on ${name}…`);
+    log(depId, "info", `Starting ${replicaCount(m.replicas)} on ${name}`);
     const rendered = await opts.render(m);
     const { outcome } = await tryAgent({
       depId,

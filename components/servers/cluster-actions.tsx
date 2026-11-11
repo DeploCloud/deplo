@@ -57,17 +57,25 @@ export function ClusterActions({
     startTransition(async () => {
       if (name.trim() !== cluster.name) {
         const res = await gqlAction(
-          `mutation RenameCluster($id: String!, $name: String!) {
-            renameCluster(id: $id, name: $name) { id }
-          }`,
+          /* GraphQL */ `
+            mutation RenameCluster($id: String!, $name: String!) {
+              renameCluster(id: $id, name: $name) {
+                id
+              }
+            }
+          `,
           { id: cluster.id, name },
         );
         if (!res.ok) return void toast.error(res.error);
       }
       const res = await gqlAction(
-        `mutation ShareCluster($id: String!, $sharing: ClusterSharingInput!) {
-          setClusterTeams(id: $id, sharing: $sharing) { id }
-        }`,
+        /* GraphQL */ `
+          mutation ShareCluster($id: String!, $sharing: ClusterSharingInput!) {
+            setClusterTeams(id: $id, sharing: $sharing) {
+              id
+            }
+          }
+        `,
         {
           id: cluster.id,
           sharing: {
@@ -76,7 +84,11 @@ export function ClusterActions({
           },
         },
       );
-      if (!res.ok) return void toast.error(res.error);
+      if (!res.ok) {
+        // The rename above may already be saved: show what the cluster is now.
+        router.refresh();
+        return void toast.error(res.error);
+      }
       toast.success("Saved");
       setOpen(false);
       router.refresh();
@@ -146,9 +158,14 @@ export function StartLeaderButton({ clusterId }: { clusterId: string }) {
           const res = await gqlAction<{
             startClusterLeader: { state: string; message: string };
           }>(
-            `mutation StartClusterLeader($id: String!) {
-              startClusterLeader(id: $id) { state message }
-            }`,
+            /* GraphQL */ `
+              mutation StartClusterLeader($id: String!) {
+                startClusterLeader(id: $id) {
+                  state
+                  message
+                }
+              }
+            `,
             { id: clusterId },
           );
           if (!res.ok) return void toast.error(res.error);
@@ -163,6 +180,54 @@ export function StartLeaderButton({ clusterId }: { clusterId: string }) {
   );
 }
 
+// The server select both dialogs share, with what blocks or limits each server listed under it.
+function ServerPick({
+  id,
+  value,
+  onChange,
+  options,
+}: {
+  id: string;
+  value: string;
+  onChange: (serverId: string) => void;
+  options: {
+    serverId: string;
+    label: string;
+    disabled: boolean;
+    hint: string;
+  }[];
+}) {
+  const hints = options.filter((o) => o.hint);
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>Server</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id}>
+          <SelectValue placeholder="Choose a server" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem
+              key={o.serverId}
+              value={o.serverId}
+              disabled={o.disabled}
+            >
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {hints.length > 0 && (
+        <ul className="space-y-1 text-xs text-muted-foreground">
+          {hints.map((o) => (
+            <li key={o.serverId}>{o.hint}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export type LeaderOption = {
   serverId: string;
   serverName: string;
@@ -170,14 +235,34 @@ export type LeaderOption = {
   current: boolean;
   /** Why the leader cannot run there right now; empty when it can. */
   blocked: string;
+  /** What a leader there cannot do; empty when nothing. */
+  note: string;
 };
+
+// What moving the leader buys: nothing while Deplo is down, under three servers.
+export function MoveLeaderLead({ servers }: { servers: number }) {
+  return servers >= 3 ? (
+    <>
+      Failover keeps working{" "}
+      <strong>while Deplo&apos;s own machine is down</strong>.
+    </>
+  ) : (
+    <>
+      Under three servers, failover still <strong>needs Deplo up</strong>{" "}
+      wherever the leader runs.
+    </>
+  );
+}
 
 export function MoveLeaderButton({
   clusterId,
   options,
+  servers,
 }: {
   clusterId: string;
   options: LeaderOption[];
+  // How many servers the cluster has: under three, a leader elsewhere still needs Deplo up.
+  servers: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -217,42 +302,22 @@ export function MoveLeaderButton({
         <DialogHeader>
           <DialogTitle>Run the leader on another server</DialogTitle>
           <DialogDescription>
-            Failover keeps working{" "}
-            <strong>while Deplo&apos;s own machine is down</strong>.{" "}
+            <MoveLeaderLead servers={servers} />{" "}
             <DocsLink topic="clusters.leader" />
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-2">
-            <Label htmlFor={`leader-${clusterId}`}>Server</Label>
-            <Select value={serverId} onValueChange={setServerId}>
-              <SelectTrigger id={`leader-${clusterId}`}>
-                <SelectValue placeholder="Choose a server" />
-              </SelectTrigger>
-              <SelectContent>
-                {options.map((o) => (
-                  <SelectItem
-                    key={o.serverId}
-                    value={o.serverId}
-                    disabled={o.current || Boolean(o.blocked)}
-                  >
-                    {o.serverName}
-                    {o.onDeploHost && " (Deplo's own machine)"}
-                    {o.current && " (runs here now)"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {options.some((o) => o.blocked) && (
-              <ul className="space-y-1 text-xs text-muted-foreground">
-                {options
-                  .filter((o) => o.blocked)
-                  .map((o) => (
-                    <li key={o.serverId}>{o.blocked}</li>
-                  ))}
-              </ul>
-            )}
-          </div>
+          <ServerPick
+            id={`leader-${clusterId}`}
+            value={serverId}
+            onChange={setServerId}
+            options={options.map((o) => ({
+              serverId: o.serverId,
+              label: `${o.serverName}${o.onDeploHost ? " (Deplo's own machine)" : ""}${o.current ? " (runs here now)" : ""}`,
+              disabled: o.current || Boolean(o.blocked),
+              hint: o.blocked || o.note,
+            }))}
+          />
           <DialogFooter>
             <Button
               variant="outline"
@@ -297,9 +362,13 @@ export function JoinClusterButton({
       const res = await gqlAction<{
         addClusterMember: { note: string | null };
       }>(
-        `mutation AddClusterMember($clusterId: String!, $serverId: String!) {
-          addClusterMember(clusterId: $clusterId, serverId: $serverId) { note }
-        }`,
+        /* GraphQL */ `
+          mutation AddClusterMember($clusterId: String!, $serverId: String!) {
+            addClusterMember(clusterId: $clusterId, serverId: $serverId) {
+              note
+            }
+          }
+        `,
         { clusterId, serverId },
       );
       if (!res.ok) return void toast.error(res.error);
@@ -326,34 +395,17 @@ export function JoinClusterButton({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-2">
-            <Label htmlFor={`join-${clusterId}`}>Server</Label>
-            <Select value={serverId} onValueChange={setServerId}>
-              <SelectTrigger id={`join-${clusterId}`}>
-                <SelectValue placeholder="Choose a server" />
-              </SelectTrigger>
-              <SelectContent>
-                {options.map((o) => (
-                  <SelectItem
-                    key={o.serverId}
-                    value={o.serverId}
-                    disabled={Boolean(o.blocked)}
-                  >
-                    {o.serverName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {options.some((o) => o.blocked) && (
-              <ul className="space-y-1 text-xs text-muted-foreground">
-                {options
-                  .filter((o) => o.blocked)
-                  .map((o) => (
-                    <li key={o.serverId}>{o.blocked}</li>
-                  ))}
-              </ul>
-            )}
-          </div>
+          <ServerPick
+            id={`join-${clusterId}`}
+            value={serverId}
+            onChange={setServerId}
+            options={options.map((o) => ({
+              serverId: o.serverId,
+              label: o.serverName,
+              disabled: Boolean(o.blocked),
+              hint: o.blocked,
+            }))}
+          />
           <DialogFooter>
             <Button
               variant="outline"

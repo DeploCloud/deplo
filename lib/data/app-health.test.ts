@@ -9,8 +9,13 @@ import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import {
   seedApp,
   seedServer,
+  SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { RestartEvent_Kind, type RestartEvent } from "../agent/gen/agent";
+import { recordContainerSample } from "../monitoring/container-history";
+import type { ContainerMetricsSample } from "./container-metrics";
+import { applyRestartEvents } from "./restart-events";
 import type {
   AgentConnection,
   AgentConsoleInstance,
@@ -114,6 +119,22 @@ test("the page shows the verdict the server agent reports", async () => {
   }
 });
 
+test("an App with replicas counts its replicas, with no container left to create", async () => {
+  const id = await freshApp();
+  const slug = `web${seq}`;
+  agentReporting(() =>
+    [1, 2, 3].map((n) =>
+      instance({
+        name: `deplo-${slug}-deplo-${slug}-${n}`,
+        service: `deplo-${slug}`,
+      }),
+    ),
+  );
+  const rt = await runtimeOf(id);
+  assert.deepEqual([rt?.running, rt?.total, rt?.missing], [3, 3, []]);
+  assert.equal(displayStatus("active", rt), "active");
+});
+
 test("a verdict moves with the agent, with no page open in between", async (t) => {
   let now = Date.now();
   t.mock.method(Date, "now", () => now);
@@ -150,6 +171,43 @@ test("an image's own failing check still shows through", async () => {
     instance({ answer: "answering", health: "unhealthy" }),
   ]);
   assert.equal((await runtimeOf(appId))?.containers[0].health, "unhealthy");
+});
+
+test("with telemetry open, the Overview still reads the verdict for an App its server agent restarted", async () => {
+  const appId = await freshApp();
+  agentReporting(() => [instance({ answer: "not_answering" })]);
+  // Telemetry knows Docker's health only, and Docker has no complaint.
+  recordContainerSample({
+    ...({} as ContainerMetricsSample),
+    id: appId,
+    online: true,
+    ts: Date.now(),
+    running: 1,
+    containers: 1,
+  });
+  const overview = async () =>
+    (
+      await runWithIdentity({ userId: OWNER, teamId: TEAM_A }, () =>
+        loadOverviewAppStates([appId], async (id) => (await runtimeOf(id))!),
+      )
+    )[0].runtime;
+  assert.equal((await overview())?.unhealthy, 0);
+
+  // The server agent restarted it for not answering: from here its verdict is the one shown.
+  await applyRestartEvents(SERVER_1, [
+    {
+      ...({} as RestartEvent),
+      kind: RestartEvent_Kind.KIND_RESTARTED,
+      slug: `web${seq}`,
+      unansweredS: 90,
+    },
+  ]);
+  let rt = await overview();
+  for (let i = 0; i < 50 && !rt?.unhealthy; i++) {
+    await new Promise((r) => setTimeout(r, 10));
+    rt = await overview();
+  }
+  assert.equal(rt?.unhealthy, 1);
 });
 
 test("the Overview follows the same verdict", async () => {

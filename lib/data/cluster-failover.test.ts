@@ -398,11 +398,12 @@ test("waiting Apps show the room note, and one alert goes out per failover that 
   assert.equal(await waitingForRoomNote("prj_web", "eu"), null);
 });
 
-test("an App left waiting for another reason than room is told that reason, not 'no room'", async () => {
+test("a wait says what stopped the move: a failed start, a missing image or no server online never read as no room", async () => {
   const cluster = await eu();
   lab.seq = 0;
+  const ids = ["prj_web", "prj_two", "prj_three", "prj_four"];
   await web(cluster.id);
-  await web(cluster.id, "prj_two");
+  for (const id of ids.slice(1)) await web(cluster.id, id);
   await asAdmin(() =>
     saveNotificationChannel(null, {
       kind: "webhook",
@@ -419,35 +420,47 @@ test("an App left waiting for another reason than room is told that reason, not 
     }),
   );
   lab.capture = captureFetch();
+  const why = ["start_failed", "no_image", "no_member_online", "no_room"];
   await apply(
     cluster.id,
+    ...ids.map((workloadId) =>
+      event(cluster.id, "placement", {
+        kind: "app",
+        workloadId,
+        members: [""],
+        epoch: 1,
+      }),
+    ),
     event(cluster.id, "failover", {
       member: "srv_2",
       reason: "stopped_answering",
       moved: [],
-      waiting: [
-        { kind: "app", workloadId: "prj_web", reason: "no_image" },
-        { kind: "app", workloadId: "prj_two", reason: "start_failed" },
-      ],
+      waiting: ids.map((workloadId, i) => ({
+        kind: "app",
+        workloadId,
+        reason: why[i],
+        neededMb: 512,
+      })),
     }),
   );
   await __settleAlertsForTest();
-  assert.deepEqual(
-    (await messages())
-      .map((m) => m.message)
-      .filter((m) => /is waiting/.test(m))
-      .sort(),
-    [
-      "prj_two is waiting in eu: server-2 stopped answering and it did not start on another server",
-      "web is waiting in eu: server-2 stopped answering and no other server has its image yet",
-    ],
-  );
-  const sent = lab.capture.calls[0].body as { title?: string; body?: string };
-  assert.equal(sent.title, "2 Apps waiting in eu");
-  assert.equal(
-    sent.body,
-    "server-2 stopped answering. No other server has the image of web yet. prj_two did not start on another server. Deplo tries again every 30 seconds.",
-  );
+  const said = (await messages())
+    .map((m) => m.message)
+    .filter((m) => /is waiting/.test(m))
+    .map((m) => m.replace(/^\S+ /, ""))
+    .sort();
+  assert.deepEqual(said, [
+    "is waiting for room in eu: server-2 stopped answering and no other server has room yet",
+    "is waiting in eu: server-2 stopped answering and it did not start on another server",
+    "is waiting in eu: server-2 stopped answering and no other server has its image yet",
+    "is waiting in eu: server-2 stopped answering and no other server is online and ready",
+  ]);
+  const alert = lab.capture.calls[0].body as { title?: string; body?: string };
+  assert.equal(alert.title, "4 Apps waiting to move in eu");
+  assert.match(String(alert.body), /did not start on another server\./);
+  assert.match(String(alert.body), /No other server has the image of /);
+  assert.match(String(alert.body), /No other server is online and ready for /);
+  assert.match(String(alert.body), /No other server has room for /);
 });
 
 test("each team with something left waiting gets its own alert for one failover", async () => {

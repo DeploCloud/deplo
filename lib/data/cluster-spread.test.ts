@@ -20,6 +20,7 @@ import {
 import { seedServerRow } from "./infra-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
+  clusterMembers,
   imageArchitectures,
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
@@ -336,7 +337,7 @@ test("a deploy spreads the replicas of an App with a Cloudflare domain: each ser
   // srv_2 went first: nothing starts elsewhere before the first server runs the release.
   assert.match(
     await logs(),
-    /Starting 1 replica on srv_3…[\s\S]*Starting 1 replica on srv_4…/,
+    /Starting 1 replica on srv_3(?!…)[\s\S]*Starting 1 replica on srv_4(?!…)/,
   );
 });
 
@@ -421,6 +422,26 @@ test("the setting says how many servers the replicas are spread across", async (
   );
   // One replica has nothing to spread.
   await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  assert.equal(await replicaSpreadNote(await app()), null);
+});
+
+test("before the first placement the setting counts only servers the leader could pick", async () => {
+  await withCloudflareDomain();
+  // One of the three is on its way out.
+  await db
+    .update(clusterMembers)
+    .set({ emptyingSince: "2026-11-01T00:00:00.000Z" })
+    .where(eq(clusterMembers.serverId, "srv_4"));
+  assert.equal(
+    await replicaSpreadNote(await app()),
+    "Spread across 2 servers: if one stops, the others keep answering",
+  );
+  // And one is another kind of processor than the only one its image is known to run on.
+  await db.delete(imageArchitectures);
+  await db
+    .update(serversTable)
+    .set({ hostArch: "arm64" })
+    .where(eq(serversTable.id, "srv_3"));
   assert.equal(await replicaSpreadNote(await app()), null);
 });
 

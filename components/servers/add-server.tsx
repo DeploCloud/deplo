@@ -76,9 +76,16 @@ export function AddServer({
   function submitCluster() {
     startTransition(async () => {
       const res = await gqlAction<{ createCluster: { id: string } }>(
-        `mutation CreateCluster($name: String!, $sharing: ClusterSharingInput!) {
-          createCluster(name: $name, sharing: $sharing) { id }
-        }`,
+        /* GraphQL */ `
+          mutation CreateCluster(
+            $name: String!
+            $sharing: ClusterSharingInput!
+          ) {
+            createCluster(name: $name, sharing: $sharing) {
+              id
+            }
+          }
+        `,
         {
           name,
           sharing: {

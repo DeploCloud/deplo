@@ -164,7 +164,7 @@ test("a member whose agent cannot start a moved App is marked for the leader and
     [
       {
         message:
-          "The agent on server-3 is too old to take over Apps when another server in cluster eu stops. Update the agent on server-3.",
+          "The server agent on server-3 is too old to take over Apps when another server in cluster eu stops. Deplo updates it on its own.",
         actor: "Deplo",
       },
     ],
@@ -278,7 +278,8 @@ test("a watch that lost events reads the missed failover from the snapshot: Acti
   assert.equal(lab.capture.calls.length, 1);
   assert.match(
     String((lab.capture.calls[0].body as { title?: string }).title),
-    /prj_two waiting for room in eu/,
+    // The leader's picture no longer says why it waits, so the alert does not claim it is room.
+    /prj_two waiting to move in eu/,
   );
 });
 

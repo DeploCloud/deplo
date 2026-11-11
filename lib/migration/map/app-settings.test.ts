@@ -85,8 +85,12 @@ test("mapBuildSettings ignores the settings the chosen builder never reads", () 
   assert.equal(value.methodSettings, undefined);
 });
 
-test("mapBuildSettings notes replicas, which Deplo does not scale", () => {
+test("mapBuildSettings says replicas arrive as one and where to raise them", () => {
   const { notes } = mapBuildSettings(app({ replicas: 3 }));
+  assert.equal(
+    notes[0],
+    "Runs 3 replicas on {panel}. It arrives with one: raise Replicas under its Advanced settings to run more.",
+  );
   assert.equal(notes.length, 1);
   assert.match(notes[0], /3 replicas/);
 });

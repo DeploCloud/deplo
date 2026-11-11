@@ -1,15 +1,23 @@
 import "server-only";
 
-import { and, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import { workloadPlacements } from "../db/schema/control-plane/clusters";
+import { appPreviews } from "../db/schema/control-plane/deployments";
+import { servicesOf } from "../deploy/compose-lint/document";
+import {
+  appSlugFromDeployKey,
+  isSuffixedDeployKey,
+} from "../deploy/deploy-key";
 import { replicaTag } from "../deploy/replica-names";
+import { composeServiceReplicas } from "../deploy/replicas";
 import { nowIso } from "../ids";
 import { publishAppChanged } from "../graphql/pubsub";
 import { dispatchAlert } from "../notify/dispatch";
 import { recordActivity } from "./activity";
+import { listAppMembers } from "./clusters/placement";
+import { getServerById } from "./servers/roster";
 import { RestartEvent_Kind, type RestartEvent } from "../agent/gen/agent";
 
 // One "stopped answering" alert per window, however many restarts land in it.
@@ -35,42 +43,107 @@ export async function applyRestartEvents(
   }
 }
 
-async function applyOne(serverId: string, e: RestartEvent): Promise<void> {
-  const placedHere = getDb()
-    .select({ id: workloadPlacements.workloadId })
-    .from(workloadPlacements)
+type Reported = {
+  id: string;
+  teamId: string;
+  name: string;
+  slug: string;
+  serverId: string;
+  clusterId: string | null;
+  replicas: number;
+  compose: string | null;
+};
+
+// `web-2` (`web-1 on server-b` when spread) for one of several replicas; null for a lone container.
+async function replicaOf(
+  app: Reported,
+  container: string,
+  serverId: string,
+  spread: boolean,
+): Promise<string | null> {
+  const tag = replicaTag(container, app.slug);
+  if (tag === container) return null;
+  const service = tag.replace(/-\d+$/, "");
+  const several = app.compose
+    ? composeServiceReplicas(servicesOf(app.compose)?.[service]) > 1
+    : app.replicas > 1;
+  if (!several && !spread) return null;
+  if (!spread) return tag;
+  return `${tag} on ${(await getServerById(serverId))?.name ?? "a server"}`;
+}
+
+// A preview is its own stack: its restarts are Activity, and never the App's own state or alerts.
+async function applyPreview(
+  serverId: string,
+  app: Reported,
+  e: RestartEvent,
+): Promise<void> {
+  const [preview] = await getDb()
+    .select({ prNumber: appPreviews.prNumber })
+    .from(appPreviews)
+    .innerJoin(appsTable, eq(appsTable.id, appPreviews.appId))
     .where(
       and(
-        eq(workloadPlacements.kind, "app"),
-        eq(workloadPlacements.memberServerId, serverId),
+        eq(appPreviews.appId, app.id),
+        eq(appPreviews.deployKey, e.slug),
+        sql`coalesce(${appPreviews.serverId}, ${appsTable.previewServerId}, ${appsTable.serverId}) = ${serverId}`,
       ),
     );
+  if (!preview) return;
+  const what = `the preview for pull request #${preview.prNumber} of ${app.name}`;
+  if (e.kind === RestartEvent_Kind.KIND_RESTARTED)
+    await recordActivity(
+      "app",
+      `Restarted ${what}: it stopped answering for ${e.unansweredS} s`,
+      "Deplo",
+      app.id,
+    );
+  if (e.kind === RestartEvent_Kind.KIND_PAUSED)
+    await recordActivity(
+      "app",
+      `Paused restarts for ${what}: it restarted ${e.restarts} times in 30 minutes and still does not answer`,
+      "Deplo",
+      app.id,
+    );
+}
+
+async function applyOne(serverId: string, e: RestartEvent): Promise<void> {
   const [app] = await getDb()
     .select({
       id: appsTable.id,
       teamId: appsTable.teamId,
       name: appsTable.name,
       slug: appsTable.slug,
+      serverId: appsTable.serverId,
+      clusterId: appsTable.clusterId,
       replicas: appsTable.replicas,
+      compose: appsTable.compose,
     })
     .from(appsTable)
     .where(
       and(
-        eq(appsTable.slug, e.slug),
-        // Its own server, or any member that runs one of its replicas.
-        or(eq(appsTable.serverId, serverId), inArray(appsTable.id, placedHere)),
+        eq(appsTable.slug, appSlugFromDeployKey(e.slug)),
         isNull(appsTable.deletingAt),
       ),
     );
   if (!app) return;
+  if (isSuffixedDeployKey(e.slug)) return applyPreview(serverId, app, e);
+  // A spread App reports from every server that runs its replicas, not only the first.
+  const members = await listAppMembers(app);
+  if (!members.includes(serverId)) return;
   const path = `/apps/${app.slug}`;
 
   switch (e.kind) {
     case RestartEvent_Kind.KIND_RESTARTED: {
+      const replica = await replicaOf(
+        app,
+        e.container,
+        serverId,
+        members.length > 1,
+      );
       await recordActivity(
         "app",
-        // One of several is named, so nobody reads it as the whole App going down.
-        `Restarted ${app.replicas > 1 && e.container ? `replica ${replicaTag(e.container, app.slug)} of ` : ""}${app.name}: it stopped answering for ${e.unansweredS} s`,
+        `Restarted ${app.name}${replica ? ` replica ${replica}` : ""}: it stopped answering for ${e.unansweredS} s`,
         "Deplo",
         app.id,
       );

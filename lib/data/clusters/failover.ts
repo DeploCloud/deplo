@@ -285,55 +285,46 @@ export async function applyMoveFailed(
 interface Left {
   kind: string;
   workloadId: string;
-  /** Why the leader left it waiting; absent from a leader that does not say, which reads as no room. */
-  reason?: string;
+  /** Why the leader placed it nowhere: no_room unless it says otherwise. */
+  reason: string;
 }
 
-/** Why a workload still waits after a failover, for Activity ("... stopped answering and <this>") and for the alert. */
-function waitWords(
-  reason: string | undefined,
-  other: string,
-): { room: boolean; and: string; alert: (names: string) => string } {
+const NO_ROOM = "no_room";
+// No server of its kind is the same wait to a reader: `other` already names the kind ("no other x86 server").
+const ROOM = new Set([NO_ROOM, "no_architecture"]);
+// A wait read back after a reconnect: the leader's picture no longer says why.
+const UNKNOWN = "unknown";
+
+// What stopped it, after "<server> stopped answering and"; `other` is "no other server" or "no other x86 server".
+function waitingWhy(reason: string, other: string, rest = ""): string {
+  switch (reason) {
+    case "start_failed":
+      return `${rest ? "the rest" : "it"} did not start on another server`;
+    case "no_image":
+      return `${other} has its image yet`;
+    case "no_member_online":
+      return `${other} is online and ready`;
+    case UNKNOWN:
+      return `${other} has taken ${rest ? "the rest" : "it"} yet`;
+    default:
+      return `${other} has room${rest} yet`;
+  }
+}
+
+// The alert's line for the Apps and databases one reason left waiting.
+function waitingLine(reason: string, other: string, names: string): string {
   const Other = `${other[0]!.toUpperCase()}${other.slice(1)}`;
   switch (reason) {
-    case "no_image":
-      return {
-        room: false,
-        and: `${other} has its image yet`,
-        alert: (names) => `${Other} has the image of ${names} yet.`,
-      };
     case "start_failed":
-      return {
-        room: false,
-        and: "it did not start on another server",
-        alert: (names) => `${names} did not start on another server.`,
-      };
+      return `${names} did not start on another server.`;
+    case "no_image":
+      return `${Other} has the image of ${names} yet.`;
     case "no_member_online":
-      return {
-        room: false,
-        and: `${other} is online and ready`,
-        alert: (names) => `${Other} is online and ready for ${names}.`,
-      };
-    case "no_architecture":
-      // On a mixed cluster `other` already names the kind of server; saying "kind of processor" again adds nothing.
-      return other === "no other server"
-        ? {
-            room: false,
-            and: `${other} has the kind of processor it was built for`,
-            alert: (names) =>
-              `${Other} has the kind of processor ${names} was built for.`,
-          }
-        : {
-            room: false,
-            and: `there is ${other} to take it`,
-            alert: (names) => `There is ${other} to take ${names}.`,
-          };
+      return `${Other} is online and ready for ${names}.`;
+    case UNKNOWN:
+      return `${Other} has taken ${names} yet.`;
     default:
-      return {
-        room: true,
-        and: `${other} has room yet`,
-        alert: (names) => `${Other} has room for ${names} yet.`,
-      };
+      return `${Other} has room for ${names} yet.`;
   }
 }
 
@@ -352,7 +343,7 @@ export async function applyFailoverSummary(
         .map((w) => ({
           kind: String(w.kind),
           workloadId: String(w.workloadId),
-          reason: typeof w.reason === "string" ? w.reason : undefined,
+          reason: typeof w.reason === "string" && w.reason ? w.reason : NO_ROOM,
         }))
         .filter((w) => w.workloadId)
     : [];
@@ -402,7 +393,9 @@ export async function applyFailoverSummary(
   const from = await serverName(d.member);
   const byTeam = new Map<string, typeof rows>();
   const partial = new Map<string, string>();
-  const others = new Map<string, ReturnType<typeof waitWords>>();
+  const others = new Map<string, string>();
+  const reasons = new Map(left.map((w) => [w.workloadId, w.reason]));
+  const reasonOf = (id: string) => reasons.get(id) ?? NO_ROOM;
   for (const r of rows) {
     // An App whose other replicas still run says how many, so nobody reads it as down.
     const some =
@@ -413,16 +406,14 @@ export async function applyFailoverSummary(
     // On a mixed cluster: the kind of server it waits for.
     const only = await failoverOnly(r.kind, r.id, cluster.id);
     const other = only ? `no other ${only} server` : "no other server";
-    const why = waitWords(
-      left.find((w) => w.workloadId === r.id)?.reason,
-      other,
-    );
-    others.set(r.id, why);
+    others.set(r.id, other);
+    const reason = reasonOf(r.id);
+    const room = ROOM.has(reason);
     await recordActivity(
       r.kind,
-      some && why.room
-        ? `${r.name}: ${some}. ${from} stopped answering and ${other} has room for the rest yet`
-        : `${r.name} is waiting ${why.room ? "for room " : ""}in ${cluster.name}: ${from} stopped answering and ${why.and}`,
+      some
+        ? `${r.name}: ${room ? some : some.replace(" · waiting for room", "")}. ${from} stopped answering and ${waitingWhy(reason, other, " for the rest")}`
+        : `${r.name} is waiting ${room ? "for room " : ""}in ${cluster.name}: ${from} stopped answering and ${waitingWhy(reason, other)}`,
       ACTOR,
       r.kind === "app" ? r.id : null,
       r.teamId,
@@ -435,16 +426,20 @@ export async function applyFailoverSummary(
     const names = waiting.map((a) => a.name).join(", ");
     const only = waiting.length === 1 ? waiting[0]! : null;
     // One sentence per reason and kind of server waited for, as Activity names it.
-    const said = (w: (typeof waiting)[number]) => others.get(w.id)!.and;
-    const room = [...new Set(waiting.map(said))].map((and) => {
-      const group = waiting.filter((w) => said(w) === and);
-      return others
-        .get(group[0]!.id)!
-        .alert(group.map((w) => w.name).join(", "));
+    const keyOf = (w: { id: string }) =>
+      `${ROOM.has(reasonOf(w.id)) ? NO_ROOM : reasonOf(w.id)}\n${others.get(w.id)!}`;
+    const room = [...new Set(waiting.map(keyOf))].map((key) => {
+      const [reason, other] = key.split("\n") as [string, string];
+      return waitingLine(
+        reason,
+        other,
+        waiting
+          .filter((w) => keyOf(w) === key)
+          .map((w) => w.name)
+          .join(", "),
+      );
     });
-    const forRoom = waiting.every((w) => others.get(w.id)!.room)
-      ? "for room "
-      : "";
+    const forRoom = waiting.every((w) => ROOM.has(reasonOf(w.id)));
     const many = waiting.every((w) => w.kind === "app")
       ? `${waiting.length} Apps`
       : `${waiting.length} Apps and databases`;
@@ -459,7 +454,7 @@ export async function applyFailoverSummary(
       title:
         only && partial.has(only.id)
           ? `${only.name}: ${partial.get(only.id)}`
-          : `${only ? names : many} waiting ${forRoom}in ${cluster.name}`,
+          : `${only ? names : many} waiting ${forRoom ? "for room" : "to move"} in ${cluster.name}`,
       body: `${from} stopped answering. ${room.join(" ")} Deplo tries again every 30 seconds.`,
       path: !only
         ? undefined
@@ -524,7 +519,7 @@ export async function adoptLeaderMoves(
       else {
         const w = waiting.get(m.from) ?? { seq: 0, left: [] };
         if (!w.left.some((l) => l.workloadId === id))
-          w.left.push({ kind, workloadId: id });
+          w.left.push({ kind, workloadId: id, reason: UNKNOWN });
         w.seq = Math.max(w.seq, m.seq);
         waiting.set(m.from, w);
       }

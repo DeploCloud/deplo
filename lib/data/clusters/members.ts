@@ -26,6 +26,7 @@ import {
 } from "../../membership";
 import { probeClusterMember } from "../../infra/agent-client/cluster-host";
 import {
+  FAILOVER_MIN_MEMBERS,
   failoverOn,
   type Cluster,
   type ClusterJoin,
@@ -36,6 +37,7 @@ import {
   type ClusterMember,
 } from "../../types/cluster";
 import type { ServerStatus } from "../../types/server";
+import { TWO_SERVERS_JOINED } from "../../clusters/failover-reach";
 import { archivesChangeLog } from "../../databases/change-log";
 import { recordActivity } from "../activity";
 import { assembleDatabase } from "../backup-rows";
@@ -208,7 +210,7 @@ async function joinReasons(
   else if (probe === "too_old")
     out.push({
       code: "agent_too_old",
-      message: `The Deplo agent on ${server.name} is too old to join a cluster. Update it first.`,
+      message: `The server agent on ${server.name} is too old to join a cluster. Deplo updates it on its own.`,
     });
   return out;
 }
@@ -446,8 +448,10 @@ export async function addClusterMember(
   return {
     member,
     ...came,
-    note: failoverOn(members.length)
-      ? null
-      : "Failover starts at two members. Add another server to turn it on.",
+    note: !failoverOn(members.length)
+      ? "Failover starts at two members. Add another server to turn it on."
+      : members.length === FAILOVER_MIN_MEMBERS
+        ? TWO_SERVERS_JOINED
+        : null,
   };
 }

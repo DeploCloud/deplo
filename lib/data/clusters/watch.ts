@@ -28,6 +28,7 @@ import { getClusterById } from "./roster";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
 import { messageOf } from "../../utils";
+import { leaseChangeSentence } from "./lease-activity";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
 // Events carry a sequence; the last one applied is stored, so a restart or a reconnect replays only what is new.
@@ -93,12 +94,7 @@ async function memberLeaseChanged(
   // A preview never fails over: it reads offline until it is deployed again (#212).
   if (state === "fenced") await markPreviewsOffline(serverId);
   const name = (await getServerById(serverId))?.name ?? "A server";
-  const text =
-    state === "ok"
-      ? `${name} answers again in cluster ${clusterName}.`
-      : state === "not_responding"
-        ? `${name} is not responding in cluster ${clusterName}.`
-        : `${name} has not responded for a minute in cluster ${clusterName}, so it stopped the databases and Apps with files that must never run twice.`;
+  const text = await leaseChangeSentence(clusterId, clusterName, name, state);
   await recordClusterActivity(clusterId, text);
 }
 

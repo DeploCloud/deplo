@@ -111,6 +111,11 @@ export async function listClusterLeaderChoices(
       s.status === "offline"
         ? `${s.name} is offline. Bring it back online first.`
         : "",
+    // The other servers meet a leader at its own server's proxy; without one they meet at Deplo's machine.
+    note:
+      s.id === own?.id || relayAddress(s)
+        ? ""
+        : `${s.name} has no proxy, so a leader there still needs Deplo's machine up to move anything.`,
   }));
 }
 
