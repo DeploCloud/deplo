@@ -5,7 +5,6 @@ import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { watchClusterLeader } from "../../infra/agent-client/cluster-host";
 import type { ClusterLeaseState } from "../../types/cluster";
-import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import {
   adoptLeaderMoves,
@@ -22,6 +21,7 @@ import {
 } from "./leader-sync";
 import { recordPlacement } from "./placement";
 import { applyLeftSaved, applyMemberReturned } from "./returned";
+import { recordClusterActivity } from "./cluster-activity";
 import { getClusterById } from "./roster";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
@@ -96,7 +96,7 @@ async function memberLeaseChanged(
       : state === "not_responding"
         ? `${name} is not responding in cluster ${clusterName}.`
         : `${name} has not responded for a minute in cluster ${clusterName}, so it stopped the databases and Apps with files that must never run twice.`;
-  await recordActivity("server", text, "Deplo");
+  await recordClusterActivity(clusterId, text);
 }
 
 export type EventResult = "applied" | "skipped" | "frozen";
@@ -197,10 +197,9 @@ export async function applyLeaderEvent(
       return "applied";
     }
     case "superseded": {
-      await recordActivity(
-        "server",
+      await recordClusterActivity(
+        clusterId,
         `Cluster ${cluster.name}'s leader stepped down: a server in it follows a newer one.`,
-        "Deplo",
       );
       await advance();
       return "applied";

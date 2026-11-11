@@ -7,6 +7,7 @@ import { TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedApp } from "./app-graph-test-helpers";
 import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
@@ -174,6 +175,46 @@ test("a generated address another team already routes is left alone, and Activit
         actor: "Deplo",
       },
     ],
+  );
+});
+
+test("what Deplo says about a cluster goes to the teams with work on it, never to the oldest team", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  await web(cluster.id, "prj_b", TEAM_B);
+  const told = async () =>
+    (await lab.db.select().from(activitiesTable))
+      .filter((a) => a.actor === "Deplo" && a.type === "server")
+      .map((a) => [a.teamId, a.message]);
+
+  await apply(
+    cluster.id,
+    event(cluster.id, "member_state", { member: "srv_2", state: "fenced" }),
+    event(cluster.id, "superseded", {}),
+  );
+  assert.deepEqual(await told(), [
+    [
+      TEAM_B,
+      "server-2 has not responded for a minute in cluster eu, so it stopped the databases and Apps with files that must never run twice.",
+    ],
+    [
+      TEAM_B,
+      "Cluster eu's leader stepped down: a server in it follows a newer one.",
+    ],
+  ]);
+
+  // Two teams with work on it each read it once.
+  await web(cluster.id, "prj_a");
+  await apply(
+    cluster.id,
+    event(cluster.id, "member_state", { member: "srv_2", state: "ok" }),
+  );
+  assert.deepEqual(
+    (await told())
+      .filter(([, m]) => /answers again/.test(m))
+      .map(([t]) => t)
+      .sort(),
+    ["team_a", TEAM_B].sort(),
   );
 });
 

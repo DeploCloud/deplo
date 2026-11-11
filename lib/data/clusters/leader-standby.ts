@@ -22,6 +22,7 @@ import {
 } from "./leader-beat";
 import { leadFrom } from "./leader-move";
 import { ensureClusterRelay, pushClusterRoster } from "./relay";
+import { recordClusterActivity } from "./cluster-activity";
 import { getClusterById } from "./roster";
 
 // Deplo's own machine leads a cluster while its leader on another server does not answer (spec #176).
@@ -47,7 +48,9 @@ async function say(cluster: Cluster, message: string): Promise<void> {
     .from(clustersTable)
     .where(eq(clustersTable.id, cluster.id))
     .limit(1);
-  await recordActivity("server", message, "Deplo", null, row?.teamId ?? null);
+  if (row?.teamId)
+    await recordActivity("server", message, "Deplo", null, row.teamId);
+  else await recordClusterActivity(cluster.id, message);
 }
 
 /**

@@ -26,7 +26,7 @@ import {
   clusterRestoreUnsupportedMessage,
 } from "../../infra/agent-client/errors";
 import type { Cluster, ClusterLeaseState } from "../../types/cluster";
-import { recordActivity } from "../activity";
+import { recordClusterActivity } from "./cluster-activity";
 import { clusterMemberFacts } from "./facts";
 import { listStandbys } from "./placement";
 import { leaderHost } from "./host";
@@ -181,7 +181,7 @@ async function nameOldAgent(
       and(eq(activities.message, message), gte(activities.createdAt, since)),
     )
     .limit(1);
-  if (seen.length === 0) await recordActivity("server", message, "Deplo");
+  if (seen.length === 0) await recordClusterActivity(cluster.id, message);
 }
 
 const pushed = new Map<string, string>();
