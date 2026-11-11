@@ -896,7 +896,8 @@ What a member of a **cluster** still held of a database, or of an App with a Vol
 back after a **failover**: saved as a backup before that member removes its copy, and listed with
 the workload's backups as "Left on _server_ after the failover at 14:32". No schedule ever prunes
 it and Deplo never restores it on its own; restoring it by hand loses everything written since the
-failover. When it cannot be saved, the data stays on that server and **Activity** says why.
+failover. When it cannot be saved, the data stays on that server and **Activity** says why; the
+server tries again on its own, and Activity says when it is saved.
 _Avoid_: left-behind backup (a server **left behind** is one that missed an **update stop**),
 orphan backup, stale backup, old copy.
 

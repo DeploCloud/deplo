@@ -21,7 +21,7 @@ import {
   setMemberLease,
 } from "./leader-sync";
 import { recordPlacement } from "./placement";
-import { applyMemberReturned } from "./returned";
+import { applyLeftSaved, applyMemberReturned } from "./returned";
 import { getClusterById } from "./roster";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
@@ -188,6 +188,11 @@ export async function applyLeaderEvent(
     }
     case "member_returned": {
       await applyMemberReturned(cluster, e.seq, d);
+      await advance();
+      return "applied";
+    }
+    case "left_saved": {
+      await applyLeftSaved(cluster, d);
       await advance();
       return "applied";
     }

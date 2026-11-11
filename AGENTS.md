@@ -185,6 +185,9 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   relay THROUGH the control plane (agents are a star, they cannot dial each other), as
   **ciphertext**: the age wrap happens in the SOURCE agent's pipeline next to gzip, so nothing
   here ever holds plaintext. `lib/data/backup-transport.ts` owns all three shapes.
+  **One artifact skips the control plane**: what a cluster member had left after a failover goes
+  to the destination's member over the cluster relay (ADR-0044), so it is saved while Deplo is
+  down. Same ciphertext, and that server agent keeps only the file its leader named for that sender.
 - Compose is rendered control-plane-side as **opaque YAML** and shipped to the agent:
   `renderCompose` (single-image) / `buildComposeStack` (multi) / `traefikRouterLabels` (the only
   Traefik label grammar) / `portFor` (ADR-0001, the only port reader). **Never port routing /

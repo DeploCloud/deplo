@@ -32,7 +32,7 @@ import {
 /** Every run but the ones a returning member left: what retention counts and a failover restores. */
 export const notLeftBehind = isNull(backupRunsTable.leftAt);
 
-/** Where a member writes what it had left: it adds the time and its own id. */
+/** Where a member writes what it had left: it adds the failover's time and its own id, so a repeat overwrites. */
 export function leftBehindStem(
   teamId: string,
   kind: BackupTargetKind,
@@ -65,6 +65,9 @@ export interface FailoverKeep {
   ref: string;
   /** The member whose disk that destination is on; absent for a bucket every member reaches. */
   storeMember?: string;
+  /** Where on that disk: the leader tells that member the one file it accepts from the one that comes back. */
+  storeRoot?: string;
+  storeStem?: string;
   /** The agent's own backup request as JSON, credentials included: the leader passes it on unread. */
   request: unknown;
 }
@@ -98,10 +101,15 @@ export async function leftBehindKeep(t: {
   ).catch(() => null);
   if (!creds) return null;
   const dest = creds.destination;
+  const stem = leftBehindStem(t.teamId, t.kind, t.id);
   return {
     ref: dest.id,
     ...(dest.kind === "server" && dest.serverId
-      ? { storeMember: dest.serverId }
+      ? {
+          storeMember: dest.serverId,
+          storeRoot: dest.path ?? "",
+          storeStem: stem,
+        }
       : {}),
     request: BackupRequest.toJSON(
       backupRequestFor(
@@ -116,7 +124,7 @@ export async function leftBehindKeep(t: {
             mounts: [],
           },
         },
-        leftBehindStem(t.teamId, t.kind, t.id),
+        stem,
       ),
     ),
   };

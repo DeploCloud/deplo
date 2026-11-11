@@ -1,5 +1,11 @@
 # A backup destination is a bucket OR a server, and a server's artifacts are always encrypted
 
+- **Amended by spec #176 - 2026-11-11.** One artifact travels server to server instead of through
+  the control plane: what a cluster member had left after a failover goes to the member whose disk
+  is the destination over the cluster relay ([ADR-0044](0044-cluster-members-meet-through-a-relay-over-tcp.md)),
+  so it is saved while Deplo is down. It is still ciphertext wrapped at the source, and the
+  receiving server agent keeps only the one file its cluster's leader named for that sender.
+
 ## Context
 
 Until now a backup could go to exactly one kind of place: an S3-compatible

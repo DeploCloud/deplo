@@ -11,6 +11,7 @@ import { joinNames } from "../../utils";
 import { recordActivity } from "../activity";
 import { recordLeftBehindRun } from "../backups/left-behind";
 import { getServerById } from "../servers/roster";
+import { clusterMemberServerIds } from "./roster";
 
 // A server presumed gone came back and stopped its copies of what had moved (spec #176): one Activity entry
 // and one alert per team, each naming only that team's own Apps and databases, and what was saved of them.
@@ -134,10 +135,13 @@ async function listSaved(
   return id !== null;
 }
 
-/** Why a member kept what it held, in the words the user reads. */
-async function whyKept(w: Workload, server: string, k: Row): Promise<string> {
-  // ponytail: a destination on another server's disk is never written by the member alone, so that data
-  // stays put. Deplo could carry it there itself (backup-transport relays) once a volume can be removed safely.
+/** Why a member kept what it held, in the words the user reads, and whether it tries again on its own. */
+async function whyKept(
+  cluster: Cluster,
+  w: Workload,
+  server: string,
+  k: Row,
+): Promise<{ why: string; retried: boolean }> {
   if (k.reason === "store_elsewhere") {
     const [dest] =
       typeof k.ref === "string"
@@ -150,15 +154,83 @@ async function whyKept(w: Workload, server: string, k: Row): Promise<string> {
     const on =
       (dest?.serverId && (await getServerById(dest.serverId))?.name) ||
       "another server";
-    return `its backups are kept on ${on}, which ${server} cannot reach on its own`;
+    // Only a member of the same cluster is ever sent an archive (ADR-0044).
+    const member =
+      !!dest?.serverId &&
+      (await clusterMemberServerIds(cluster.id)).includes(dest.serverId);
+    return member
+      ? {
+          why: `its backups are kept on ${on}, and ${server} could not send it there`,
+          retried: true,
+        }
+      : {
+          why: `its backups are kept on ${on}, which is not in cluster ${cluster.name}`,
+          retried: false,
+        };
   }
   if (k.reason === "backup_failed") {
     const error = typeof k.error === "string" ? k.error.trim() : "";
-    return error
-      ? `the backup failed (${error.slice(0, 200)})`
-      : "the backup failed";
+    return {
+      why: error
+        ? `the backup failed (${error.slice(0, 200)})`
+        : "the backup failed",
+      retried: true,
+    };
   }
-  return "the cluster had no backup destination for it";
+  return {
+    why: "the cluster had no backup destination for it",
+    retried: false,
+  };
+}
+
+/** A server saved, after its return, what it had kept: the backup is listed and each team reads one line. */
+export async function applyLeftSaved(
+  cluster: Cluster,
+  d: Record<string, unknown>,
+): Promise<void> {
+  if (typeof d.member !== "string") return;
+  const member = d.member;
+  const saved = rows(d, "saved");
+  const known = await namedWorkloads(cluster.id, saved);
+  const server = (await getServerById(member))?.name ?? "A server";
+  // One word per workload: listed if any of its files was, however many the event names.
+  const fate = new Map<string, { w: Workload; listed: boolean }>();
+  for (const r of saved) {
+    const w = known.get(keyOf(r));
+    if (!w) continue;
+    const listed = await listSaved(w, member, r);
+    const was = fate.get(keyOf(r));
+    fate.set(keyOf(r), { w, listed: listed || !!was?.listed });
+  }
+  const byTeam = new Map<string, { listed: Workload[]; lost: Workload[] }>();
+  for (const { w, listed } of fate.values()) {
+    const team = byTeam.get(w.teamId) ?? { listed: [], lost: [] };
+    byTeam.set(w.teamId, team);
+    (listed ? team.listed : team.lost).push(w);
+  }
+  const names = (ws: Workload[]) =>
+    joinNames(ws.map((w) => w.name).sort((a, b) => a.localeCompare(b)));
+  for (const [teamId, { listed, lost }] of byTeam) {
+    const parts = [
+      ...(listed.length > 0
+        ? [
+            `${server} saved what it still held of ${names(listed)} as ${listed.length === 1 ? "a backup" : "backups"}, labelled "Left on ${server}".`,
+          ]
+        : []),
+      ...lost.map(
+        (w) =>
+          `${server} saved what it still held of ${w.name}, but Deplo could not match the file to ${w.name}'s backups, so it is not listed.`,
+      ),
+    ];
+    const all = [...listed, ...lost];
+    await recordActivity(
+      "server",
+      parts.join(" "),
+      "Deplo",
+      all.length === 1 ? (all[0]!.app?.id ?? null) : null,
+      teamId,
+    );
+  }
 }
 
 /** One return of a member: what it stopped and what it saved, said once to each team that owns some of it. */
@@ -212,11 +284,19 @@ export async function applyMemberReturned(
         0,
         `What it still held of ${joinNames(listed.sort((a, b) => a.localeCompare(b)))} was saved as ${listed.length === 1 ? "a backup" : "backups"}, labelled "Left on ${server}".`,
       );
+    let retried = false;
     for (const { w, r } of own(kept, teamId).sort((a, b) =>
       a.w.name.localeCompare(b.w.name),
-    ))
+    )) {
+      const told = await whyKept(cluster, w, server, r);
+      retried ||= told.retried;
       parts.push(
-        `What it still held of ${w.name} could not be saved as a backup, so it stays on ${server}: ${await whyKept(w, server, r)}.`,
+        `What it still held of ${w.name} could not be saved as a backup, so it stays on ${server}: ${told.why}.`,
+      );
+    }
+    if (retried)
+      parts.push(
+        `${server} tries again on its own, and Activity says when it is saved.`,
       );
     const body = parts.join(" ");
     const only = mine.length === 1 ? mine[0]!.app : null;
