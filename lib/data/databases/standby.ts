@@ -293,7 +293,12 @@ export async function setDatabaseStandby(
       await getDb()
         .update(databasesTable)
         .set({ standby: false, standbySeed: null })
-        .where(eq(databasesTable.id, id));
+        .where(
+          and(
+            eq(databasesTable.id, id),
+            eq(databasesTable.teamId, membership.teamId),
+          ),
+        );
       await applySettings(db, engine).catch(quietly(db.host));
       await tellCluster({ ...db, standby: false }, cluster);
       throw new Error(
