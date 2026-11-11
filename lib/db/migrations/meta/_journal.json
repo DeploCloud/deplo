@@ -1674,6 +1674,13 @@
       "when": 1795512000000,
       "tag": "0245_preview_server",
       "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1795648000000,
+      "tag": "0249_app_unresponsive_alert_state",
+      "breakpoints": true
     }
   ]
 }

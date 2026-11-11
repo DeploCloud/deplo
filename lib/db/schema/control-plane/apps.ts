@@ -136,6 +136,9 @@ export const apps = pgTable(
       .notNull()
       .default(true),
     restartsPausedAt: isoTimestamptz("restarts_paused_at"),
+    // What the team was told about a hang, kept here so a restart of Deplo forgets nothing.
+    unresponsiveAlertedAt: isoTimestamptz("unresponsive_alerted_at"),
+    recoveryAlertOwed: boolean("recovery_alert_owed").notNull().default(false),
     replicas: integer("replicas").notNull().default(1),
     stickySessions: boolean("sticky_sessions").notNull().default(false),
     failoverFromBackup: boolean("failover_from_backup")
