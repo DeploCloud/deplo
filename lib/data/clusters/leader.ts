@@ -11,8 +11,8 @@ import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeader } from "../../types/cluster";
 import type { Server } from "../../types/server";
 import { recordActivity } from "../activity";
-import { leaderHost } from "./host";
-import { ensureClusterRelay, pushClusterRoster } from "./relay";
+import { leaderHostOf } from "./host";
+import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
 import { getClusterById } from "./roster";
 
 const NO_HOST =
@@ -30,6 +30,7 @@ function down(
     state,
     version: "",
     message,
+    takenOverAt: null,
   };
 }
 
@@ -66,7 +67,12 @@ export async function getClusterLeader(
   await requireInstanceAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
-  return readLeader(await leaderHost(cluster));
+  // Where it was put, not who stands in for it: the card says both.
+  const leader = await readLeader(await leaderHostOf(cluster.leaderServerId));
+  return {
+    ...leader,
+    takenOverAt: cluster.leaderServerId ? cluster.leaderTakeoverAt : null,
+  };
 }
 
 /**
@@ -91,12 +97,14 @@ async function startLeader(
   actor: string,
   teamId: string,
 ): Promise<ClusterLeader> {
-  const host = await leaderHost(cluster);
+  const host = await leaderHostOf(cluster.leaderServerId);
   const before = await readLeader(host);
   if (!host || before.state === "running" || before.state === "unavailable")
     return before;
   try {
-    await installClusterLeader(host.id, { relay: isDeploHostServer(host) });
+    await installClusterLeader(host.id, {
+      relay: isDeploHostServer(host) || relayAddress(host) !== null,
+    });
   } catch (e) {
     return down(
       host,

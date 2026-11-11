@@ -8,6 +8,8 @@ export interface Cluster {
   /** The server the leader runs on; null is Deplo's own machine. */
   leaderServerId: ID | null;
   leaderEpoch: number;
+  /** Set while Deplo's own machine leads because the leader's server does not answer. */
+  leaderTakeoverAt: string | null;
   /** The last leader event applied; a reconnect replays from here. */
   eventSeq: number;
   createdAt: string;
@@ -25,6 +27,20 @@ export interface ClusterLeader {
   version: string;
   /** One plain sentence when the leader is not running; empty otherwise. */
   message: string;
+  /** Since when Deplo's own machine leads in its place; null while this leader leads. */
+  takenOverAt: string | null;
+}
+
+/** A server the "Run the leader on another server" picker offers. */
+export interface ClusterLeaderChoice {
+  serverId: ID;
+  serverName: string;
+  /** Deplo's own machine, where the leader runs unless it is moved. */
+  onDeploHost: boolean;
+  /** The leader runs here now. */
+  current: boolean;
+  /** Why the leader cannot run there right now; empty when it can. */
+  blocked: string;
 }
 
 /** Failover needs somewhere to move an App to, so it starts at two members. */

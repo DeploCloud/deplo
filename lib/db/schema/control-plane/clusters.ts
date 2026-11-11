@@ -22,6 +22,12 @@ export const clusters = pgTable("clusters", {
     onDelete: "set null",
   }),
   leaderEpoch: integer("leader_epoch").notNull().default(0),
+  // Set while Deplo's own machine leads because the leader's server does not answer.
+  leaderTakeoverAt: isoTimestamptz("leader_takeover_at"),
+  // The team whose Activity carries what Deplo says about the leader.
+  leaderTeamId: text("leader_team_id").references(() => teams.id, {
+    onDelete: "set null",
+  }),
   // The last leader event this control plane applied; a reconnect replays from here.
   eventSeq: bigint("event_seq", { mode: "number" }).notNull().default(0),
   createdAt: isoTimestamptz("created_at").notNull(),

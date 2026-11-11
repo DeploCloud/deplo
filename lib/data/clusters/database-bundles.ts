@@ -41,7 +41,7 @@ import {
   keyFingerprint,
   keyRows,
   recordOnce,
-  refreshLeaderKey,
+  refreshLeaderKeys,
 } from "./bundles";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 
@@ -154,7 +154,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
   if (!db?.clusterId || db.status === "provisioning") return;
   const cluster = await getClusterById(db.clusterId);
   if (!cluster) return;
-  await refreshLeaderKey(cluster).catch(() => {});
+  await refreshLeaderKeys(cluster);
   const keys = await keyRows(cluster.id);
   const say = (why: string) =>
     recordOnce(db, cannotFailOver(db.name, cluster.name, why), KIND);
@@ -275,7 +275,7 @@ async function reconcileCluster(clusterId: string): Promise<void> {
     .where(eq(databasesTable.clusterId, clusterId));
   const ids = new Set(owned.map((d) => d.id));
   for (const k of await keyRows(clusterId)) {
-    const hostId = await hostFor(cluster, k.serverId).catch(() => null);
+    const hostId = await hostFor(k.serverId).catch(() => null);
     if (!hostId) continue;
     const held = await listLeaderBundles(hostId, clusterId).catch(() => null);
     if (!held) continue;
