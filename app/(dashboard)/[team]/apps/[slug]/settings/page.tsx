@@ -3,6 +3,7 @@ import { Settings2 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { getServerById } from "@/lib/data/servers/roster";
 import { listPlacementChoices } from "@/lib/data/clusters/choices";
+import { appWaitingNote } from "@/lib/data/clusters/placement";
 import { getCluster } from "@/lib/data/clusters/roster";
 import { neighboursOnNetwork } from "@/lib/data/name-clash";
 import { faviconSourceKind } from "@/lib/apps/favicon-shared";
@@ -21,7 +22,7 @@ export default async function AppGeneralSettingsPage(
   if (!project) notFound();
 
   const detectable = faviconSourceKind(project) !== "none";
-  const [servers, neighbours, cluster, member] = await Promise.all([
+  const [servers, neighbours, cluster, member, waiting] = await Promise.all([
     listPlacementChoices(),
     neighboursOnNetwork(
       {
@@ -33,6 +34,7 @@ export default async function AppGeneralSettingsPage(
     ),
     project.clusterId ? getCluster(project.clusterId) : null,
     project.clusterId ? getServerById(project.serverId) : null,
+    appWaitingNote(project),
   ]);
 
   return (
@@ -62,6 +64,7 @@ export default async function AppGeneralSettingsPage(
                   id: cluster.id,
                   name: cluster.name,
                   serverName: member?.name ?? "a server in it",
+                  waiting,
                 }
               : null
           }

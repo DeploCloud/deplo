@@ -11,6 +11,7 @@ import {
   getClusterLeader,
 } from "@/lib/data/clusters/leader";
 import { listClusterImageProgress } from "@/lib/data/clusters/images";
+import { listClusterWaiting } from "@/lib/data/clusters/placement";
 import {
   getCluster,
   getClusterTeams,
@@ -198,6 +199,12 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
       description:
         "The active team's Apps on this cluster whose newest release has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere.",
       resolve: (c) => listClusterImageProgress(c.id),
+    }),
+    waiting: t.stringList({
+      authScopes: { loggedIn: true },
+      description:
+        "The names of the active team's Apps on this cluster that found no room after a server stopped. They are tried again every 30 seconds; empty when everything runs.",
+      resolve: (c) => listClusterWaiting(c.id),
     }),
     failoverOn: t.boolean({
       authScopes: { loggedIn: true },

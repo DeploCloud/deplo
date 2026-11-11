@@ -5,6 +5,7 @@ import { DeploySourceEnum, AppStatusEnum } from "../enums";
 import { DeploymentRef } from "./deployment-object";
 import { listApps } from "@/lib/data/apps/listing";
 import { getCluster } from "@/lib/data/clusters/roster";
+import { appWaitingNote } from "@/lib/data/clusters/placement";
 import type { AppSummary } from "@/lib/data/apps/summary";
 import { effectiveFramework } from "@/lib/apps/framework-catalog";
 import { listDeployments } from "@/lib/data/deployments/deployment-queries";
@@ -96,6 +97,12 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
       description:
         "The cluster the app is placed on; null for an app on one server.",
       resolve: (p) => p.clusterId ?? null,
+    }),
+    placementNote: t.string({
+      nullable: true,
+      description:
+        'Set to "Waiting for room in eu" while the leader of its cluster has nowhere to run this app; null otherwise.',
+      resolve: (p) => appWaitingNote(p),
     }),
     clusterName: t.string({
       nullable: true,

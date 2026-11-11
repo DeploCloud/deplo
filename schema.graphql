@@ -252,6 +252,11 @@ type App {
   name: String
 
   """
+  Set to "Waiting for room in eu" while the leader of its cluster has nowhere to run this app; null otherwise.
+  """
+  placementNote: String
+
+  """
   Host ports this app publishes. Empty for a compose stack, which publishes its own in its compose file.
   """
   ports: [PublishedPort!]
@@ -1095,6 +1100,11 @@ type Cluster {
   Teams granted access when `allTeams` is false. Only an instance admin sees every team; anyone else sees the active team at most.
   """
   teams: [Team!]
+
+  """
+  The names of the active team's Apps on this cluster that found no room after a server stopped. They are tried again every 30 seconds; empty when everything runs.
+  """
+  waiting: [String!]
 }
 
 """

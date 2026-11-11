@@ -3,9 +3,11 @@ import { Network } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DocsLink } from "@/components/ui/docs-link";
 import { Bone } from "@/components/ui/skeleton";
 import { listClusterImageProgress } from "@/lib/data/clusters/images";
 import { getClusterLeader } from "@/lib/data/clusters/leader";
+import { listClusterWaiting } from "@/lib/data/clusters/placement";
 import {
   listClusterJoinCandidates,
   listClusterMembers,
@@ -137,6 +139,26 @@ async function ImageCopies({ clusterId }: { clusterId: string }) {
   );
 }
 
+async function Waiting({ cluster }: { cluster: Cluster }) {
+  const names = await listClusterWaiting(cluster.id);
+  if (names.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">
+        Waiting for room in {cluster.name}. Deplo tries again every 30 seconds.{" "}
+        <DocsLink topic="clusters.failover" />
+      </p>
+      <ul className="space-y-0.5 text-sm">
+        {names.map((name) => (
+          <li key={name} className="font-medium">
+            {name}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 async function LeaderLine({ clusterId }: { clusterId: string }) {
   const leader = await getClusterLeader(clusterId);
   const badge = LEADER_BADGE[leader.state];
@@ -198,6 +220,9 @@ export function ClusterCard({
       <CardContent className="space-y-3">
         <Suspense fallback={<Bone>2 servers Failover on</Bone>}>
           <Members clusterId={cluster.id} />
+        </Suspense>
+        <Suspense fallback={null}>
+          <Waiting cluster={cluster} />
         </Suspense>
         <Suspense fallback={null}>
           <ImageCopies clusterId={cluster.id} />
