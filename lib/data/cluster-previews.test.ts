@@ -12,6 +12,7 @@ import { encryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedApp,
+  seedDeployment,
   seedPreview,
   seedServer,
   SERVER_1,
@@ -21,6 +22,7 @@ import { seedServerRow } from "./infra-test-helpers";
 import { activities } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
+  clusterImageCopies,
   failoverBundlePushes,
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
@@ -57,6 +59,7 @@ import { flushFailoverBundles } from "./clusters/bundles";
 import { deleteCluster, removeClusterMember } from "./clusters/dissolve";
 import { emptyClusterMember, runEmptyingPass } from "./clusters/empty";
 import { syncNameForwarders } from "./clusters/forwarders";
+import { copyImageAfterDeploy } from "./clusters/images";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { applyLeaderEvent } from "./clusters/watch";
@@ -759,4 +762,22 @@ test("removing a member's server outright leaves its previews offline, not runni
   await asAdmin(() => redeployPreview(PREVIEW));
   assert.equal((await preview()).serverId, "srv_3");
   await cancelQueued();
+});
+
+test("the image a preview was built into is not copied to the other members", async () => {
+  await seedDeployment(db, {
+    id: "dpl_built",
+    appId: APP,
+    previewId: PREVIEW,
+    prNumber: 7,
+    environment: "preview",
+    deployKey: KEY,
+    serverId: "srv_3",
+    imageRef: `deplo/${KEY}:dpl_built`,
+  });
+  // The deploy's tail, as a ready deploy calls it.
+  copyImageAfterDeploy("dpl_built", "srv_3");
+  await new Promise((r) => setTimeout(r, 150));
+  for (const id of MEMBERS) assert.deepEqual(hosts[id]!.imageCopies, []);
+  assert.deepEqual(await db.select().from(clusterImageCopies), []);
 });

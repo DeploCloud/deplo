@@ -44,6 +44,7 @@ async function memberStillServes(
 
 // The leader picks and keeps no record, so nothing of a preview is ever moved or failed over.
 // ponytail: a preview's memory is not counted against a member's room; add it to facts.ts if previews crowd one.
+// ponytail: no architecture is sent; which processors a build runs on is #207's.
 async function memberFor(p: Preview, app: App): Promise<string> {
   if (
     p.serverId &&
