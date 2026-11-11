@@ -5,8 +5,10 @@ import { eq } from "drizzle-orm";
 
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { activities } from "../../db/schema/control-plane/activity";
+import { workloadPlacements } from "../../db/schema/control-plane/clusters";
 import { runWithIdentity } from "../../auth/request-context";
 import { seedApp, seedDeployment } from "../../data/app-graph-test-helpers";
+import { setAppRestartWhenUnresponsive } from "../../data/apps/settings";
 import { saveNotificationChannel } from "../../data/notifications";
 import { TEAM_A, USER_1 } from "../../data/identity-test-helpers";
 import { commitOutcome } from "../../deploy/build/deployment-state";
@@ -253,4 +255,87 @@ test("a successful deploy clears the pause", async () => {
     {},
   );
   assert.equal(await paused(), null);
+});
+
+test("with several replicas the entry names the one that was restarted", async () => {
+  const feed = await setup();
+  await h.db
+    .update(appsTable)
+    .set({ replicas: 3 })
+    .where(eq(appsTable.id, "prj_web"));
+  await send(
+    feed,
+    ev(RestartEvent_Kind.KIND_RESTARTED, {
+      container: "deplo-web-deplo-web-2",
+      unansweredS: 90,
+      restarts: 1,
+    }),
+  );
+  await waitFor(async () => (await messages()).length === 1, "activity");
+  assert.deepEqual(await messages(), [
+    "Restarted replica web-2 of web: it stopped answering for 90 s",
+  ]);
+});
+
+test("a restart on another server of a spread App is recorded too", async () => {
+  const feed = await setup();
+  // The App's row names its first server; this one runs its second replica.
+  await seedEnrolledServer(h.db, "srv_other", "2026-01-01T00:00:00.000Z");
+  await h.db
+    .update(appsTable)
+    .set({ serverId: "srv_other", replicas: 2 })
+    .where(eq(appsTable.id, "prj_web"));
+  await h.db.insert(workloadPlacements).values({
+    kind: "app",
+    workloadId: "prj_web",
+    replica: 1,
+    memberServerId: SRV_A,
+    epoch: 1,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  await send(
+    feed,
+    ev(RestartEvent_Kind.KIND_RESTARTED, {
+      container: "deplo-web-deplo-web-1",
+      unansweredS: 60,
+    }),
+  );
+  await waitFor(async () => (await messages()).length === 1, "activity");
+  assert.match((await messages())[0], /^Restarted replica web-1 of web/);
+});
+
+test("a deploy or a manual start settles what was owed: a later recovery announces nothing", async () => {
+  const feed = await setup();
+  await send(feed, ev(RestartEvent_Kind.KIND_RESTARTED, { unansweredS: 90 }));
+  await waitFor(async () => capture!.calls.length === 1, "the first alert");
+  await seedDeployment(h.db, {
+    id: "dpl_1",
+    appId: "prj_web",
+    status: "building",
+  });
+  await commitOutcome(
+    "dpl_1",
+    { kind: "app", appId: "prj_web", teamId: TEAM_A, name: "web", slug: "web" },
+    { status: "ready" },
+    {},
+  );
+  await __settleAlertsForTest();
+  const before = capture!.calls.length;
+  await send(feed, ev(RestartEvent_Kind.KIND_RECOVERED));
+  assert.ok(
+    !titles()
+      .slice(before)
+      .some((t) => /running again/.test(t)),
+    titles().join(" | "),
+  );
+});
+
+test("flipping the restart switch does not clear a pause the server agent still holds", async () => {
+  const feed = await setup();
+  await send(feed, ev(RestartEvent_Kind.KIND_PAUSED, { restarts: 5 }));
+  await waitFor(async () => (await paused()) !== null, "paused state");
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    setAppRestartWhenUnresponsive("prj_web", false),
+  );
+  assert.notEqual(await paused(), null);
 });

@@ -114,7 +114,6 @@ export async function setAppRestartWhenUnresponsive(
     .update(appsTable)
     .set({
       restartWhenUnresponsive: enabled,
-      restartsPausedAt: null,
       pendingChangesAt: nowIso(),
       updatedAt: nowIso(),
     })

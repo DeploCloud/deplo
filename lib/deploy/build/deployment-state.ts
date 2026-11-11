@@ -250,7 +250,12 @@ export async function commitOutcome(
   await setDeployState(
     target,
     ok && target.kind !== "preview"
-      ? { ...appPatch, restartLoopStoppedAt: null, restartsPausedAt: null }
+      ? {
+          ...appPatch,
+          restartLoopStoppedAt: null,
+          restartsPausedAt: null,
+          recoveryAlertOwed: false,
+        }
       : appPatch,
   );
   if (ok && target.kind !== "preview")
