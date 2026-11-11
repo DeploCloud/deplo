@@ -30,8 +30,10 @@ test("another cluster, or none, is still another server", () => {
     databaseReach({ ...app, clusterId: null }, { ...db, clusterId: null }),
     "other-server",
   );
-  const { clusterId: _, ...bare } = app;
-  assert.equal(databaseReach(bare, db), "other-server");
+  assert.equal(
+    databaseReach({ ...app, clusterId: undefined }, db),
+    "other-server",
+  );
 });
 
 test("one cluster does not join two Environments or two teams", () => {
