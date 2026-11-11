@@ -80,6 +80,11 @@ export interface BackupRun {
   heldMs: number | null;
   sha256: string | null;
   orphanedAt: string | null;
+  /** Data a returning cluster member had left: when the failover happened, and the server it was on. */
+  leftAt?: string | null;
+  leftOnServerId?: ID | null;
+  /** That server's name; only the listing fills it in. */
+  leftOnServer?: string | null;
   status: BackupRunStatus;
   error: string | null;
   startedAt: string;

@@ -9,6 +9,7 @@ import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
 import { deleteManyFromDestination } from "../backup-transport";
 import { selectDoomedRuns, type RunForRetention } from "../backup-objectkey";
 import { notCopied } from "./copied-runs";
+import { notLeftBehind } from "./left-behind";
 import { runTargetWhere } from "./target-lookup";
 import type { ResolvedTarget } from "./target-descriptor";
 import type { BackupTargetKind } from "../../types/backup";
@@ -84,6 +85,8 @@ export async function loadRunsForTarget(
         runTargetWhere(kind, targetId ?? ""),
         // Copied runs are the old Deplo's history: never counted, never pruned.
         notCopied,
+        // What a returning cluster member left is the user's to delete, never a schedule's.
+        notLeftBehind,
       ),
     );
   return rows.map((r) => ({ ...assembleBackupRun(r), seq: r.seq }));

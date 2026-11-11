@@ -106,6 +106,16 @@ export const BackupRunRef = builder
         description:
           "How long the App was paused so its data could be copied consistently, in milliseconds. Null when it was not paused.",
       }),
+      leftAt: t.exposeString("leftAt", {
+        nullable: true,
+        description:
+          "Set on data a server of a cluster still held when it came back after a failover: when that failover happened. Such a run is never pruned and never restored by Deplo on its own; restoring it loses everything written since.",
+      }),
+      leftOnServer: t.exposeString("leftOnServer", {
+        nullable: true,
+        description:
+          "The name of the server that data was left on. Null for an ordinary backup, or once that server is gone.",
+      }),
       status: t.field({
         type: BackupRunStatusEnum,
         resolve: (r) => r.status,

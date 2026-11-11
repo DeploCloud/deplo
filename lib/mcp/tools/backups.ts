@@ -57,6 +57,8 @@ export const BACKUPS: McpToolDef[] = [
           sizeBytes
           verified
           error
+          leftAt
+          leftOnServer
         }
       }
     `,
@@ -113,7 +115,7 @@ export const BACKUPS: McpToolDef[] = [
     name: "restore_backup",
     title: "Restore a backup",
     description:
-      "Restore an artifact in place. This OVERWRITES the live app or database with the backup's contents.",
+      "Restore an artifact in place. This OVERWRITES the live app or database with the backup's contents. A run with leftAt set is what a server still held before a failover: restoring it loses everything written since.",
     group: "Backups",
     requires: "restore_backups",
     destructive: true,

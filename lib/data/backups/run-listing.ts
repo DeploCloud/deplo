@@ -9,6 +9,7 @@ import {
 } from "../../db/schema/control-plane/backups";
 import { assembleBackup, assembleBackupRun } from "../backup-rows";
 import { requireActiveTeamId } from "../../membership";
+import { notLeftBehind, withLeftServerNames } from "./left-behind";
 import { backupTargetInScope } from "./target-access";
 import type { Backup, BackupRun, BackupRunStatus } from "../../types/backup";
 
@@ -35,7 +36,7 @@ export async function listBackupRuns(filter: {
     .from(backupRunsTable)
     .where(and(eq(backupRunsTable.teamId, teamId), targetWhere))
     .orderBy(desc(backupRunsTable.startedAt), desc(backupRunsTable.seq));
-  return rows.map(assembleBackupRun);
+  return withLeftServerNames(rows.map(assembleBackupRun));
 }
 
 export interface DatabaseBackupSummary {
@@ -74,6 +75,8 @@ export async function getDatabaseBackupSummary(
         and(
           eq(backupRunsTable.teamId, teamId),
           eq(backupRunsTable.databaseId, databaseId),
+          // What a returning server left is not a backup of the database as it is now.
+          notLeftBehind,
         ),
       )
       .orderBy(desc(backupRunsTable.startedAt), desc(backupRunsTable.seq))

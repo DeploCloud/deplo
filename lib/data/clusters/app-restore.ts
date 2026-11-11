@@ -8,6 +8,7 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import type { App } from "../../types/app";
 import { usesComposeStack } from "../../utils";
 import { loadAppGraph } from "../app-graph-load";
+import { leftBehindKeep } from "../backups/left-behind";
 import { ensureFailoverBackup } from "../databases/failover";
 import {
   appHasFilesDir,
@@ -79,10 +80,17 @@ export async function pushAppBundle(input: {
   }
   if (disk !== "volume") return pushFailoverBundle(input);
   await ensureFailoverBackup(app, "app");
-  if (!app.failoverFromBackup) return pushFailoverBundle(input);
+  const keep = await leftBehindKeep({
+    teamId: app.teamId,
+    kind: "app",
+    id: app.id,
+    project: restoreDescriptor(app, input.stack),
+  });
+  const kept = { ...input, ...(keep ? { keep } : {}) };
+  if (!app.failoverFromBackup) return pushFailoverBundle(kept);
   const source = await appRestoreSource(app, input.stack);
   await pushFailoverBundle({
-    ...input,
+    ...kept,
     ...(source.restore ? { restore: source.restore } : {}),
   });
   const cluster = source.why ? await getClusterById(app.clusterId) : null;

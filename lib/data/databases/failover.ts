@@ -32,6 +32,7 @@ import {
   assembleDestination,
   backupToRow,
 } from "../backup-rows";
+import { notLeftBehind } from "../backups/left-behind";
 import { latestBaseBackup } from "../clusters/change-log";
 import { standbyMemberOf, waitingForRoomNote } from "../clusters/placement";
 import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
@@ -190,6 +191,7 @@ async function lossAndRecovery(
         eq(backupRunsTable.teamId, db.teamId),
         eq(backupRunsTable.databaseId, db.id),
         eq(backupRunsTable.status, "success"),
+        notLeftBehind,
       ),
     )
     .orderBy(desc(backupRunsTable.seq))

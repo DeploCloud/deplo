@@ -144,6 +144,11 @@ export const backupRuns = pgTable(
     heldMs: bigint("held_ms", { mode: "number" }),
     sha256: text("sha256"),
     orphanedAt: isoTimestamptz("orphaned_at"),
+    // Data a returning cluster member had left (spec #176): the server it was on, and when the failover happened.
+    leftOnServerId: text("left_on_server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    leftAt: isoTimestamptz("left_at"),
     status: text("status").notNull(),
     error: text("error"),
     startedAt: isoTimestamptz("started_at").notNull(),

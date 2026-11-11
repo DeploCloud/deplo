@@ -9,6 +9,7 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { formatBytes, formatDateTime, timeAgo } from "@/lib/utils";
 import type { BackupRun } from "@/lib/types/backup";
 import { heldLabel } from "@/lib/backup-hold";
+import { leftBehindLabel } from "@/lib/backups/left-behind";
 import type { BackupTarget } from "./target";
 import { RunMenu } from "./run-menu";
 import {
@@ -108,6 +109,18 @@ export function RunRow({
           {!running && !ok && (
             <span className="text-xs text-muted-foreground capitalize">
               {run.status}
+            </span>
+          )}
+          {run.leftAt && (
+            <span
+              className="text-xs text-muted-foreground"
+              suppressHydrationWarning
+            >
+              {leftBehindLabel(
+                run.leftOnServer,
+                run.leftAt,
+                Intl.DateTimeFormat().resolvedOptions().timeZone,
+              )}
             </span>
           )}
         </div>
