@@ -56,6 +56,7 @@ import { invalidateFrozen } from "./deplo-move/freeze";
 import { createApp } from "./apps/create";
 import { deleteApp } from "./apps/delete";
 import { moveAppToServer } from "./apps/source";
+import { pushAppBundle } from "./clusters/app-restore";
 
 let db: TestDb;
 let pg: PGlite;
@@ -611,6 +612,41 @@ test("the bundle tells the leader the App's 24-hour peak, so a failover finds re
     [0, 3000],
   );
   clearContainerHistory();
+});
+
+test("a stack that builds its own images says, once, that they exist only on its server", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  const push = async (deploymentId: string, composeYaml: string) => {
+    await seedDeployment(db, { id: deploymentId, appId: app.id });
+    await pushAppBundle({
+      appId: app.id,
+      deploymentId,
+      stack: {
+        slug: app.slug,
+        projectId: app.id,
+        imageRef: "",
+        composeYaml,
+        network: "deplo-team-x",
+        env: {},
+        registryAuth: [],
+        composeUpArgs: [],
+      },
+    });
+  };
+
+  await push("dpl_1", COMPOSE);
+  assert.deepEqual(await activityFor(app.id), []);
+
+  const built = "services:\n  web:\n    build: .\n    image: deplo/web-web\n";
+  await push("dpl_2", built);
+  await push("dpl_3", built);
+  assert.deepEqual(
+    (await activityFor(app.id)).map((r) => `${r.actor}: ${r.message}`),
+    [
+      "Deplo: web does not fail over yet: its compose file builds images, and they exist only on the server that built them. A compose file that names published images does.",
+    ],
+  );
 });
 
 test("a bundle the leader holds for no App of the cluster is dropped", async () => {

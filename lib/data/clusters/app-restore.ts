@@ -5,6 +5,7 @@ import { getDb } from "../../db/client";
 import type { ProjectDescriptor } from "../../agent/gen/agent";
 import { appDisk } from "../../apps/failover-copy";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { servicesOf } from "../../deploy/compose-lint/document";
 import type { App } from "../../types/app";
 import { usesComposeStack } from "../../utils";
 import { loadAppGraph } from "../app-graph-load";
@@ -62,6 +63,14 @@ export async function appRestoreSource(
   });
 }
 
+const builtHere = (name: string) =>
+  `${name} does not fail over yet: its compose file builds images, and they exist only on the server that built them. A compose file that names published images does.`;
+
+const stackBuilds = (composeYaml: string) =>
+  Object.values(servicesOf(composeYaml) ?? {}).some(
+    (svc) => (svc as { build?: unknown } | null)?.build != null,
+  );
+
 /**
  * The bundle of a cluster App's deploy, by what it keeps on disk: none for a Bind, one with its latest backup
  * when it fails over on its own, and one without, so its leader makes it wait, otherwise.
@@ -73,6 +82,9 @@ export async function pushAppBundle(input: {
 }): Promise<void> {
   const app = await loadAppGraph(input.appId);
   if (!app?.clusterId) return;
+  // ponytail: a stack's built images are not copied to the other members (one image per release); say so until they are.
+  if (stackBuilds(input.stack.composeYaml))
+    await recordOnce(app, builtHere(app.name));
   const disk = appDisk(app);
   if (disk === "bind") {
     await dropFailoverBundle(app.id, app.clusterId);
