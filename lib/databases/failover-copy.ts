@@ -38,17 +38,14 @@ export function recoverySentence(
   return `Recovery takes ${took}: the last backup is ${formatBytes(lastBackupBytes)}.`;
 }
 
-/** The Activity entry of a failover that restored a backup: its time in the schedule's timezone, with the date when it is not today's. */
-export function restoredSentence(
-  name: string,
-  server: string,
+/** A backup's time as people read it: 14:15 today, "3 Mar, 14:15" otherwise; null when it is no date. */
+export function backupWhen(
   takenAt: string | null,
   timeZone: string,
   now = new Date(),
-): string {
+): string | null {
   const at = takenAt ? new Date(takenAt) : null;
-  if (!at || Number.isNaN(at.getTime()))
-    return `Restored ${name} on ${server} from its latest backup`;
+  if (!at || Number.isNaN(at.getTime())) return null;
   const part = (d: Date, o: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("en-GB", { timeZone, ...o }).format(d);
   const day = (d: Date) => part(d, { day: "numeric", month: "short" });
@@ -58,10 +55,23 @@ export function restoredSentence(
       minute: "2-digit",
       hour12: false,
     });
-    const when = day(at) === day(now) ? time : `${day(at)}, ${time}`;
-    return `Restored ${name} on ${server} from the backup of ${when}`;
+    return day(at) === day(now) ? time : `${day(at)}, ${time}`;
   } catch {
     // A timezone this runtime does not know must not cost the entry.
-    return restoredSentence(name, server, takenAt, "UTC", now);
+    return timeZone === "UTC" ? null : backupWhen(takenAt, "UTC", now);
   }
+}
+
+/** The Activity entry of a failover that restored a backup: its time in the schedule's timezone, with the date when it is not today's. */
+export function restoredSentence(
+  name: string,
+  server: string,
+  takenAt: string | null,
+  timeZone: string,
+  now = new Date(),
+): string {
+  const when = backupWhen(takenAt, timeZone, now);
+  return when
+    ? `Restored ${name} on ${server} from the backup of ${when}`
+    : `Restored ${name} on ${server} from its latest backup`;
 }

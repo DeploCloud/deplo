@@ -38,6 +38,7 @@ import {
 } from "../infra/agent-client/cluster-test-helpers";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import type { FailoverBundle } from "./clusters/bundles";
+import { flushFailoverBundles } from "./clusters/bundles";
 import { flushDatabaseBundles } from "./clusters/database-bundles";
 import { forgetLeaderRoster } from "./clusters/leader-sync";
 import { createCluster } from "./clusters/manage";
@@ -72,6 +73,9 @@ export const leader = {
   dropped: [] as string[],
   rosters: [] as { members: Record<string, unknown>[] }[],
   snapshot: { head: 0, clusters: {} } as unknown,
+  /** Every move a person asked for, sealed as it arrived, and what the leader answers the next one. */
+  moves: [] as { kind: string; id: string; sealed: Uint8Array }[],
+  moveAnswer: { ok: true } as { ok: boolean; reason?: string },
 };
 
 function leaderCalls(method: string, payload: Uint8Array): Uint8Array {
@@ -108,16 +112,28 @@ function leaderCalls(method: string, payload: Uint8Array): Uint8Array {
       return answer(leader.snapshot);
     case "placement.place":
       return answer({ member: "srv_2" });
+    case "failover.move":
+      leader.moves.push({
+        kind: body.kind,
+        id: body.id,
+        sealed: Buffer.from(body.sealed, "base64"),
+      });
+      return answer(leader.moveAnswer);
   }
   return payload;
 }
 
-export async function open(key = "database/db_main"): Promise<FailoverBundle> {
+export async function open(
+  key: string | Uint8Array = "database/db_main",
+): Promise<FailoverBundle> {
   const age = await import("age-encryption");
   const d = new age.Decrypter();
   d.addIdentity(leader.identity);
   return JSON.parse(
-    await d.decrypt(leader.held.get(key)!.sealed, "text"),
+    await d.decrypt(
+      typeof key === "string" ? leader.held.get(key)!.sealed : key,
+      "text",
+    ),
   ) as FailoverBundle;
 }
 
@@ -172,6 +188,8 @@ export function databaseLab(): void {
     leader.dropped = [];
     leader.rosters = [];
     leader.snapshot = { head: 0, clusters: {} };
+    leader.moves = [];
+    leader.moveAnswer = { ok: true };
     invalidateFrozen();
     forgetLeaderRoster();
     __forgetMemberProbes();
@@ -201,6 +219,7 @@ export function databaseLab(): void {
   afterEach(async () => {
     seq = 0;
     await flushDatabaseBundles();
+    await flushFailoverBundles();
     fleet.restore();
     __setClusterPinForTest(null);
     __resetReleaseCacheForTests();

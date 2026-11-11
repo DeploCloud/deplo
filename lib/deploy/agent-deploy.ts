@@ -44,7 +44,7 @@ import { offerBuiltImage } from "./build/build-reuse";
 import { deployOverlap, type OverlapStacks } from "./overlap";
 import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "./replicas";
 import { getServerById } from "../data/servers/roster";
-import { scheduleFailoverBundle } from "../data/clusters/bundles";
+import { scheduleAppBundle } from "../data/clusters/app-restore";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
@@ -515,7 +515,7 @@ function offerFailoverBundle(
   agentDeployId: string,
   req: DeployRequest,
 ): void {
-  scheduleFailoverBundle({
+  scheduleAppBundle({
     appId,
     deploymentId: agentDeployId.replace(/-stack$/, ""),
     stack: {

@@ -31,6 +31,7 @@ import { requireBackupCapability } from "./target-access";
 import { resolveTarget } from "./target-descriptor";
 import { MAX_RUNS_PER_TARGET, pruneRetention } from "./retention";
 import { formatBytes } from "./format-bytes";
+import { scheduleAppBundleRefresh } from "../clusters/app-restore";
 import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
@@ -255,6 +256,8 @@ export async function executeBackup(
   // A database on a cluster fails over from its latest backup: its leader learns of this one now (#202).
   if (!failure && opts.kind === "database" && opts.databaseId)
     scheduleDatabaseBundle(opts.databaseId);
+  if (!failure && opts.kind === "app" && opts.appId)
+    scheduleAppBundleRefresh(opts.appId);
 
   await recordActivity(
     "backup",

@@ -104,3 +104,23 @@ export async function listLeaderBundles(
     deploymentId: String(b.deploymentId ?? ""),
   }));
 }
+
+/** `failover.move`: one waiting workload is brought up elsewhere from the backup in a bundle sealed for this move. */
+export async function askLeaderToMove(
+  serverId: string,
+  m: { cluster: string; kind: string; id: string; sealed: Uint8Array },
+): Promise<{ ok: boolean; reason: string }> {
+  const a = json(
+    await callClusterLeader(
+      serverId,
+      "failover.move",
+      enc.encode(
+        JSON.stringify({
+          ...m,
+          sealed: Buffer.from(m.sealed).toString("base64"),
+        }),
+      ),
+    ),
+  );
+  return { ok: a.ok === true, reason: String(a.reason ?? "") };
+}

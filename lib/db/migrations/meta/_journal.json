@@ -1618,6 +1618,13 @@
       "when": 1795138000000,
       "tag": "0234_cron_run_server",
       "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1795240000000,
+      "tag": "0237_app_failover_from_backup",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
   backups as backupsTable,
 } from "../../db/schema/control-plane/backups";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { moveRefusal } from "../../apps/failover-copy";
 import { encryptSecret } from "../../crypto";
 import { restoredSentence } from "../../databases/failover-copy";
 import { buildConnectionString } from "../../deploy/database-compose";
@@ -53,6 +54,33 @@ async function ownApp(clusterId: string, id: string) {
   return app ?? null;
 }
 
+/** When one of the workload's own backups was taken, and the timezone its schedule is read in. */
+export async function backupClock(
+  teamId: string,
+  targetId: string,
+  backupId: unknown,
+): Promise<{ startedAt: string; timezone: string } | null> {
+  if (typeof backupId !== "string") return null;
+  const [run] = await getDb()
+    .select({
+      startedAt: runsTable.startedAt,
+      timezone: backupsTable.timezone,
+    })
+    .from(runsTable)
+    .leftJoin(backupsTable, eq(backupsTable.id, runsTable.backupId))
+    .where(
+      and(
+        eq(runsTable.id, backupId),
+        eq(runsTable.teamId, teamId),
+        eq(runsTable.targetId, targetId),
+      ),
+    )
+    .limit(1);
+  return run
+    ? { startedAt: run.startedAt, timezone: run.timezone ?? "UTC" }
+    : null;
+}
+
 const quietly = (what: string) => (e: unknown) =>
   console.warn(
     `[cluster-failover] ${what}: ${e instanceof Error ? e.message : String(e)}`,
@@ -80,24 +108,7 @@ async function databaseFailedOver(
   if (!row) return;
   const target = await getServerById(d.to);
   // The backup is read from this database's own runs; the event's time is only what is left when it is gone.
-  const [run] =
-    typeof d.backupId === "string"
-      ? await db
-          .select({
-            startedAt: runsTable.startedAt,
-            timezone: backupsTable.timezone,
-          })
-          .from(runsTable)
-          .leftJoin(backupsTable, eq(backupsTable.id, runsTable.backupId))
-          .where(
-            and(
-              eq(runsTable.id, d.backupId),
-              eq(runsTable.teamId, row.teamId),
-              eq(runsTable.targetId, row.id),
-            ),
-          )
-          .limit(1)
-      : [];
+  const run = await backupClock(row.teamId, row.id, d.backupId);
   await recordActivity(
     "database",
     restoredSentence(
@@ -156,9 +167,20 @@ export async function applyFailedOver(
   if (!app) return;
   const why = REASONS[String(d.reason)] ?? "stopped answering";
   const [from, to] = await Promise.all([serverName(d.from), serverName(d.to)]);
+  // An App with a Volume came back from a backup: the entry names it, as a database's does (#204).
+  const run = await backupClock(app.teamId, app.id, d.backupId);
+  const restored = run || typeof d.backupId === "string";
   await recordActivity(
     "app",
-    `Moved ${app.name} to ${to}: ${from} ${why}`,
+    restored
+      ? restoredSentence(
+          app.name,
+          to,
+          run?.startedAt ??
+            (typeof d.backupAt === "string" ? d.backupAt : null),
+          run?.timezone ?? "UTC",
+        )
+      : `Moved ${app.name} to ${to}: ${from} ${why}`,
     ACTOR,
     app.id,
     app.teamId,
@@ -175,6 +197,23 @@ export async function applyFailedOver(
       app.teamId,
     );
   }
+}
+
+/** A move a person asked for that the leader could not make: the App stays with its server, and Activity says why. */
+export async function applyMoveFailed(
+  cluster: Cluster,
+  d: Record<string, unknown>,
+): Promise<void> {
+  if (d.kind !== "app" || typeof d.workloadId !== "string") return;
+  const app = await ownApp(cluster.id, d.workloadId);
+  if (!app) return;
+  await recordActivity(
+    "app",
+    `Could not bring ${app.name} back on another server. ${moveRefusal(String(d.reason), app.name)}`,
+    ACTOR,
+    app.id,
+    app.teamId,
+  );
 }
 
 interface Left {

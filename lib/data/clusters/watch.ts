@@ -11,6 +11,7 @@ import {
   adoptLeaderMoves,
   applyFailedOver,
   applyFailoverSummary,
+  applyMoveFailed,
 } from "./failover";
 import { leaderHost } from "./host";
 import {
@@ -169,6 +170,11 @@ export async function applyLeaderEvent(
     }
     case "failed_over": {
       await applyFailedOver(cluster, d);
+      await advance();
+      return "applied";
+    }
+    case "move_failed": {
+      await applyMoveFailed(cluster, d);
       await advance();
       return "applied";
     }

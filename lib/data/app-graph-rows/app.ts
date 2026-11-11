@@ -101,6 +101,7 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     clusterId: row.clusterId ?? null,
     replicas: row.replicas,
     stickySessions: row.stickySessions,
+    failoverFromBackup: row.failoverFromBackup,
     // The hook's on/off state travels with the app; deploy_hook_token_enc never does, only deploy-hook.ts reads it.
     deployHookEnabled: row.deployHookEnabled,
     composeUpArgs: row.composeUpArgs?.trim() ? row.composeUpArgs : null,

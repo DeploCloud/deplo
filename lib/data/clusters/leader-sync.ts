@@ -14,6 +14,7 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
+import { appKeepsVolume } from "../../apps/failover-copy";
 import { nowIso } from "../../ids";
 import {
   callClusterLeader,
@@ -54,7 +55,11 @@ export async function placementEntries(
   const db = getDb();
   const [apps, dbs] = await Promise.all([
     db
-      .select({ id: appsTable.id, slug: appsTable.slug })
+      .select({
+        id: appsTable.id,
+        slug: appsTable.slug,
+        compose: appsTable.compose,
+      })
       .from(appsTable)
       .where(eq(appsTable.clusterId, clusterId)),
     db
@@ -70,19 +75,26 @@ export async function placementEntries(
     .where(inArray(workloadPlacements.workloadId, ids));
   const volumes = apps.length
     ? await db
-        .select({ appId: appVolumes.appId })
+        .select({ appId: appVolumes.appId, type: appVolumes.type })
         .from(appVolumes)
         .where(
-          and(
-            inArray(
-              appVolumes.appId,
-              apps.map((a) => a.id),
-            ),
-            ne(appVolumes.type, "host"),
+          inArray(
+            appVolumes.appId,
+            apps.map((a) => a.id),
           ),
         )
     : [];
-  const withVolume = new Set(volumes.map((v) => v.appId));
+  // The one rule of what keeps data: a Volume, a File, or a stack's own volume. A Bind alone moves nowhere.
+  const withVolume = new Set(
+    apps
+      .filter((a) =>
+        appKeepsVolume({
+          compose: a.compose,
+          volumes: volumes.filter((v) => v.appId === a.id),
+        }),
+      )
+      .map((a) => a.id),
+  );
   const slugOf = new Map<string, string>([
     ...apps.map((a) => [a.id, a.slug] as const),
     ...dbs.map((d) => [d.id, d.host] as const),
