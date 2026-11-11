@@ -1462,6 +1462,10 @@ input CreateBackupInput {
 }
 
 input CreateDatabaseInput {
+  """
+  Place the database on this cluster instead of a server: its leader picks the member, and Deplo backs it up every 15 minutes to another server. Not together with serverId.
+  """
+  clusterId: ID
   dbName: String
   environmentId: ID
   exposedPort: Int
@@ -1699,6 +1703,13 @@ type CronRun {
 A provisioned database container owned by a team. The connection string is masked; reveal it with the revealConnection mutation.
 """
 type Database {
+  """
+  The cluster the database is placed on; null for a database on one server.
+  """
+  clusterId: ID
+
+  """The name of that cluster, for the line "Runs on eu, now on server-b"."""
+  clusterName: String
   connectionStringMasked: String
   createdAt: String
 
@@ -1757,6 +1768,10 @@ type Database {
   When restart loop protection last stopped this database, or null. Cleared by a start or a restart.
   """
   restartLoopStoppedAt: String
+
+  """
+  The server the database runs on now. For a database on a cluster, the member the leader placed it on.
+  """
   serverId: ID
   sizeMb: Int
   status: DatabaseStatus
@@ -4379,6 +4394,11 @@ type Mutation {
   Bulk-move several apps into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.
   """
   moveAppsToFolder(appIds: [ID!]!, folderId: ID): Int
+
+  """
+  Place a database on a cluster: it restarts on the member the leader picks and its data is copied there. A cluster with no room answers with the sentence that says what to change, and nothing stops. Deplo then backs it up every 15 minutes to another server, unless it has a schedule already. To take it off a cluster again use updateDatabase with a serverId.
+  """
+  moveDatabaseToCluster(clusterId: String!, id: String!): Database
 
   """
   Move a database into an Environment, or out to the team's top level (null). The placement is also the network it answers on, so the container is brought up again on the new one before this returns - an app reaches `db-<slug>` only from the same Environment.

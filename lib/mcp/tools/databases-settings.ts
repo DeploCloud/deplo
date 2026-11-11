@@ -49,6 +49,28 @@ export const DATABASES_SETTINGS: McpToolDef[] = [
     `,
   }),
   tool({
+    name: "move_database_to_cluster",
+    title: "Place a database on a cluster",
+    description:
+      "Restart the database on the member its cluster's leader picks, copying its data; it is then backed up every 15 minutes to another server. Leaving a cluster is update_database.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    destructive: true,
+    input: z.object({
+      databaseId,
+      clusterId: z
+        .string()
+        .describe("The cluster's id, as returned by list_clusters."),
+    }),
+    variables: (a) => ({ id: a.databaseId, clusterId: a.clusterId }),
+    query: /* GraphQL */ `
+      mutation McpMoveDatabaseToCluster($id: String!, $clusterId: String!) {
+        moveDatabaseToCluster(id: $id, clusterId: $clusterId) { ${DATABASE_FIELDS_SETTINGS} clusterId }
+      }
+    `,
+  }),
+  tool({
     name: "rename_database",
     title: "Rename a database",
     description: "Change a database's display name. Its host name stays.",

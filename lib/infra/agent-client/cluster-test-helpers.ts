@@ -1,3 +1,5 @@
+import { gzipSync } from "node:zlib";
+
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import {
@@ -39,6 +41,8 @@ export interface FakeClusterHost {
   imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
   /** Every deploy request this host's agent was handed, answered ready. */
   deploys: DeployRequest[];
+  /** Every stack and volume call in order, as `reroute:db-main`, `stop:`, `start:`, `destroy:`, `export:`, `import:`. */
+  stack: string[];
   opened: string[];
   closed: number;
   /** The leader's event buffer, as its watch serves it: a hello, what came after `since`, then what is pushed. */
@@ -60,6 +64,15 @@ export interface FakeClusterHost {
     refuse: string;
   };
 }
+
+// A volume archive holding one empty file, so a copy has something to carry.
+const ONE_FILE_ARCHIVE = (() => {
+  const header = Buffer.alloc(512);
+  header.write("data", 0, "latin1");
+  header.write("00000000000\0", 124, "latin1");
+  header.write("0", 156, "latin1");
+  return gzipSync(Buffer.concat([header, Buffer.alloc(1024)]));
+})();
 
 const NOTHING: ClusterHostStatus = {
   installed: false,
@@ -202,6 +215,39 @@ export function fakeClusterHosts(): {
           },
         };
       },
+      reroute: async (req) => {
+        h.stack.push(`reroute:${req.slug}`);
+        return { ok: true, error: "" };
+      },
+      stopStack: async (slug) => {
+        h.stack.push(`stop:${slug}`);
+        return { ok: true, error: "" };
+      },
+      startStack: async (slug) => {
+        h.stack.push(`start:${slug}`);
+        return { ok: true, error: "" };
+      },
+      destroyStack: async (slug) => {
+        h.stack.push(`destroy:${slug}`);
+        return { ok: true, error: "" };
+      },
+      exportVolume: async function* (name) {
+        h.stack.push(`export:${name}`);
+        yield ONE_FILE_ARCHIVE;
+      },
+      importVolume: async (name, _wipe, chunks) => {
+        h.stack.push(`import:${name}`);
+        let bytesWritten = 0;
+        for await (const c of chunks) bytesWritten += c.length;
+        return {
+          ok: true,
+          error: "",
+          bytesWritten,
+          sha256: "",
+          dropped: { links: 0, special: 0, names: [] },
+        };
+      },
+      checkPort: async () => ({ available: true, reason: "" }),
       hostInfo: async () =>
         HostInfoResponse.fromPartial({ traefikComposeYaml: h.proxy.yaml }),
       traefikConfig: async (req) => {
@@ -250,6 +296,7 @@ export function fakeClusterHosts(): {
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],
         deploys: [],
+        stack: [],
         opened: [],
         closed: 0,
         watch: newWatch(),

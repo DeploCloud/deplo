@@ -24,7 +24,11 @@ import {
   reorderDatabases,
   type DatabaseDTO,
 } from "@/lib/data/databases/rows";
-import { updateDatabase } from "@/lib/data/databases/server-move";
+import {
+  moveDatabaseToCluster,
+  updateDatabase,
+} from "@/lib/data/databases/server-move";
+import { getCluster } from "@/lib/data/clusters/roster";
 import {
   generateAvailableDbPort,
   hostPortsInUse,
@@ -72,7 +76,23 @@ export const DatabaseRef = builder
       username: t.exposeString("username"),
       dbName: t.exposeString("dbName"),
       status: t.field({ type: DatabaseStatusEnum, resolve: (d) => d.status }),
-      serverId: t.exposeID("serverId"),
+      serverId: t.exposeID("serverId", {
+        description:
+          "The server the database runs on now. For a database on a cluster, the member the leader placed it on.",
+      }),
+      clusterId: t.id({
+        nullable: true,
+        description:
+          "The cluster the database is placed on; null for a database on one server.",
+        resolve: (d) => d.clusterId ?? null,
+      }),
+      clusterName: t.string({
+        nullable: true,
+        description:
+          'The name of that cluster, for the line "Runs on eu, now on server-b".',
+        resolve: async (d) =>
+          d.clusterId ? ((await getCluster(d.clusterId))?.name ?? null) : null,
+      }),
       environmentId: t.exposeID("environmentId", {
         nullable: true,
         description:
@@ -167,6 +187,11 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     type: t.field({ type: DatabaseTypeEnum, required: true }),
     version: t.string({ required: true }),
     serverId: t.id({ required: false }),
+    clusterId: t.id({
+      required: false,
+      description:
+        "Place the database on this cluster instead of a server: its leader picks the member, and Deplo backs it up every 15 minutes to another server. Not together with serverId.",
+    }),
     environmentId: t.id({ required: false }),
     username: t.string({ required: false }),
     dbName: t.string({ required: false }),
@@ -268,6 +293,7 @@ builder.mutationFields((t) => ({
         type: input.type,
         version: input.version,
         serverId: input.serverId ?? undefined,
+        clusterId: input.clusterId ? String(input.clusterId) : undefined,
         environmentId: input.environmentId ? String(input.environmentId) : null,
         username: input.username ?? undefined,
         dbName: input.dbName ?? undefined,
@@ -334,6 +360,20 @@ builder.mutationFields((t) => ({
         exposedPort: input.exposedPort ?? undefined,
         serverId: input.serverId ?? undefined,
       });
+      return reloadDatabase(id);
+    },
+  }),
+  moveDatabaseToCluster: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "configure_databases" },
+    description:
+      "Place a database on a cluster: it restarts on the member the leader picks and its data is copied there. A cluster with no room answers with the sentence that says what to change, and nothing stops. Deplo then backs it up every 15 minutes to another server, unless it has a schedule already. To take it off a cluster again use updateDatabase with a serverId.",
+    args: {
+      id: t.arg.string({ required: true }),
+      clusterId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { id, clusterId }) => {
+      await moveDatabaseToCluster(id, clusterId);
       return reloadDatabase(id);
     },
   }),

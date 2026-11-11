@@ -19,7 +19,10 @@ export interface Database {
   status: DatabaseStatus;
   dataCopyError: string;
   migrationRunId: ID | null;
+  /** The server it runs on now; for a database on a cluster, the member the leader placed it on. */
   serverId: ID;
+  /** The cluster it is placed on; null or absent for a database on one server. */
+  clusterId?: ID | null;
   host: string;
   port: number;
   connectionStringEnc: string;
@@ -33,6 +36,8 @@ export interface Database {
   restartLoopStoppedAt: string | null;
   mounts: DatabaseMount[];
   sizeMb: number;
+  /** Artifact bytes per second of the last restore; null until one was measured. */
+  restoreBytesPerSec?: number | null;
   createdAt: string;
 }
 
