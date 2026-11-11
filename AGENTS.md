@@ -214,6 +214,12 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   the rule above holds. The panel pins it as `deplo.cluster` / `deplo.clusterMin` (empty until its
   first release), read through `lib/version.ts` beside the agent pin; the tag workflow refuses a
   pin with no `checksums.txt`. Shipping it: `docs/agents/cluster-rollout.md`.
+- **Which leader leads a cluster is ONE seam, and every change of hands is a new epoch.**
+  `leaderHost(cluster)` (`lib/data/clusters/host.ts`) is the leader that leads now: the server it
+  was moved to, or Deplo's own machine while that one is away (`clusters.leader_takeover_at`). Only
+  `leadFrom` (`lib/data/clusters/leader-move.ts`) changes it, and it stores the next epoch BEFORE
+  telling the leader, so no two leaders are ever handed the same one. Both may lead, so a bundle
+  goes to every leader key (`refreshLeaderKeys`) and both are parties of every relay roster.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
   where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) - a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and

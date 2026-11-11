@@ -325,3 +325,29 @@ test("after a Deplo move a leader on another server keeps leading, and the new m
   for (const l of [fresh, leaders.srv_4])
     assert.equal((await openBundle(l, app.id)).deploymentId, "dpl_1");
 });
+
+test("picking Deplo's machine while it already stands in keeps its epoch: no hands change", async () => {
+  const cluster = await eu();
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  hosts.srv_4.unreachable = true;
+  await superviseClusterLeader(cluster.id);
+  await superviseClusterLeader(cluster.id);
+  const rosters = leaders[SERVER_1].rosters.length;
+
+  const moved = await asAdmin(() => moveClusterLeader(cluster.id, SERVER_1));
+
+  assert.equal(moved.leaderServerId, null);
+  assert.deepEqual(await stored(cluster.id), {
+    server: null,
+    takenOver: false,
+    epoch: 3,
+  });
+  assert.equal(
+    leaders[SERVER_1].rosters.slice(rosters).every((r) => r.epoch === 3),
+    true,
+  );
+  assert.deepEqual(await keyOwners(cluster.id), {
+    deplo: leaders[SERVER_1].publicKey,
+  });
+  assert.equal(await superviseClusterLeader(cluster.id), null);
+});

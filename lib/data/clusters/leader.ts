@@ -69,7 +69,10 @@ export async function getClusterLeader(
   if (!cluster) throw new Error("Cluster not found");
   // Where it was put, not who stands in for it: the card says both.
   const leader = await readLeader(await leaderHostOf(cluster.leaderServerId));
-  return { ...leader, takenOverAt: cluster.leaderTakeoverAt };
+  return {
+    ...leader,
+    takenOverAt: cluster.leaderServerId ? cluster.leaderTakeoverAt : null,
+  };
 }
 
 /**

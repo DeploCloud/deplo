@@ -164,15 +164,23 @@ export async function moveClusterLeader(
     await syncLeaderRelayRoute(target, true).catch((e) => warn(clusterId, e));
   await installClusterLeader(target.id, { relay });
 
-  const moved = await leadFrom(cluster, {
-    leaderServerId: next,
-    leaderTakeoverAt: null,
-    leaderTeamId: teamId,
-  });
+  if (next === null && cluster.leaderTakeoverAt)
+    // Deplo's own machine already leads in its place: no hands change, so the epoch stays.
+    await getDb()
+      .update(clustersTable)
+      .set({ leaderServerId: null, leaderTakeoverAt: null })
+      .where(eq(clustersTable.id, clusterId));
+  else
+    await leadFrom(cluster, {
+      leaderServerId: next,
+      leaderTakeoverAt: null,
+      leaderTeamId: teamId,
+    });
   const push = await pushClusterRoster(clusterId);
   for (const f of push.failed) warn(clusterId, f.message);
   // A new leader is a new key: what is live is sealed to it and sent, and the key of the server it left is retired.
   await reconcileClusterBundles(clusterId).catch((e) => warn(clusterId, e));
+  // ponytail: a server that is offline now keeps its idle leader installed; sweep for those if it ever matters.
   if (cluster.leaderServerId)
     await retireLeader(clusterId, cluster.leaderServerId).catch((e) =>
       warn(clusterId, e),
@@ -184,5 +192,5 @@ export async function moveClusterLeader(
     null,
     teamId,
   );
-  return moved;
+  return (await getClusterById(clusterId))!;
 }
