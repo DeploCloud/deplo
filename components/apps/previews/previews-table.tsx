@@ -54,6 +54,39 @@ import type { AppPreviewDTO } from "@/lib/data/previews";
 import { gitProfileUrl, timeAgo } from "@/lib/utils";
 import { SecurityShield } from "@/components/security-updates/security-shield";
 
+/** What a preview's row says it is doing; `offline` is one whose server, a member of the App's cluster, stopped. */
+export function PreviewStatus({
+  preview: p,
+  maxActive,
+}: {
+  preview: AppPreviewDTO;
+  maxActive: number;
+}) {
+  if (p.isFork && !p.approved)
+    return (
+      <Badge variant="outline" className="gap-1.5">
+        <ShieldAlert className="size-3.5 text-[var(--warning)]" />
+        Needs approval
+      </Badge>
+    );
+  if (p.status === "evicted")
+    return (
+      <SimpleTooltip
+        content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
+      >
+        <span className="inline-flex">
+          <StatusBadge status={p.status} />
+        </span>
+      </SimpleTooltip>
+    );
+  return (
+    <StatusBadge
+      status={p.status}
+      labels={{ offline: "Offline: its server stopped" }}
+    />
+  );
+}
+
 export function PreviewsTable({
   appSlug,
   previews,
@@ -188,25 +221,7 @@ export function PreviewsTable({
               </TableCell>
 
               <TableCell>
-                {blocked ? (
-                  <Badge variant="outline" className="gap-1.5">
-                    <ShieldAlert className="size-3.5 text-[var(--warning)]" />
-                    Needs approval
-                  </Badge>
-                ) : p.status === "evicted" ? (
-                  <SimpleTooltip
-                    content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
-                  >
-                    <span className="inline-flex">
-                      <StatusBadge status={p.status} />
-                    </span>
-                  </SimpleTooltip>
-                ) : (
-                  <StatusBadge
-                    status={p.status}
-                    labels={{ offline: "Offline: its server stopped" }}
-                  />
-                )}
+                <PreviewStatus preview={p} maxActive={maxActive} />
               </TableCell>
 
               <TableCell>
