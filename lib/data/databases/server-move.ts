@@ -45,6 +45,7 @@ import {
 } from "../clusters/placement";
 import { listClustersForTeam } from "../clusters/roster";
 import { ensureFailoverBackup } from "./failover";
+import { dropStandbyCopy, endStandby, syncStandbySoon } from "./standby";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
 import type { Cluster } from "../../types/cluster";
 
@@ -165,6 +166,8 @@ async function writeDatabasePlacement(
   )
     return;
 
+  // The copy goes before its database moves: it may sit on the very server the database is headed for.
+  if (movingFrom && db.standby) await dropStandbyCopy(db);
   let moveWarning: string | null = null;
   await withKeyedLock(id, async () => {
     const cur = await load();
@@ -266,6 +269,10 @@ async function writeDatabasePlacement(
     publishDatabaseChanged(id);
   });
   if (moveWarning) console.warn(`[databases] ${moveWarning}`);
+  if (movingFrom && db.standby) {
+    if (cluster) syncStandbySoon(id);
+    else await endStandby(id);
+  }
   if (movingFrom && db.clusterId && !cluster) {
     await clearPlacement("database", id);
     await dropFailoverBundle(id, db.clusterId, "database").catch(() => {});

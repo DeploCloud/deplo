@@ -79,6 +79,8 @@ export interface FailoverBundle {
   deploymentId: string;
   stack: FailoverStack;
   restore?: FailoverRestore;
+  /** Set while the workload keeps a standby copy: how its member makes that copy the workload (#218). */
+  promote?: { container: string; user: string; command: string[] };
 }
 
 export function keyFingerprint(publicKey: string): string {

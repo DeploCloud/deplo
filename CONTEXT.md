@@ -874,6 +874,13 @@ cluster never fails over.
 _Avoid_: automatic server move, migration (that is moving off another platform), restart (the
 App stays on a server that is still up).
 
+**Standby copy**:
+A second copy of a database on a **cluster**, kept on another member than the database and
+following every change it makes. A **failover** promotes it instead of restoring a backup, so
+about a second of writes is lost. Expert only, off by default, and it costs the database's
+memory and disk a second time. It is never a **replica**: nothing reads from it.
+_Avoid_: replica (those are copies of an App that all answer), secondary, slave, mirror.
+
 **Storage-only server**:
 A **server** whose agent is installed to HOLD BACKUPS and nothing else: no Docker, no
 Traefik, never a deploy target. Chosen at registration; the install command then skips all of

@@ -40,6 +40,10 @@ export interface Database {
   restoreBytesPerSec?: number | null;
   /** When its change log last reached the backup destination; null while it is not archived. */
   walArchivedAt?: string | null;
+  /** On a cluster: a copy on another member follows it, and a failover promotes that copy. */
+  standby?: boolean;
+  /** Marks the copy made last, so a member never starts one over data it did not seed. */
+  standbySeed?: string | null;
   createdAt: string;
 }
 

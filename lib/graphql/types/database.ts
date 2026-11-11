@@ -28,6 +28,10 @@ import {
   moveDatabaseToCluster,
   updateDatabase,
 } from "@/lib/data/databases/server-move";
+import {
+  getDatabaseStandby,
+  setDatabaseStandby,
+} from "@/lib/data/databases/standby";
 import { getCluster } from "@/lib/data/clusters/roster";
 import {
   generateAvailableDbPort,
@@ -136,6 +140,20 @@ export const DatabaseRef = builder
           "file can carry a password. Saving them applies immediately.",
         resolve: async (d) =>
           (await hasCapability("configure_databases")) ? d.mounts : [],
+      }),
+      standby: t.boolean({
+        description:
+          "Whether this database keeps a standby copy on another server of its cluster. A failover promotes the copy and loses about a second of writes instead of everything since the last backup.",
+        resolve: (d) => d.standby ?? false,
+      }),
+      standbyServerName: t.string({
+        nullable: true,
+        description:
+          "The server holding the standby copy; null when the switch is off or there is no copy right now.",
+        resolve: async (d) =>
+          d.standby
+            ? ((await getDatabaseStandby(d.id))?.serverName ?? null)
+            : null,
       }),
       restartLoopGuard: t.exposeBoolean("restartLoopGuard", {
         description:
@@ -360,6 +378,20 @@ builder.mutationFields((t) => ({
         exposedPort: input.exposedPort ?? undefined,
         serverId: input.serverId ?? undefined,
       });
+      return reloadDatabase(id);
+    },
+  }),
+  setDatabaseStandby: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "configure_databases" },
+    description:
+      "Keep a standby copy of a PostgreSQL database on another server of its cluster, or stop keeping one. The copy uses as much memory as the database and a second copy of its data. A cluster with one server, or no room on another, answers with the sentence that says what to change.",
+    args: {
+      id: t.arg.string({ required: true }),
+      enabled: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, enabled }) => {
+      await setDatabaseStandby(id, enabled);
       return reloadDatabase(id);
     },
   }),

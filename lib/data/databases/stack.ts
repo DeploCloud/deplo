@@ -39,8 +39,10 @@ export function mongoKeyfileFor(databaseId: string): string {
 export function renderDatabaseStackYaml(
   db: Database,
   password: string,
+  standby?: { command: string[]; env: string[] },
 ): string {
   return generateDatabaseCompose({
+    standby,
     name: db.host,
     databaseId: db.id,
     type: db.type,

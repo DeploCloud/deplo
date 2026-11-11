@@ -10,7 +10,10 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { moveRefusal } from "../../apps/failover-copy";
 import { encryptSecret } from "../../crypto";
-import { restoredSentence } from "../../databases/failover-copy";
+import {
+  promotedSentence,
+  restoredSentence,
+} from "../../databases/failover-copy";
 import { buildConnectionString } from "../../deploy/database-compose";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { dispatchAlert } from "../../notify/dispatch";
@@ -20,6 +23,7 @@ import { isBaseBackupKey } from "../backup-objectkey";
 import { assembleDatabase } from "../backup-rows";
 import { markLinkedAppsPending } from "../database-links";
 import { changeLogBroken } from "./change-log";
+import { syncStandbySoon } from "../databases/standby";
 import { databasePassword } from "../databases/stack";
 import { getServerById } from "../servers/roster";
 import { pushDatabaseBundle } from "./database-bundles";
@@ -105,10 +109,12 @@ async function databaseFailedOver(
   cluster: Cluster,
   d: {
     workloadId: string;
+    from: string;
     to: string;
     backupId?: unknown;
     backupAt?: unknown;
     restoreMs?: unknown;
+    promoted?: unknown;
   },
 ): Promise<void> {
   const db = getDb();
@@ -128,15 +134,22 @@ async function databaseFailedOver(
   const run = await backupClock(row.teamId, row.id, d.backupId);
   await recordActivity(
     "database",
-    restoredSentence(
-      row.name,
-      target?.name ?? "another server",
-      run?.startedAt ?? (typeof d.backupAt === "string" ? d.backupAt : null),
-      run?.timezone ?? "UTC",
-      undefined,
-      // ponytail: when Deplo last collected the change log, not what Postgres replayed; have the member report it if they ever differ.
-      run && isBaseBackupKey(run.objectKey) ? row.walArchivedAt : null,
-    ),
+    d.promoted === true
+      ? promotedSentence(
+          row.name,
+          target?.name ?? "another server",
+          await serverName(d.from),
+        )
+      : restoredSentence(
+          row.name,
+          target?.name ?? "another server",
+          run?.startedAt ??
+            (typeof d.backupAt === "string" ? d.backupAt : null),
+          run?.timezone ?? "UTC",
+          undefined,
+          // ponytail: when Deplo last collected the change log, not what Postgres replayed; have the member report it if they ever differ.
+          run && isBaseBackupKey(run.objectKey) ? row.walArchivedAt : null,
+        ),
     ACTOR,
     null,
     row.teamId,
@@ -180,6 +193,8 @@ async function databaseFailedOver(
   publishDatabaseChanged(row.id);
   await pushDatabaseBundle(row.id).catch(quietly(row.id));
   await syncNameForwarders(cluster.id).catch(quietly(cluster.id));
+  // A promoted copy is the database now: another server gets a new one when there is one.
+  if (row.standby) syncStandbySoon(row.id);
 }
 
 /** One workload has run on its new member: say so, and give an App's generated address its new host. */
@@ -192,10 +207,12 @@ export async function applyFailedOver(
   if (d.kind === "database")
     return databaseFailedOver(cluster, {
       workloadId: d.workloadId,
+      from: d.from,
       to: d.to,
       backupId: d.backupId,
       backupAt: d.backupAt,
       restoreMs: d.restoreMs,
+      promoted: d.promoted,
     });
   if (d.kind !== "app") return;
   const app = await ownApp(cluster.id, d.workloadId);
@@ -426,6 +443,7 @@ export async function adoptLeaderMoves(
           backupId: m.backupId,
           backupAt: m.backupAt,
           restoreMs: m.restoreMs,
+          promoted: m.promoted,
         });
       else {
         const w = waiting.get(m.from) ?? { seq: 0, left: [] };

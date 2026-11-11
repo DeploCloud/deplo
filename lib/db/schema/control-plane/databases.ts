@@ -68,6 +68,9 @@ export const databases = pgTable(
     restoreBytesPerSec: bigint("restore_bytes_per_sec", { mode: "number" }),
     // When Postgres's change log last reached the backup destination; NULL while it is not archived.
     walArchivedAt: isoTimestamptz("wal_archived_at"),
+    // On a cluster: keep a copy that follows it on another member. The seed marks the copy made last.
+    standby: boolean("standby").notNull().default(false),
+    standbySeed: text("standby_seed"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

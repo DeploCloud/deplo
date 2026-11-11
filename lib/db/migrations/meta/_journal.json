@@ -1646,6 +1646,13 @@
       "when": 1795342000000,
       "tag": "0240_cluster_binary_updates",
       "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1795376000000,
+      "tag": "0241_database_standby",
+      "breakpoints": true
     }
   ]
 }

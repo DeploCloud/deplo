@@ -25,6 +25,8 @@ export interface ForwardedWorkload {
   port: number;
   /** Where each replica runs now, in placement order; the leader's mirror. */
   members: string[];
+  /** Members holding a standby copy: they hold the name like any other, and may serve it once promoted. */
+  standbys?: string[];
 }
 
 export interface HeldName {
@@ -77,7 +79,9 @@ export function planNameForwarding(input: {
     return m;
   };
   for (const [network, group] of networks) {
-    const members = [...new Set(group.flatMap((w) => w.members))].sort();
+    const members = [
+      ...new Set(group.flatMap((w) => [...w.members, ...(w.standbys ?? [])])),
+    ].sort();
     for (const serverId of members) {
       const m = entry(serverId);
       const sources = members
@@ -93,6 +97,9 @@ export function planNameForwarding(input: {
         if (w.members.includes(serverId))
           m.serve.push({ ...base, sourceFingerprints: sources });
         else m.hold.push({ ...base, name: w.name });
+        // Served ahead of time: after a promotion the others reach it before Deplo has said a word.
+        if (!w.members.includes(serverId) && w.standbys?.includes(serverId))
+          m.serve.push({ ...base, sourceFingerprints: sources });
       }
     }
   }

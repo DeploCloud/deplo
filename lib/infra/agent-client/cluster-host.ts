@@ -34,6 +34,7 @@ import {
   CLUSTER_FORWARDERS_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
+  CLUSTER_STANDBY_CAPABILITY,
 } from "./hello-capabilities";
 
 // Every leader call goes through connectAgent(serverId): the agent that supervises the leader is the only door (ADR-0043).
@@ -244,6 +245,7 @@ export async function clusterLeaderAnswers(serverId: string): Promise<boolean> {
 const FAILOVER_CAPABILITIES = [
   CLUSTER_FAILOVER_CAPABILITY,
   CLUSTER_FAILOVER_RESTORE_CAPABILITY,
+  CLUSTER_STANDBY_CAPABILITY,
 ];
 // What each agent last said it can do; null is one that did not answer.
 const probes = new Map<string, { caps: string[] | null; until: number }>();
@@ -288,6 +290,10 @@ export const memberTakesOver = (serverId: string): Promise<boolean> =>
 /** Whether it can also restore a backup first (Hello `cluster.failover.restore`); no answer counts as able, as above. */
 export const memberRestores = (serverId: string): Promise<boolean> =>
   memberCan(serverId, CLUSTER_FAILOVER_RESTORE_CAPABILITY);
+
+/** Whether it can hold a database's standby copy and promote it (Hello `cluster.standby`); no answer counts as able, as above. */
+export const memberKeepsStandby = (serverId: string): Promise<boolean> =>
+  memberCan(serverId, CLUSTER_STANDBY_CAPABILITY);
 
 /** Makes the server's agent a cluster party that dials every relay it knows, or stops it (ADR-0044). */
 export async function setClusterMember(

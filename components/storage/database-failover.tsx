@@ -67,7 +67,14 @@ export function DatabaseFailoverCard({
             <p className="mt-1 text-sm text-muted-foreground">
               Runs on cluster {failover.cluster}, now on {failover.serverName}.
               {failover.destination && ` Backed up to ${failover.destination}.`}
+              {failover.standbyOn &&
+                ` Its standby copy runs on ${failover.standbyOn}.`}
             </p>
+            {failover.standbyNote && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {failover.standbyNote}
+              </p>
+            )}
           </div>
           <FailoverNote
             promises={failover.promises}

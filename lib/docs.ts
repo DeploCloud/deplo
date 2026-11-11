@@ -188,6 +188,7 @@ export const DOCS = {
   "clusters.leader": "operations/clusters#run-the-leader-on-another-server",
   "clusters.databases": "operations/clusters#databases",
   "clusters.appData": "operations/clusters#apps-that-keep-data",
+  "clusters.standby": "operations/clusters#keep-a-standby-copy",
   "clusters.addresses": "operations/clusters#addresses",
   "clusters.replicas": "operations/clusters#replicas-across-servers",
   "clusters.updates": "operations/clusters#updates",

@@ -21,7 +21,7 @@ import { portFor } from "../../deploy/ports";
 import { setClusterForwarders } from "../../infra/agent-client/cluster-host";
 import { AgentClusterForwardersUnsupportedError } from "../../infra/agent-client/errors";
 import { instanceFrozen } from "../deplo-move/freeze";
-import { listWorkloadPlacements } from "./placement";
+import { listStandbys, listWorkloadPlacements } from "./placement";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
 
@@ -76,6 +76,7 @@ async function workloadsOf(clusterId: string): Promise<ForwardedWorkload[]> {
       .filter((s): s is string => Boolean(s));
     return ids.length > 0 ? ids : fallback ? [fallback] : [];
   };
+  const standbys = await listStandbys(clusterId);
   const out: ForwardedWorkload[] = [];
   for (const a of apps) {
     const forwarded = isForwardedApp({
@@ -103,6 +104,9 @@ async function workloadsOf(clusterId: string): Promise<ForwardedWorkload[]> {
       name: d.host,
       port: d.port,
       members: membersOf(dbPlacements.get(d.id), d.serverId),
+      standbys: standbys
+        .filter((s) => s.databaseId === d.id)
+        .map((s) => s.serverId),
     });
   return out;
 }

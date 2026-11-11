@@ -28,6 +28,7 @@ import {
 import type { Cluster, ClusterLeaseState } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { clusterMemberFacts } from "./facts";
+import { listStandbys } from "./placement";
 import { leaderHost } from "./host";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
@@ -101,6 +102,8 @@ export async function placementEntries(
   ]);
   const out: LeaderEntry[] = [];
   for (const r of rows) {
+    // A standby copy is no replica: it goes to the leader on its own list.
+    if (r.kind !== "app" && r.kind !== "database") continue;
     const kind = r.kind === "database" ? "database" : "app";
     out.push({
       kind,
@@ -130,6 +133,8 @@ export interface LeaderMove extends LeaderEntry {
   backupAt?: string;
   /** How long the member took to start it and restore that backup. */
   restoreMs?: number;
+  /** The workload's standby copy was promoted instead. */
+  promoted?: boolean;
 }
 
 export interface LeaderSnapshot {
@@ -227,14 +232,29 @@ export async function pushLeaderRoster(
     });
   }
   const placement = await placementEntries(cluster.id);
+  // A leader too old to know a standby copy ignores the list, and restores a backup as before.
+  const standbys = (await listStandbys(cluster.id)).map((s) => ({
+    kind: "database",
+    id: s.databaseId,
+    replica: 0,
+    member: s.serverId,
+    slug: s.host,
+    singleWriter: false,
+    standby: true,
+  }));
+  const roster = {
+    members,
+    placement,
+    ...(standbys.length > 0 ? { standbys } : {}),
+  };
   const body = (epoch: number) =>
     callClusterLeader(
       host.id,
       "leader.roster",
-      enc({ cluster: cluster.id, epoch, members, placement }),
+      enc({ cluster: cluster.id, epoch, ...roster }),
     );
   const epoch = Math.max(cluster.leaderEpoch, 1);
-  const signature = JSON.stringify({ epoch, members, placement });
+  const signature = JSON.stringify({ epoch, ...roster });
   if (opts.onlyIfChanged && pushed.get(cluster.id) === signature) return false;
   try {
     await body(epoch);

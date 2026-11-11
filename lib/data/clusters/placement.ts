@@ -22,6 +22,9 @@ import { clusterMemberServerIds, getCluster } from "./roster";
 
 export type WorkloadKind = "app" | "database";
 
+/** The row kind of a database's standby copy: one more placement, on another member than the database (#218). */
+const STANDBY = "standby";
+
 /** What the leader needs to pick a member; the control plane never picks one itself. */
 export interface PlacementRequest {
   kind: WorkloadKind;
@@ -34,6 +37,8 @@ export interface PlacementRequest {
   imageRef?: string;
   /** The architectures the image runs on; empty means any. */
   archs?: string[];
+  /** Members never chosen: a standby copy never shares a member with its database. */
+  exclude?: string[];
 }
 
 export type PlacementRefusalReason =
@@ -152,6 +157,7 @@ async function askLeader(
                 current: many.current.map((m) => m ?? ""),
               }
             : {}),
+          ...(req.exclude?.length ? { exclude: req.exclude } : {}),
         }),
       ),
     );
@@ -174,6 +180,11 @@ async function askLeader(
   if (named.every((m) => !m) || named.some((m) => m && !members.includes(m)))
     throw new PlacementUnavailableError(
       `Cluster ${cluster.name}'s leader named a server that is not in it.`,
+    );
+  // A leader too old to read `exclude` answers as if it were not there.
+  if (named.some((m) => m && req.exclude?.includes(m)))
+    throw new PlacementUnavailableError(
+      `Cluster ${cluster.name}'s leader is too old to place this. Deplo updates it on its own.`,
     );
   // The leader may not have heard yet; nothing new lands on a member that is being emptied.
   for (const m of new Set(named))
@@ -325,10 +336,100 @@ export async function clearPlacement(
     .delete(workloadPlacements)
     .where(
       and(
-        eq(workloadPlacements.kind, kind),
+        // A database's standby copy goes with it.
+        inArray(
+          workloadPlacements.kind,
+          kind === "database" ? [kind, STANDBY] : [kind],
+        ),
         eq(workloadPlacements.workloadId, workloadId),
       ),
     );
+}
+
+/** The member holding the database's standby copy, or null. */
+export async function standbyMemberOf(
+  databaseId: string,
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ member: workloadPlacements.memberServerId })
+    .from(workloadPlacements)
+    .where(
+      and(
+        eq(workloadPlacements.kind, STANDBY),
+        eq(workloadPlacements.workloadId, databaseId),
+      ),
+    )
+    .limit(1);
+  return row?.member ?? null;
+}
+
+/** Every standby copy of the cluster's databases, and the member holding it. */
+export async function listStandbys(
+  clusterId: string,
+): Promise<{ databaseId: string; host: string; serverId: string }[]> {
+  const rows = await getDb()
+    .select({
+      databaseId: databasesTable.id,
+      host: databasesTable.host,
+      on: databasesTable.serverId,
+      serverId: workloadPlacements.memberServerId,
+    })
+    .from(workloadPlacements)
+    .innerJoin(
+      databasesTable,
+      eq(databasesTable.id, workloadPlacements.workloadId),
+    )
+    .where(
+      and(
+        eq(workloadPlacements.kind, STANDBY),
+        eq(databasesTable.clusterId, clusterId),
+      ),
+    )
+    .orderBy(asc(databasesTable.id));
+  // Beside its database a copy is no standby: that one was promoted.
+  return rows.flatMap((r) =>
+    r.serverId && r.serverId !== r.on
+      ? [{ databaseId: r.databaseId, host: r.host, serverId: r.serverId }]
+      : [],
+  );
+}
+
+/** Records where a database's standby copy runs, or (null) that it has none. Never the database's own member. */
+export async function recordStandby(
+  databaseId: string,
+  member: string | null,
+): Promise<void> {
+  const mine = and(
+    eq(workloadPlacements.kind, STANDBY),
+    eq(workloadPlacements.workloadId, databaseId),
+  );
+  if (!member) {
+    await getDb().delete(workloadPlacements).where(mine);
+    return;
+  }
+  const [db] = await getDb()
+    .select({
+      serverId: databasesTable.serverId,
+      clusterId: databasesTable.clusterId,
+    })
+    .from(databasesTable)
+    .where(eq(databasesTable.id, databaseId))
+    .limit(1);
+  if (!db?.clusterId || db.serverId === member)
+    throw new Error("A standby copy runs on another server of the cluster.");
+  if (!(await clusterMemberServerIds(db.clusterId)).includes(member))
+    throw new Error("A placement named a server that is not in the cluster.");
+  await getDb().transaction(async (tx) => {
+    await tx.delete(workloadPlacements).where(mine);
+    await tx.insert(workloadPlacements).values({
+      kind: STANDBY,
+      workloadId: databaseId,
+      replica: 0,
+      memberServerId: member,
+      epoch: 0,
+      updatedAt: nowIso(),
+    });
+  });
 }
 
 export interface WorkloadPlacement {

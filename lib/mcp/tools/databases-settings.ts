@@ -71,6 +71,22 @@ export const DATABASES_SETTINGS: McpToolDef[] = [
     `,
   }),
   tool({
+    name: "set_database_standby",
+    title: "Keep a standby copy of a database",
+    description:
+      "Turn a PostgreSQL database's standby copy on or off. It runs on another server of its cluster and a failover promotes it, losing about a second of writes. It costs the database's memory and disk a second time.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    input: z.object({ databaseId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.databaseId, enabled: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetDatabaseStandby($id: String!, $enabled: Boolean!) {
+        setDatabaseStandby(id: $id, enabled: $enabled) { ${DATABASE_FIELDS_SETTINGS} clusterId standby standbyServerName }
+      }
+    `,
+  }),
+  tool({
     name: "rename_database",
     title: "Rename a database",
     description: "Change a database's display name. Its host name stays.",
