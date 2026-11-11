@@ -22,7 +22,7 @@ interface Line {
 // they order the replayed tail, and are dropped again unless the viewer asked for them.
 export function mergeReplicaLogs(
   sources: ReplicaSource[],
-  opts: { timestamps: boolean; settleMs?: number },
+  opts: { timestamps: boolean; settleMs?: number; notices?: string[] },
 ): AttachHandle {
   const settleMs = opts.settleMs ?? SETTLE_MS;
   const width = Math.max(...sources.map((s) => s.tag.length));
@@ -80,6 +80,11 @@ export function mergeReplicaLogs(
     flush();
     for (const cb of exitListeners) cb(firstError);
   };
+
+  // What the stream has to say ahead of the logs themselves: no time, so it sorts first.
+  for (const text of opts.notices ?? [])
+    burst.push({ ts: "", text: `${text}\n`, seq: seq++ });
+  if (opts.notices?.length) touch();
 
   for (const { tag, handle } of sources) {
     const decoder = new StringDecoder("utf8");

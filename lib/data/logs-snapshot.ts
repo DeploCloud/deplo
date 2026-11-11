@@ -3,7 +3,7 @@ import "server-only";
 import { StringDecoder } from "node:string_decoder";
 import { LINK_OFFLINE_MESSAGE } from "../agent-reachability";
 import { connectAgent } from "../infra/agent-client/connect";
-import { followGroup, logsStreamName } from "../logs/follow";
+import { logsStreamName, openLogs } from "../logs/follow";
 import { resolveLogsTarget } from "./console";
 import { resolveDatabaseLogsTarget } from "./database-console";
 
@@ -76,9 +76,12 @@ export async function appLogsSnapshot(
     throw new Error("This app has no server assigned yet, so it has no logs.");
 
   const tail = clampLines(opts.lines);
-  const conn = await connectAgent(resolved.server.id);
-  const handle = followGroup(conn, appId, resolved.group, tail);
-  const { text, truncated } = await drain(handle, () => conn.close());
+  const { handle, close } = await openLogs(
+    appId,
+    { ...resolved, server: resolved.server },
+    tail,
+  );
+  const { text, truncated } = await drain(handle, close);
   return { container: logsStreamName(resolved.group), text, truncated };
 }
 

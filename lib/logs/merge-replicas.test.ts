@@ -159,3 +159,20 @@ test("a replica that ends flushes its last unfinished line", async () => {
   a.end();
   assert.equal(read(), "web-1 | last\n");
 });
+
+test("a notice goes out once, ahead of the logs, even while every replica is quiet", async () => {
+  const a = source();
+  const merged = mergeReplicaLogs([{ tag: "web-1", handle: a.handle }], {
+    timestamps: true,
+    settleMs: 10,
+    notices: ["Earlier logs on server-a are unavailable."],
+  });
+  const read = collect(merged);
+  await settle();
+  assert.equal(read(), "Earlier logs on server-a are unavailable.\n");
+  a.push(`${T(1)} hi\n`);
+  assert.equal(
+    read(),
+    `Earlier logs on server-a are unavailable.\n${T(1)} web-1 | hi\n`,
+  );
+});
