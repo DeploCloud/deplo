@@ -17,6 +17,8 @@ const RESUME_WHY: Record<string, string> = {
   deploy: "after a deploy",
   restart: "after a restart",
   quiet: "after 30 quiet minutes",
+  // The pause is in the server agent's memory, so one that starts again restarts the App as before.
+  agent: "after its server agent restarted",
 };
 
 /** What the server agent's restart rule did, as Activity, App state and alerts. */
