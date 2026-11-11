@@ -330,11 +330,11 @@ test("a database on one server, or of an engine with no row, is refused in words
   );
   await db
     .update(databasesTable)
-    .set({ clusterId: cluster.id, type: "redis" })
+    .set({ clusterId: cluster.id, type: "clickhouse" })
     .where(eq(databasesTable.id, "db_main"));
   await assert.rejects(
     asAdmin(() => setDatabaseStandby("db_main", true)),
-    { message: "A standby copy is available for PostgreSQL databases only." },
+    { message: /^ClickHouse keeps no standby copy: / },
   );
   assert.equal((await row()).standby, false);
 });

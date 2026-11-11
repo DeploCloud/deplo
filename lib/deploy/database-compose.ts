@@ -10,7 +10,7 @@ import {
   CHANGE_LOG_KEPT_MINUTES,
 } from "../databases/change-log";
 import { isOfficialEngineImage } from "../databases/images";
-import { standbyContainer } from "../databases/standby";
+import { STANDBY_ENGINES, standbyContainer } from "../databases/standby";
 import { formatHostPort } from "../host-address";
 import { deploImageClaim, deploImageMessage } from "./deplo-image";
 
@@ -140,6 +140,8 @@ export function generateDatabaseCompose(input: {
   archiveChangeLog?: boolean;
   // A standby copy (#218): the engine's own start command, under a name the database never answers to.
   standby?: { command: string[]; env: string[] } | null;
+  // The database itself, while it keeps a standby copy: its engine's row may add start settings.
+  keepsStandby?: boolean;
 }): string {
   const {
     name,
@@ -192,6 +194,10 @@ export function generateDatabaseCompose(input: {
   const postgresSettings: string[] = [];
   if (type === "postgres" && input.archiveChangeLog)
     postgresSettings.push(...POSTGRES_ARCHIVE);
+  // ponytail: only an engine that starts with the image's own command has settings today (MariaDB); merge them
+  // into the engine's command when one that has its own (Postgres, Redis, MongoDB) gains some.
+  const standbySettings =
+    (input.keepsStandby && STANDBY_ENGINES[type]?.settings) || [];
   const command = customCommand
     ? `    command: ${escapeComposeDollars(JSON.stringify(customCommand))}\n`
     : postgresSettings.length > 0
@@ -200,7 +206,9 @@ export function generateDatabaseCompose(input: {
         ? `    command: ${JSON.stringify(["sh", "-c", MONGO_REPLICA_START])}\n`
         : type === "redis"
           ? `    command: ${escapeComposeDollars(JSON.stringify(["sh", "-c", REDIS_START]))}\n`
-          : "";
+          : standbySettings.length > 0
+            ? `    command: ${JSON.stringify(standbySettings)}\n`
+            : "";
   const envLines = [...envByType[type], ...(input.standby?.env ?? [])];
   const service = input.standby ? standbyContainer(name) : name;
   const start = input.standby

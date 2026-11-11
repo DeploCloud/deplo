@@ -28,7 +28,7 @@ import {
   type ClusterDeletion,
 } from "../../types/cluster";
 import { recordActivity } from "../activity";
-import { endStandby } from "../databases/standby";
+import { endStandby, syncClusterStandbys } from "../databases/standby";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById, listAllServers } from "../servers/roster";
 import { teardownOrQueue } from "../teardown-queue";
@@ -403,6 +403,8 @@ export async function removeClusterMember(
     await endStandbys(released);
     await leaveTunnels(released, user);
   }
+  // A copy on the server that left, or of an engine the cluster is now too small for, is seen to at once.
+  await syncClusterStandbys(clusterId).catch((e) => warn(clusterId, e));
   await recordActivity(
     "server",
     `Removed server ${server.name} from cluster ${cluster.name}` +

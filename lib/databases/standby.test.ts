@@ -15,6 +15,7 @@ import {
 
 const pg = STANDBY_ENGINES.postgres!;
 const args = {
+  host: "db-main",
   username: "app",
   dbName: "shop",
   port: 5432,
@@ -22,7 +23,13 @@ const args = {
 };
 
 test("only an engine with a row keeps a standby copy, and the refusal names what is missing", () => {
-  assert.deepEqual(Object.keys(STANDBY_ENGINES), ["postgres"]);
+  assert.deepEqual(Object.keys(STANDBY_ENGINES), [
+    "postgres",
+    "mysql",
+    "mariadb",
+    "redis",
+    "mongodb",
+  ]);
   const db = {
     name: "main",
     type: "postgres" as const,
@@ -31,10 +38,6 @@ test("only an engine with a row keeps a standby copy, and the refusal names what
     customCommand: null,
   };
   assert.equal(standbySupport(db), null);
-  assert.equal(
-    standbySupport({ ...db, type: "redis" }),
-    "A standby copy is available for PostgreSQL databases only.",
-  );
   assert.equal(
     standbySupport({ ...db, version: "12" }),
     "A standby copy needs PostgreSQL 13 or newer. main runs 12.",
@@ -48,6 +51,73 @@ test("only an engine with a row keeps a standby copy, and the refusal names what
     "main runs an image of its own, which a standby copy cannot follow. Use the PostgreSQL image first.",
   );
   assert.equal(standbySupport({ ...db, customImage: "postgres:17.2" }), null);
+});
+
+test("ClickHouse is never offered a standby copy, and says why", () => {
+  assert.equal(STANDBY_ENGINES.clickhouse, undefined);
+  assert.equal(
+    standbySupport({
+      name: "events",
+      type: "clickhouse",
+      version: "25.8",
+      customImage: null,
+      customCommand: null,
+    }),
+    "ClickHouse keeps no standby copy: it copies data table by table through a coordination service Deplo does not run. A failover restores the latest backup.",
+  );
+});
+
+test("each engine refuses a version older than the one its copy needs, and a tag that names no minor is the newest of its line", () => {
+  const on = (
+    type: "mysql" | "mariadb" | "redis" | "mongodb",
+    version: string,
+  ) =>
+    standbySupport({
+      name: "main",
+      type,
+      version,
+      customImage: null,
+      customCommand: null,
+    });
+  for (const [type, version] of [
+    ["mysql", "8.0"],
+    ["mysql", "8.0.26"],
+    ["mysql", "8.4"],
+    ["mysql", "9.1"],
+    ["mariadb", "11"],
+    ["mariadb", "11.4"],
+    ["mariadb", "12.0"],
+    ["redis", "6"],
+    ["redis", "8"],
+    ["mongodb", "5"],
+    ["mongodb", "8"],
+    ["mongodb", "latest"],
+  ] as const)
+    assert.equal(on(type, version), null, `${type} ${version}`);
+  assert.equal(
+    on("mysql", "8.0.20"),
+    "A standby copy needs MySQL 8.0.26 or newer. main runs 8.0.20.",
+  );
+  assert.equal(
+    on("mysql", "5.7"),
+    "A standby copy needs MySQL 8.0.26 or newer. main runs 5.7.",
+  );
+  assert.equal(
+    on("mariadb", "10.11"),
+    "A standby copy needs MariaDB 11.4 or newer. main runs 10.11.",
+  );
+  assert.equal(
+    on("mariadb", "11.2"),
+    "A standby copy needs MariaDB 11.4 or newer. main runs 11.2.",
+  );
+  assert.equal(
+    on("redis", "5"),
+    "A standby copy needs Redis 6 or newer. main runs 5.",
+  );
+  assert.equal(
+    on("mongodb", "4.4"),
+    "A standby copy needs MongoDB 5 or newer. main runs 4.4.",
+  );
 });
 
 test("the refusals of a placement read as sentences about the standby copy", () => {

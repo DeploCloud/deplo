@@ -48,7 +48,11 @@ import {
 } from "./bundles";
 import { standbyMemberOf } from "./placement";
 import { clusterMemberServerIds, getClusterById } from "./roster";
-import { STANDBY_ENGINES, standbyContainer } from "../../databases/standby";
+import {
+  STANDBY_ENGINES,
+  standbyContainer,
+  standbyMembersRefusal,
+} from "../../databases/standby";
 
 // A cluster database's failover bundle: its stack, and the backup another member restores before it starts (#202).
 // https://deplo.build/docs/operations/clusters#when-a-server-stops
@@ -197,8 +201,16 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
   });
   const engine = db.standby ? STANDBY_ENGINES[db.type] : undefined;
   const copyOn = engine ? await standbyMemberOf(db.id) : null;
+  // In a cluster too small for the engine the copy is on its way out: a failover restores the backup.
+  const promotable =
+    engine &&
+    !standbyMembersRefusal(engine, {
+      cluster: cluster.name,
+      name: db.name,
+      members: (await clusterMemberServerIds(cluster.id)).length,
+    });
   const promote =
-    engine && copyOn && copyOn !== db.serverId
+    engine && promotable && copyOn && copyOn !== db.serverId
       ? { container: standbyContainer(db.host), ...engine.promote }
       : null;
   const body = {

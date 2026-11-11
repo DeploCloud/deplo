@@ -11,6 +11,7 @@ import {
   type StandbyEngine,
   standbyContainer,
   standbyCost,
+  standbyMembersRefusal,
   standbyRefusal,
   standbySupport,
 } from "../../databases/standby";
@@ -46,6 +47,7 @@ import { loadDatabase, mountsFor, requireDatabase } from "./rows";
 import {
   databasePassword,
   renderDatabaseStackYaml,
+  rerouteDatabase,
   rerouteRequest,
 } from "./stack";
 
@@ -77,6 +79,7 @@ async function onServer<T>(
 }
 
 const argsOf = (db: Database) => ({
+  host: db.host,
   username: db.username,
   dbName: db.dbName,
   port: db.port,
@@ -101,13 +104,32 @@ async function run(
   return res.stdout.trim();
 }
 
+/** Why this cluster is too small for the engine's copy (MongoDB needs three servers), or null. */
+async function tooSmall(
+  db: Database,
+  engine: StandbyEngine,
+  cluster: Cluster,
+): Promise<string | null> {
+  return standbyMembersRefusal(engine, {
+    cluster: cluster.name,
+    name: db.name,
+    members: (await clusterMemberServerIds(cluster.id)).length,
+  });
+}
+
 /** Asks the leader for a member other than the database's own; a refusal throws the sentence the user reads. */
-async function placeCopy(db: Database, cluster: Cluster): Promise<string> {
+async function placeCopy(
+  db: Database,
+  engine: StandbyEngine,
+  cluster: Cluster,
+): Promise<string> {
   const names = { cluster: cluster.name, name: db.name };
   const others = (await clusterMemberServerIds(cluster.id)).filter(
     (m) => m !== db.serverId,
   );
   if (others.length === 0) throw new Error(standbyRefusal("one_member", names));
+  const small = await tooSmall(db, engine, cluster);
+  if (small) throw new Error(small);
   const old: string[] = [];
   for (const m of others) if (!(await memberKeepsStandby(m))) old.push(m);
   if (old.length === others.length)
@@ -193,6 +215,11 @@ async function removeCopy(db: Database, member: string): Promise<boolean> {
   return gone;
 }
 
+/** Restarts the database once when its engine starts differently while it keeps a copy (MariaDB's binary log). */
+async function applySettings(db: Database, engine?: StandbyEngine) {
+  if (engine?.settings && db.status === "running") await rerouteDatabase(db.id);
+}
+
 const nameOf = async (serverId: string) =>
   (await getServerById(serverId))?.name ?? "another server";
 
@@ -229,6 +256,7 @@ export async function setDatabaseStandby(
         await run(db, db.serverId, db.host, engine.retire(argsOf(db))).catch(
           quietly(db.host),
         );
+      await applySettings(db, engine).catch(quietly(db.host));
       if (cluster) await tellCluster(off, cluster);
       publishDatabaseChanged(id);
       await say(db, `Turned off the standby copy of ${db.name}`, user.name);
@@ -244,7 +272,7 @@ export async function setDatabaseStandby(
     if (db.status !== "running")
       throw new Error(`Start ${db.name} before turning on its standby copy.`);
     // A refusal throws here, before anything is written.
-    const member = await placeCopy(db, cluster);
+    const member = await placeCopy(db, engine, cluster);
     await getDb()
       .update(databasesTable)
       .set({ standby: true })
@@ -256,6 +284,7 @@ export async function setDatabaseStandby(
       );
     const kept = { ...db, standby: true };
     try {
+      await applySettings(db, engine);
       await seedCopy(kept, engine, cluster, member);
     } catch (e) {
       await removeCopy(kept, member).catch(quietly(db.host));
@@ -263,6 +292,7 @@ export async function setDatabaseStandby(
         .update(databasesTable)
         .set({ standby: false, standbySeed: null })
         .where(eq(databasesTable.id, id));
+      await applySettings(db, engine).catch(quietly(db.host));
       await tellCluster({ ...db, standby: false }, cluster);
       throw new Error(
         `The standby copy of ${db.name} could not be made: ${e instanceof Error ? e.message : String(e)}`,
@@ -315,12 +345,14 @@ export async function syncStandby(id: string): Promise<void> {
       }
       return;
     }
-    // Beside its database the copy was promoted; on a member that left or is being emptied it has to go elsewhere.
+    // Beside its database the copy was promoted; on a member that left or is being emptied it has to go elsewhere,
+    // and in a cluster that became too small for the engine it goes until a server joins.
     if (
       at &&
       (at === db.serverId ||
         !(await clusterMemberServerIds(cluster.id)).includes(at) ||
-        (await memberIsEmptying(at)))
+        (await memberIsEmptying(at)) ||
+        (await tooSmall(db, engine, cluster)))
     ) {
       await removeCopy(db, at);
       at = null;
@@ -340,6 +372,11 @@ export async function syncStandby(id: string): Promise<void> {
           `Made the standby copy of ${db.name} on ${await nameOf(at)} again: it had stopped following`,
         );
       } else if (state && db.standbySeed) {
+        // A database that restarted may have forgotten what lets its copy in; preparing it twice changes nothing.
+        if (state !== "following")
+          await run(db, db.serverId, db.host, engine.prepare(argsOf(db))).catch(
+            quietly(db.host),
+          );
         // Same seed, so the data stays: only what changed on the database (memory, version, network) reaches the copy.
         const yaml = copyYaml(db, engine, db.standbySeed);
         await onServer(at, async (conn) => {
@@ -351,7 +388,7 @@ export async function syncStandby(id: string): Promise<void> {
       return;
     }
     try {
-      const member = await placeCopy(db, cluster);
+      const member = await placeCopy(db, engine, cluster);
       await seedCopy(db, engine, cluster, member);
       await say(
         db,
@@ -397,6 +434,21 @@ export async function endStandby(id: string): Promise<void> {
     await run(db, db.serverId, db.host, engine.retire(argsOf(db))).catch(
       quietly(db.host),
     );
+  await applySettings(db, engine).catch(quietly(db.host));
+}
+
+/** A cluster lost a server: its standby copies are looked at now, not at the next sweep. */
+export async function syncClusterStandbys(clusterId: string): Promise<void> {
+  const rows = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(
+      and(
+        eq(databasesTable.clusterId, clusterId),
+        eq(databasesTable.standby, true),
+      ),
+    );
+  for (const r of rows) syncStandbySoon(r.id);
 }
 
 /** The sweep's job: every database that asks for a standby copy has one that follows it, and no other has any. */
@@ -436,12 +488,15 @@ export async function getDatabaseStandby(
   if (!db) return null;
   const at = db.standby ? await standbyMemberOf(id) : null;
   const serverName = at && at !== db.serverId ? await nameOf(at) : null;
+  const engine = STANDBY_ENGINES[db.type];
+  const cluster = db.clusterId ? await getClusterById(db.clusterId) : null;
+  const small = engine && cluster ? await tooSmall(db, engine, cluster) : null;
   return {
     enabled: Boolean(db.standby),
     unavailable:
       standbySupport(db) ??
-      (db.clusterId
-        ? null
+      (cluster
+        ? small
         : "A standby copy runs on another server of a cluster. Place the database on a cluster first."),
     cost: standbyCost(db),
     serverName,
@@ -449,6 +504,8 @@ export async function getDatabaseStandby(
       ? null
       : serverName
         ? `The copy runs on ${serverName}. A failover promotes it.`
-        : "There is no standby copy right now. Deplo makes one as soon as another server has room.",
+        : small
+          ? `There is no standby copy right now. ${small}`
+          : "There is no standby copy right now. Deplo makes one as soon as another server has room.",
   };
 }
