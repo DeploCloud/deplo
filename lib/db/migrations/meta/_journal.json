@@ -1625,6 +1625,13 @@
       "when": 1795206000000,
       "tag": "0236_postgres_change_log",
       "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1795240000000,
+      "tag": "0237_app_failover_from_backup",
+      "breakpoints": true
     }
   ]
 }

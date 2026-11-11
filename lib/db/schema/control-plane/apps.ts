@@ -138,6 +138,9 @@ export const apps = pgTable(
     restartsPausedAt: isoTimestamptz("restarts_paused_at"),
     replicas: integer("replicas").notNull().default(1),
     stickySessions: boolean("sticky_sessions").notNull().default(false),
+    failoverFromBackup: boolean("failover_from_backup")
+      .notNull()
+      .default(false),
     latestDeploymentId: text("latest_deployment_id").references(
       (): AnyPgColumn => deployments.id,
       { onDelete: "set null" },

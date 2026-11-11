@@ -81,6 +81,8 @@ export interface App {
   replicas: number;
   // With more than one copy, a cookie keeps each visitor on the same one.
   stickySessions: boolean;
+  /** On a cluster: move on its own from its latest backup when its server stops, instead of waiting for it. */
+  failoverFromBackup: boolean;
   deployHookEnabled: boolean;
   composeUpArgs: string | null;
   rollbackKeep: number;

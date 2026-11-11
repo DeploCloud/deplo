@@ -3,7 +3,10 @@ import "server-only";
 import { and, desc, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
-import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import {
+  appVolumes,
+  apps as appsTable,
+} from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
@@ -12,6 +15,7 @@ import {
   failoverBundlePushes as pushes,
 } from "../../db/schema/control-plane/clusters";
 import { deployments } from "../../db/schema/control-plane/deployments";
+import { appHasBind } from "../../apps/failover-copy";
 import { decryptSecretOrThrow, encryptSecret, sha256Hex } from "../../crypto";
 import { nowIso } from "../../ids";
 import type { Cluster } from "../../types/cluster";
@@ -104,7 +108,7 @@ export async function hostFor(serverId: string | null): Promise<string | null> {
 }
 
 /** The key of the leader that leads now; the other one only stands by. */
-const leading = (cluster: Cluster) => (k: KeyRow) =>
+export const leading = (cluster: Cluster) => (k: KeyRow) =>
   k.serverId === (cluster.leaderTakeoverAt ? null : cluster.leaderServerId);
 
 // A changed key replaces the old one, so every bundle is sealed again.
@@ -309,11 +313,57 @@ export async function deliver(
   return failed;
 }
 
-/** Seals and sends the bundle of a cluster App's deploy to every leader key; says why on Activity when it cannot. */
+/** The cluster's Apps that use a Bind: the folder lives on one server, so they hold no bundle and never fail over. */
+async function bindAppIds(clusterId: string): Promise<Set<string>> {
+  const db = getDb();
+  const [rows, vols] = await Promise.all([
+    db
+      .select({ id: appsTable.id, compose: appsTable.compose })
+      .from(appsTable)
+      .where(eq(appsTable.clusterId, clusterId)),
+    db
+      .select({ appId: appVolumes.appId, type: appVolumes.type })
+      .from(appVolumes)
+      .innerJoin(appsTable, eq(appsTable.id, appVolumes.appId))
+      .where(eq(appsTable.clusterId, clusterId)),
+  ]);
+  return new Set(
+    rows
+      .filter((a) =>
+        appHasBind({
+          compose: a.compose,
+          volumes: vols.filter((v) => v.appId === a.id),
+        }),
+      )
+      .map((a) => a.id),
+  );
+}
+
+/** The bundle Deplo last sealed for this App, as it keeps it. */
+export async function storedBundle(
+  appId: string,
+): Promise<FailoverBundle | null> {
+  const [row] = await getDb()
+    .select({ bundleEnc: pushes.bundleEnc })
+    .from(pushes)
+    .where(and(eq(pushes.workloadKind, KIND), eq(pushes.workloadId, appId)))
+    .limit(1);
+  return row
+    ? (JSON.parse(
+        decryptSecretOrThrow(row.bundleEnc, "a failover bundle"),
+      ) as FailoverBundle)
+    : null;
+}
+
+/**
+ * Seals and sends the bundle of a cluster App's deploy to every leader key; says why on Activity when it cannot.
+ * `restore` is the backup an App that keeps a Volume moves with: without one its leader makes it wait.
+ */
 export async function pushFailoverBundle(input: {
   appId: string;
   deploymentId: string;
   stack: FailoverStack;
+  restore?: FailoverRestore;
 }): Promise<void> {
   if (await instanceFrozen()) return;
   const db = getDb();
@@ -351,6 +401,7 @@ export async function pushFailoverBundle(input: {
     workload: app.id,
     deploymentId: input.deploymentId,
     stack: tunnelToken ? { ...input.stack, tunnelToken } : input.stack,
+    ...(input.restore ? { restore: input.restore } : {}),
   };
   const failed = await deliver(
     cluster,
@@ -375,18 +426,23 @@ export async function pushFailoverBundle(input: {
 
 const inFlight = new Set<Promise<void>>();
 
-/** Fire-and-forget after a successful deploy; the deploy never waits on, or fails with, the leader. */
-export function scheduleFailoverBundle(
-  input: Parameters<typeof pushFailoverBundle>[0],
-): void {
-  const p: Promise<void> = pushFailoverBundle(input)
+/** Runs a bundle's push in the background: what called it never waits on, or fails with, the leader. */
+export function inBackground(id: string, push: () => Promise<void>): void {
+  const p: Promise<void> = push()
     .catch((e) =>
       console.warn(
-        `[failover-bundle] ${input.appId}: ${e instanceof Error ? e.message : String(e)}`,
+        `[failover-bundle] ${id}: ${e instanceof Error ? e.message : String(e)}`,
       ),
     )
     .finally(() => void inFlight.delete(p));
   inFlight.add(p);
+}
+
+/** Fire-and-forget after a successful deploy. */
+export function scheduleFailoverBundle(
+  input: Parameters<typeof pushFailoverBundle>[0],
+): void {
+  inBackground(input.appId, () => pushFailoverBundle(input));
 }
 
 /** Resolves once every scheduled push has settled. */
@@ -455,14 +511,17 @@ export async function reconcileClusterBundles(
   const keys = await keyRows(cluster.id);
   const lead = keys.find(leading(cluster));
   const db = getDb();
-  const members: AppRow[] = await db
-    .select({
-      id: appsTable.id,
-      name: appsTable.name,
-      teamId: appsTable.teamId,
-    })
-    .from(appsTable)
-    .where(eq(appsTable.clusterId, cluster.id));
+  const binds = await bindAppIds(cluster.id);
+  const members: AppRow[] = (
+    await db
+      .select({
+        id: appsTable.id,
+        name: appsTable.name,
+        teamId: appsTable.teamId,
+      })
+      .from(appsTable)
+      .where(eq(appsTable.clusterId, cluster.id))
+  ).filter((a) => !binds.has(a.id));
   const held = new Map<string, Map<string, string> | null>();
   for (const k of keys) {
     try {
@@ -499,7 +558,11 @@ export async function reconcileClusterBundles(
     const source = rows.find((r) => r.deploymentId === live);
     const lacking = keys.filter((k) => {
       const list = held.get(k.publicKey);
-      return !list || list.get(app.id) !== live;
+      // Sent or not: the same deployment's bundle changes when its backup does.
+      const unsent = rows.some(
+        (r) => r.keyFingerprint === keyFingerprint(k.publicKey) && !r.pushedAt,
+      );
+      return !list || list.get(app.id) !== live || unsent;
     });
     if (!lead)
       await recordOnce(app, cannotFailOver(app.name, cluster.name, UNREACHED));

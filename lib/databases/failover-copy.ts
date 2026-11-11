@@ -43,6 +43,30 @@ export function recoverySentence(
   return `Recovery takes ${took}: the last backup is ${formatBytes(lastBackupBytes)}.`;
 }
 
+/** A backup's time as people read it: 14:15 today, "3 Mar, 14:15" otherwise; null when it is no date. */
+export function backupWhen(
+  takenAt: string | null,
+  timeZone: string,
+  now = new Date(),
+): string | null {
+  const at = takenAt ? new Date(takenAt) : null;
+  if (!at || Number.isNaN(at.getTime())) return null;
+  const part = (d: Date, o: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("en-GB", { timeZone, ...o }).format(d);
+  const day = (d: Date) => part(d, { day: "numeric", month: "short" });
+  try {
+    const time = part(at, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    return day(at) === day(now) ? time : `${day(at)}, ${time}`;
+  } catch {
+    // A timezone this runtime does not know must not cost the entry.
+    return timeZone === "UTC" ? null : backupWhen(takenAt, "UTC", now);
+  }
+}
+
 /**
  * The Activity entry of a failover that restored a backup: its time in the schedule's timezone, with the date when
  * it is not today's. `logAt` is how far the change log replayed after it reached, when it reached past the backup.
@@ -55,29 +79,13 @@ export function restoredSentence(
   now = new Date(),
   logAt: string | null = null,
 ): string {
-  const at = takenAt ? new Date(takenAt) : null;
-  if (!at || Number.isNaN(at.getTime()))
+  const when = backupWhen(takenAt, timeZone, now);
+  if (!when || !takenAt)
     return `Restored ${name} on ${server} from its latest backup`;
-  const part = (d: Date, o: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat("en-GB", { timeZone, ...o }).format(d);
-  const day = (d: Date) => part(d, { day: "numeric", month: "short" });
-  try {
-    const time = part(at, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    const clock = (d: Date) =>
-      part(d, { hour: "2-digit", minute: "2-digit", hour12: false });
-    const when = day(at) === day(now) ? time : `${day(at)}, ${time}`;
-    const log = logAt ? new Date(logAt) : null;
-    const upTo =
-      log && log.getTime() > at.getTime()
-        ? ` and its change log up to ${day(log) === day(at) ? clock(log) : `${day(log)}, ${clock(log)}`}`
-        : "";
-    return `Restored ${name} on ${server} from the backup of ${when}${upTo}`;
-  } catch {
-    // A timezone this runtime does not know must not cost the entry.
-    return restoredSentence(name, server, takenAt, "UTC", now, logAt);
-  }
+  const at = new Date(takenAt);
+  const upTo =
+    logAt && new Date(logAt).getTime() > at.getTime()
+      ? backupWhen(logAt, timeZone, at)
+      : null;
+  return `Restored ${name} on ${server} from the backup of ${when}${upTo ? ` and its change log up to ${upTo}` : ""}`;
 }

@@ -10,6 +10,7 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { ensureFailoverBackup } from "../databases/failover";
+import { ensureVolumeAppBackups } from "./app-restore";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { getCurrentUser } from "../../auth/current-user";
@@ -388,6 +389,8 @@ export async function addClusterMember(
       .from(databasesTable)
       .where(eq(databasesTable.clusterId, clusterId)))
       await ensureFailoverBackup(d);
+  // So does an App that keeps a Volume: it waits, or comes back, on that backup (#204).
+  if (failoverOn(members.length)) await ensureVolumeAppBackups(clusterId);
   // The member's own change already happened: the sweep puts the roster right if a relay is down.
   try {
     const push = await pushClusterRoster(

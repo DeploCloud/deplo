@@ -211,6 +211,54 @@ export const APPS_SETTINGS: McpToolDef[] = [
     `,
   }),
   tool({
+    name: "set_app_failover_from_backup",
+    title: "Fail an app over automatically from its latest backup",
+    description:
+      "A cluster app with a Volume: on, it moves on its own when its server stops, restored from its latest backup (later writes are lost); off, the default, it waits for its server. Refused with a Bind.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.appId, value: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetFailoverFromBackup($id: String!, $value: Boolean!) {
+        setAppFailoverFromBackup(id: $id, value: $value) {
+          id
+          slug
+          failoverFromBackup
+          failover {
+            sentence
+          }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "bring_app_back",
+    title: "Bring a waiting app back from its latest backup",
+    description:
+      "A cluster app with a Volume whose server stopped: start it on another server from its latest backup. Later writes are LOST. Refused while its own server may still be running it.",
+    group: "Apps",
+    requires: "restore_backups",
+    destructive: true,
+    input: z.object({ appId }),
+    variables: (a) => ({ id: a.appId }),
+    query: /* GraphQL */ `
+      mutation McpBringAppBack($id: String!) {
+        bringAppBack(id: $id) {
+          id
+          slug
+          failover {
+            waiting
+            sentence
+            bringBack
+            why
+          }
+        }
+      }
+    `,
+  }),
+  tool({
     name: "set_app_replicas",
     title: "Run an app as several copies",
     description:

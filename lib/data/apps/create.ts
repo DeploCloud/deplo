@@ -453,6 +453,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     restartsPausedAt: null,
     replicas: 1,
     stickySessions: false,
+    failoverFromBackup: false,
     autoDeploy: input.autoDeploy ?? true,
     deployHookEnabled: true,
     composeUpArgs: rawComposeArgs

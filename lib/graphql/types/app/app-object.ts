@@ -3,6 +3,7 @@ import { ResourceLimitsRef } from "../resource-limits";
 import { HealthCheckRef } from "../health-check";
 import { DeploySourceEnum, AppStatusEnum } from "../enums";
 import { DeploymentRef } from "./deployment-object";
+import { type AppFailover, getAppFailover } from "@/lib/data/apps/failover";
 import { listApps } from "@/lib/data/apps/listing";
 import { getCluster } from "@/lib/data/clusters/roster";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
@@ -73,6 +74,41 @@ const PublishedPortRef = builder
       protocol: t.string({ resolve: (p) => p.protocol }),
     }),
   });
+
+const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
+  description:
+    "How an app that keeps data on a cluster member fails over: a Volume waits for its server or comes back from a backup, a Bind never moves.",
+  fields: (t) => ({
+    cluster: t.exposeString("cluster"),
+    serverName: t.exposeString("serverName", {
+      description: "The member it runs on now.",
+    }),
+    disk: t.exposeString("disk", {
+      description: "`volume` or `bind`: what ties it to that server.",
+    }),
+    automatic: t.exposeBoolean("automatic", {
+      description:
+        "Whether it moves on its own from its latest backup (failoverFromBackup).",
+    }),
+    sentence: t.exposeString("sentence", {
+      description: "What its page says about how it fails over.",
+    }),
+    waiting: t.exposeBoolean("waiting", {
+      description: "Its server stopped answering and it waits for it.",
+    }),
+    bringBack: t.string({
+      nullable: true,
+      description:
+        "The one click bringAppBack offers, naming the backup it restores; null when it is not waiting or no other server can read a backup.",
+      resolve: (f) => f.bringBack,
+    }),
+    why: t.string({
+      nullable: true,
+      description: "Why nothing can bring it back, while it waits.",
+      resolve: (f) => f.why,
+    }),
+  }),
+});
 
 export const AppRef = builder.objectRef<AppSummary>("App").implement({
   description: "A deployable application owned by a team.",
@@ -223,6 +259,17 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     stickySessions: t.exposeBoolean("stickySessions", {
       description:
         "Whether a cookie keeps each visitor on the same replica. Only applies with more than one.",
+    }),
+    failoverFromBackup: t.exposeBoolean("failoverFromBackup", {
+      description:
+        "On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.",
+    }),
+    failover: t.field({
+      type: AppFailoverRef,
+      nullable: true,
+      description:
+        "How this app fails over when it keeps data on a cluster member; null for an app that keeps none or runs on one server.",
+      resolve: (p) => (p.clusterId ? getAppFailover(p.id) : null),
     }),
     screenshotsEnabled: t.exposeBoolean("screenshotsEnabled", {
       description:

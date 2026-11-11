@@ -35,7 +35,11 @@ import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { insertServerDestination } from "../destinations/create";
 import { getServerById, listAllServers } from "../servers/roster";
 import { loadDatabase } from "./rows";
-import type { Backup, BackupDestination } from "../../types/backup";
+import type {
+  Backup,
+  BackupDestination,
+  BackupTargetKind,
+} from "../../types/backup";
 import type { Database } from "../../types/database";
 
 // ponytail: 8 runs is two hours of history; the schedule is editable when a team wants more.
@@ -80,12 +84,27 @@ async function failoverDestination(
   return insertServerDestination(db.teamId, target.id, serverLabel(target));
 }
 
-/** Gives a database on a cluster its 15-minute backup, unless it has a schedule. Never throws: placing already happened. */
-export async function ensureFailoverBackup(db: Placed): Promise<void> {
+/**
+ * Gives a database on a cluster, or an App that keeps a Volume there, its 15-minute backup, unless it has a
+ * schedule. Never throws: placing already happened.
+ */
+export async function ensureFailoverBackup(
+  db: Placed,
+  kind: BackupTargetKind = "database",
+): Promise<void> {
   const clusterId = db.clusterId;
   if (!clusterId) return;
+  const isApp = kind === "app";
   const say = (message: string) =>
-    recordActivity("backup", message, "Deplo", null, db.teamId, null, db.id);
+    recordActivity(
+      "backup",
+      message,
+      "Deplo",
+      isApp ? db.id : null,
+      db.teamId,
+      null,
+      isApp ? null : db.id,
+    );
   try {
     const [row] = await getDb()
       .select()
@@ -101,7 +120,7 @@ export async function ensureFailoverBackup(db: Placed): Promise<void> {
       .from(backupsTable)
       .where(
         and(
-          eq(backupsTable.databaseId, db.id),
+          eq(isApp ? backupsTable.appId : backupsTable.databaseId, db.id),
           base ? eq(backupsTable.baseBackup, true) : undefined,
         ),
       )
@@ -118,9 +137,9 @@ export async function ensureFailoverBackup(db: Placed): Promise<void> {
       id: newId("bkp"),
       teamId: db.teamId,
       name: "Failover backup",
-      targetKind: "database",
-      databaseId: db.id,
-      appId: null,
+      targetKind: kind,
+      databaseId: isApp ? null : db.id,
+      appId: isApp ? db.id : null,
       destinationId: dest.id,
       schedule: FAILOVER_BACKUP_SCHEDULE,
       timezone: "UTC",
