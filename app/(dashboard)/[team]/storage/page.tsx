@@ -9,7 +9,10 @@ import {
 import { listDestinations } from "@/lib/data/destinations/listing";
 import { listBackups } from "@/lib/data/backups/schedules";
 import { listServersForCurrentTeam } from "@/lib/data/servers/roster";
-import { listPlacementChoices } from "@/lib/data/clusters/choices";
+import {
+  listPlacementChoices,
+  placementOption,
+} from "@/lib/data/clusters/choices";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
@@ -119,12 +122,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
   );
   const dbServers = (await listPlacementChoices())
     .filter((c) => c.kind === "cluster" || provisioned.has(c.id))
-    .map((c) => ({
-      id: c.id,
-      name: c.name,
-      isDeploHost: c.isDeploHost,
-      ...(c.kind === "cluster" ? { kind: "cluster" as const } : {}),
-    }));
+    .map(placementOption);
   const dbEnvironments = (await listAllEnvironmentsForTeam()).map((e) => ({
     id: e.id,
     name: e.name,

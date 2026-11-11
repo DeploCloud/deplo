@@ -3,7 +3,10 @@ import { Settings2 } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases/rows";
 import { getFailoverPreview } from "@/lib/data/databases/failover";
 import { databaseFailoverReach } from "@/lib/data/clusters/architectures";
-import { listPlacementChoices } from "@/lib/data/clusters/choices";
+import {
+  listPlacementChoices,
+  placementOption,
+} from "@/lib/data/clusters/choices";
 import { getCluster } from "@/lib/data/clusters/roster";
 import {
   getServerById,
@@ -39,12 +42,7 @@ export default async function DatabaseGeneralSettingsPage(
   );
   const dbServers = choices
     .filter((c) => c.kind === "cluster" || provisioned.has(c.id))
-    .map((c) => ({
-      id: c.id,
-      name: c.name,
-      isDeploHost: c.isDeploHost,
-      ...(c.kind === "cluster" ? { kind: "cluster" as const } : {}),
-    }));
+    .map(placementOption);
 
   return (
     <section className="space-y-4">
