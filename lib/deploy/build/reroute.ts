@@ -153,6 +153,8 @@ async function rerouteOn(
         healthCheckKeys: parseStackHealthCheck(current.yaml, name),
         resourceKeys: parseStackResources(current.yaml, name),
         replicas: parseStackReplicas(current.yaml, name),
+        // Routing is what a reroute renders again, and the cookie is routing.
+        stickySessions: project.stickySessions,
         scaled: spread || parseStackScaled(current.yaml, name),
       });
     }
