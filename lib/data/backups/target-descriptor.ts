@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { assembleDatabase } from "../backup-rows";
 import { loadTeamApp } from "../app-graph-load";
 import { decryptSecretOrThrow } from "../../crypto";
@@ -78,6 +79,26 @@ export interface ResolvedTarget {
   label: string;
 }
 
+/** What a run's Activity calls its target, read before anything can fail on the way to its server. */
+export async function targetLabel(
+  teamId: string,
+  kind: BackupTargetKind,
+  databaseId: string | null,
+  appId: string | null,
+): Promise<string> {
+  const t = kind === "database" ? databasesTable : appsTable;
+  const id = kind === "database" ? databaseId : appId;
+  const [row] = id
+    ? await getDb()
+        .select({ name: t.name })
+        .from(t)
+        .where(and(eq(t.id, id), eq(t.teamId, teamId)))
+        .limit(1)
+    : [];
+  if (kind === "database") return `database ${row?.name ?? ""}`.trim();
+  return row?.name ?? "app";
+}
+
 export async function resolveTarget(
   teamId: string,
   kind: BackupTargetKind,
@@ -122,6 +143,6 @@ export async function resolveTarget(
     appId: project.id,
     dbType: null,
     project: toWireProjectDescriptor(descriptor, deployNetwork(project)),
-    label: `project ${project.name}`,
+    label: project.name,
   };
 }

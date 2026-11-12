@@ -31,7 +31,7 @@ import {
 import { artifactExt, buildObjectKey } from "../backup-objectkey";
 import { anyBackupCapableServer, downloadTargetFor } from "./target-lookup";
 import { requireBackupCapability } from "./target-access";
-import { resolveTarget } from "./target-descriptor";
+import { resolveTarget, targetLabel } from "./target-descriptor";
 import { MAX_RUNS_PER_TARGET, pruneRetention } from "./retention";
 import { formatBytes } from "./format-bytes";
 import { scheduleAppBundleRefresh } from "../clusters/app-restore";
@@ -116,7 +116,7 @@ export async function executeBackup(
     }
   });
 
-  let label = opts.kind === "database" ? "database" : "app";
+  let label = await targetLabel(teamId, opts.kind, opts.databaseId, opts.appId);
   let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;
   let activityDatabaseId: string | null =
     opts.kind === "database" ? opts.databaseId : null;

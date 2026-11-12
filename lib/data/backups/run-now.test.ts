@@ -9,7 +9,8 @@ import { __setTestDb, __resetTestDb } from "../../db/client";
 import { backups as backupsTable } from "../../db/schema/control-plane/backups";
 import { seedBackup } from "../backup-test-helpers";
 import { asUser1, seedBase } from "./backups-test-helpers";
-import { runBackup, runDatabaseBackup } from "./run-now";
+import { runAppBackup, runBackup, runDatabaseBackup } from "./run-now";
+import { activities } from "../../db/schema/control-plane/activity";
 import { listBackupRuns } from "./run-listing";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import { LINK_OFFLINE_MESSAGE } from "../../agent-reachability";
@@ -140,4 +141,23 @@ test("a run records how long the agent held the App, and nothing when it held no
     const runs = await listBackupRuns({ databaseId: "db_1" });
     assert.deepEqual(runs.map((r) => r.heldMs).sort(), [2140, null]);
   });
+});
+
+test("a backup that fails before it reaches the server still names what it was backing up", async (t) => {
+  __setAgentConnectorForTest(async () => {
+    throw new AgentUnreachableError("offline", GrpcStatus.UNAVAILABLE);
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await pg.exec("truncate table activities");
+  await asUser1(async () => {
+    await runAppBackup("prj_1", "s3_1").catch(() => {});
+    await runDatabaseBackup("db_1", "s3_1").catch(() => {});
+  });
+  const said = (await db.select({ m: activities.message }).from(activities))
+    .map((a) => a.m.replace(/:.*/, ""))
+    .sort();
+  assert.deepEqual(said, [
+    "Backup of database main failed",
+    "Backup of prj_1 failed",
+  ]);
 });
