@@ -10,7 +10,10 @@ import {
   backupDestination as destTable,
   backups as backupsTable,
 } from "../db/schema/control-plane/backups";
-import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
+import {
+  clusterMembers,
+  clusters as clustersTable,
+} from "../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import {
   FP,
@@ -102,26 +105,55 @@ test("only an instance admin removes a member, in the cluster's own team or anot
   assert.deepEqual(hosts.srv_3.memberCalls, [], "its agent heard nothing");
 });
 
-test("a member that still runs work is refused until it is emptied, and nothing changes", async () => {
+test("a member that still runs work starts moving it off, and stays in the cluster until nothing is left", async () => {
   await runningApp("web", "srv_3");
   await runningApp("api", "srv_3", TEAM_B);
   await seedDatabase(db(), { id: "db_main", name: "main", serverId: "srv_3" });
   const cluster = await clusterOf("eu", ["srv_2", "srv_3"]);
 
-  await assert.rejects(
-    asAdmin(() => removeClusterMember(cluster.id, "srv_3")),
-    { message: "srv_3 still runs 2 Apps and 1 database. Empty it first." },
-  );
-  // Keeping them is the last member's choice only.
-  await assert.rejects(
-    asAdmin(() =>
-      removeClusterMember(cluster.id, "srv_3", { keepWorkloads: true }),
-    ),
-    /Empty it first/,
-  );
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_3"));
   assert.deepEqual(await memberIds(cluster.id), ["srv_2", "srv_3"]);
-  assert.deepEqual(hosts.srv_3.memberCalls, []);
+  const [m] = await db()
+    .select()
+    .from(clusterMembers)
+    .where(eq(clusterMembers.serverId, "srv_3"));
+  assert.ok(m?.emptyingSince, "it is being removed");
+  assert.equal(m?.emptyingTotal, 3);
+  assert.deepEqual(
+    hosts.srv_3.memberCalls,
+    [],
+    "its agent is told only once it leaves",
+  );
   assert.equal((await appRow("web")).clusterId, cluster.id);
+  assert.equal(
+    (await activity()).at(-1),
+    "user_1: Started removing server srv_3 from cluster eu: 3 to move first",
+  );
+});
+
+test("any member may leave with its Apps: they stay on it, outside the cluster, and the rest is untouched", async () => {
+  await runningApp("web", "srv_3");
+  await runningApp("api", "srv_2");
+  await seedDatabase(db(), { id: "db_main", name: "main", serverId: "srv_3" });
+  const cluster = await clusterOf("eu", ["srv_2", "srv_3"]);
+
+  await asAdmin(() =>
+    removeClusterMember(cluster.id, "srv_3", { keepWorkloads: true }),
+  );
+  assert.deepEqual(await memberIds(cluster.id), ["srv_2"]);
+  const web = await appRow("web");
+  assert.deepEqual([web.serverId, web.clusterId], ["srv_3", null]);
+  assert.equal((await dbRow("db_main")).clusterId, null);
+  assert.deepEqual(await placementsOf("web"), [], "the cluster forgot it");
+  assert.equal(
+    (await appRow("api")).clusterId,
+    cluster.id,
+    "what stays is untouched",
+  );
+  assert.equal(
+    (await activity()).at(-1),
+    "user_1: Removed server srv_3 from cluster eu, keeping 1 App and 1 database on it",
+  );
 });
 
 test("a server that is not in the cluster is refused in words", async () => {
@@ -236,7 +268,7 @@ test("the last member is not released while it does not answer: its work would s
     ),
     {
       message:
-        "srv_2 does not answer, and 1 App still runs on it. Bring it back online, or empty it, before removing it from eu.",
+        "srv_2 does not answer, and 1 App still runs on it. Bring it back online before removing it from eu.",
     },
   );
   assert.deepEqual(await memberIds(cluster.id), ["srv_2"]);
@@ -272,13 +304,16 @@ test("rotating a member's certificate cuts the old one off everywhere at once: t
   ]);
 });
 
-test("a member that holds only a spread App's other replicas is refused too", async () => {
+test("a member that holds a spread App's other replicas cannot keep it alone", async () => {
   await runningApp("web", "srv_2");
   const eu = await clusterOf("eu", ["srv_2", "srv_3"]);
   await placed("web", ["srv_2", "srv_3"]);
   await assert.rejects(
-    asAdmin(() => removeClusterMember(eu.id, "srv_3")),
-    { message: "srv_3 still runs 1 App. Empty it first." },
+    asAdmin(() => removeClusterMember(eu.id, "srv_3", { keepWorkloads: true })),
+    {
+      message:
+        'web also runs replicas on other servers of eu, so it cannot stay on srv_3 alone. Choose "Move its Apps", or lower its replicas to 1 first.',
+    },
   );
   assert.deepEqual(await memberIds(eu.id), ["srv_2", "srv_3"]);
 });

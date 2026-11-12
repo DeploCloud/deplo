@@ -286,13 +286,14 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
     description:
-      "Place an app on a cluster and redeploy it on the member its leader picks, copying its data. A cluster with no room answers with the sentence that says what to change, and nothing stops. To take it off a cluster again use moveAppToServer, which also needs move_apps.",
+      "Place an app on a cluster and redeploy it on serverId of it when one is named, else on the member its leader picks, copying its data. On its cluster already, serverId moves it between members. A server or cluster that cannot take it answers with the sentence that says why, and nothing stops. To take it off a cluster again use moveAppToServer, which also needs move_apps.",
     args: {
       id: t.arg.string({ required: true }),
       clusterId: t.arg.string({ required: true }),
+      serverId: t.arg.string(),
     },
-    resolve: async (_r, { id, clusterId }) => {
-      await moveAppToCluster(id, clusterId);
+    resolve: async (_r, { id, clusterId, serverId }) => {
+      await moveAppToCluster(id, clusterId, serverId);
       return reloadApp(id);
     },
   }),

@@ -409,13 +409,14 @@ builder.mutationFields((t) => ({
     type: DatabaseRef,
     authScopes: { capability: "configure_databases" },
     description:
-      "Place a database on a cluster: it restarts on the member the leader picks and its data is copied there. A cluster with no room answers with the sentence that says what to change, and nothing stops. Deplo then backs it up every 15 minutes to another server, unless it has a schedule already. To take it off a cluster again use updateDatabase with a serverId.",
+      "Place a database on a cluster: it restarts on serverId of it when one is named, else on the member the leader picks, and its data is copied there. On its cluster already, serverId moves it between members. A server or cluster that cannot take it answers with the sentence that says why, and nothing stops. Deplo then backs it up every 15 minutes to another server, unless it has a schedule already. To take it off a cluster again use updateDatabase with a serverId.",
     args: {
       id: t.arg.string({ required: true }),
       clusterId: t.arg.string({ required: true }),
+      serverId: t.arg.string(),
     },
-    resolve: async (_r, { id, clusterId }) => {
-      await moveDatabaseToCluster(id, clusterId);
+    resolve: async (_r, { id, clusterId, serverId }) => {
+      await moveDatabaseToCluster(id, clusterId, serverId);
       return reloadDatabase(id);
     },
   }),

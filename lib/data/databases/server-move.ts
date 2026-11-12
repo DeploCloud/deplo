@@ -45,6 +45,7 @@ import {
   clearPlacement,
   recordPlacement,
 } from "../clusters/placement";
+import { assertMemberTakes } from "../clusters/member-choice";
 import { resolveTeamCluster } from "../clusters/roster";
 import { ensureFailoverBackup } from "./failover";
 import { dropStandbyCopy, endStandby, syncStandbySoon } from "./standby";
@@ -68,21 +69,35 @@ export function updateDatabase(
 export async function moveDatabaseToCluster(
   id: string,
   clusterId: string,
+  serverId?: string | null,
 ): Promise<void> {
   const { membership } = await requireCapability("configure_databases");
   const cluster = await resolveTeamCluster(membership.teamId, clusterId);
   const db = await requireDatabase(id, membership.teamId);
-  if (db.clusterId === cluster.id) return;
+  const on = db.clusterId === cluster.id;
+  if (on && (!serverId || db.serverId === serverId)) return;
   assertNotProvisioning(db, "moving it");
+  const limitMb = db.resources?.memoryMb ?? 0;
+  const archs = await redeployArchs("database", id);
   // A refusal throws here, before anything stops.
-  const member = await askLeaderToPlace(cluster, {
-    kind: "database",
-    id,
-    name: db.name,
-    environmentId: db.environmentId,
-    limitMb: db.resources?.memoryMb ?? 0,
-    archs: await redeployArchs("database", id),
-  });
+  if (serverId)
+    await assertMemberTakes(cluster, serverId, {
+      id,
+      name: db.name,
+      limitMb,
+      archs,
+      on: on ? db.serverId : null,
+    });
+  const member =
+    serverId ??
+    (await askLeaderToPlace(cluster, {
+      kind: "database",
+      id,
+      name: db.name,
+      environmentId: db.environmentId,
+      limitMb,
+      archs,
+    }));
   await writeDatabasePlacement(
     id,
     {

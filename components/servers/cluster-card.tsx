@@ -80,14 +80,12 @@ export function FailoverNote({ servers }: { servers: number }) {
 
 function emptyingState(e: ClusterEmptying | null): MemberEmptyingState {
   if (!e) return "idle";
-  if (e.error) return "stopped";
-  return e.left === 0 ? "empty" : "emptying";
+  return e.error ? "stopped" : "removing";
 }
 
 const EMPTYING_BADGE = {
-  emptying: { label: "Emptying", variant: "warning" },
-  stopped: { label: "Emptying stopped", variant: "destructive" },
-  empty: { label: "Empty", variant: "muted" },
+  removing: { label: "Removing", variant: "warning" },
+  stopped: { label: "Removal stopped", variant: "destructive" },
 } as const;
 
 async function Members({ cluster }: { cluster: Cluster }) {
@@ -124,7 +122,7 @@ async function Members({ cluster }: { cluster: Cluster }) {
       </div>
       <FailoverNote servers={members.length} />
       <AutoRefresh
-        active={members.some((m) => emptyingState(m.emptying) === "emptying")}
+        active={members.some((m) => emptyingState(m.emptying) === "removing")}
       />
       {members.length > 0 && (
         <ul className="space-y-1">
@@ -150,7 +148,7 @@ async function Members({ cluster }: { cluster: Cluster }) {
                       {EMPTYING_BADGE[state].label}
                     </Badge>
                   )}
-                  {e && state !== "empty" && (
+                  {e && e.total > 0 && (
                     <span className="text-xs text-muted-foreground">
                       {e.total - e.left} of {e.total} moved
                       {e.moving && `, moving ${e.moving}`}

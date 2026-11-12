@@ -20,6 +20,7 @@ import {
   clearPlacement,
   recordPlacement,
 } from "../clusters/placement";
+import { assertMemberTakes } from "../clusters/member-choice";
 import { resolveTeamCluster } from "../clusters/roster";
 import { joinAppTunnel, leaveAppTunnel } from "../clusters/app-tunnel";
 import {
@@ -93,26 +94,44 @@ export async function moveAppToServer(
   );
 }
 
-/** Places an App on a cluster: the leader picks the member, the App moves there like a server move. */
+/**
+ * Places an App on a cluster, on `serverId` of it when one is named, else on the member the leader picks. It moves
+ * there like a server move; on its cluster already, a named server moves it between members.
+ */
 export async function moveAppToCluster(
   id: string,
   clusterId: string,
+  serverId?: string | null,
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   const app = await loadAppGraph(id);
   if (!app || app.teamId !== membership.teamId)
     throw new Error("App not found");
   const cluster = await resolveTeamCluster(membership.teamId, clusterId);
-  if (app.clusterId === cluster.id) return;
+  const on = app.clusterId === cluster.id;
+  if (on && (!serverId || app.serverId === serverId)) return;
+  const limitMb = app.resources?.memoryMb ?? 0;
+  const archs = await redeployArchs("app", id);
   // A refusal throws here, before anything stops.
-  const member = await askLeaderToPlace(cluster, {
-    kind: "app",
-    id,
-    name: app.name,
-    environmentId: app.environmentId ?? null,
-    limitMb: app.resources?.memoryMb ?? 0,
-    archs: await redeployArchs("app", id),
-  });
+  if (serverId)
+    await assertMemberTakes(cluster, serverId, {
+      id,
+      name: app.name,
+      limitMb,
+      replicas: app.replicas,
+      archs,
+      on: on ? app.serverId : null,
+    });
+  const member =
+    serverId ??
+    (await askLeaderToPlace(cluster, {
+      kind: "app",
+      id,
+      name: app.name,
+      environmentId: app.environmentId ?? null,
+      limitMb,
+      archs,
+    }));
   await writeAppSource(
     id,
     {

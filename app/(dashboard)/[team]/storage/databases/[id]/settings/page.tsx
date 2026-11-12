@@ -8,6 +8,8 @@ import {
   placementOption,
 } from "@/lib/data/clusters/choices";
 import { getCluster } from "@/lib/data/clusters/roster";
+import { redeployArchs } from "@/lib/data/clusters/architectures";
+import { listClusterServerChoices } from "@/lib/data/clusters/member-choice";
 import {
   getServerById,
   listServersForCurrentTeam,
@@ -32,10 +34,20 @@ export default async function DatabaseGeneralSettingsPage(
   ]);
   if (!db) notFound();
 
-  const [cluster, member, reach] = await Promise.all([
+  const [cluster, member, reach, clusterChoices] = await Promise.all([
     db.clusterId ? getCluster(db.clusterId) : null,
     db.clusterId ? getServerById(db.serverId) : null,
     databaseFailoverReach(db),
+    redeployArchs("database", db.id).then((archs) =>
+      listClusterServerChoices({
+        id: db.id,
+        name: db.name,
+        limitMb: db.resources?.memoryMb ?? 0,
+        archs,
+        clusterId: db.clusterId,
+        serverId: db.serverId,
+      }),
+    ),
   ]);
   const provisioned = new Set(
     servers.filter((s) => s.agent?.certFingerprint).map((s) => s.id),
@@ -55,6 +67,7 @@ export default async function DatabaseGeneralSettingsPage(
       <DatabaseServerCard
         db={db}
         servers={dbServers}
+        clusters={clusterChoices}
         disabled={!canConfigure}
         failover={failover}
         cluster={

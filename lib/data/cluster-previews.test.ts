@@ -57,7 +57,7 @@ import { deployPreviewRow } from "../deploy/preview-lifecycle/deploy";
 import { openOrSyncPreview } from "../deploy/preview-lifecycle/open-sync";
 import { flushFailoverBundles } from "./clusters/bundles";
 import { deleteCluster, removeClusterMember } from "./clusters/dissolve";
-import { emptyClusterMember, runEmptyingPass } from "./clusters/empty";
+import { runEmptyingPass } from "./clusters/empty";
 import { syncNameForwarders } from "./clusters/forwarders";
 import { copyImageAfterDeploy } from "./clusters/images";
 import { createCluster } from "./clusters/manage";
@@ -669,7 +669,7 @@ test("emptying a member places the previews it runs on another member", async ()
   await deployPreview();
   leader.place = "srv_4";
 
-  await asAdmin(() => emptyClusterMember(clusterId, "srv_3"));
+  await asAdmin(() => removeClusterMember(clusterId, "srv_3"));
 
   assert.equal(leader.asked.length, 2);
   assert.deepEqual(await queuedOn(), [["srv_4", "Deplo"]]);
@@ -684,7 +684,7 @@ test("a preview no other member can take is taken down when its member is emptie
   await deployPreview();
   leader.refusal = { reason: "no_room", neededMb: 256 };
 
-  await asAdmin(() => emptyClusterMember(clusterId, "srv_3"));
+  await asAdmin(() => removeClusterMember(clusterId, "srv_3"));
 
   assert.deepEqual(hosts.srv_3.stack, [`destroy:${KEY}`]);
   assert.deepEqual(await queuedOn(), []);
@@ -739,7 +739,7 @@ test("the App moving to another member leaves its previews running where they ar
   await deployPreview();
   leader.place = "srv_4";
 
-  await asAdmin(() => emptyClusterMember(clusterId, "srv_2"));
+  await asAdmin(() => removeClusterMember(clusterId, "srv_2"));
   await runEmptyingPass();
 
   const [app] = await db

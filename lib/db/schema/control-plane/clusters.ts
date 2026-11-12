@@ -95,7 +95,7 @@ export const clusterMembers = pgTable(
       .notNull()
       .references(() => clusters.id, { onDelete: "cascade" }),
     joinedAt: isoTimestamptz("joined_at").notNull(),
-    // Set while the member is being emptied; no new work is placed on it.
+    // Set while the member is being removed; no new work is placed on it.
     emptyingSince: isoTimestamptz("emptying_since"),
     // Why emptying stopped, until an admin continues; empty while it runs.
     emptyingError: text("emptying_error").notNull().default(""),

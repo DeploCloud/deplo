@@ -281,7 +281,7 @@ export const APPS_CONFIG: McpToolDef[] = [
     name: "move_app_to_cluster",
     title: "Place an app on a cluster",
     description:
-      "Redeploy the app on the member its cluster's leader picks, copying its data. With no room the answer says what to change and nothing stops. Leaving a cluster is move_app_to_server.",
+      "Redeploy the app on serverId of the cluster, or where its leader picks, copying its data; on the cluster already, serverId moves it there. A refusal says why. Leaving a cluster is move_app_to_server.",
     group: "Apps",
     requires: "configure_apps",
     idempotent: true,
@@ -291,13 +291,23 @@ export const APPS_CONFIG: McpToolDef[] = [
       clusterId: z
         .string()
         .describe("The cluster's id, as returned by list_clusters."),
+      serverId: z
+        .string()
+        .optional()
+        .describe(
+          "One server of the cluster, as get_cluster lists it. Omit to let the leader pick.",
+        ),
     }),
     query: /* GraphQL */ `
-      mutation McpMoveAppToCluster($id: String!, $clusterId: String!) {
-        moveAppToCluster(id: $id, clusterId: $clusterId) { ${APP_FIELDS} }
+      mutation McpMoveAppToCluster($id: String!, $clusterId: String!, $serverId: String) {
+        moveAppToCluster(id: $id, clusterId: $clusterId, serverId: $serverId) { ${APP_FIELDS} }
       }
     `,
-    variables: (a) => ({ id: a.appId, clusterId: a.clusterId }),
+    variables: (a) => ({
+      id: a.appId,
+      clusterId: a.clusterId,
+      serverId: a.serverId ?? null,
+    }),
   }),
   tool({
     name: "update_app_compose",

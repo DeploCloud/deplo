@@ -271,18 +271,31 @@ export function workloadCount(held: { kind: WorkloadKind }[]): string {
 const ofKind = (held: Held[], kind: WorkloadKind) =>
   held.filter((w) => w.kind === kind).map((w) => w.id);
 
-/** The cluster lets go of its workloads: each stays on the server it runs on, as an ordinary App or database. */
-async function detach(tx: DbTx, clusterId: string): Promise<void> {
+/** The cluster lets go of its workloads, or only of `held`: each stays on the server it runs on, as an ordinary one. */
+async function detach(
+  tx: DbTx,
+  clusterId: string,
+  held?: Held[],
+): Promise<void> {
+  const only = (
+    kind: WorkloadKind,
+    col: typeof appsTable.id | typeof databasesTable.id,
+  ) => (held ? inArray(col, ["", ...ofKind(held, kind)]) : undefined);
   const apps = await tx
     .update(appsTable)
     .set({ clusterId: null })
-    .where(eq(appsTable.clusterId, clusterId))
+    .where(and(eq(appsTable.clusterId, clusterId), only("app", appsTable.id)))
     .returning({ id: appsTable.id });
   // Off a cluster nothing collects a Postgres change log (#203); its stack stops writing one at its next render.
   const dbs = await tx
     .update(databasesTable)
     .set({ clusterId: null, walArchivedAt: null })
-    .where(eq(databasesTable.clusterId, clusterId))
+    .where(
+      and(
+        eq(databasesTable.clusterId, clusterId),
+        only("database", databasesTable.id),
+      ),
+    )
     .returning({ id: databasesTable.id });
   for (const [kind, rows] of [
     ["app", apps],
@@ -327,7 +340,7 @@ async function assertHoldersAnswer(
     const name = (await getServerById(serverId))?.name ?? "A server";
     const on = held.filter((w) => w.serverId === serverId);
     throw new Error(
-      `${name} does not answer, and ${workloadCount(on)} still run${on.length === 1 ? "s" : ""} on it. Bring it back online, or empty it, before ${doing} ${cluster.name}.`,
+      `${name} does not answer, and ${workloadCount(on)} still run${on.length === 1 ? "s" : ""} on it. Bring it back online before ${doing} ${cluster.name}.`,
     );
   }
   // A standby copy is removed on the way out; on a server that cannot be asked it would stay there for good.
@@ -402,8 +415,9 @@ async function dropBundlesAtLeaders(
 }
 
 /**
- * "Remove": the server leaves the cluster at once. It must hold nothing, except the last one, which may keep
- * its Apps and databases: they stay where they run, as ordinary ones that no cluster moves.
+ * "Remove": the server leaves the cluster. What it runs moves to the other servers first, one at a time in the
+ * background, and it leaves once nothing is left; with `keepWorkloads` it leaves at once and its Apps and databases
+ * stay on it, as ordinary ones that no cluster moves. Called again on a removal that stopped, it continues.
  */
 export async function removeClusterMember(
   clusterId: string,
@@ -421,15 +435,70 @@ export async function removeClusterMember(
     );
   const last = members.length === 1;
   const held = await listMemberWorkloads(serverId);
-  const keep = last && opts.keepWorkloads === true;
-  if (held.length > 0 && !keep)
+  const keep = opts.keepWorkloads === true;
+  if (held.length > 0 && !keep) {
+    if (last)
+      throw new Error(
+        `${server.name} is the last server of ${cluster.name} and still runs ${workloadCount(held)}. Choose "Keep its Apps on this server" to remove it.`,
+      );
+    const { startRemovingClusterMember } = await import("./empty");
+    await startRemovingClusterMember(cluster, server, { teamId, user });
+    return cluster;
+  }
+  const spread = held.find((w) => w.spread);
+  if (keep && !last && spread)
     throw new Error(
-      last
-        ? `${server.name} is the last server of ${cluster.name} and still runs ${workloadCount(held)}. Choose "Keep its Apps on this server" to remove it.`
-        : `${server.name} still runs ${workloadCount(held)}. Empty it first.`,
+      `${spread.name} also runs replicas on other servers of ${cluster.name}, so it cannot stay on ${server.name} alone. Choose "Move its Apps", or lower its replicas to 1 first.`,
     );
+  await leaveCluster(cluster, server, {
+    keep: keep && held.length > 0,
+    last,
+    teamId,
+    actor: user,
+  });
+  return (await getClusterById(clusterId))!;
+}
+
+/** Ends a removal whose moves are all done. Deplo acts on its own here: the admin who started it held the gate. */
+export async function finishClusterMemberRemoval(
+  cluster: Cluster,
+  serverId: string,
+  teamId: string | null,
+): Promise<void> {
+  const server = await getServerById(serverId);
+  if (!server) return;
+  if ((await listMemberWorkloads(serverId)).length > 0) return;
+  const members = await clusterMemberServerIds(cluster.id);
+  if (!members.includes(serverId)) return;
+  await leaveCluster(cluster, server, {
+    keep: false,
+    last: members.length === 1,
+    teamId,
+    actor: { id: "", name: "Deplo" },
+  });
+}
+
+async function leaveCluster(
+  cluster: Cluster,
+  server: { id: string; name: string },
+  o: {
+    keep: boolean;
+    last: boolean;
+    teamId: string | null;
+    actor: { id: string; name: string };
+  },
+): Promise<void> {
+  const clusterId = cluster.id;
+  const serverId = server.id;
+  const { keep, last } = o;
   // With no member left, the cluster holds nothing: whatever it still names is released with the last one.
-  const released = keep ? await clusterWorkloads(clusterId) : [];
+  const released = !keep
+    ? []
+    : last
+      ? await clusterWorkloads(clusterId)
+      : (await clusterWorkloads(clusterId)).filter(
+          (w) => w.serverId === serverId,
+        );
   if (keep) await assertHoldersAnswer(cluster, released, "removing it from");
 
   await getDb().transaction(async (tx) => {
@@ -450,7 +519,7 @@ export async function removeClusterMember(
       .returning({ id: membersTable.serverId });
     if (gone.length === 0)
       throw new Error(`${server.name} is not in cluster ${cluster.name}.`);
-    if (keep) await detach(tx, clusterId);
+    if (keep) await detach(tx, clusterId, last ? undefined : released);
     await tx
       .update(serversTable)
       .set({ clusterLeavePendingAt: nowIso() })
@@ -465,22 +534,25 @@ export async function removeClusterMember(
   if (keep) {
     await dropBundlesAtLeaders(cluster, released);
     await endStandbys(released);
-    await leaveTunnels(released, user);
+    await leaveTunnels(released, o.actor);
   }
   // A copy on the server that left, or of an engine the cluster is now too small for, is seen to at once.
   await syncClusterStandbys(clusterId).catch((e) => warn(clusterId, e));
   // So is a failover backup it kept for a workload on another member: no failover could read it there now.
-  if (!keep)
+  if (!keep || !last)
     await rehomeFailoverBackups(clusterId).catch((e) => warn(clusterId, e));
   await recordActivity(
     "server",
     `Removed server ${server.name} from cluster ${cluster.name}` +
-      (released.length > 0 ? `, keeping ${workloadCount(released)} on it` : ""),
-    user.name,
+      (released.length > 0
+        ? `, keeping ${workloadCount(released)} on it`
+        : o.actor.id === ""
+          ? ": everything it ran moved to the other servers"
+          : ""),
+    o.actor.name,
     null,
-    teamId,
+    o.teamId,
   );
-  return (await getClusterById(clusterId))!;
 }
 
 /** "stay where they run and no longer fail over", agreeing with how many there are. */

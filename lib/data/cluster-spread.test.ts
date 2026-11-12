@@ -56,7 +56,8 @@ import { deleteApp } from "./apps/delete";
 import { startApp, stopApp } from "./apps/lifecycle";
 import { flushFailoverBundles, type FailoverBundle } from "./clusters/bundles";
 import { createCluster } from "./clusters/manage";
-import { emptyClusterMember, runEmptyingPass } from "./clusters/empty";
+import { removeClusterMember } from "./clusters/dissolve";
+import { runEmptyingPass } from "./clusters/empty";
 import { addClusterMember } from "./clusters/members";
 import { appWaitingNote, recordPlacement } from "./clusters/placement";
 import {
@@ -756,7 +757,7 @@ test("emptying a server moves only the replicas it runs, with a deploy that leav
   leader.places = ["srv_2", "srv_3", "srv_2"];
 
   // srv_4 is not the server the App "runs on now", and still has to give its replica up.
-  await asAdmin(() => emptyClusterMember(clusterId, "srv_4"));
+  await asAdmin(() => removeClusterMember(clusterId, "srv_4"));
   await runEmptyingPass();
   await until(
     async () => !(await placement()).includes("srv_4"),
@@ -764,7 +765,9 @@ test("emptying a server moves only the replicas it runs, with a deploy that leav
   );
   const moved = async () =>
     (await db.select().from(activities)).some(
-      (a) => a.message === "Emptied server srv_4 of cluster eu",
+      (a) =>
+        a.message ===
+        "Removed server srv_4 from cluster eu: everything it ran moved to the other servers",
     );
   await until(async () => {
     await runEmptyingPass();
@@ -773,7 +776,7 @@ test("emptying a server moves only the replicas it runs, with a deploy that leav
 
   assert.deepEqual(await placement(), ["srv_2", "srv_3", "srv_2"]);
   assert.ok(hosts.srv_4.stack.includes("destroy:web"));
-  // The leader was told which server is being emptied, and asked where its replica goes.
+  // The leader was told which server is being removed from cluster eu, and asked where its replica goes.
   assert.deepEqual(leader.asked.at(-1)?.current, ["srv_2", "srv_3", "srv_4"]);
   assert.equal((await app()).serverId, "srv_2");
 });

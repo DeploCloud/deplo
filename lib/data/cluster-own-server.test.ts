@@ -10,7 +10,7 @@ import { deployments as deploymentsTable } from "../db/schema/control-plane/depl
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { seedApp, SERVER_1 } from "./app-graph-test-helpers";
 import { removeClusterMember } from "./clusters/dissolve";
-import { emptyClusterMember, runEmptyingPass } from "./clusters/empty";
+import { runEmptyingPass } from "./clusters/empty";
 import { getClusterLeader } from "./clusters/leader";
 import {
   listClusterLeaderChoices,
@@ -228,10 +228,10 @@ test("emptying Deplo's own server moves its App to another member and leaves the
   await runningApp("web", SERVER_1);
   const cluster = await withOwnServer();
 
-  await asAdmin(() => emptyClusterMember(cluster.id, SERVER_1));
+  await asAdmin(() => removeClusterMember(cluster.id, SERVER_1));
   assert.equal(
     (await messages()).at(-1),
-    `user_1: Started emptying server ${SERVER_1} of cluster eu: 1 to move`,
+    `user_1: Started removing server ${SERVER_1} from cluster eu: 1 to move first`,
   );
   await runEmptyingPass();
 
@@ -256,13 +256,9 @@ test("emptying Deplo's own server moves its App to another member and leaves the
   assert.equal(await warning(cluster.id), WARNING_SMALL, "still a member");
 });
 
-test("removing Deplo's own server needs it empty, then its agent leaves and the leader keeps running there", async () => {
+test("removing Deplo's own server: its agent leaves and the leader keeps running there", async () => {
   await runningApp("web", SERVER_1);
   const cluster = await withOwnServer();
-  await assert.rejects(
-    asAdmin(() => removeClusterMember(cluster.id, SERVER_1)),
-    new RegExp(`${SERVER_1} still runs 1 App\\. Empty it first\\.`),
-  );
   await assert.rejects(
     asTeamB(() => removeClusterMember(cluster.id, SERVER_1)),
     /instance admin/i,

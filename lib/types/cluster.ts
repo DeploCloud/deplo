@@ -94,9 +94,9 @@ export interface ClusterMember {
   serverName: string;
   status: ServerStatus;
   joinedAt: string;
-  /** Set while the member is being emptied. */
+  /** Set while the member is being removed. */
   emptyingSince: string | null;
-  /** Progress while it is being emptied; null otherwise. */
+  /** Progress while it is being removed; null otherwise. */
   emptying: ClusterEmptying | null;
   /** How many Apps and databases it holds; removing it needs none, except for the last member. */
   held: number;

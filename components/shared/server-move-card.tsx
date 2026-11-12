@@ -17,7 +17,9 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -29,8 +31,26 @@ import type { DocsTopic } from "@/lib/docs";
 import type { ActionResult } from "@/lib/result";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import type { FailoverPreview } from "@/lib/data/databases/failover";
+import type { ClusterChoice } from "@/lib/data/clusters/member-choice";
 import { FailoverNote } from "@/components/storage/database-failover";
 import { ClusterAddressNote } from "@/components/shared/cluster-address-note";
+
+/** A picked target: a server, a cluster whose leader picks, or one server of a cluster. */
+type Target =
+  | { kind: "server"; serverId: string }
+  | { kind: "cluster"; clusterId: string; serverId: string | null };
+
+// "s:<server>", "c:<cluster>" or "m:<cluster>:<server>": ids never hold a colon.
+function parseTarget(v: string): Target {
+  const [k, a = "", b] = v.split(":");
+  return k === "s"
+    ? { kind: "server", serverId: a }
+    : {
+        kind: "cluster",
+        clusterId: a,
+        serverId: k === "m" ? (b ?? null) : null,
+      };
+}
 
 type MoveServer = {
   id: string;
@@ -56,6 +76,7 @@ export function AppServerCard({
   servers,
   neighbours,
   cluster,
+  clusters = [],
   addressNote,
 }: {
   appId: string;
@@ -64,6 +85,7 @@ export function AppServerCard({
   servers: MoveServer[];
   neighbours: string[];
   cluster?: OnCluster | null;
+  clusters?: ClusterChoice[];
   /** Shown once a cluster is picked: no domain of the App is on Cloudflare. */
   addressNote?: string | null;
 }) {
@@ -79,16 +101,17 @@ export function AppServerCard({
       neighbours={neighbours}
       verb="Redeploys"
       docs="storage.move"
+      clusters={clusters}
       successMessage={`Moving ${name}`}
       move={(to) =>
-        servers.find((s) => s.id === to)?.kind === "cluster"
+        to.kind === "cluster"
           ? gqlAction(
-              `mutation($id: String!, $clusterId: String!) { moveAppToCluster(id: $id, clusterId: $clusterId) { id } }`,
-              { id: appId, clusterId: to },
+              `mutation($id: String!, $clusterId: String!, $serverId: String) { moveAppToCluster(id: $id, clusterId: $clusterId, serverId: $serverId) { id } }`,
+              { id: appId, clusterId: to.clusterId, serverId: to.serverId },
             )
           : gqlAction(
               `mutation($id: String!, $serverId: String!) { moveAppToServer(id: $id, serverId: $serverId) { id } }`,
-              { id: appId, serverId: to },
+              { id: appId, serverId: to.serverId },
             )
       }
     />
@@ -100,12 +123,14 @@ export function DatabaseServerCard({
   servers,
   disabled,
   cluster,
+  clusters = [],
   failover,
 }: {
   db: DatabaseDTO;
   servers: MoveServer[];
   disabled: boolean;
   cluster?: OnCluster | null;
+  clusters?: ClusterChoice[];
   /** What placing it on a cluster would promise, shown once a cluster is picked. */
   failover?: FailoverPreview | null;
 }) {
@@ -118,13 +143,14 @@ export function DatabaseServerCard({
       servers={servers}
       verb="Restarts"
       docs="databases.move"
+      clusters={clusters}
       successMessage="Database moved"
       onClusterNote={failover ? <FailoverNote {...failover} /> : undefined}
       move={(to) =>
-        servers.find((s) => s.id === to)?.kind === "cluster"
+        to.kind === "cluster"
           ? gqlAction(
-              `mutation($id: String!, $clusterId: String!) { moveDatabaseToCluster(id: $id, clusterId: $clusterId) { id } }`,
-              { id: db.id, clusterId: to },
+              `mutation($id: String!, $clusterId: String!, $serverId: String) { moveDatabaseToCluster(id: $id, clusterId: $clusterId, serverId: $serverId) { id } }`,
+              { id: db.id, clusterId: to.clusterId, serverId: to.serverId },
             )
           : gqlAction(
               `mutation($id: String!, $input: UpdateDatabaseInput!) { updateDatabase(id: $id, input: $input) { id } }`,
@@ -133,7 +159,7 @@ export function DatabaseServerCard({
                 input: {
                   exposedPublicly: db.exposedPublicly,
                   exposedPort: db.exposedPublicly ? db.exposedPort : null,
-                  serverId: to,
+                  serverId: to.serverId,
                 },
               },
             )
@@ -153,10 +179,12 @@ function ServerMoveCard({
   move,
   disabled,
   cluster,
+  clusters = [],
   onClusterNote,
 }: {
   disabled?: boolean;
   cluster?: OnCluster;
+  clusters?: ClusterChoice[];
   /** Shown in the dialog while the picked target is a cluster. */
   onClusterNote?: React.ReactNode;
   name: string;
@@ -166,20 +194,36 @@ function ServerMoveCard({
   verb: "Redeploys" | "Restarts";
   docs: DocsTopic;
   successMessage: string;
-  move: (serverId: string) => Promise<ActionResult<unknown>>;
+  move: (to: Target) => Promise<ActionResult<unknown>>;
 }) {
   const router = useRouter();
   const selectId = React.useId();
-  const targets = servers.filter(
-    (s) => s.id !== serverId && s.id !== cluster?.id,
+  const plain = servers.filter(
+    (s) => s.kind !== "cluster" && s.id !== serverId,
   );
+  // On its cluster already, "any server" would change nothing; one of its other servers still moves it.
+  const groups = clusters
+    .map((c) => ({ ...c, any: c.id !== cluster?.id }))
+    .filter((c) => c.any || c.servers.some((m) => !m.here));
+  const pickable = [
+    ...plain.map((s) => `s:${s.id}`),
+    ...groups.flatMap((c) => [
+      ...(c.any ? [`c:${c.id}`] : []),
+      ...c.servers
+        .filter((m) => !m.here && !m.refusal)
+        .map((m) => `m:${c.id}:${m.id}`),
+    ]),
+  ];
   const [target, setTarget] = React.useState("");
   const current = servers.find((s) => s.id === serverId);
   const currentName =
     cluster?.serverName ?? current?.name ?? "its current server";
+  const picked = target ? parseTarget(target) : null;
+  const toCluster =
+    picked?.kind === "cluster" && picked.clusterId !== cluster?.id;
 
   // Where a cluster App runs is always said; only the Move button needs somewhere to go.
-  if (targets.length === 0 && !cluster) return null;
+  if (pickable.length === 0 && !cluster) return null;
 
   return (
     <Card>
@@ -224,7 +268,7 @@ function ServerMoveCard({
             </p>
           )}
         </div>
-        {targets.length > 0 && (
+        {(plain.length > 0 || groups.length > 0) && (
           <ConfirmAction
             trigger={
               <Button variant="outline" size="sm" disabled={disabled}>
@@ -233,7 +277,7 @@ function ServerMoveCard({
               </Button>
             }
             onOpenChange={(open) =>
-              setTarget(open && targets.length === 1 ? targets[0].id : "")
+              setTarget(open && pickable.length === 1 ? pickable[0]! : "")
             }
             title={`Move ${name} to another server?`}
             description={
@@ -255,27 +299,63 @@ function ServerMoveCard({
                     <SelectValue placeholder="Pick a server" />
                   </SelectTrigger>
                   <SelectContent>
-                    {targets.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        <span className="flex items-center gap-2">
-                          {s.kind === "cluster" ? (
-                            <Boxes className="size-4 text-muted-foreground" />
-                          ) : (
-                            <ServerIcon className="size-4 text-muted-foreground" />
-                          )}
-                          {s.name}
-                          {s.kind === "cluster" ? (
-                            <Badge variant="outline">Cluster</Badge>
-                          ) : (
-                            <ServerRoleHint isDeploHost={s.isDeploHost} />
-                          )}
-                        </span>
-                      </SelectItem>
+                    {plain.length > 0 && (
+                      <SelectGroup>
+                        {groups.length > 0 && (
+                          <SelectLabel>Servers</SelectLabel>
+                        )}
+                        {plain.map((s) => (
+                          <SelectItem key={s.id} value={`s:${s.id}`}>
+                            <span className="flex items-center gap-2">
+                              <ServerIcon className="size-4 text-muted-foreground" />
+                              {s.name}
+                              <ServerRoleHint isDeploHost={s.isDeploHost} />
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
+                    {groups.map((c) => (
+                      <SelectGroup key={c.id}>
+                        <SelectLabel>Cluster {c.name}</SelectLabel>
+                        {c.any && (
+                          <SelectItem value={`c:${c.id}`}>
+                            <span className="flex items-center gap-2">
+                              <Boxes className="size-4 text-muted-foreground" />
+                              Any server
+                              <Badge variant="outline">The cluster picks</Badge>
+                            </span>
+                          </SelectItem>
+                        )}
+                        {c.servers.map((m) => (
+                          <SelectItem
+                            key={m.id}
+                            value={`m:${c.id}:${m.id}`}
+                            disabled={m.here || m.refusal !== null}
+                          >
+                            <span className="flex flex-col items-start gap-0.5">
+                              <span className="flex items-center gap-2">
+                                <ServerIcon className="size-4 text-muted-foreground" />
+                                {m.name}
+                                {m.here ? (
+                                  <Badge variant="muted">Runs here now</Badge>
+                                ) : (
+                                  <ServerRoleHint isDeploHost={m.isDeploHost} />
+                                )}
+                              </span>
+                              {m.refusal && !m.here && (
+                                <span className="pl-6 text-xs text-muted-foreground">
+                                  {m.refusal}
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>
-                {targets.find((s) => s.id === target)?.kind === "cluster" &&
-                  onClusterNote}
+                {toCluster && onClusterNote}
                 {neighbours.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Stops reaching {joinNames(neighbours)} by name:{" "}
@@ -286,7 +366,7 @@ function ServerMoveCard({
               </div>
             }
             onConfirm={async () => {
-              const res = await move(target);
+              const res = await move(parseTarget(target));
               if (res.ok) router.refresh();
               return res;
             }}

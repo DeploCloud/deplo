@@ -181,7 +181,7 @@ test("a cluster is not deleted while a server that still runs work does not answ
     asAdmin(() => deleteCluster(eu.id)),
     {
       message:
-        "srv_3 does not answer, and 1 App still runs on it. Bring it back online, or empty it, before deleting eu.",
+        "srv_3 does not answer, and 1 App still runs on it. Bring it back online before deleting eu.",
     },
   );
   assert.deepEqual(await clusterNames(), ["eu"]);

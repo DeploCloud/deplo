@@ -9,6 +9,8 @@ import {
   placementOption,
 } from "@/lib/data/clusters/choices";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
+import { redeployArchs } from "@/lib/data/clusters/architectures";
+import { listClusterServerChoices } from "@/lib/data/clusters/member-choice";
 import { getCluster } from "@/lib/data/clusters/roster";
 import { neighboursOnNetwork } from "@/lib/data/name-clash";
 import { faviconSourceKind } from "@/lib/apps/favicon-shared";
@@ -42,6 +44,15 @@ export default async function AppGeneralSettingsPage(
     appWaitingNote(project),
   ]);
   const reach = await appFailoverReach(project);
+  const clusterChoices = await listClusterServerChoices({
+    id: project.id,
+    name: project.name,
+    limitMb: project.resources?.memoryMb ?? 0,
+    replicas: project.replicas,
+    archs: await redeployArchs("app", project.id),
+    clusterId: project.clusterId,
+    serverId: project.serverId,
+  });
   // Only where a cluster can be picked: what placing it there does to its address.
   const addressNote = servers.some((c) => c.kind === "cluster")
     ? await clusterAddressNote(project)
@@ -74,6 +85,7 @@ export default async function AppGeneralSettingsPage(
                 }
               : null
           }
+          clusters={clusterChoices}
           neighbours={neighbours}
           addressNote={addressNote}
         />

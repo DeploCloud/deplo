@@ -27,10 +27,7 @@ import {
   getClusterDeletion,
   removeClusterMember,
 } from "@/lib/data/clusters/dissolve";
-import {
-  emptyClusterMember,
-  stopEmptyingClusterMember,
-} from "@/lib/data/clusters/empty";
+import { cancelClusterMemberRemoval } from "@/lib/data/clusters/empty";
 import {
   addClusterMember,
   listClusterJoinCandidates,
@@ -156,7 +153,7 @@ const ClusterEmptyingRef = builder
   .objectRef<ClusterEmptying>("ClusterEmptying")
   .implement({
     description:
-      "How far emptying a server has got. Its Apps and databases move to the other servers of the cluster, one at a time.",
+      "How far removing a server has got. Its Apps and databases move to the other servers of the cluster, one at a time, then it leaves.",
     fields: (t) => ({
       since: t.exposeString("since"),
       total: t.exposeInt("total", {
@@ -170,7 +167,7 @@ const ClusterEmptyingRef = builder
       }),
       error: t.exposeString("error", {
         description:
-          "Why it stopped, in one sentence, until emptyClusterMember is called again; empty while it runs.",
+          "Why it stopped, in one sentence, until removeClusterMember is called again; empty while it runs.",
       }),
     }),
   });
@@ -179,7 +176,7 @@ const ClusterMemberRef = builder
   .objectRef<ClusterMember>("ClusterMember")
   .implement({
     description:
-      "A server in a cluster. Nothing is ever placed on a member directly: the cluster decides.",
+      "A server in a cluster. The cluster decides where its Apps and databases run, unless one is moved onto a server of it by hand.",
     fields: (t) => ({
       serverId: t.exposeID("serverId"),
       serverName: t.exposeString("serverName"),
@@ -187,13 +184,13 @@ const ClusterMemberRef = builder
       joinedAt: t.exposeString("joinedAt"),
       emptyingSince: t.exposeString("emptyingSince", {
         nullable: true,
-        description: "Set while the member is being emptied.",
+        description: "Set while the member is being removed.",
       }),
       emptying: t.field({
         type: ClusterEmptyingRef,
         nullable: true,
         description:
-          "Progress while the server is being emptied; null otherwise. It takes no new work in the meantime.",
+          "Progress while the server is being removed; null otherwise. It takes no new work in the meantime.",
         resolve: (m) => m.emptying,
       }),
       leaseState: t.field({
@@ -510,35 +507,23 @@ builder.mutationFields((t) => ({
     resolve: (_r, { clusterId, serverId }) =>
       addClusterMember(clusterId, serverId),
   }),
-  emptyClusterMember: t.field({
+  cancelClusterMemberRemoval: t.field({
     type: ClusterRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Empty a server of a cluster: it takes no new work, and its Apps and databases move to the other servers one at a time, in the background. Refused before anything moves when the others lack the room. Call it again to continue after it stopped; read `members.emptying` for progress.",
+      "Cancel removing a server: it stays in the cluster and takes work again. What is moving right now finishes its move, and what already moved stays where it is.",
     args: {
       clusterId: t.arg.string({ required: true }),
       serverId: t.arg.string({ required: true }),
     },
     resolve: (_r, { clusterId, serverId }) =>
-      emptyClusterMember(clusterId, serverId),
-  }),
-  stopEmptyingClusterMember: t.field({
-    type: ClusterRef,
-    authScopes: { instanceAdmin: true },
-    description:
-      "Stop emptying a server: it takes work again. What is moving right now finishes its move, and what already moved stays where it is.",
-    args: {
-      clusterId: t.arg.string({ required: true }),
-      serverId: t.arg.string({ required: true }),
-    },
-    resolve: (_r, { clusterId, serverId }) =>
-      stopEmptyingClusterMember(clusterId, serverId),
+      cancelClusterMemberRemoval(clusterId, serverId),
   }),
   removeClusterMember: t.field({
     type: ClusterRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Remove a server from a cluster. It is cut off at once and is an ordinary server again. It must hold nothing (empty it first), except the last member: pass keepWorkloads to leave its Apps and databases on it as ordinary ones.",
+      "Remove a server from a cluster; it stays a server of this Deplo. Its Apps and databases first move to the other servers, one at a time in the background (read `members.emptying` for progress), and it leaves once nothing is left; refused before anything moves when the others lack the room. Call it again to continue a removal that stopped. With keepWorkloads it leaves at once and its Apps and databases stay on it as ordinary ones that no cluster moves; the last server must pass it.",
     args: {
       clusterId: t.arg.string({ required: true }),
       serverId: t.arg.string({ required: true }),

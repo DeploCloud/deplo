@@ -52,7 +52,7 @@ export const DATABASES_SETTINGS: McpToolDef[] = [
     name: "move_database_to_cluster",
     title: "Place a database on a cluster",
     description:
-      "Restart the database on the member its cluster's leader picks, copying its data; it is then backed up every 15 minutes to another server. Leaving a cluster is update_database.",
+      "Restart the database on serverId of the cluster, or where its leader picks, copying its data, then back it up every 15 minutes elsewhere; on the cluster already, serverId moves it. Leaving is update_database.",
     group: "Databases",
     requires: "configure_databases",
     idempotent: true,
@@ -62,11 +62,21 @@ export const DATABASES_SETTINGS: McpToolDef[] = [
       clusterId: z
         .string()
         .describe("The cluster's id, as returned by list_clusters."),
+      serverId: z
+        .string()
+        .optional()
+        .describe(
+          "One server of the cluster, as get_cluster lists it. Omit to let the leader pick.",
+        ),
     }),
-    variables: (a) => ({ id: a.databaseId, clusterId: a.clusterId }),
+    variables: (a) => ({
+      id: a.databaseId,
+      clusterId: a.clusterId,
+      serverId: a.serverId ?? null,
+    }),
     query: /* GraphQL */ `
-      mutation McpMoveDatabaseToCluster($id: String!, $clusterId: String!) {
-        moveDatabaseToCluster(id: $id, clusterId: $clusterId) { ${DATABASE_FIELDS_SETTINGS} clusterId }
+      mutation McpMoveDatabaseToCluster($id: String!, $clusterId: String!, $serverId: String) {
+        moveDatabaseToCluster(id: $id, clusterId: $clusterId, serverId: $serverId) { ${DATABASE_FIELDS_SETTINGS} clusterId }
       }
     `,
   }),

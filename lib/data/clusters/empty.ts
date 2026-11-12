@@ -30,7 +30,7 @@ import {
 import { getClusterById, requireClusterAdmin } from "./roster";
 import { messageOf } from "../../utils";
 
-// https://deplo.build/docs/operations/clusters/manage-servers#empty-a-server
+// https://deplo.build/docs/operations/clusters/manage-servers#remove-a-server
 
 const ACTOR = "Deplo";
 
@@ -119,52 +119,49 @@ async function tellLeader(cluster: Cluster): Promise<void> {
 }
 
 /**
- * "Empty this server": the member takes no new work and what it holds moves to the other members, one at
- * a time, in the background. Called again on a member that stopped, it continues. Refused before anything moves.
+ * Removing a member that still runs something: it takes no new work and what it holds moves to the other members,
+ * one at a time, in the background; it leaves once nothing is left. Called again on one that stopped, it continues.
+ * Refused before anything moves. Ungated: `removeClusterMember` holds the gate.
  */
-export async function emptyClusterMember(
-  clusterId: string,
-  serverId: string,
-): Promise<Cluster> {
-  const { teamId, user, cluster, server, member } = await admin(
-    clusterId,
-    serverId,
-  );
-  if (member.emptyingSince && !member.emptyingError) return cluster;
-  const held = await listMemberWorkloads(serverId);
-  await assertRoomElsewhere(cluster, serverId, held);
-  const since = member.emptyingSince ?? nowIso();
+export async function startRemovingClusterMember(
+  cluster: Cluster,
+  server: { id: string; name: string },
+  by: { teamId: string; user: { name: string } },
+): Promise<void> {
+  const member = await memberOf(cluster.id, server.id);
+  if (!member)
+    throw new Error(`${server.name} is not in cluster ${cluster.name}.`);
+  if (member.emptyingSince && !member.emptyingError) return;
+  const held = await listMemberWorkloads(server.id);
+  await assertRoomElsewhere(cluster, server.id, held);
   await getDb()
     .update(membersTable)
     .set({
-      emptyingSince: since,
+      emptyingSince: member.emptyingSince ?? nowIso(),
       emptyingError: "",
       emptyingWorkload: "",
       emptyingTotal: member.emptyingSince ? member.emptyingTotal : held.length,
-      emptyingTeamId: teamId,
+      emptyingTeamId: by.teamId,
     })
-    .where(eq(membersTable.serverId, serverId));
+    .where(eq(membersTable.serverId, server.id));
   await recordActivity(
     "server",
     member.emptyingSince
-      ? `Continued emptying server ${server.name} of cluster ${cluster.name}`
-      : held.length > 0
-        ? `Started emptying server ${server.name} of cluster ${cluster.name}: ${held.length} to move`
-        : `Emptied server ${server.name} of cluster ${cluster.name}: it ran nothing`,
-    user.name,
+      ? `Continued removing server ${server.name} from cluster ${cluster.name}`
+      : `Started removing server ${server.name} from cluster ${cluster.name}: ${held.length} to move first`,
+    by.user.name,
     null,
-    teamId,
+    by.teamId,
   );
   await tellLeader(cluster);
   // A preview is no workload of the cluster, so nothing else moves it (#212).
-  await movePreviewsOff(serverId).catch((e) =>
+  await movePreviewsOff(server.id).catch((e) =>
     console.warn(`[cluster-empty] ${cluster.id}: previews: ${message(e)}`),
   );
-  return cluster;
 }
 
-/** "Stop emptying": the member takes work again. What is moving right now finishes its move. */
-export async function stopEmptyingClusterMember(
+/** "Cancel": the member stays in the cluster and takes work again. What is moving right now finishes its move. */
+export async function cancelClusterMemberRemoval(
   clusterId: string,
   serverId: string,
 ): Promise<Cluster> {
@@ -188,7 +185,7 @@ export async function stopEmptyingClusterMember(
   if (stopped.length === 0) return cluster;
   await recordActivity(
     "server",
-    `Stopped emptying server ${server.name} of cluster ${cluster.name}`,
+    `Cancelled removing server ${server.name} from cluster ${cluster.name}: it takes work again`,
     user.name,
     null,
     teamId,
@@ -310,7 +307,7 @@ async function move(
       members: [to],
       epoch: cluster.leaderEpoch,
     });
-  const why = `${from} is being emptied`;
+  const why = `${from} is being removed from cluster ${cluster.name}`;
   if (w.kind === "database") {
     await relocateClusterDatabase(w.id, cluster, to, why);
     await placed();
@@ -352,11 +349,16 @@ async function halt(m: Member, cluster: Cluster, why: string): Promise<void> {
   const name = (await getServerById(m.serverId))?.name ?? "a server";
   await recordActivity(
     "server",
-    `Stopped emptying server ${name} of cluster ${cluster.name}: ${why}`,
+    `Stopped removing server ${name} from cluster ${cluster.name}: ${why}`,
     ACTOR,
     null,
     m.emptyingTeamId,
   );
+}
+
+async function finish(cluster: Cluster, m: Member): Promise<void> {
+  const { finishClusterMemberRemoval } = await import("./dissolve");
+  await finishClusterMemberRemoval(cluster, m.serverId, m.emptyingTeamId);
 }
 
 /** One thing at a time for one member. Answers whether there is more to do right away. */
@@ -390,24 +392,18 @@ async function step(serverId: string): Promise<boolean> {
       await halt(m, cluster, settled.stopped);
       return false;
     }
-    const left = await listMemberWorkloads(serverId);
-    if (left.length === 0) {
-      const name = (await getServerById(serverId))?.name ?? "a server";
-      await recordActivity(
-        "server",
-        `Emptied server ${name} of cluster ${cluster.name}`,
-        ACTOR,
-        null,
-        m.emptyingTeamId,
-      );
-    }
     await setMoving();
+    const left = await listMemberWorkloads(serverId);
+    if (left.length === 0) await finish(cluster, m);
     return left.length > 0;
   }
   const held = await listMemberWorkloads(serverId);
   // What is half-way goes first, so a member is never left holding only somebody's data.
   const next = held.find((w) => w.leaving) ?? held[0];
-  if (!next) return false;
+  if (!next) {
+    await finish(cluster, m);
+    return false;
+  }
   await setMoving(next);
   try {
     await move(cluster, m, next);

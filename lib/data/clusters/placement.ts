@@ -201,7 +201,7 @@ async function askLeader(
   for (const m of new Set(named))
     if (m && (await memberIsEmptying(m)))
       throw new PlacementUnavailableError(
-        `Cluster ${cluster.name}'s leader named a server that is being emptied. Try again in a moment.`,
+        `Cluster ${cluster.name}'s leader named a server that is being removed from it. Try again in a moment.`,
       );
   return answer;
 }

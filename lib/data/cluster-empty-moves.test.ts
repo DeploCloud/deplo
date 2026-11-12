@@ -15,11 +15,8 @@ import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { createApp } from "./apps/create";
 import { moveAppToCluster } from "./apps/source";
-import {
-  emptyClusterMember,
-  runEmptyingPass,
-  stopEmptyingClusterMember,
-} from "./clusters/empty";
+import { removeClusterMember } from "./clusters/dissolve";
+import { cancelClusterMemberRemoval, runEmptyingPass } from "./clusters/empty";
 import {
   __resetClusterWatchForTest,
   releaseClusterWatchLease,
@@ -83,7 +80,7 @@ test("Apps move one at a time, each team sees its own move, and the server ends 
   await runningApp("api", "srv_2");
   await runningApp("web", "srv_2", { teamId: TEAM_B });
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
 
   await runEmptyingPass();
   assert.deepEqual(
@@ -128,7 +125,7 @@ test("Apps move one at a time, each team sees its own move, and the server ends 
   assert.equal((await theirs()).moving, "web", "its own App is named");
   assert.equal(
     (await activity(TEAM_B))[0],
-    "Deplo: Moved web to srv_3: srv_2 is being emptied",
+    "Deplo: Moved web to srv_3: srv_2 is being removed from cluster eu",
   );
   assert.ok(
     !(await activity()).some((a) => a.includes("web")),
@@ -137,19 +134,18 @@ test("Apps move one at a time, each team sees its own move, and the server ends 
 
   await deployLands("web");
   await runEmptyingPass();
-  const done = (await card(cluster.id, "srv_2")).emptying!;
-  assert.deepEqual([done.total, done.left, done.moving], [2, 0, ""]);
-  assert.ok(
-    (await member("srv_2")).emptyingSince,
-    "it keeps taking no work until an admin says otherwise",
+  assert.equal(
+    await card(cluster.id, "srv_2"),
+    undefined,
+    "it left the cluster once nothing was left",
   );
   assert.equal(
     (await activity()).at(-1),
-    "Deplo: Emptied server srv_2 of cluster eu",
+    "Deplo: Removed server srv_2 from cluster eu: everything it ran moved to the other servers",
   );
   await runEmptyingPass();
   assert.equal(
-    (await activity()).filter((a) => a.includes("Emptied")).length,
+    (await activity()).filter((a) => a.includes("Removed server")).length,
     1,
     "said once",
   );
@@ -166,14 +162,14 @@ test("an App's stored data is copied to the server it moves to, since the old on
   disks.get("srv_2")!.stacks.set("blog", yaml);
   disks.get("srv_2")!.volumes.set("deplo-blog-data", DATA);
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await runEmptyingPass();
   disks.get("srv_3")!.stacks.set("blog", yaml);
   assert.equal(await deployLands("blog"), "done");
   assert.deepEqual(disks.get("srv_3")!.volumes.get("deplo-blog-data"), DATA);
   assert.ok(!disks.get("srv_2")!.stacks.has("blog"), "the old stack is gone");
   await runEmptyingPass();
-  assert.equal((await card(cluster.id, "srv_2")).emptying?.left, 0);
+  assert.equal(await card(cluster.id, "srv_2"), undefined, "it left");
 });
 
 async function dbRow(id: string) {
@@ -196,7 +192,7 @@ test("a database moves first, with its data, and stays on the cluster", async ()
   await runningDatabase("db_main", "main", "srv_2");
   await runningApp("web", "srv_2");
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await runEmptyingPass();
 
   assert.deepEqual(
@@ -224,7 +220,7 @@ test("a database moves first, with its data, and stays on the cluster", async ()
   assert.ok(!disks.get("srv_2")!.stacks.has("db-main"));
   assert.ok(
     (await activity()).includes(
-      "Deplo: Moved database main to srv_3: srv_2 is being emptied",
+      "Deplo: Moved database main to srv_3: srv_2 is being removed from cluster eu",
     ),
   );
   const now = (await card(cluster.id, "srv_2")).emptying!;
@@ -250,7 +246,7 @@ test("when the leader finds no room half-way, emptying stops with that sentence 
         }
       : { member: "srv_3" },
   );
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await runEmptyingPass();
   await deployLands("api");
   await runEmptyingPass();
@@ -270,7 +266,7 @@ test("when the leader finds no room half-way, emptying stops with that sentence 
   );
   assert.equal(
     (await activity()).at(-1),
-    `Deplo: Stopped emptying server srv_2 of cluster eu: ${NO_ROOM_FOR_WEB}`,
+    `Deplo: Stopped removing server srv_2 from cluster eu: ${NO_ROOM_FOR_WEB}`,
   );
   assert.equal((await appRow("web")).serverId, "srv_2");
   assert.deepEqual(disks.get("srv_2")!.calls, ["destroy:api"]);
@@ -279,10 +275,10 @@ test("when the leader finds no room half-way, emptying stops with that sentence 
   assert.equal(asked.length, 2, "a stopped emptying asks nothing again");
 
   setAnswer(() => ({ member: "srv_3" }));
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   assert.equal(
     (await activity()).at(-1),
-    "user_1: Continued emptying server srv_2 of cluster eu",
+    "user_1: Continued removing server srv_2 from cluster eu",
   );
   assert.equal((await card(cluster.id, "srv_2")).emptying?.error, "");
   await runEmptyingPass();
@@ -301,7 +297,7 @@ test("an App whose move was rolled back is not moved again in a loop", async () 
   disks.get("srv_2")!.volumes.set("deplo-blog-data", DATA);
   disks.get("srv_3")!.fail.import = "disk full";
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await runEmptyingPass();
   disks.get("srv_3")!.stacks.set("blog", yaml);
   assert.equal(await deployLands("blog"), "rolled-back");
@@ -319,7 +315,7 @@ test("an App whose move was rolled back is not moved again in a loop", async () 
 test("a deploy that fails on the new server stops emptying, and continuing deploys it again", async () => {
   await runningApp("api", "srv_2");
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await runEmptyingPass();
   await db
     .update(deploymentsTable)
@@ -332,7 +328,7 @@ test("a deploy that fails on the new server stops emptying, and continuing deplo
   );
   assert.equal((await card(cluster.id, "srv_2")).emptying?.left, 1);
 
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await runEmptyingPass();
   assert.deepEqual(
     (await deploymentsOf("api")).map((d) => [d.status, d.creator]),
@@ -344,14 +340,14 @@ test("a deploy that fails on the new server stops emptying, and continuing deplo
   assert.equal(asked.length, 1, "the leader already chose where it goes");
   await deployLands("api");
   await runEmptyingPass();
-  assert.equal((await card(cluster.id, "srv_2")).emptying?.left, 0);
+  assert.equal(await card(cluster.id, "srv_2"), undefined, "it left");
 });
 
 test("after a restart in the middle, the next pass picks up what was cut off", async () => {
   await runningDatabase("db_main", "main", "srv_2");
   await runningApp("api", "srv_2");
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   // Deplo went away while the database was being copied: the row still names it, and it never left.
   await db
     .update(clusterMembers)
@@ -375,22 +371,22 @@ test("after a restart in the middle, the next pass picks up what was cut off", a
   assert.equal((await card(cluster.id, "srv_2")).emptying?.error, "");
   await deployLands("api");
   await runEmptyingPass();
-  assert.equal((await card(cluster.id, "srv_2")).emptying?.left, 0);
+  assert.equal(await card(cluster.id, "srv_2"), undefined, "it left");
 });
 
-test("stop emptying: the server takes work again and nothing else moves", async () => {
+test("cancelling a removal: the server takes work again and nothing else moves", async () => {
   await runningApp("api", "srv_2");
   await runningApp("web", "srv_2");
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await runEmptyingPass();
   rosters.length = 0;
-  await asAdmin(() => stopEmptyingClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => cancelClusterMemberRemoval(cluster.id, "srv_2"));
   assert.equal((await member("srv_2")).emptyingSince, null);
   assert.equal((await card(cluster.id, "srv_2")).emptying, null);
   assert.equal(
     (await activity()).at(-1),
-    "user_1: Stopped emptying server srv_2 of cluster eu",
+    "user_1: Cancelled removing server srv_2 from cluster eu: it takes work again",
   );
   assert.equal(rosters.length, 1, "the leader is told");
   await deployLands("api");
@@ -398,18 +394,18 @@ test("stop emptying: the server takes work again and nothing else moves", async 
   assert.equal(asked.length, 1);
   assert.equal((await appRow("web")).serverId, "srv_2");
 
-  await asAdmin(() => stopEmptyingClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => cancelClusterMemberRemoval(cluster.id, "srv_2"));
   assert.equal(
-    (await activity()).filter((a) => a.includes("Stopped emptying")).length,
+    (await activity()).filter((a) => a.includes("Cancelled removing")).length,
     1,
-    "stopping twice says it once",
+    "cancelling twice says it once",
   );
 });
 
 test("nothing moves while a Deplo move freezes this instance", async () => {
   await runningApp("api", "srv_2");
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   await db.insert(deploMoves).values({
     id: "dmv_1",
     side: "target",
@@ -425,14 +421,15 @@ test("nothing moves while a Deplo move freezes this instance", async () => {
   assert.equal((await appRow("api")).serverId, "srv_2");
 });
 
-test("while a server is being emptied nothing new is placed on it, whatever the leader answers", async () => {
+test("while a server is being removed nothing new is placed on it, whatever the leader answers", async () => {
+  await runningApp("api", "srv_2");
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   setAnswer(() => ({ member: "srv_2" }));
   const refused = (e: unknown) =>
     e instanceof PlacementUnavailableError &&
     e.message ===
-      "Cluster eu's leader named a server that is being emptied. Try again in a moment.";
+      "Cluster eu's leader named a server that is being removed from it. Try again in a moment.";
   await assert.rejects(
     asMember(() =>
       createApp({
@@ -453,12 +450,14 @@ test("while a server is being emptied nothing new is placed on it, whatever the 
   );
   assert.equal((await appRow("solo")).serverId, SERVER_1);
   assert.deepEqual(
-    await db.select().from(workloadPlacements),
+    (await db.select().from(workloadPlacements)).filter(
+      (p) => p.workloadId !== "api",
+    ),
     [],
     "nothing was placed",
   );
 
-  await asAdmin(() => stopEmptyingClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => cancelClusterMemberRemoval(cluster.id, "srv_2"));
   const web = await asMember(() =>
     createApp({
       name: "web",
@@ -475,7 +474,7 @@ test("while a server is being emptied nothing new is placed on it, whatever the 
 test("the cluster tick is what drives emptying in the background", async () => {
   await runningApp("api", "srv_2");
   const cluster = await eu();
-  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
   try {
     await runClusterWatchTick();
     // No timer: the stubbed deploy runner keeps the queue busy, and each read lets the pass move on.
