@@ -7,7 +7,6 @@ const SERVER_FIELDS = /* GraphQL */ `
   host
   ip
   status
-  statusMessage
   role
   agentVersion
   expectedAgentVersion
