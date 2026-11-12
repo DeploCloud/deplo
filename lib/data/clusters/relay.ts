@@ -230,31 +230,29 @@ export async function syncClusterRelayRoute(): Promise<RelayRouteChange> {
     if (!yaml || !route) return "unmanaged";
     const tunnel = await loadPanelTunnel();
     const connectorOn = tunnel ? panelTunnelReachesHost(yaml) : wanted;
-    if ((route.relay === true) === wanted && connectorOn === wanted)
+    const token = tunnel
+      ? decryptSecretOrThrow(tunnel.apiTokenEnc, "the Cloudflare API token")
+      : "";
+    const putIngress = (relay: boolean) =>
+      cloudflare.setTunnelIngress(
+        token,
+        tunnel!.accountId,
+        tunnel!.tunnelId,
+        panelTunnelIngress(tunnel!.hostname, route.target, relay),
+      );
+    if ((route.relay === true) === wanted && connectorOn === wanted) {
+      // The proxy file says nothing about Cloudflare's side, which an older Deplo or an edit there may have lost.
+      if (tunnel) await putIngress(wanted);
       return "unchanged";
+    }
 
     let next = withPanelRoute(yaml, { ...route, relay: wanted });
     let restoreIngress: (() => Promise<unknown>) | null = null;
     if (tunnel) {
-      const token = decryptSecretOrThrow(
-        tunnel.apiTokenEnc,
-        "the Cloudflare API token",
-      );
       const connector = panelTunnelToken(yaml);
       if (connector) next = withPanelTunnel(next, connector, { relay: wanted });
-      await cloudflare.setTunnelIngress(
-        token,
-        tunnel.accountId,
-        tunnel.tunnelId,
-        panelTunnelIngress(tunnel.hostname, route.target, wanted),
-      );
-      restoreIngress = () =>
-        cloudflare.setTunnelIngress(
-          token,
-          tunnel.accountId,
-          tunnel.tunnelId,
-          panelTunnelIngress(tunnel.hostname, route.target, !wanted),
-        );
+      await putIngress(wanted);
+      restoreIngress = () => putIngress(!wanted);
     }
     try {
       const res = await applyTraefikConfig(host.id, { composeYaml: next });

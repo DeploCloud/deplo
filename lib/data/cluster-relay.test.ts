@@ -370,6 +370,51 @@ test("behind the panel's Cloudflare Tunnel the relay's path is carried to the ho
   }
 });
 
+test("the sweep puts the relay rule back in the panel's tunnel even when the proxy already carries the route", async () => {
+  const { cf, restore } = fakeCloudflare();
+  const cloudflareFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).startsWith("https://api.cloudflare.com")
+      ? cloudflareFetch(input, init)
+      : Promise.resolve(new Response(SUMS))) as typeof fetch;
+  try {
+    cf.tunnels.set("tun1", {
+      accountId: "acct1",
+      name: "deplo",
+      ingress: null,
+      status: "healthy",
+      connections: 1,
+    });
+    await savePanelTunnel({
+      hostname: "deplo.example.com",
+      accountId: "acct1",
+      zoneId: "zone1",
+      tunnelId: "tun1",
+      dnsRecordId: null,
+      apiTokenEnc: encryptSecret("cf-api-token-0123456789"),
+    });
+    deploHost({
+      proxy: {
+        yaml: withPanelTunnel(STACK, "connectortoken0123"),
+        applied: 0,
+        refuse: "",
+      },
+    });
+    await asAdmin(() => createCluster("eu", everyone));
+    // Cloudflare lost the rule (an older Deplo, or an edit made there); the proxy still has the route.
+    const tunnel = cf.tunnels.get("tun1")!;
+    tunnel.ingress = (tunnel.ingress as { path?: string }[]).filter(
+      (r) => r.path !== "^/api/cluster/relay$",
+    );
+
+    await reconcileClusterRelay();
+    const ingress = cf.tunnels.get("tun1")!.ingress as { path?: string }[];
+    assert.ok(ingress.some((r) => r.path === "^/api/cluster/relay$"));
+  } finally {
+    restore();
+  }
+});
+
 test("only an instance admin starts a cluster's relay, and nothing reaches the relay for anyone else", async () => {
   const host = deploHost();
   await assert.rejects(
