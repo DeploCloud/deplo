@@ -141,7 +141,7 @@ export const APPS_READ: McpToolDef[] = [
     name: "get_app",
     title: "Get an app",
     description:
-      "One app in full, by slug: build settings, source, volumes, resource limits and its latest deployment.",
+      "One app in full, by slug: build settings, source, volumes, resource limits, replicas, automatic restart (restartsPausedAt set means Deplo stopped restarting it) and its latest deployment.",
     group: "Apps",
     requires: "view",
     readOnly: true,
@@ -154,6 +154,11 @@ export const APPS_READ: McpToolDef[] = [
         app(slug: $slug) {
           ${APP_FIELDS}
           failoverReach { line warning }
+          replicas
+          stickySessions
+          restartWhenUnresponsive
+          restartsPausedAt
+          failoverFromBackup
           dockerImage
           compose
           composeUpArgs
