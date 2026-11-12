@@ -10,7 +10,7 @@ import {
   sql,
 } from "drizzle-orm";
 
-import { getDb } from "../db/client";
+import { type DbTx, getDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { openAgent } from "../infra/agent-client/connect";
 import { HEALTH_HELLO_TIMEOUT_MS } from "../infra/agent-client/deadlines";
@@ -95,28 +95,44 @@ export async function recordServerHealth(
     const health = server
       ? { ...verdict, message: await offlineAdvice(server) }
       : verdict;
-    const written = await getDb()
-      .update(serversTable)
-      .set({
-        status: health.status,
-        statusMessage: health.message,
-        statusCheckedAt: observedAt,
-        ...(health.status === "online" || health.status === "warning"
-          ? { lastSeenAt: observedAt }
-          : {}),
-      })
-      .where(
-        and(
-          eq(serversTable.id, id),
-          HAS_LIVE_AGENT,
-          or(
-            isNull(serversTable.statusCheckedAt),
-            sql`${serversTable.statusCheckedAt} <= ${observedAt}`,
-          ),
-        ),
-      )
-      .returning({ name: serversTable.name });
-    if (written.length > 0) alertServerHealth(id, written[0].name, health);
+    const eligible = and(
+      eq(serversTable.id, id),
+      HAS_LIVE_AGENT,
+      or(
+        isNull(serversTable.statusCheckedAt),
+        sql`${serversTable.statusCheckedAt} <= ${observedAt}`,
+      ),
+    );
+    const writeHealth = (db: Pick<DbTx, "update">) =>
+      db
+        .update(serversTable)
+        .set({
+          status: health.status,
+          statusMessage: health.message,
+          statusCheckedAt: observedAt,
+          ...(health.status === "online" || health.status === "warning"
+            ? { lastSeenAt: observedAt }
+            : {}),
+        })
+        .where(eligible)
+        .returning({ name: serversTable.name });
+
+    const db = getDb();
+    const [alert] =
+      health.status === "online"
+        ? await db.transaction(async (tx) => {
+            const [previous] = await tx
+              .select({ status: serversTable.status })
+              .from(serversTable)
+              .where(eligible)
+              .for("update");
+            if (!previous) return [];
+            const written = await writeHealth(tx);
+            return previous.status === "offline" ? written : [];
+          })
+        : await writeHealth(db);
+
+    if (alert) alertServerHealth(id, alert.name, health);
   } catch (e) {
     console.error("[deplo] recordServerHealth failed:", e);
   }
