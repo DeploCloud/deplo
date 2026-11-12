@@ -199,7 +199,7 @@ const ClusterMemberRef = builder
       leaseState: t.field({
         type: ClusterLeaseStateEnum,
         description:
-          "What the cluster's leader last said: answering, not responding (15 seconds without an answer), or fenced (a minute: it has stopped its databases and Apps with files).",
+          "What the cluster's leader last said: answering, not responding (3 seconds without an answer), or fenced (it has stopped its databases and Apps with files).",
         resolve: (m) => m.leaseState,
       }),
       held: t.exposeInt("held", {

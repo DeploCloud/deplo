@@ -195,7 +195,7 @@ test("what Deplo says about a cluster goes to the teams with work on it, never t
   assert.deepEqual(await told(), [
     [
       TEAM_B,
-      "server-2 has not responded for a minute in cluster eu, so it stopped the databases and Apps with files that must never run twice.",
+      "server-2 stopped responding in cluster eu, so it stopped the databases and Apps with files that must never run twice.",
     ],
     [
       TEAM_B,

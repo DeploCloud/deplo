@@ -37,5 +37,5 @@ export function leaseSentence(
       : `Too few servers answer in cluster ${cluster}, so ${name} stopped the databases and Apps with files that must never run twice.`;
   return state === "not_responding"
     ? `${name} is not responding in cluster ${cluster}.`
-    : `${name} has not responded for a minute in cluster ${cluster}, so it stopped the databases and Apps with files that must never run twice.`;
+    : `${name} stopped responding in cluster ${cluster}, so it stopped the databases and Apps with files that must never run twice.`;
 }

@@ -38,7 +38,7 @@ test("the card names how many servers answer and how many it takes", () => {
 test("a silent server reads as silent only while the leader still hears enough of the others", () => {
   assert.equal(
     leaseSentence("server-b", "eu", "fenced", false),
-    "server-b has not responded for a minute in cluster eu, so it stopped the databases and Apps with files that must never run twice.",
+    "server-b stopped responding in cluster eu, so it stopped the databases and Apps with files that must never run twice.",
   );
   assert.doesNotMatch(
     leaseSentence("server-b", "eu", "fenced", true),
