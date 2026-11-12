@@ -179,7 +179,8 @@ export const DOCS = {
   "servers.advanced": "operations/servers/maintenance-and-advanced#advanced",
   "servers.generatedAddresses":
     "operations/servers/maintenance-and-advanced#generated-addresses",
-  "clusters.emptying": "operations/clusters/manage-servers#empty-a-server",
+  "clusters.moveToServer":
+    "operations/clusters/manage-servers#move-to-one-server",
   "clusters.removing": "operations/clusters/manage-servers#remove-a-server",
   "clusters.deleting": "operations/clusters/manage-servers#delete-a-cluster",
   "clusters.overview": "operations/clusters",

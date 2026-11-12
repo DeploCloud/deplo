@@ -51,10 +51,10 @@ test("a preview whose server stopped reads Offline: its server stopped, never Ru
   assert.equal(text("active"), "Running");
 });
 
-test("a preview taken down when its server was emptied says so", () => {
+test("a preview taken down when its server left the cluster says so", () => {
   assert.equal(
     text("offline", "server_emptied"),
-    "Offline: its server was emptied",
+    "Offline: its server was removed from the cluster",
   );
 });
 

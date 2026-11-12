@@ -95,7 +95,7 @@ export function PreviewStatus({
       labels={{
         offline:
           p.offlineReason === "server_emptied"
-            ? "Offline: its server was emptied"
+            ? "Offline: its server was removed from the cluster"
             : "Offline: its server stopped",
       }}
     />

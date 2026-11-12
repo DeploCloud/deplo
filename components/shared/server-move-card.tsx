@@ -356,6 +356,14 @@ function ServerMoveCard({
                   </SelectContent>
                 </Select>
                 {toCluster && onClusterNote}
+                {picked?.kind === "cluster" && picked.serverId && (
+                  <p className="text-xs text-muted-foreground">
+                    It stays on cluster{" "}
+                    {groups.find((c) => c.id === picked.clusterId)?.name}, and a
+                    failover can still move it.{" "}
+                    <DocsLink topic="clusters.moveToServer" />
+                  </p>
+                )}
                 {neighbours.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Stops reaching {joinNames(neighbours)} by name:{" "}
