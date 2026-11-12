@@ -7,6 +7,7 @@ import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { acquireLease, releaseLease } from "../../backups/lease";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { rehomeFailoverBackups } from "../databases/failover";
 import { shipChangeLogs } from "./change-log";
 import { runClusterRollout } from "./binary-rollout";
 import { runEmptyingPass } from "./empty";
@@ -100,6 +101,10 @@ export async function runClusterWatchTick(): Promise<void> {
         await pushLeaderRoster(cluster, { onlyIfChanged: true }).catch(
           () => false,
         );
+      // A member back online takes the failover backup now, not at the 12-hour sweep.
+      await rehomeFailoverBackups(id).catch((e) =>
+        console.warn(`[failover-backup] ${id}: ${messageOf(e)}`),
+      );
     }
     // Not awaited: one move can outlast many ticks, and a pass already running is joined, not doubled.
     void runEmptyingPass().catch((e) =>

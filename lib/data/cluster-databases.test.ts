@@ -42,6 +42,10 @@ import {
 } from "../infra/agent-client/cluster-test-helpers";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { createCluster } from "./clusters/manage";
+import {
+  __resetClusterWatchForTest,
+  runClusterWatchTick,
+} from "./clusters/watch-scheduler";
 import { addClusterMember } from "./clusters/members";
 import { applyLeaderReport } from "./clusters/placement";
 import {
@@ -607,6 +611,38 @@ test("a schedule the team made itself is never moved, and an offline server is n
     "dst_own",
     "the only other member is down: a backup that runs beats one that cannot",
   );
+});
+
+test("the cluster tick moves the backup onto a member as soon as it is back online", async () => {
+  const cluster = await eu();
+  const created = await asMember(() => newDb(cluster.id));
+  await settleProvisioning(db);
+  assert.equal((await destinationOf(created.id)).serverId, "srv_3");
+  await db
+    .update(serversTable)
+    .set({ status: "offline" })
+    .where(eq(serversTable.id, "srv_2"));
+  // srv_2 stopped: the database fails over onto its own backup's server.
+  await applyLeaderReport({
+    clusterId: cluster.id,
+    kind: "database",
+    workloadId: created.id,
+    members: ["srv_3"],
+    epoch: 2,
+  });
+  await rehomeFailoverBackups(cluster.id);
+  assert.equal((await destinationOf(created.id)).serverId, "srv_3");
+
+  await db
+    .update(serversTable)
+    .set({ status: "online" })
+    .where(eq(serversTable.id, "srv_2"));
+  try {
+    await runClusterWatchTick();
+    assert.equal((await destinationOf(created.id)).serverId, "srv_2");
+  } finally {
+    __resetClusterWatchForTest();
+  }
 });
 
 test("only a schedule a failover can use counts as having one", async () => {
