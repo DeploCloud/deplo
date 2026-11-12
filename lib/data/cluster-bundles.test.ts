@@ -18,7 +18,8 @@ import {
 } from "./app-graph-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { activities } from "../db/schema/control-plane/activity";
-import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { appBuild, apps as appsTable } from "../db/schema/control-plane/apps";
+import { rerouteApp } from "../deploy/build/reroute";
 import {
   clusterLeaderKeys,
   clusters as clustersTable,
@@ -787,4 +788,48 @@ test("a stack deployed beside its old release leaves a bundle that starts it on 
   const bundle = await open(leader, app.id);
   assert.equal(bundle.stack.composeYaml, COMPOSE);
   assert.doesNotMatch(JSON.stringify(bundle), /_next/);
+});
+
+test("a reroute after the deploy hands the leader the stack as it runs now, on the port Deplo moved it to", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  await db
+    .update(appsTable)
+    .set({
+      source: "docker-image",
+      compose: null,
+      dockerImage: "nginx:1.27",
+      status: "active",
+    })
+    .where(eq(appsTable.id, app.id));
+  hosts.srv_2.capabilities.push("deploy.ready-check", "health.restart");
+  await seedDeployment(db, { id: "dpl_1", appId: app.id, status: "ready" });
+  await runAgentDeploy({
+    serverId: "srv_2",
+    deployId: "dpl_1",
+    slug: app.slug,
+    appId: app.id,
+    imageRef: "nginx:1.27",
+    composeYaml: "services: {}\n",
+    network: "deplo-team-x",
+    env: {},
+    plan: { kind: "image", image: "nginx:1.27", pull: true },
+    ready: { port: 4173, portRequired: true, service: "" },
+    sink: { log: () => {} },
+  });
+  await flushFailoverBundles();
+  // The deploy saw it listen on 80, and Deplo routed it there.
+  await db.update(appBuild).set({ port: 80 }).where(eq(appBuild.appId, app.id));
+  hosts.srv_2.stacks[app.slug] =
+    `services:\n  deplo-${app.slug}:\n    image: nginx:1.27\n`;
+
+  assert.equal(await rerouteApp(app.id), "rerouted");
+  await flushFailoverBundles();
+
+  const { stack, deploymentId } = await open(leader, app.id);
+  assert.equal(deploymentId, "dpl_1");
+  assert.equal(stack.composeYaml, hosts.srv_2.reroutes[0]!.composeYaml);
+  assert.match(stack.composeYaml, /loadbalancer\.server\.port=80/);
+  assert.equal((stack.ready as { port: number }).port, 80);
+  assert.equal((stack.restartRule as { port: number }).port, 80);
 });

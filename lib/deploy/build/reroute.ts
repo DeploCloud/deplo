@@ -34,6 +34,7 @@ import {
 } from "./stack-yaml";
 import { isPausedForMove } from "../../data/deplo-move/source-guard";
 import { getServerById } from "../../data/servers/roster";
+import { offerReroutedBundle } from "../failover-offer";
 
 const DEFERS_REROUTE = new Set<AppStatus>([
   "idle",
@@ -195,6 +196,13 @@ async function rerouteOn(
     if (!r.ok)
       throw new Error(
         explainNetworkError(r.error || "agent failed to reroute the stack"),
+      );
+    if (project.clusterId)
+      offerReroutedBundle(
+        appId,
+        rendered,
+        name,
+        useCompose && hasCompose ? null : project.build.port,
       );
     return "rerouted";
   } finally {

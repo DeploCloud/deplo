@@ -9,6 +9,7 @@ import {
 import { parseDocument } from "yaml";
 
 import { scheduleAppBundle } from "../data/clusters/app-restore";
+import { inBackground, storedBundle } from "../data/clusters/bundles";
 
 /** Stands for the replica count in a bundle's stack; the leader puts in how many a member runs. */
 export const REPLICAS_MARK = "__DEPLO_REPLICAS__";
@@ -63,5 +64,31 @@ export function offerFailoverBundle(
         ? { filesBindSources: [...req.filesBindSources] }
         : {}),
     },
+  });
+}
+
+type PortCheck = { port?: number } | undefined;
+
+/** A reroute changed what the member runs: its leader gets that stack, on the port it is routed to now. */
+export function offerReroutedBundle(
+  appId: string,
+  composeYaml: string,
+  service: string,
+  port: number | null,
+): void {
+  inBackground(appId, async () => {
+    const held = await storedBundle(appId);
+    if (!held) return;
+    const stack = { ...held.stack };
+    delete stack.tunnelToken;
+    stack.composeYaml =
+      (stack.scale && markReplicas(composeYaml, service)) || composeYaml;
+    const ready = stack.ready as PortCheck;
+    const rule = stack.restartRule as PortCheck;
+    if (port && ready?.port && ready.port !== port) {
+      if (rule?.port === ready.port) stack.restartRule = { ...rule, port };
+      stack.ready = { ...ready, port };
+    }
+    scheduleAppBundle({ appId, deploymentId: held.deploymentId, stack });
   });
 }
