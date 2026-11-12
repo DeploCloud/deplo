@@ -76,7 +76,6 @@ export async function rehostClusterApp(appId: string): Promise<string[]> {
       if (outcome instanceof Error) throw outcome;
       return [];
     }
-    // ponytail: the leader's bundle keeps the old name until the next deploy; a second failover is re-hosted the same way.
     await recordActivity(
       "domain",
       `${app.name} moved to another server of its cluster, so its generated address is now ${moved.map((m) => m.to).join(", ")}`,
