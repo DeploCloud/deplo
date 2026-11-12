@@ -817,8 +817,7 @@ test("a reroute after the deploy hands the leader the stack as it runs now, on t
     ready: { port: 4173, portRequired: true, service: "" },
     sink: { log: () => {} },
   });
-  await flushFailoverBundles();
-  // The deploy saw it listen on 80, and Deplo routed it there.
+  // No flush: Deplo moves it to port 80 while the deploy's own push is still on its way, as it does live.
   await db.update(appBuild).set({ port: 80 }).where(eq(appBuild.appId, app.id));
   hosts.srv_2.stacks[app.slug] =
     `services:\n  deplo-${app.slug}:\n    image: nginx:1.27\n`;

@@ -8,8 +8,11 @@ import {
 } from "../agent/gen/agent";
 import { parseDocument } from "yaml";
 
-import { scheduleAppBundle } from "../data/clusters/app-restore";
-import { inBackground, storedBundle } from "../data/clusters/bundles";
+import {
+  refreshAppBundle,
+  scheduleAppBundle,
+} from "../data/clusters/app-restore";
+import { inBackground } from "../data/clusters/bundles";
 
 /** Stands for the replica count in a bundle's stack; the leader puts in how many a member runs. */
 export const REPLICAS_MARK = "__DEPLO_REPLICAS__";
@@ -76,19 +79,18 @@ export function offerReroutedBundle(
   service: string,
   port: number | null,
 ): void {
-  inBackground(appId, async () => {
-    const held = await storedBundle(appId);
-    if (!held) return;
-    const stack = { ...held.stack };
-    delete stack.tunnelToken;
-    stack.composeYaml =
-      (stack.scale && markReplicas(composeYaml, service)) || composeYaml;
-    const ready = stack.ready as PortCheck;
-    const rule = stack.restartRule as PortCheck;
-    if (port && ready?.port && ready.port !== port) {
-      if (rule?.port === ready.port) stack.restartRule = { ...rule, port };
-      stack.ready = { ...ready, port };
-    }
-    scheduleAppBundle({ appId, deploymentId: held.deploymentId, stack });
-  });
+  inBackground(appId, () =>
+    refreshAppBundle(appId, (stack) => {
+      const marked = stack.scale ? markReplicas(composeYaml, service) : null;
+      stack.composeYaml = marked ?? composeYaml;
+      if (!marked) delete stack.scale;
+      const ready = stack.ready as PortCheck;
+      const rule = stack.restartRule as PortCheck;
+      if (port && ready?.port && ready.port !== port) {
+        if (rule?.port === ready.port) stack.restartRule = { ...rule, port };
+        stack.ready = { ...ready, port };
+      }
+      return stack;
+    }),
+  );
 }

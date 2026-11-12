@@ -438,11 +438,18 @@ export async function pushFailoverBundle(input: {
 
 const inFlight = new Set<Promise<void>>();
 
-/** Runs a bundle's push in the background: what called it never waits on, or fails with, the leader. */
+const tails = new Map<string, Promise<void>>();
+
+/** Runs a bundle's push in the background, after the workload's earlier ones: a later push always lands last. */
 export function inBackground(id: string, push: () => Promise<void>): void {
-  const p: Promise<void> = push()
+  const p: Promise<void> = (tails.get(id) ?? Promise.resolve())
+    .then(push)
     .catch((e) => console.warn(`[failover-bundle] ${id}: ${messageOf(e)}`))
-    .finally(() => void inFlight.delete(p));
+    .finally(() => {
+      inFlight.delete(p);
+      if (tails.get(id) === p) tails.delete(id);
+    });
+  tails.set(id, p);
   inFlight.add(p);
 }
 

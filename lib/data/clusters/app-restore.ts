@@ -110,12 +110,15 @@ export async function pushAppBundle(input: {
     await recordOnce(app, cannotFailOver(app.name, cluster.name, source.why));
 }
 
-/** Sends the App's bundle again as its opt-in and latest backup stand now. Nothing was deployed yet: nothing to send. */
-export async function refreshAppBundle(appId: string): Promise<void> {
+/** Sends the App's bundle again as its opt-in and latest backup stand now, `edit` applied. Nothing deployed: nothing to send. */
+export async function refreshAppBundle(
+  appId: string,
+  edit: (stack: FailoverStack) => FailoverStack = (s) => s,
+): Promise<void> {
   const held = await storedBundle(appId);
   if (!held) return;
   // The tunnel's token is read again at the push: the kept one may be of a tunnel that is gone.
-  const stack = { ...held.stack };
+  const stack = edit({ ...held.stack });
   delete stack.tunnelToken;
   await pushAppBundle({ appId, deploymentId: held.deploymentId, stack });
 }
