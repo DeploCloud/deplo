@@ -171,7 +171,7 @@ const activityTexts = async () =>
   )
     .map((a) => a.message)
     .filter((m) =>
-      /not responding|answers again|for a minute|Too few servers/.test(m),
+      /not responding|answers again|stopped responding|Too few servers/.test(m),
     );
 
 /** Runs a watch until the stored sequence reaches `until`, then drops the leader's end of it. */
@@ -292,7 +292,10 @@ test("a second watch starts from the stored sequence and applies nothing twice",
   await watchUntil(cluster.id, 2);
   const before = await activityTexts();
   assert.equal(before.filter((m) => m.includes("not responding")).length, 1);
-  assert.equal(before.filter((m) => m.includes("for a minute")).length, 1);
+  assert.equal(
+    before.filter((m) => m.includes("stopped responding")).length,
+    1,
+  );
 
   leader.watch.push("member_state", cluster.id, {
     member: "srv_3",
