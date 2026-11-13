@@ -24,7 +24,12 @@ import { versionAtLeast } from "../../version";
 import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
-import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
+import {
+  clusterRelayProblem,
+  ensureClusterRelay,
+  pushClusterRoster,
+  relayAddress,
+} from "./relay";
 import {
   clusterLeaseStates,
   clusterMemberServerIds,
@@ -56,6 +61,7 @@ function down(
     failoverReady: null,
     takenOverAt: null,
     updateMessage: "",
+    relayMessage: "",
     ownServerWarning: "",
   };
 }
@@ -111,6 +117,7 @@ export async function getClusterLeader(
     ...failoverNow(leader, leases, takenOverAt !== null),
     takenOverAt,
     updateMessage: await updateMessage(host),
+    relayMessage: clusterRelayProblem() ?? "",
     ownServerWarning: !(await ledFromAMember(cluster))
       ? ""
       : leases.length < 3

@@ -1298,6 +1298,11 @@ type ClusterLeader {
   """
   ownServerWarning: String
 
+  """
+  One plain sentence while servers may not reach the relay on Deplo's machine, so failover would stop with the leader's server; empty otherwise. Deplo retries on its own.
+  """
+  relayMessage: String
+
   """The server it runs on; null when Deplo's machine has no server entry."""
   serverId: ID
   serverName: String

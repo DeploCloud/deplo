@@ -308,6 +308,11 @@ export function LeaderView({
           {leader.updateMessage} <DocsLink topic="clusters.updates" />
         </p>
       )}
+      {leader.relayMessage && (
+        <p className="text-xs text-warning">
+          {leader.relayMessage} <DocsLink topic="clusters.leader" />
+        </p>
+      )}
     </div>
   );
 }

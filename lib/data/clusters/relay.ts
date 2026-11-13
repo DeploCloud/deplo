@@ -240,19 +240,31 @@ export async function syncClusterRelayRoute(): Promise<RelayRouteChange> {
         tunnel!.tunnelId,
         panelTunnelIngress(tunnel!.hostname, route.target, relay),
       );
+    // Cloudflare refusing its half must not keep the relay off the addresses Deplo's own proxy answers.
+    const cloudflareSide = async () => {
+      if (!tunnel) return;
+      try {
+        await putIngress(wanted);
+      } catch (e) {
+        throw new CloudflareRelayError(e, wanted, !!route.fallbackDomain);
+      }
+    };
     if ((route.relay === true) === wanted && connectorOn === wanted) {
       // The proxy file says nothing about Cloudflare's side, which an older Deplo or an edit there may have lost.
-      if (tunnel) await putIngress(wanted);
+      await cloudflareSide();
+      noteRelayProblem(null);
       return "unchanged";
     }
 
     let next = withPanelRoute(yaml, { ...route, relay: wanted });
-    let restoreIngress: (() => Promise<unknown>) | null = null;
+    let refused: CloudflareRelayError | null = null;
     if (tunnel) {
       const connector = panelTunnelToken(yaml);
       if (connector) next = withPanelTunnel(next, connector, { relay: wanted });
-      await putIngress(wanted);
-      restoreIngress = () => putIngress(!wanted);
+      refused = await cloudflareSide().then(
+        () => null,
+        (e: CloudflareRelayError) => e,
+      );
     }
     try {
       const res = await applyTraefikConfig(host.id, { composeYaml: next });
@@ -261,11 +273,43 @@ export async function syncClusterRelayRoute(): Promise<RelayRouteChange> {
           res.error || "The proxy on this server refused the change",
         );
     } catch (e) {
-      await restoreIngress?.().catch(() => {});
+      if (tunnel && !refused) await putIngress(!wanted).catch(() => {});
+      if (wanted)
+        noteRelayProblem(
+          `Servers cannot reach the relay on Deplo's machine, so failover stops when the leader's server does: ${messageOf(e)}`,
+        );
       throw e;
     }
+    if (refused) throw refused;
+    noteRelayProblem(null);
     return wanted ? "on" : "off";
   });
+}
+
+/** Cloudflare refused the relay's half of the panel's tunnel; the proxy's own half went in anyway. */
+export class CloudflareRelayError extends Error {
+  constructor(cause: unknown, on: boolean, backup: boolean) {
+    super(`Cloudflare refused the cluster relay's route: ${messageOf(cause)}`);
+    this.name = "CloudflareRelayError";
+    if (on)
+      noteRelayProblem(
+        `Cloudflare refused Deplo's change, so servers ${backup ? "reach the relay on Deplo's machine only through the panel's backup address" : "cannot reach the relay on Deplo's machine and failover stops when the leader's server does"}. Give Deplo a working Cloudflare API token: ${messageOf(cause)}`,
+      );
+  }
+}
+
+const RELAY_PROBLEM = Symbol.for("deplo.cluster.relay.problem");
+const relayState = globalThis as unknown as {
+  [RELAY_PROBLEM]?: string | null;
+};
+
+function noteRelayProblem(problem: string | null): void {
+  relayState[RELAY_PROBLEM] = problem;
+}
+
+/** Why servers may not reach the relay on Deplo's machine, as the last route sync found it; null when nothing is wrong. */
+export function clusterRelayProblem(): string | null {
+  return relayState[RELAY_PROBLEM] ?? null;
 }
 
 /**
@@ -321,6 +365,18 @@ export async function ensureClusterRelay(): Promise<ClusterRelayStart> {
     routeError = messageOf(e);
   }
   return { started, route, routeError, serverName: host.name };
+}
+
+/** A new Cloudflare token for the panel: put the relay's route back now while a cluster needs it, never take it out. */
+export async function restoreClusterRelayRoute(): Promise<void> {
+  const any = await getDb()
+    .select({ id: clustersTable.id })
+    .from(clustersTable)
+    .limit(1);
+  if (any.length === 0) return;
+  await syncClusterRelayRoute().catch((e) =>
+    console.warn(`[cluster-relay] ${messageOf(e)}`),
+  );
 }
 
 /** The sweep's job: the route and the relay's rosters are put right again after an update, a restart or a change made elsewhere. */

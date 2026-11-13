@@ -17,6 +17,7 @@ const leader = (over: Partial<ClusterLeader> = {}): ClusterLeader => ({
   failoverReady: true,
   takenOverAt: null,
   updateMessage: "",
+  relayMessage: "",
   ownServerWarning: "",
   ...over,
 });
@@ -43,6 +44,13 @@ test("a leader that answers says whether a failover would work right now", () =>
   const ready = card(leader());
   assert.match(ready, /Leader runs on server-a Answering/);
   assert.match(ready, /Failover would work right now\./);
+});
+
+test("a relay the servers may not reach is said on the card, and nothing when it is fine", () => {
+  const relayMessage =
+    "Cloudflare refused Deplo's change, so servers reach the relay on Deplo's machine only through the panel's backup address. Give Deplo a working Cloudflare API token: Authentication error";
+  assert.ok(card(leader({ relayMessage })).includes(relayMessage));
+  assert.doesNotMatch(card(leader()), /Cloudflare refused/);
 });
 
 test("a leader that hears too few servers never reads Answering", () => {

@@ -39,6 +39,8 @@ export interface ClusterLeader {
   takenOverAt: string | null;
   /** One plain sentence while Deplo cannot update a leader this cluster relies on; empty otherwise. */
   updateMessage: string;
+  /** One plain sentence while servers may not reach the relay on Deplo's machine; empty otherwise. */
+  relayMessage: string;
   /** The warning shown while Deplo's own server is a member and the leader runs on it; empty otherwise. */
   ownServerWarning: string;
 }

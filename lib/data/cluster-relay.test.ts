@@ -34,6 +34,7 @@ import { panelRoute, withPanelRoute } from "../deploy/traefik-stack";
 import { createCluster } from "./clusters/manage";
 import { ensureClusterLeader } from "./clusters/leader";
 import {
+  clusterRelayProblem,
   clusterRoster,
   pushClusterRoster,
   pushRostersForServer,
@@ -365,6 +366,64 @@ test("behind the panel's Cloudflare Tunnel the relay's path is carried to the ho
       after.some((r) => r.path === "^/api/cluster/relay$"),
       "the relay rule stays while the route does",
     );
+  } finally {
+    restore();
+  }
+});
+
+test("a Cloudflare token that is refused still leaves the relay on the panel's backup address, and says so", async () => {
+  const { cf, restore } = fakeCloudflare();
+  const cloudflareFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).startsWith("https://api.cloudflare.com")
+      ? cloudflareFetch(input, init)
+      : Promise.resolve(new Response(SUMS))) as typeof fetch;
+  try {
+    cf.tunnels.set("tun1", {
+      accountId: "acct1",
+      name: "deplo",
+      ingress: null,
+      status: "healthy",
+      connections: 1,
+    });
+    await savePanelTunnel({
+      hostname: "deplo.example.com",
+      accountId: "acct1",
+      zoneId: "zone1",
+      tunnelId: "tun1",
+      dnsRecordId: null,
+      apiTokenEnc: encryptSecret("cf-api-token-0123456789"),
+    });
+    const host = deploHost({
+      proxy: {
+        yaml: withPanelTunnel(STACK, "connectortoken0123"),
+        applied: 0,
+        refuse: "",
+      },
+    });
+    cf.failNext = {
+      match: /PUT .*\/configurations/,
+      status: 403,
+      message: "Authentication error",
+    };
+    await asAdmin(() => createCluster("eu", everyone));
+
+    // Deplo's own proxy carries the relay on both panel addresses, Cloudflare or not.
+    assert.equal(panelRoute(host.proxy.yaml)?.relay, true);
+    assert.match(
+      host.proxy.yaml,
+      /deplo-cb00710a\.deplo\.site[\s\S]*\/api\/cluster\/relay/,
+    );
+    assert.match(
+      clusterRelayProblem() ?? "",
+      /backup address.*Authentication error/,
+    );
+
+    // The token works again: the next sync puts Cloudflare's half in and the warning goes.
+    await reconcileClusterRelay();
+    const ingress = cf.tunnels.get("tun1")!.ingress as { path?: string }[];
+    assert.ok(ingress.some((r) => r.path === "^/api/cluster/relay$"));
+    assert.equal(clusterRelayProblem(), null);
   } finally {
     restore();
   }

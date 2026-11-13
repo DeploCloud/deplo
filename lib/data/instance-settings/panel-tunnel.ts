@@ -288,6 +288,9 @@ export async function setPanelTunnel(input: {
     null,
     teamId,
   );
+  // A token that works again puts the cluster relay's route back now, and clears its warning, not at the next sweep.
+  const { restoreClusterRelayRoute } = await import("../clusters/relay");
+  await restoreClusterRelayRoute();
   return readPanelTunnel(warning);
 }
 
