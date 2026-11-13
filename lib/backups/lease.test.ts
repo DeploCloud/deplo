@@ -96,3 +96,37 @@ test("ownedByDeadLocalProcess: a dead pid on this host, and nothing else", () =>
   assert.equal(ownedByDeadLocalProcess("4592-run_717dc455", probe), false);
   assert.equal(ownedByDeadLocalProcess("ia-main:notapid:x", probe), false);
 });
+
+test("ownedByDeadLocalProcess: a restarted container's last run, under our own pid", () => {
+  const started = NOW.getTime();
+  const probe = {
+    host: "817bb8a68b4b",
+    alive: () => true,
+    pid: 1,
+    startedAt: started,
+  };
+  const before = new Date(started - 20_000);
+  const since = new Date(started + 5_000);
+  assert.equal(
+    ownedByDeadLocalProcess("817bb8a68b4b:1:b8d1101b", probe, before),
+    true,
+  );
+  assert.equal(
+    ownedByDeadLocalProcess("817bb8a68b4b:1:b8d1101b", probe, since),
+    false,
+  );
+  assert.equal(
+    ownedByDeadLocalProcess("817bb8a68b4b:1:b8d1101b", probe),
+    false,
+    "no heartbeat known",
+  );
+  assert.equal(
+    ownedByDeadLocalProcess("other:1:b8d1101b", probe, before),
+    false,
+  );
+  assert.equal(
+    ownedByDeadLocalProcess("817bb8a68b4b:7:b8d1101b", probe, before),
+    false,
+    "a live other pid",
+  );
+});

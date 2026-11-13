@@ -35,17 +35,35 @@ export function canAcquire(
   return now.getTime() - existing.heartbeatAt.getTime() > staleMs;
 }
 
-export function ownedByDeadLocalProcess(
-  owner: string,
-  probe: { host: string; alive: (pid: number) => boolean } = {
+interface ProcessProbe {
+  host: string;
+  alive: (pid: number) => boolean;
+  /** This process, which a restarted container runs under the same host and pid as the one before it. */
+  pid?: number;
+  startedAt?: number;
+}
+
+function thisProcess(): ProcessProbe {
+  return {
     host: hostname(),
     alive: (pid) => existsSync(`/proc/${pid}`),
-  },
+    pid: process.pid,
+    startedAt: Date.now() - process.uptime() * 1000,
+  };
+}
+
+export function ownedByDeadLocalProcess(
+  owner: string,
+  probe: ProcessProbe = thisProcess(),
+  heartbeatAt?: Date,
 ): boolean {
   const [host, pid] = owner.split(":");
   if (host !== probe.host) return false;
   const n = Number(pid);
   if (!Number.isInteger(n) || n <= 0) return false;
+  // Our own pid, last heard from before we started: the run before a container restart.
+  if (n === probe.pid && heartbeatAt && probe.startedAt !== undefined)
+    return heartbeatAt.getTime() < probe.startedAt;
   return !probe.alive(n);
 }
 
@@ -134,12 +152,17 @@ async function acquireNow(
   if (!isPostgresEnabled()) return acquireLocal(name, owner, now, staleMs);
   try {
     if (await acquirePostgres(name, owner, staleMs)) return true;
-    const held = await getPool().query<{ owner: string }>(
-      `SELECT owner FROM scheduler_lease WHERE name = $1`,
+    const held = await getPool().query<{ owner: string; heartbeat_at: Date }>(
+      `SELECT owner, heartbeat_at FROM scheduler_lease WHERE name = $1`,
       [name],
     );
-    const holder = held.rows[0]?.owner;
-    if (!holder || !ownedByDeadLocalProcess(holder)) return false;
+    const row = held.rows[0];
+    const holder = row?.owner;
+    if (
+      !holder ||
+      !ownedByDeadLocalProcess(holder, undefined, new Date(row.heartbeat_at))
+    )
+      return false;
     await releasePostgres(name, holder);
     return await acquirePostgres(name, owner, staleMs);
   } catch (e) {

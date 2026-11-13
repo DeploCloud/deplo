@@ -40,6 +40,11 @@ import {
   reconcileClusterImages,
 } from "./clusters/images";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import {
+  __resetClusterWatchForTest,
+  releaseClusterWatchLease,
+  runClusterWatchTick,
+} from "./clusters/watch-scheduler";
 
 let db: TestDb;
 let pg: PGlite;
@@ -309,6 +314,37 @@ test("a member still copying is not a holder, and the card shows how far it is",
     await asAdmin(() => listClusterImageProgress(cluster.id)),
     [],
   );
+});
+
+test("the cluster watch retries a failed copy, without waiting for the 12-hour sweep", async () => {
+  const cluster = await clusterWithApp();
+  hostOf("srv_2").imageCopy = (_ref, fp) => {
+    if (fp === "3".repeat(64))
+      throw new Error("its agent has not connected for 10 s");
+    return { alreadyPresent: false, bytes: 5, pruned: [] };
+  };
+  await copyReleaseToMembers("app_web", REL1, "srv_2");
+  assert.equal((await states(REL1)).srv_3, "failed");
+
+  hostOf("srv_2").imageCopy = () => ({
+    alreadyPresent: false,
+    bytes: 5,
+    pruned: [],
+  });
+  try {
+    await runClusterWatchTick();
+    for (let i = 0; i < 200 && (await states(REL1)).srv_3 !== "held"; i++)
+      await new Promise((r) => setTimeout(r, 10));
+    assert.equal((await states(REL1)).srv_3, "held");
+    assert.deepEqual(
+      await asAdmin(() => listClusterImageProgress(cluster.id)),
+      [],
+    );
+  } finally {
+    __resetClusterWatchForTest();
+    for (const h of Object.values(hosts)) h.watch.drop();
+    await releaseClusterWatchLease();
+  }
 });
 
 test("a release that finishes while the one before is still copying is copied too", async () => {

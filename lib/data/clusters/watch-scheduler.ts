@@ -11,6 +11,7 @@ import { rehomeFailoverBackups } from "../databases/failover";
 import { shipChangeLogs } from "./change-log";
 import { runClusterRollout } from "./binary-rollout";
 import { runEmptyingPass } from "./empty";
+import { reconcileClusterImages } from "./images";
 import { leaderHost } from "./host";
 import { BEAT_EVERY_MS, beatClusterLeaders } from "./leader-beat";
 import { superviseClusterLeader } from "./leader-standby";
@@ -25,6 +26,9 @@ export const CLUSTER_WATCH_LEASE = "cluster-watch";
 const TICK_MS = 15_000;
 const CHANGE_LOG_EVERY_MS = 60_000;
 const ROLLOUT_EVERY_MS = 60_000;
+const IMAGES_EVERY_MS = 2 * 60_000;
+// Renewed every tick: a Deplo that died without letting go must not leave failover off for the usual 2h.
+export const CLUSTER_WATCH_STALE_MS = 5 * 60_000;
 
 interface State {
   started: boolean;
@@ -38,6 +42,8 @@ interface State {
   changeLogAt?: number;
   /** When the last rollout pass over the cluster binaries started. */
   rolledAt?: number;
+  /** When failed or missing image copies were last retried. */
+  imagesAt?: number;
   /** Whether this Deplo held the watch lease at its last tick: only that one names the leaders. */
   holds?: boolean;
   beatTimer?: ReturnType<typeof setInterval> | null;
@@ -64,7 +70,12 @@ export async function runClusterWatchTick(): Promise<void> {
   try {
     if (
       (await instanceFrozen()) ||
-      !(await acquireLease(CLUSTER_WATCH_LEASE, state.owner, new Date()))
+      !(await acquireLease(
+        CLUSTER_WATCH_LEASE,
+        state.owner,
+        new Date(),
+        CLUSTER_WATCH_STALE_MS,
+      ))
     ) {
       state.holds = false;
       stopAll();
@@ -117,6 +128,13 @@ export async function runClusterWatchTick(): Promise<void> {
         console.error("[deplo] collecting a change log failed:", e),
       );
     }
+    // A copy that failed while a member was away retries within minutes, not at the 12-hour sweep.
+    if (Date.now() - (state.imagesAt ?? 0) >= IMAGES_EVERY_MS) {
+      state.imagesAt = Date.now();
+      void reconcileClusterImages().catch((e) =>
+        console.error("[cluster-images] retrying copies failed:", e),
+      );
+    }
     if (Date.now() - (state.rolledAt ?? 0) >= ROLLOUT_EVERY_MS) {
       state.rolledAt = Date.now();
       void runClusterRollout().catch((e) =>
@@ -167,6 +185,7 @@ export function __resetClusterWatchForTest(): void {
   state.started = false;
   state.changeLogAt = 0;
   state.rolledAt = 0;
+  state.imagesAt = 0;
   state.holds = false;
   if (state.timer) clearInterval(state.timer);
   state.timer = null;
