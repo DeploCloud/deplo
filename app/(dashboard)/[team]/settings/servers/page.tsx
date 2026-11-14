@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { Server as ServerIcon } from "lucide-react";
 
@@ -9,7 +10,12 @@ import {
   memberState,
   type ClusterJoinOption,
 } from "@/components/servers/cluster-join";
-import { ClusterPanel } from "@/components/servers/cluster-panel";
+import { ClusterBar } from "@/components/servers/cluster-bar";
+import { ClusterNotices } from "@/components/servers/cluster-panel";
+import {
+  loadClusterWarnings,
+  storedClusterWarnings,
+} from "@/lib/data/clusters/warnings";
 import { serverUse } from "@/components/servers/server-role-badge";
 import { listAllServers } from "@/lib/data/servers/roster";
 import { listAllServerTeamIds } from "@/lib/data/servers/team-access";
@@ -21,14 +27,14 @@ import {
   listAllClusterTeamIds,
   listAllClusters,
 } from "@/lib/data/clusters/roster";
+import { leaderHostOf } from "@/lib/data/clusters/host";
+import { listClusterLeaderChoices } from "@/lib/data/clusters/leader-move";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { isInstanceAdmin } from "@/lib/membership";
-import { hydrateServerSpecs } from "@/lib/data/monitoring";
-import { failoverOn } from "@/lib/types/cluster";
 import { serverLabel } from "@/lib/utils";
 import {
   AGENT_VERSION,
@@ -39,7 +45,7 @@ import {
 import { offlineAdvice } from "@/lib/data/server-health";
 import type { Server } from "@/lib/types/server";
 import type { TeamOption } from "@/components/servers/server-team-access";
-import type { ServerCardData, ServerSpecs } from "./server-card";
+import type { ServerCardData } from "./server-card";
 import { ServersGrid } from "./servers-grid";
 import { ServersHeader } from "./servers-shell";
 import {
@@ -61,13 +67,6 @@ const healthOf = (s: Server): ServerHealthState => ({
   lastReachedAt: s.lastSeenAt ?? null,
 });
 
-const specsOf = (s: Server): ServerSpecs => ({
-  cpuCores: s.cpuCores,
-  memoryMb: s.memoryMb,
-  diskGb: s.diskGb,
-  dockerVersion: s.dockerVersion ?? "",
-});
-
 export default async function ServersPage(
   props: PageProps<"/[team]/settings/servers">,
 ) {
@@ -85,14 +84,6 @@ export default async function ServersPage(
       listAllClusters(),
       listAllClusterTeamIds(),
     ]);
-  const measured = hydrateServerSpecs(serversRaw)
-    .catch(() => serversRaw)
-    .then((list) => new Map(list.map((s) => [s.id, s])));
-  const specsFor = (server: Server) =>
-    (server.cpuCores > 0
-      ? Promise.resolve(server)
-      : measured.then((m) => m.get(server.id) ?? server)
-    ).then(specsOf);
   const teams: TeamOption[] = teamsRaw.map((t) => ({
     id: t.id,
     name: t.name,
@@ -108,9 +99,11 @@ export default async function ServersPage(
 
   const clusterRows = await Promise.all(
     clusters.map(async (cluster) => {
-      const [members, candidates] = await Promise.all([
+      const [members, candidates, leader] = await Promise.all([
         listClusterMembers(cluster.id),
         listClusterJoinCandidates(cluster.id),
+        // Where it was put: Deplo's machine standing in is one of the cluster's warnings.
+        leaderHostOf(cluster.leaderServerId).catch(() => null),
       ]);
       const joinOptions: ClusterJoinOption[] = candidates.map((c) => ({
         serverId: c.serverId,
@@ -119,7 +112,7 @@ export default async function ServersPage(
         apps: c.apps,
         databases: c.databases,
       }));
-      return { cluster, members, joinOptions };
+      return { cluster, members, joinOptions, leaderId: leader?.id ?? null };
     }),
   );
   const memberOf = new Map(
@@ -170,7 +163,6 @@ export default async function ServersPage(
       reach: reachOf(server),
       health: healthOf(server),
       advice: advice.get(server.id)!,
-      specs: specsFor(server),
       uninstallPending: Boolean(server.uninstallPending),
       uninstallError: server.uninstallError ?? null,
       cluster: held
@@ -181,11 +173,27 @@ export default async function ServersPage(
           }
         : null,
       member: held ? memberState(held.member) : null,
+      leader: Boolean(
+        held &&
+        clusterRows.find((r) => r.cluster.id === held.cluster.id)?.leaderId ===
+          server.id,
+      ),
     };
   });
 
   const open =
     clusterRows.find((r) => r.cluster.id === first(params.cluster)) ?? null;
+  const stored = await storedClusterWarnings(clusters.map((c) => c.id));
+  const warningsOf = new Map(
+    clusterRows.map(({ cluster, members }) => [
+      cluster.id,
+      loadClusterWarnings(
+        cluster,
+        members.length,
+        stored.get(cluster.id) ?? [],
+      ),
+    ]),
+  );
   const clusterCards: ClusterCardData[] = clusterRows.map(
     ({ cluster, members, joinOptions }) => ({
       id: cluster.id,
@@ -193,9 +201,10 @@ export default async function ServersPage(
       allTeams: cluster.allTeams,
       teamIds: clusterTeamIds.get(cluster.id) ?? [],
       servers: members.length,
-      failoverOn: failoverOn(members.length),
+      failoverEnabled: cluster.failoverEnabled,
       provisioning: members.filter((m) => m.provisioning).length,
       joinOptions,
+      warnings: warningsOf.get(cluster.id)!,
     }),
   );
   // In the order they joined, as the cluster itself lists them.
@@ -204,6 +213,16 @@ export default async function ServersPage(
         .filter((c) => c.cluster?.id === open.cluster.id)
         .sort((a, b) => memberOf.get(a.id)!.order - memberOf.get(b.id)!.order)
     : cards;
+
+  const leaderChoices = open
+    ? await listClusterLeaderChoices(open.cluster.id).catch(() => [])
+    : [];
+  // A server joining or leaving changes on its own: the page follows it.
+  const changing = open
+    ? open.members.some(
+        (m) => m.provisioning || (m.emptying && !m.emptying.error),
+      )
+    : clusterCards.some((c) => c.provisioning > 0);
 
   const healthSeed: Record<string, ServerHealthState> = Object.fromEntries(
     servers.map((s) => [s.id, healthOf(s)]),
@@ -221,10 +240,7 @@ export default async function ServersPage(
           }
         />
 
-        {/* A server that is joining stops reading Provisioning on its own. */}
-        <AutoRefresh
-          active={!open && clusterCards.some((c) => c.provisioning > 0)}
-        />
+        <AutoRefresh active={changing} />
 
         {servers.length === 0 && clusters.length === 0 ? (
           <EmptyState
@@ -242,13 +258,27 @@ export default async function ServersPage(
               open ? { id: open.cluster.id, name: open.cluster.name } : null
             }
             view={view}
+            leaderChoices={leaderChoices}
             panel={
               open ? (
-                <ClusterPanel
-                  cluster={open.cluster}
-                  members={open.members}
-                  joinOptions={open.joinOptions}
-                  teamIds={clusterTeamIds.get(open.cluster.id) ?? []}
+                <Suspense fallback={null}>
+                  <ClusterNotices
+                    clusterId={open.cluster.id}
+                    warnings={warningsOf.get(open.cluster.id)!}
+                  />
+                </Suspense>
+              ) : undefined
+            }
+            bar={
+              open ? (
+                <ClusterBar
+                  cluster={{
+                    id: open.cluster.id,
+                    name: open.cluster.name,
+                    allTeams: open.cluster.allTeams,
+                    teamIds: clusterTeamIds.get(open.cluster.id) ?? [],
+                    failoverEnabled: open.cluster.failoverEnabled,
+                  }}
                   teams={teams}
                 />
               ) : undefined

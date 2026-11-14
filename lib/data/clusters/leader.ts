@@ -25,6 +25,7 @@ import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
 import {
+  clusterRelayNeedsToken,
   clusterRelayProblem,
   ensureClusterRelay,
   pushClusterRoster,
@@ -107,6 +108,13 @@ export async function getClusterLeader(
   await requireInstanceAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
+  return readClusterLeader(cluster);
+}
+
+/** The leader read with no gate: only the background warnings check calls it bare. */
+export async function readClusterLeader(
+  cluster: Cluster,
+): Promise<ClusterLeader> {
   // Where it was put, not who stands in for it: the card says both.
   const host = await leaderHostOf(cluster.leaderServerId);
   const leader = await readLeader(host);
@@ -118,6 +126,7 @@ export async function getClusterLeader(
     takenOverAt,
     updateMessage: await updateMessage(host),
     relayMessage: clusterRelayProblem() ?? "",
+    relayNeedsToken: clusterRelayNeedsToken(),
     ownServerWarning: !(await ledFromAMember(cluster))
       ? ""
       : leases.length < 3

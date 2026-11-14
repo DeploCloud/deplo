@@ -3,13 +3,12 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Plus, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -18,13 +17,6 @@ import {
 import { DocsLink } from "@/components/ui/docs-link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { comesAlong, type ClusterJoinOption } from "./cluster-join";
@@ -187,54 +179,6 @@ export function StartLeaderButton({ clusterId }: { clusterId: string }) {
   );
 }
 
-// The server select both dialogs share, with what blocks or limits each server listed under it.
-function ServerPick({
-  id,
-  value,
-  onChange,
-  options,
-}: {
-  id: string;
-  value: string;
-  onChange: (serverId: string) => void;
-  options: {
-    serverId: string;
-    label: string;
-    disabled: boolean;
-    hint: string;
-  }[];
-}) {
-  const hints = options.filter((o) => o.hint);
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>Server</Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={id}>
-          <SelectValue placeholder="Choose a server" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem
-              key={o.serverId}
-              value={o.serverId}
-              disabled={o.disabled}
-            >
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {hints.length > 0 && (
-        <ul className="space-y-1 text-xs text-muted-foreground">
-          {hints.map((o) => (
-            <li key={o.serverId}>{o.hint}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export type LeaderOption = {
   serverId: string;
   serverName: string;
@@ -261,85 +205,54 @@ export function MoveLeaderLead({ servers }: { servers: number }) {
   );
 }
 
-export function MoveLeaderButton({
+const MOVE_LEADER = /* GraphQL */ `
+  mutation MoveClusterLeader($id: String!, $serverId: String!) {
+    moveClusterLeader(id: $id, serverId: $serverId) {
+      id
+    }
+  }
+`;
+
+/** Runs the leader on one server, from that server's own menu. */
+export function MakeLeaderConfirm({
   clusterId,
-  options,
+  choice,
   servers,
+  open,
+  onOpenChange,
 }: {
   clusterId: string;
-  options: LeaderOption[];
-  // How many servers the cluster has: under three, a leader elsewhere still needs Deplo up.
+  choice: LeaderOption;
   servers: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
-  const [serverId, setServerId] = React.useState("");
-  const [pending, startTransition] = React.useTransition();
-  const chosen = options.find((o) => o.serverId === serverId);
-
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    startTransition(async () => {
-      const res = await gqlAction(
-        /* GraphQL */ `
-          mutation MoveClusterLeader($id: String!, $serverId: String!) {
-            moveClusterLeader(id: $id, serverId: $serverId) {
-              id
-            }
-          }
-        `,
-        { id: clusterId, serverId },
-      );
-      if (!res.ok) return void toast.error(res.error);
-      toast.success(`The leader now runs on ${chosen?.serverName}`);
-      setOpen(false);
-      setServerId("");
-      router.refresh();
-    });
-  }
-
+  const where = choice.onDeploHost ? "Deplo's own machine" : choice.serverName;
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          Run on another server
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Run the leader on another server</DialogTitle>
-          <DialogDescription>
-            <MoveLeaderLead servers={servers} />{" "}
-            <DocsLink topic="clusters.leader" />
-          </DialogDescription>
-        </DialogHeader>
-        <form className="grid gap-4" onSubmit={onSubmit}>
-          <ServerPick
-            id={`leader-${clusterId}`}
-            value={serverId}
-            onChange={setServerId}
-            options={options.map((o) => ({
-              serverId: o.serverId,
-              label: `${o.serverName}${o.onDeploHost ? " (Deplo's own machine)" : ""}${o.current ? " (runs here now)" : ""}`,
-              disabled: o.current || Boolean(o.blocked),
-              hint: o.blocked || o.note,
-            }))}
-          />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={pending || !chosen}>
-              Move
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <ConfirmAction
+      open={open}
+      onOpenChange={onOpenChange}
+      variant="default"
+      title={`Run the leader on ${where}?`}
+      description={
+        <>
+          <MoveLeaderLead servers={servers} />{" "}
+          <DocsLink topic="clusters.leader" />
+        </>
+      }
+      consequence={choice.note || undefined}
+      confirmLabel="Make leader"
+      successMessage={`The leader now runs on ${where}`}
+      onConfirm={async () => {
+        const res = await gqlAction(MOVE_LEADER, {
+          id: clusterId,
+          serverId: choice.serverId,
+        });
+        router.refresh();
+        return res;
+      }}
+    />
   );
 }
 
@@ -413,78 +326,5 @@ export function JoinClusterConfirm({
       confirmLabel="Move"
       onConfirm={onJoin}
     />
-  );
-}
-
-export function JoinClusterButton({
-  clusterId,
-  clusterName,
-  options,
-}: {
-  clusterId: string;
-  clusterName: string;
-  options: ClusterJoinOption[];
-}) {
-  const router = useRouter();
-  const [open, setOpen] = React.useState(false);
-  const [serverId, setServerId] = React.useState("");
-  const [pending, startTransition] = React.useTransition();
-  const chosen = options.find((o) => o.serverId === serverId);
-
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    startTransition(async () => {
-      const res = await joinCluster(clusterId, serverId);
-      if (!res.ok) return void toast.error(res.error);
-      toast.success(res.data ?? "Server added");
-      setOpen(false);
-      setServerId("");
-      router.refresh();
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus className="size-4" />
-          Add server
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add a server</DialogTitle>
-          <DialogDescription>
-            Its Apps and databases stay where they run, without a restart.
-          </DialogDescription>
-        </DialogHeader>
-        <form className="grid gap-4" onSubmit={onSubmit}>
-          <ServerPick
-            id={`join-${clusterId}`}
-            value={serverId}
-            onChange={setServerId}
-            options={options.map((o) => ({
-              serverId: o.serverId,
-              label: o.serverName,
-              disabled: Boolean(o.blocked),
-              hint: o.blocked,
-            }))}
-          />
-          {chosen && <JoinsWith option={chosen} clusterName={clusterName} />}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={pending || !chosen}>
-              Add
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

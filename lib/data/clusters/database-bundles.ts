@@ -187,8 +187,10 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
   if (!cluster) return;
   await refreshLeaderKeys(cluster);
   const keys = await keyRows(cluster.id);
-  const say = (why: string) =>
-    recordOnce(db, cannotFailOver(db.name, cluster.name, why), KIND);
+  const say = async (why: string) => {
+    if (cluster.failoverEnabled)
+      await recordOnce(db, cannotFailOver(db.name, cluster.name, why), KIND);
+  };
   const lead = keys.find(leading(cluster));
   // A leader standing by without it is put right by the sweep; only the one that leads decides a failover.
   if (!lead)
@@ -328,7 +330,8 @@ export async function reconcileClusterDatabaseBundles(
     .select({ id: databasesTable.id })
     .from(databasesTable)
     .where(eq(databasesTable.clusterId, clusterId));
-  const ids = new Set(owned.map((d) => d.id));
+  // Failover off: the leader keeps none of them.
+  const ids = new Set(cluster.failoverEnabled ? owned.map((d) => d.id) : []);
   for (const k of await keyRows(clusterId)) {
     const hostId = await hostFor(k.serverId).catch(() => null);
     if (!hostId) continue;
@@ -358,7 +361,8 @@ export async function reconcileClusterDatabaseBundles(
         );
   }
   // ponytail: a changed password or setting reaches the leader here or with the next backup, not at the edit.
-  for (const d of owned) await pushDatabaseBundle(d.id);
+  if (cluster.failoverEnabled)
+    for (const d of owned) await pushDatabaseBundle(d.id);
 }
 
 /** The sweep's job: every cluster's leaders hold each database's stack and latest backup as they are now. */

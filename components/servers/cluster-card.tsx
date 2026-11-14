@@ -3,11 +3,14 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import {
+  Folder,
   FolderOpen,
   MoreHorizontal,
-  Network,
   Settings2,
+  ShieldCheck,
+  ShieldOff,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,11 +23,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Bone } from "@/components/ui/skeleton";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { ListView } from "@/components/shared/view-toggle";
 import { cn } from "@/lib/utils";
 import { ClusterActions } from "./cluster-actions";
+import { useFailoverSwitch } from "./cluster-bar";
 import { DeleteClusterButton } from "./cluster-delete";
 import { serversHref, type ClusterJoinOption } from "./cluster-join";
+import type { ClusterWarning } from "@/lib/clusters/warnings";
 import type { TeamOption } from "./server-team-access";
 
 export type ClusterCardData = {
@@ -33,27 +39,40 @@ export type ClusterCardData = {
   allTeams: boolean;
   teamIds: string[];
   servers: number;
-  failoverOn: boolean;
+  failoverEnabled: boolean;
   /** How many of its servers are still joining. */
   provisioning: number;
   /** Every server that is not in a cluster, with what stops it joining this one. */
   joinOptions: ClusterJoinOption[];
+  /** What the background check stored, plus the Apps waiting: the card never waits on a leader. */
+  warnings?: Promise<ClusterWarning[]>;
 };
 
-/** "2 servers · Failover on": what a cluster card says under its name. */
+/** "2 servers · 1 provisioning": what a cluster card says under its name, as a folder counts its Apps. */
 export function clusterSummary(c: {
   servers: number;
-  failoverOn: boolean;
   provisioning: number;
 }): string {
   if (c.servers === 0) return "No servers yet";
   return [
     `${c.servers} server${c.servers === 1 ? "" : "s"}`,
     c.provisioning > 0 ? `${c.provisioning} provisioning` : null,
-    c.failoverOn ? "Failover on" : null,
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+function Warned({ warnings }: { warnings: Promise<ClusterWarning[]> }) {
+  const list = React.use(warnings);
+  if (list.length === 0) return null;
+  return (
+    <SimpleTooltip content={[...new Set(list.map((w) => w.title))].join(" · ")}>
+      <TriangleAlert
+        aria-label="This cluster needs attention"
+        className="pointer-events-auto size-3.5 shrink-0 text-[var(--warning)]"
+      />
+    </SimpleTooltip>
+  );
 }
 
 export function ClusterCard({
@@ -71,6 +90,7 @@ export function ClusterCard({
 }) {
   const [manage, setManage] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const failover = useFailoverSwitch(cluster);
   const href = serversHref({ cluster: cluster.id, view });
 
   const actions = (
@@ -87,16 +107,34 @@ export function ClusterCard({
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem asChild>
-              <Link href={href} className="cursor-pointer">
-                <FolderOpen className="size-4" />
-                Open
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setManage(true)}>
-              <Settings2 className="size-4" />
-              Manage
+          <DropdownMenuContent align="end" className="w-48">
+            <SimpleTooltip content="Open this cluster" side="left">
+              <DropdownMenuItem asChild>
+                <Link href={href} className="cursor-pointer">
+                  <FolderOpen className="size-4" />
+                  Open
+                </Link>
+              </DropdownMenuItem>
+            </SimpleTooltip>
+            <SimpleTooltip
+              content="Rename it, or choose which teams may use it"
+              side="left"
+            >
+              <DropdownMenuItem onSelect={() => setManage(true)}>
+                <Settings2 className="size-4" />
+                Manage
+              </DropdownMenuItem>
+            </SimpleTooltip>
+            <DropdownMenuItem
+              disabled={failover.pending}
+              onSelect={() => failover.set(!failover.on)}
+            >
+              {failover.on ? (
+                <ShieldOff className="size-4" />
+              ) : (
+                <ShieldCheck className="size-4" />
+              )}
+              {failover.on ? "Turn failover off" : "Turn failover on"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -113,17 +151,24 @@ export function ClusterCard({
   );
 
   const identity = (
-    <>
+    <div className="flex min-w-0 items-center gap-3">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
-        <Network className="size-4.5" />
+        <Folder className="size-4.5" />
       </div>
-      <div className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{cluster.name}</span>
+      <div className="min-w-0">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate font-medium">{cluster.name}</span>
+          {cluster.warnings && (
+            <React.Suspense fallback={null}>
+              <Warned warnings={cluster.warnings} />
+            </React.Suspense>
+          )}
+        </span>
         <p className="mt-1 truncate text-xs text-muted-foreground">
           {clusterSummary(cluster)}
         </p>
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -149,13 +194,11 @@ export function ClusterCard({
         />
         <div
           className={cn(
-            "pointer-events-none relative z-[1] flex min-w-0 flex-1 gap-3",
-            view === "list" ? "items-center" : "items-start justify-between",
+            "pointer-events-none relative z-[1] flex min-w-0 flex-1 justify-between gap-3",
+            view === "list" ? "items-center" : "items-start",
           )}
         >
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            {identity}
-          </div>
+          {identity}
           {actions}
         </div>
       </Card>
@@ -181,16 +224,16 @@ export function ClusterCardSkeleton() {
   return (
     <Card className="group relative flex flex-col gap-4 p-5">
       <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Bone box className="shrink-0">
             <div className="size-9" />
           </Bone>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <span className="block truncate font-medium">
               <Bone>cluster-name</Bone>
             </span>
             <p className="mt-1 truncate text-xs text-muted-foreground">
-              <Bone>2 servers · Failover on</Bone>
+              <Bone>2 servers</Bone>
             </p>
           </div>
         </div>

@@ -43,7 +43,7 @@ import {
   clearContainerHistory,
   recordContainerSample,
 } from "../monitoring/container-history";
-import { createCluster } from "./clusters/manage";
+import { createCluster, setClusterFailover } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { reconcileCluster } from "./clusters/watch";
 import {
@@ -831,4 +831,53 @@ test("a reroute after the deploy hands the leader the stack as it runs now, on t
   assert.match(stack.composeYaml, /loadbalancer\.server\.port=80/);
   assert.equal((stack.ready as { port: number }).port, 80);
   assert.equal((stack.restartRule as { port: number }).port, 80);
+});
+
+test("failover off hands the leader back every bundle and keeps sending none, until it is on again", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  await deployOn(app, "dpl_1");
+  assert.equal(leader.held.size, 1);
+
+  const off = await asAdmin(() => setClusterFailover(cluster.id, false));
+  await flushFailoverBundles();
+  assert.equal(off.failoverEnabled, false);
+  assert.deepEqual(leader.dropped, [app.id]);
+  assert.equal(leader.held.size, 0);
+
+  // A deploy while it is off is kept here, not sent, and never reported as a failure.
+  await deployOn(app, "dpl_2");
+  await reconcileFailoverBundles();
+  assert.equal(leader.held.size, 0);
+  assert.equal((await activityFor(app.id)).length, 0);
+  const kept = await db.select().from(failoverBundlePushes);
+  assert.equal(kept[0]?.deploymentId, "dpl_2");
+
+  await asAdmin(() => setClusterFailover(cluster.id, true));
+  await flushFailoverBundles();
+  assert.equal(leader.held.get(app.id)?.deploymentId, "dpl_2");
+  const said = await db
+    .select({ message: activities.message })
+    .from(activities)
+    .where(eq(activities.type, "server"));
+  assert.ok(
+    said.some((a) => a.message === "Turned failover off for cluster eu"),
+  );
+  assert.ok(
+    said.some((a) => a.message === "Turned failover on for cluster eu"),
+  );
+});
+
+test("only an instance admin turns a cluster's failover off", async () => {
+  const cluster = await eu();
+  await assert.rejects(
+    runWithIdentity({ userId: "user_b", teamId: TEAM_B }, () =>
+      setClusterFailover(cluster.id, false),
+    ),
+  );
+  const [row] = await db
+    .select({ on: clustersTable.failoverEnabled })
+    .from(clustersTable)
+    .where(eq(clustersTable.id, cluster.id));
+  assert.equal(row.on, true);
 });

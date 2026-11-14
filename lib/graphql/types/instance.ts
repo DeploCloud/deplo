@@ -26,6 +26,7 @@ import {
 import {
   disablePanelTunnel,
   getPanelTunnel,
+  replacePanelTunnelToken,
   setPanelTunnel,
   type PanelTunnel,
 } from "@/lib/data/instance-settings/panel-tunnel";
@@ -305,6 +306,14 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { hostname, apiToken }) =>
       setPanelTunnel({ hostname, apiToken }),
+  }),
+  replacePanelTunnelToken: t.field({
+    type: PanelTunnelRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Give the panel's Cloudflare Tunnel a new API token, for when Cloudflare refuses the saved one. Kept only once Cloudflare accepts it for the tunnel's account and zone and the cluster relay's route goes in with it; otherwise the saved token stays. The old token is not deleted in Cloudflare: that is for the admin to do.",
+    args: { apiToken: t.arg.string({ required: true }) },
+    resolve: (_r, { apiToken }) => replacePanelTunnelToken(apiToken),
   }),
   disablePanelTunnel: t.field({
     type: PanelTunnelRef,

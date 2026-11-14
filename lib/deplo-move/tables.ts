@@ -88,6 +88,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   failover_bundle_pushes: { kind: "copy", rekey: { bundle_enc: SECRET } },
   // Updates of this Deplo's own leaders against its own pin.
   cluster_binary_updates: { kind: "local" },
+  // Worked out again within a minute by whichever Deplo watches the cluster.
+  cluster_warnings: { kind: "skip", clear: true },
   database_mounts: COPY,
   databases: {
     kind: "copy",

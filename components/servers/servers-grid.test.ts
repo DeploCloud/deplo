@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
+import type * as React from "react";
 
 import { ServerHealthProvider } from "@/app/(dashboard)/[team]/settings/servers/server-health-provider";
 import type { ServerCardData } from "@/app/(dashboard)/[team]/settings/servers/server-card";
@@ -49,16 +50,11 @@ const server = (
     lastReachedAt: null,
   },
   advice: "",
-  specs: Promise.resolve({
-    cpuCores: 4,
-    memoryMb: 16384,
-    diskGb: 160,
-    dockerVersion: "29.0.1",
-  }),
   uninstallPending: false,
   uninstallError: null,
   cluster: null,
   member: null,
+  leader: false,
   ...over,
 });
 
@@ -71,6 +67,7 @@ const JOINING = server("server-b", {
 const SETTLED = server("server-c", {
   cluster: eu,
   member: memberState(member({ serverId: "srv_c" })),
+  leader: true,
 });
 
 const CLUSTER: ClusterCardData = {
@@ -79,7 +76,7 @@ const CLUSTER: ClusterCardData = {
   allTeams: true,
   teamIds: [],
   servers: 2,
-  failoverOn: true,
+  failoverEnabled: true,
   provisioning: 1,
   joinOptions: [
     {
@@ -102,14 +99,12 @@ const grid = (props: {
 }) =>
   text(
     renderServerView(
-      createElement(ServerHealthProvider, {
-        seed: {},
-        children: createElement(ServersGrid, {
-          ...props,
-          teams: [],
-          view: "grid",
-        }),
-      }),
+      createElement(
+        // Its children arrive as the third argument, which the props type cannot see.
+        ServerHealthProvider as unknown as React.FC<{ seed: object }>,
+        { seed: {} },
+        createElement(ServersGrid, { ...props, teams: [], view: "grid" }),
+      ),
     ),
   );
 
@@ -119,7 +114,8 @@ test("the top level shows each cluster as one card and only the servers outside 
     clusters: [CLUSTER],
     openCluster: null,
   });
-  assert.match(html, /eu 2 servers · 1 provisioning · Failover on/);
+  assert.match(html, /eu 2 servers · 1 provisioning/);
+  assert.doesNotMatch(html, /Failover on/);
   assert.match(html, /server-a/);
   assert.doesNotMatch(html, /server-b|server-c/);
 });
@@ -136,6 +132,29 @@ test("inside a cluster a server that just joined reads Provisioning until it wor
   assert.match(html, /server-c/);
 });
 
+test("the server the leader runs on carries a Leader tag, and only that one", () => {
+  const html = grid({
+    servers: [JOINING, SETTLED],
+    clusters: [],
+    openCluster: { id: "clu_eu", name: "eu" },
+  });
+  assert.equal(html.match(/Leader/g)?.length, 1);
+  assert.match(html, /server-c 203\.0\.113\.10 Leader/);
+});
+
+test("a server's card leaves out its hardware and a lease the leader lost", () => {
+  const fenced = server("server-d", {
+    cluster: eu,
+    member: memberState(member({ leaseState: "fenced" })),
+  });
+  const html = grid({
+    servers: [fenced],
+    clusters: [],
+    openCluster: { id: "clu_eu", name: "eu" },
+  });
+  assert.doesNotMatch(html, /Not responding|cores|GB RAM|run twice/);
+});
+
 test("a search lists the servers of every cluster together", () => {
   const all = [FREE, JOINING, SETTLED];
   assert.deepEqual(
@@ -146,12 +165,12 @@ test("a search lists the servers of every cluster together", () => {
   assert.equal(listedServers([JOINING, SETTLED], true, false).length, 2);
 });
 
-test("a cluster card counts its servers and says when failover is on", () => {
+test("a cluster card counts its servers, as a folder counts its Apps", () => {
   const says = (servers: number, provisioning = 0) =>
-    clusterSummary({ servers, provisioning, failoverOn: servers >= 2 });
+    clusterSummary({ servers, provisioning });
   assert.equal(says(0), "No servers yet");
   assert.equal(says(1), "1 server");
-  assert.equal(says(3), "3 servers · Failover on");
+  assert.equal(says(3, 1), "3 servers · 1 provisioning");
 });
 
 test("a server being removed says how far it has got, and why it stopped", () => {

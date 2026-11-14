@@ -1145,7 +1145,12 @@ type Cluster {
   createdAt: String
 
   """
-  Failover is on from two members: with one there is nowhere to move an App to.
+  True (the default) when the cluster moves work off a server that stops. False keeps everything where it is.
+  """
+  failoverEnabled: Boolean
+
+  """
+  Failover is on from two members while `failoverEnabled`: with one there is nowhere to move an App to.
   """
   failoverOn: Boolean
   id: ID
@@ -4920,6 +4925,11 @@ type Mutation {
   reorderProjects(projectIds: [ID!]!): Boolean
 
   """
+  Give the panel's Cloudflare Tunnel a new API token, for when Cloudflare refuses the saved one. Kept only once Cloudflare accepts it for the tunnel's account and zone and the cluster relay's route goes in with it; otherwise the saved token stays. The old token is not deleted in Cloudflare: that is for the admin to do.
+  """
+  replacePanelTunnelToken(apiToken: String!): PanelTunnel
+
+  """
   Hand the machine to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000, and then takes the other platform off the disk for good.
   """
   requestTakeover(
@@ -5224,6 +5234,11 @@ type Mutation {
   Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.
   """
   setCertificateEmail(email: String!): [CertificateAccount!]
+
+  """
+  Turn a cluster's failover on or off. Off, its leader holds nothing to restart elsewhere, so a server that stops keeps its Apps and databases until it comes back.
+  """
+  setClusterFailover(enabled: Boolean!, id: String!): Cluster
 
   """Change which teams may use a cluster, with the same rules as a server."""
   setClusterTeams(id: String!, sharing: ClusterSharingInput!): Cluster

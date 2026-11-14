@@ -294,6 +294,51 @@ export async function setPanelTunnel(input: {
   return readPanelTunnel(warning);
 }
 
+/**
+ * Gives the panel's tunnel a new Cloudflare token, kept only once Cloudflare takes it for this tunnel and zone and
+ * the cluster relay's route goes in with it. The old token is the admin's to delete in Cloudflare.
+ */
+export async function replacePanelTunnelToken(
+  apiToken: string,
+): Promise<PanelTunnel> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const token = apiToken.trim();
+  if (!token) throw new Error("Paste a Cloudflare API token");
+  const stored = await loadPanelTunnel();
+  if (!stored)
+    throw new Error("The panel is not served through a Cloudflare Tunnel");
+  if (!(await cloudflare.canManageTunnels(token, stored.accountId)))
+    throw new Error(
+      "Cloudflare refused this token for the panel's tunnel. It needs Cloudflare Tunnel: Edit on the account the tunnel is in.",
+    );
+  await cloudflare.assertDnsAccess(token, stored.zoneId);
+
+  await savePanelTunnel({ ...stored, apiTokenEnc: encryptSecret(token) });
+  const { syncClusterRelayRoute } = await import("../clusters/relay");
+  try {
+    await syncClusterRelayRoute();
+  } catch (e) {
+    // Reading is not writing: a token Cloudflare will not let change the tunnel is not kept.
+    if (e instanceof Error && e.name === "CloudflareRelayError") {
+      await savePanelTunnel(stored);
+      throw new Error(`${e.message}. Deplo kept the token it had.`);
+    }
+    console.warn(`[panel-tunnel] relay route: ${String(e)}`);
+  }
+  await recordActivity(
+    "instance",
+    "Gave the panel's Cloudflare Tunnel a new API token",
+    user.name,
+    null,
+    teamId,
+  );
+  const { refreshAllClusterWarnings } = await import("../clusters/warnings");
+  await refreshAllClusterWarnings();
+  return readPanelTunnel(null);
+}
+
 /** Turns the tunnel off: the panel moves to `input`, or to its backup address, and Cloudflare forgets the tunnel. */
 export async function disablePanelTunnel(
   input?: string | null,

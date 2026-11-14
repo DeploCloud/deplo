@@ -32,6 +32,7 @@ function assemble(r: Row): Cluster {
     leaderEpoch: r.leaderEpoch,
     leaderTakeoverAt: r.leaderTakeoverAt,
     eventSeq: r.eventSeq,
+    failoverEnabled: r.failoverEnabled,
     createdAt: r.createdAt,
   };
 }

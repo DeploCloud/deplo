@@ -195,6 +195,9 @@ export const DOCS = {
   "clusters.replicas":
     "operations/clusters/replicas-and-architectures#replicas-across-servers",
   "clusters.updates": "operations/clusters/leader#updates",
+  "clusters.cloudflareToken":
+    "operations/clusters/leader#when-cloudflare-refuses-deplos-token",
+  "clusters.failoverSwitch": "operations/clusters#turn-failover-off",
   "clusters.architectures":
     "operations/clusters/replicas-and-architectures#mix-arm-and-x86-servers",
   "registries.overview": "operations/servers/container-registries",

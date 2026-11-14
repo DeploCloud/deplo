@@ -1,9 +1,11 @@
+import { refreshClusterWarningsSoon } from "@/lib/data/clusters/warnings";
 import { builder } from "../builder";
 import { ServerStatusEnum } from "./server/server-ref";
 import { TeamRef } from "./team";
 import {
   createCluster,
   renameCluster,
+  setClusterFailover,
   setClusterTeams,
 } from "@/lib/data/clusters/manage";
 import {
@@ -47,6 +49,13 @@ import {
   type ClusterMember,
   type ClusterReleasedWorkload,
 } from "@/lib/types/cluster";
+
+// What the actor just changed shows in the cluster's warnings now, not at the next background pass.
+async function thenRefresh<T>(clusterId: string, done: Promise<T>): Promise<T> {
+  const out = await done;
+  refreshClusterWarningsSoon(clusterId);
+  return out;
+}
 
 const ClusterLeaderStateEnum = builder.enumType("ClusterLeaderState", {
   values: [
@@ -345,6 +354,10 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
       description:
         "True (the default) when every team may use this cluster. False restricts it to `teams`.",
     }),
+    failoverEnabled: t.exposeBoolean("failoverEnabled", {
+      description:
+        "True (the default) when the cluster moves work off a server that stops. False keeps everything where it is.",
+    }),
     leaderEpoch: t.exposeInt("leaderEpoch", {
       description:
         "The leader epoch Deplo last heard of; 0 before a leader has reported.",
@@ -380,8 +393,9 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
     failoverOn: t.boolean({
       authScopes: { loggedIn: true },
       description:
-        "Failover is on from two members: with one there is nowhere to move an App to.",
-      resolve: async (c) => failoverOn((await listClusterMembers(c.id)).length),
+        "Failover is on from two members while `failoverEnabled`: with one there is nowhere to move an App to.",
+      resolve: async (c) =>
+        failoverOn((await listClusterMembers(c.id)).length, c.failoverEnabled),
     }),
     joinCandidates: t.field({
       type: [ClusterJoinCandidateRef],
@@ -494,6 +508,18 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { id, name }) => renameCluster(id, name),
   }),
+  setClusterFailover: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Turn a cluster's failover on or off. Off, its leader holds nothing to restart elsewhere, so a server that stops keeps its Apps and databases until it comes back.",
+    args: {
+      id: t.arg.string({ required: true }),
+      enabled: t.arg.boolean({ required: true }),
+    },
+    resolve: (_r, { id, enabled }) =>
+      thenRefresh(id, setClusterFailover(id, enabled)),
+  }),
   setClusterTeams: t.field({
     type: ClusterRef,
     authScopes: { instanceAdmin: true },
@@ -568,7 +594,8 @@ builder.mutationFields((t) => ({
       id: t.arg.string({ required: true }),
       serverId: t.arg.string({ required: true }),
     },
-    resolve: (_r, { id, serverId }) => moveClusterLeader(id, serverId),
+    resolve: (_r, { id, serverId }) =>
+      thenRefresh(id, moveClusterLeader(id, serverId)),
   }),
   startClusterLeader: t.field({
     type: ClusterLeaderRef,
@@ -576,6 +603,6 @@ builder.mutationFields((t) => ({
     description:
       "Start the cluster's leader where it runs unless it already answers. Answers with the leader's state, never an error for a leader that could not start.",
     args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => ensureClusterLeader(id),
+    resolve: (_r, { id }) => thenRefresh(id, ensureClusterLeader(id)),
   }),
 }));

@@ -294,22 +294,33 @@ export class CloudflareRelayError extends Error {
     if (on)
       noteRelayProblem(
         `Cloudflare refused Deplo's change, so servers ${backup ? "reach the relay on Deplo's machine only through the panel's backup address" : "cannot reach the relay on Deplo's machine and failover stops when the leader's server does"}. Give Deplo a working Cloudflare API token: ${messageOf(cause)}`,
+        cause instanceof cloudflare.CloudflareError &&
+          (cause.status === 401 || cause.status === 403),
       );
   }
 }
 
 const RELAY_PROBLEM = Symbol.for("deplo.cluster.relay.problem");
+type RelayProblem = { message: string; cloudflareToken: boolean };
 const relayState = globalThis as unknown as {
-  [RELAY_PROBLEM]?: string | null;
+  [RELAY_PROBLEM]?: RelayProblem | null;
 };
 
-function noteRelayProblem(problem: string | null): void {
-  relayState[RELAY_PROBLEM] = problem;
+function noteRelayProblem(
+  message: string | null,
+  cloudflareToken = false,
+): void {
+  relayState[RELAY_PROBLEM] = message ? { message, cloudflareToken } : null;
 }
 
 /** Why servers may not reach the relay on Deplo's machine, as the last route sync found it; null when nothing is wrong. */
 export function clusterRelayProblem(): string | null {
-  return relayState[RELAY_PROBLEM] ?? null;
+  return relayState[RELAY_PROBLEM]?.message ?? null;
+}
+
+/** The relay's trouble is Cloudflare refusing the panel's API token: a new token fixes it. */
+export function clusterRelayNeedsToken(): boolean {
+  return relayState[RELAY_PROBLEM]?.cloudflareToken ?? false;
 }
 
 /**

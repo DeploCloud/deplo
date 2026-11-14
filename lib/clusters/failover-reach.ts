@@ -1,8 +1,5 @@
 import type { ClusterLeaseState } from "../types/cluster";
 
-export const TWO_SERVERS_NOTE =
-  "With two servers, failover works only while Deplo is up. With three, and the leader on one of them, it also works while Deplo is down.";
-
 export const TWO_SERVERS_JOINED =
   "Failover is on. With two servers it works only while Deplo is up.";
 

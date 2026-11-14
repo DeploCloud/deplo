@@ -4,7 +4,8 @@ import { createElement } from "react";
 
 import type { ClusterLeader } from "@/lib/types/cluster";
 import { MoveLeaderLead } from "./cluster-actions";
-import { FailoverNote, LeaderView } from "./cluster-panel";
+import { ClusterNoticeList } from "./cluster-panel";
+import { clusterWarnings } from "@/lib/clusters/warnings";
 import { renderServerView } from "./server-test-helpers";
 
 const leader = (over: Partial<ClusterLeader> = {}): ClusterLeader => ({
@@ -28,65 +29,96 @@ const text = (html: string) =>
     .replace(/&#x27;/g, "'")
     .replace(/\s+/g, " ");
 
-const card = (l: ClusterLeader, servers = 3) =>
-  text(
+const warn = (over: Partial<Parameters<typeof clusterWarnings>[0]> = {}) =>
+  clusterWarnings({
+    failoverEnabled: true,
+    servers: 3,
+    leader: leader(),
+    waiting: [],
+    copies: [],
+    ...over,
+  });
+
+test("a cluster whose failover works says nothing", () => {
+  assert.deepEqual(warn(), []);
+});
+
+test("a leader that cannot fail over is a warning, and one Deplo can start offers to", () => {
+  const few = warn({
+    leader: leader({
+      failoverReady: false,
+      message: "Only 1 of 3 servers answers this leader, so nothing moves.",
+    }),
+  });
+  assert.equal(few.length, 1);
+  assert.equal(few[0].title, "Failover is not working right now");
+  assert.equal(few[0].startLeader, undefined);
+
+  const stopped = warn({
+    leader: leader({ state: "stopped", message: "The leader is not running." }),
+  });
+  assert.equal(stopped[0].body, "The leader is not running.");
+  assert.equal(stopped[0].startLeader, true);
+  assert.equal(warn({ leader: null })[0].key, "leader");
+});
+
+test("each thing that may stop failover is its own banner", () => {
+  const relayMessage = "Servers may not reach the relay on Deplo's machine.";
+  const all = warn({
+    leader: leader({
+      relayMessage,
+      updateMessage: "Deplo could not update the leader.",
+      takenOverAt: "2026-11-14T00:00:00.000Z",
+    }),
+    copies: [{ appId: "a", appName: "web", held: 2, total: 3 }],
+  });
+  assert.deepEqual(
+    all.map((w) => w.key),
+    ["takeover", "update", "relay", "copies"],
+  );
+  assert.ok(all.some((w) => w.body === relayMessage));
+  assert.match(all.at(-1)!.body, /web on 2 of 3 servers/);
+});
+
+test("failover off hides its trouble, but an App left waiting still shows", () => {
+  const off = warn({
+    failoverEnabled: false,
+    leader: leader({ state: "unreachable" }),
+    waiting: ["web", "api"],
+  });
+  assert.deepEqual(
+    off.map((w) => w.title),
+    ["2 Apps waiting for room"],
+  );
+});
+
+test("failover on with one server says it needs a second", () => {
+  const one = warn({ servers: 1, leader: leader({ state: "unreachable" }) });
+  assert.deepEqual(
+    one.map((w) => w.key),
+    ["one-server"],
+  );
+  assert.deepEqual(warn({ servers: 0 }), []);
+});
+
+test("the banners read like an App's, and none renders nothing", () => {
+  const html = text(
     renderServerView(
-      createElement(LeaderView, {
+      createElement(ClusterNoticeList, {
         clusterId: "clu_1",
-        leader: l,
-        choices: [],
-        servers,
+        warnings: warn({
+          leader: leader({ state: "stopped", message: "Down." }),
+        }),
       }),
     ),
   );
-
-test("a leader that answers says whether a failover would work right now", () => {
-  const ready = card(leader());
-  assert.match(ready, /Leader runs on server-a Answering/);
-  assert.match(ready, /Failover would work right now\./);
-});
-
-test("a relay the servers may not reach is said on the card, and nothing when it is fine", () => {
-  const relayMessage =
-    "Cloudflare refused Deplo's change, so servers reach the relay on Deplo's machine only through the panel's backup address. Give Deplo a working Cloudflare API token: Authentication error";
-  assert.ok(card(leader({ relayMessage })).includes(relayMessage));
-  assert.doesNotMatch(card(leader()), /Cloudflare refused/);
-});
-
-test("a leader that hears too few servers never reads Answering", () => {
-  const message =
-    "Only 1 of 3 servers answers this leader, so nothing moves. Failover works again once 2 do.";
-  const few = card(leader({ failoverReady: false, message }));
-  assert.match(few, /Leader runs on server-a Too few servers answer/);
-  assert.doesNotMatch(few, /Answering|would work right now/);
-  assert.ok(few.includes(message));
-});
-
-test("a single server, or a leader that does not run, promises nothing", () => {
-  assert.doesNotMatch(
-    card(leader({ failoverReady: null }), 1),
-    /would work right now/,
+  assert.match(html, /Failover is not working right now Down\. Try again/);
+  assert.equal(
+    renderServerView(
+      createElement(ClusterNoticeList, { clusterId: "clu_1", warnings: [] }),
+    ),
+    "",
   );
-  const stopped = card(
-    leader({
-      state: "stopped",
-      failoverReady: false,
-      message: "The leader is installed but not running.",
-    }),
-  );
-  assert.match(stopped, /Not running/);
-  assert.doesNotMatch(stopped, /would work right now|Too few/);
-});
-
-test("two servers say that failover needs Deplo up, and three say nothing", () => {
-  const note = (servers: number) =>
-    text(renderServerView(createElement(FailoverNote, { servers })));
-  assert.match(
-    note(2),
-    /With two servers, failover works only while Deplo is up\. With three, and the leader on one of them, it also works while Deplo is down\./,
-  );
-  assert.equal(note(1).trim(), "");
-  assert.equal(note(3).trim(), "");
 });
 
 test("the leader dialog only promises failover without Deplo from three servers", () => {

@@ -3,17 +3,14 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Settings2, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DocsLink } from "@/components/ui/docs-link";
 import { Bone } from "@/components/ui/skeleton";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { RowActions } from "@/components/shared/row-actions";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ClusterDeletion } from "@/lib/types/cluster";
-import { ClusterActions } from "./cluster-actions";
-import type { TeamOption } from "./server-team-access";
 
 const DELETION = /* GraphQL */ `
   query ClusterDeletion($id: String!) {
@@ -167,39 +164,3 @@ export function DeleteClusterButton({
 }
 
 /** A cluster card's own actions: two buttons, one kebab on a phone. */
-export function ClusterHeaderActions({
-  cluster,
-  teams,
-}: {
-  cluster: { id: string; name: string; allTeams: boolean; teamIds: string[] };
-  teams: TeamOption[];
-}) {
-  const [manage, setManage] = React.useState(false);
-  const [deleting, setDeleting] = React.useState(false);
-  return (
-    <RowActions
-      title={cluster.name}
-      actions={[
-        { label: "Manage", icon: Settings2, onSelect: () => setManage(true) },
-        {
-          label: "Delete",
-          icon: Trash2,
-          destructive: true,
-          onSelect: () => setDeleting(true),
-        },
-      ]}
-    >
-      <ClusterActions
-        cluster={cluster}
-        teams={teams}
-        open={manage}
-        onOpenChange={setManage}
-      />
-      <DeleteClusterButton
-        cluster={cluster}
-        open={deleting}
-        onOpenChange={setDeleting}
-      />
-    </RowActions>
-  );
-}

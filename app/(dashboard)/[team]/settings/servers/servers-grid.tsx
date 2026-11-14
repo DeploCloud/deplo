@@ -35,7 +35,9 @@ import { useUrlFacets } from "@/components/shared/filter-facet";
 import type { ListView } from "@/components/shared/view-toggle";
 import {
   JoinClusterConfirm,
+  MakeLeaderConfirm,
   joinCluster,
+  type LeaderOption,
 } from "@/components/servers/cluster-actions";
 import {
   ClusterCard,
@@ -69,10 +71,12 @@ function ServersTrail({
   name,
   view,
   dragging,
+  actions,
 }: {
   name: string;
   view: ListView;
   dragging: boolean;
+  actions?: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: UNGROUP_DROP_ID });
   return (
@@ -102,6 +106,7 @@ function ServersTrail({
             : "drop here to remove it from the cluster"}
         </span>
       )}
+      {actions && <div className="ml-auto">{actions}</div>}
     </div>
   );
 }
@@ -113,6 +118,8 @@ export function ServersGrid({
   openCluster,
   view,
   panel,
+  bar,
+  leaderChoices = [],
 }: {
   /** Every server at the top level; inside a cluster, its servers. */
   servers: ServerCardData[];
@@ -121,8 +128,12 @@ export function ServersGrid({
   teams: TeamOption[];
   openCluster: { id: string; name: string } | null;
   view: ListView;
-  /** What the open cluster says about itself, above its servers. */
+  /** The open cluster's warnings, above its servers. */
   panel?: React.ReactNode;
+  /** The open cluster's own controls, beside its trail. */
+  bar?: React.ReactNode;
+  /** Where the open cluster's leader may run. */
+  leaderChoices?: LeaderOption[];
 }) {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
@@ -138,6 +149,8 @@ export function ServersGrid({
   const [joinOpen, setJoinOpen] = React.useState(false);
   const [removeId, setRemoveId] = React.useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = React.useState(false);
+  const [leaderAsk, setLeaderAsk] = React.useState<LeaderOption | null>(null);
+  const [leaderOpen, setLeaderOpen] = React.useState(false);
 
   const q = query.trim().toLowerCase();
   const faceted = picked.team.length > 0 || picked.use.length > 0;
@@ -306,6 +319,7 @@ export function ServersGrid({
               name={openCluster.name}
               view={view}
               dragging={dragging}
+              actions={bar}
             />
           )}
           {panel}
@@ -360,6 +374,14 @@ export function ServersGrid({
                         busy={moving && movingId === s.id}
                         onJoin={(clusterId) => requestJoin(s.id, clusterId)}
                         onRemove={() => requestRemove(s.id)}
+                        leaderChoices={leaderChoices}
+                        deploMachineOutside={
+                          !servers.some((x) => x.isDeploHost)
+                        }
+                        onMakeLeader={(choice) => {
+                          setLeaderAsk(choice);
+                          setLeaderOpen(true);
+                        }}
                       />
                     )}
                   </SortableItem>
@@ -370,7 +392,7 @@ export function ServersGrid({
             <EmptyState
               icon={Network}
               title="This cluster has no servers"
-              description="Add one above, or drag a server onto this cluster from Servers."
+              description="Drag a server onto this cluster from Servers, or use Move to cluster in its menu."
             />
           ) : (
             shownClusters.length === 0 && (
@@ -406,6 +428,16 @@ export function ServersGrid({
           option={joinOption}
           cluster={joinTarget}
           onJoin={() => join(joinAsk.serverId, joinAsk.clusterId)}
+        />
+      )}
+      {openCluster && leaderAsk && (
+        <MakeLeaderConfirm
+          key={leaderAsk.serverId}
+          clusterId={openCluster.id}
+          choice={leaderAsk}
+          servers={servers.length}
+          open={leaderOpen}
+          onOpenChange={setLeaderOpen}
         />
       )}
       {removing?.cluster && removing.member && (

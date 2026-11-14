@@ -295,6 +295,8 @@ export async function deliver(
           pushedAt: null,
         },
       });
+    // Failover off: kept here, so switching it back on resends it without a redeploy.
+    if (!cluster.failoverEnabled) continue;
     try {
       const hostId = await hostFor(k.serverId);
       if (!hostId) throw new Error("no leader host");
@@ -400,9 +402,9 @@ export async function pushFailoverBundle(input: {
   if (!cluster) return;
   await refreshLeaderKeys(cluster);
   const keys = await keyRows(cluster.id);
-  const lead = keys.find(leading(cluster));
+  const lead = cluster.failoverEnabled ? keys.find(leading(cluster)) : null;
   // A leader standing by without it is put right by the sweep; only the one that leads decides a failover.
-  if (!lead)
+  if (lead === undefined)
     await recordOnce(app, cannotFailOver(app.name, cluster.name, UNREACHED));
   if (keys.length === 0) return;
   const tunnelToken = await loadAppConnectorToken(app.id);
@@ -536,7 +538,7 @@ export async function reconcileClusterBundles(
       })
       .from(appsTable)
       .where(eq(appsTable.clusterId, cluster.id))
-  ).filter((a) => !binds.has(a.id));
+  ).filter((a) => cluster.failoverEnabled && !binds.has(a.id));
   const held = new Map<string, Map<string, string> | null>();
   for (const k of keys) {
     try {

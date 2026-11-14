@@ -30,6 +30,8 @@ export const clusters = pgTable("clusters", {
   }),
   // The last leader event this control plane applied; a reconnect replays from here.
   eventSeq: bigint("event_seq", { mode: "number" }).notNull().default(0),
+  // Off: the leader holds no failover bundle, so it moves nothing (ADR-0045).
+  failoverEnabled: boolean("failover_enabled").notNull().default(true),
   createdAt: isoTimestamptz("created_at").notNull(),
 });
 
@@ -47,6 +49,26 @@ export const clusterTeams = pgTable(
     primaryKey({ columns: [t.clusterId, t.teamId] }),
     index("cluster_teams_team_idx").on(t.teamId),
   ],
+);
+
+// What is wrong with a cluster, worked out in the background so the Servers page never waits on a leader.
+export const clusterWarnings = pgTable(
+  "cluster_warnings",
+  {
+    clusterId: text("cluster_id")
+      .notNull()
+      .references(() => clusters.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    position: integer("position").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    startLeader: boolean("start_leader").notNull().default(false),
+    fixCloudflareToken: boolean("fix_cloudflare_token")
+      .notNull()
+      .default(false),
+    checkedAt: isoTimestamptz("checked_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.clusterId, t.key] })],
 );
 
 // The age public key of each leader holding this cluster's bundles; a null server is Deplo's machine.

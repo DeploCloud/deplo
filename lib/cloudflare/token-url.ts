@@ -12,3 +12,7 @@ export function cloudflareTokenUrl(name: string): string {
 }
 
 export const CLOUDFLARE_TOKEN_URL = cloudflareTokenUrl("Deplo panel");
+
+/** The list of the account's tokens, where an old one is deleted. */
+export const CLOUDFLARE_TOKENS_PAGE =
+  "https://dash.cloudflare.com/profile/api-tokens";

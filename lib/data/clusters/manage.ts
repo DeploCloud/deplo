@@ -12,6 +12,8 @@ import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { newId, nowIso } from "../../ids";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
+import { inBackground, reconcileClusterBundles } from "./bundles";
+import { reconcileClusterDatabaseBundles } from "./database-bundles";
 import { ensureClusterLeader } from "./leader";
 import { getClusterById, requireClusterAdmin } from "./roster";
 
@@ -177,5 +179,34 @@ export async function setClusterTeams(
     null,
     teamId,
   );
+  return (await getClusterById(id))!;
+}
+
+/** Turns failover on or off; off, the leader is handed back every failover bundle it holds and moves nothing. */
+export async function setClusterFailover(
+  id: string,
+  enabled: boolean,
+): Promise<Cluster> {
+  const { teamId, user } = await requireClusterAdmin();
+  const cluster = await getClusterById(id);
+  if (!cluster) throw new Error("Cluster not found");
+  if (cluster.failoverEnabled !== enabled) {
+    await getDb()
+      .update(clustersTable)
+      .set({ failoverEnabled: enabled })
+      .where(eq(clustersTable.id, id));
+    await recordActivity(
+      "server",
+      `Turned failover ${enabled ? "on" : "off"} for cluster ${cluster.name}`,
+      user.name,
+      null,
+      teamId,
+    );
+    // The leader follows at once; the sweep finishes whatever this could not reach.
+    inBackground(id, async () => {
+      await reconcileClusterBundles(id);
+      await reconcileClusterDatabaseBundles(id);
+    });
+  }
   return (await getClusterById(id))!;
 }

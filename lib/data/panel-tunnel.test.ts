@@ -32,8 +32,10 @@ import {
   __setPanelTunnelTimingForTest,
   disablePanelTunnel,
   getPanelTunnel,
+  replacePanelTunnelToken,
   setPanelTunnel,
 } from "./instance-settings/panel-tunnel";
+import { decryptSecret } from "../crypto";
 import {
   applyRecoveredPanelAddress,
   getPanelHttps,
@@ -483,4 +485,55 @@ test("a recovery onto the tunnel's own address keeps the tunnel", async () => {
     (await asUser(ADMIN, getInstanceSettings)).panelTunnelHostname,
     "deplo.example.com",
   );
+});
+
+const savedToken = async () =>
+  decryptSecret((await settingsRow())!.panelTunnelApiTokenEnc!);
+
+test("a new token replaces the saved one once Cloudflare takes it for the tunnel", async () => {
+  await turnOn();
+  await asUser(ADMIN, () => replacePanelTunnelToken(" cf-new-token "));
+  assert.equal(await savedToken(), "cf-new-token");
+  const done = await db.select().from(activities);
+  assert.ok(
+    done.some((a) => /new API token/.test(a.message)),
+    "the change is in Activity",
+  );
+});
+
+test("a token Cloudflare refuses for the tunnel is not kept", async () => {
+  await turnOn();
+  cf.failNext = {
+    match: /^GET \/accounts\/acct1\/cfd_tunnel\?/,
+    status: 403,
+    message: "Authentication error",
+  };
+  await assert.rejects(
+    asUser(ADMIN, () => replacePanelTunnelToken("cf-weak-token")),
+    /Cloudflare Tunnel: Edit/,
+  );
+  assert.equal(await savedToken(), API_TOKEN);
+});
+
+test("a token that may read the tunnel but not change it is not kept", async () => {
+  await turnOn();
+  cf.failNext = {
+    match: /^PUT .*\/configurations/,
+    status: 403,
+    message: "Authentication error",
+  };
+  await assert.rejects(
+    asUser(ADMIN, () => replacePanelTunnelToken("cf-read-only")),
+    /kept the token it had/,
+  );
+  assert.equal(await savedToken(), API_TOKEN);
+});
+
+test("only an instance admin can give the tunnel a new token", async () => {
+  await turnOn();
+  await assert.rejects(
+    asUser(MEMBER, () => replacePanelTunnelToken("cf-new-token")),
+    /admin/i,
+  );
+  assert.equal(await savedToken(), API_TOKEN);
 });

@@ -12,6 +12,8 @@ export interface Cluster {
   leaderTakeoverAt: string | null;
   /** The last leader event applied; a reconnect replays from here. */
   eventSeq: number;
+  /** Off: the cluster moves nothing to another server when one stops. */
+  failoverEnabled: boolean;
   createdAt: string;
 }
 
@@ -41,6 +43,8 @@ export interface ClusterLeader {
   updateMessage: string;
   /** One plain sentence while servers may not reach the relay on Deplo's machine; empty otherwise. */
   relayMessage: string;
+  /** The relay's trouble is a Cloudflare token Deplo has to be given again. Not in the API. */
+  relayNeedsToken?: boolean;
   /** The warning shown while Deplo's own server is a member and the leader runs on it; empty otherwise. */
   ownServerWarning: string;
 }
@@ -62,8 +66,8 @@ export interface ClusterLeaderChoice {
 /** Failover needs somewhere to move an App to, so it starts at two members. */
 export const FAILOVER_MIN_MEMBERS = 2;
 
-export function failoverOn(memberCount: number): boolean {
-  return memberCount >= FAILOVER_MIN_MEMBERS;
+export function failoverOn(memberCount: number, enabled = true): boolean {
+  return enabled && memberCount >= FAILOVER_MIN_MEMBERS;
 }
 
 const ARCH_WORDS: Record<string, string> = { amd64: "x86", arm64: "ARM" };

@@ -18,6 +18,7 @@ import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
 import { settleProvisioningMembers } from "./member-ready";
 import { getClusterById } from "./roster";
+import { refreshAllClusterWarnings } from "./warnings";
 import { runClusterWatch } from "./watch";
 import { messageOf } from "../../utils";
 
@@ -28,6 +29,7 @@ const TICK_MS = 15_000;
 const CHANGE_LOG_EVERY_MS = 60_000;
 const ROLLOUT_EVERY_MS = 60_000;
 const IMAGES_EVERY_MS = 2 * 60_000;
+const WARNINGS_EVERY_MS = 30_000;
 // Renewed every tick: a Deplo that died without letting go must not leave failover off for the usual 2h.
 export const CLUSTER_WATCH_STALE_MS = 5 * 60_000;
 
@@ -45,6 +47,9 @@ interface State {
   rolledAt?: number;
   /** When failed or missing image copies were last retried. */
   imagesAt?: number;
+  /** When the clusters' warnings were last worked out, and whether a pass still runs. */
+  warningsAt?: number;
+  warning?: boolean;
   /** Whether this Deplo held the watch lease at its last tick: only that one names the leaders. */
   holds?: boolean;
   beatTimer?: ReturnType<typeof setInterval> | null;
@@ -139,6 +144,17 @@ export async function runClusterWatchTick(): Promise<void> {
         console.error("[cluster-images] retrying copies failed:", e),
       );
     }
+    // The Servers page reads what this stored, so it never waits on a leader.
+    if (
+      !state.warning &&
+      Date.now() - (state.warningsAt ?? 0) >= WARNINGS_EVERY_MS
+    ) {
+      state.warningsAt = Date.now();
+      state.warning = true;
+      void refreshAllClusterWarnings()
+        .catch((e) => console.error("[cluster-warnings] pass failed:", e))
+        .finally(() => (state.warning = false));
+    }
     if (Date.now() - (state.rolledAt ?? 0) >= ROLLOUT_EVERY_MS) {
       state.rolledAt = Date.now();
       void runClusterRollout().catch((e) =>
@@ -190,6 +206,8 @@ export function __resetClusterWatchForTest(): void {
   state.changeLogAt = 0;
   state.rolledAt = 0;
   state.imagesAt = 0;
+  state.warningsAt = 0;
+  state.warning = false;
   state.holds = false;
   if (state.timer) clearInterval(state.timer);
   state.timer = null;

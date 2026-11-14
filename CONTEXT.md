@@ -894,7 +894,8 @@ A **cluster** moving an App, unasked, off a member that has gone **offline** and
 member, so its domains answer again. The automatic twin of a **server move**: nobody clicks
 anything, and the move is recorded in **Activity** like any other. An App on a server outside a
 cluster never fails over. On a cluster that mixes ARM and x86 servers a failover stays among the
-servers the App's image runs on.
+servers the App's image runs on. It is on by default and an admin can turn it off per cluster;
+off, everything waits for its own server to come back.
 _Avoid_: automatic server move, migration (that is moving off another platform), restart (the
 App stays on a server that is still up).
 

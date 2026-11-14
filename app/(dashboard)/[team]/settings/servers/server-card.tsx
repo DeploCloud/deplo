@@ -6,7 +6,7 @@ import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import {
   ArrowRightFromLine,
-  Cpu,
+  Crown,
   MoreHorizontal,
   Network,
   Play,
@@ -35,6 +35,7 @@ import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { DeploMark } from "@/components/logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import type { ListView } from "@/components/shared/view-toggle";
+import type { LeaderOption } from "@/components/servers/cluster-actions";
 import type { ServerMemberState } from "@/components/servers/cluster-join";
 import {
   CANCEL_MEMBER_REMOVAL,
@@ -52,13 +53,6 @@ import {
   type ServerHealthState,
 } from "./server-health-provider";
 
-export type ServerSpecs = {
-  cpuCores: number;
-  memoryMb: number;
-  diskGb: number;
-  dockerVersion: string;
-};
-
 export type ServerCardData = ServerFilterFields & {
   id: string;
   name: string;
@@ -70,54 +64,21 @@ export type ServerCardData = ServerFilterFields & {
   reach: AgentReach;
   health: ServerHealthState;
   advice: string;
-  specs: Promise<ServerSpecs>;
   uninstallPending: boolean;
   uninstallError: string | null;
   cluster: { id: string; name: string; servers: number } | null;
   member: ServerMemberState | null;
+  /** The cluster's leader runs on this server. */
+  leader: boolean;
 };
 
 /** A cluster this server could be moved into, with what stops it. */
 export type MoveTarget = { id: string; name: string; blocked: string };
 
-// True whether the server is gone or its leader hears too few servers to keep it going.
-export const FENCED_NOTE =
-  "This server stopped its databases and Apps with files, so none of them can run twice.";
-
-const LEASE_BADGE = {
-  not_responding: { label: "Not responding", variant: "warning" },
-  fenced: { label: "Not responding", variant: "destructive" },
-} as const;
-
 const EMPTYING_BADGE = {
   removing: { label: "Removing", variant: "warning" },
   stopped: { label: "Removal stopped", variant: "destructive" },
 } as const;
-
-/** "4 cores · 16 GB RAM · 160 GB disk · Docker 29.0.1", leaving out what was not measured. */
-export function specsLine(s: ServerSpecs): string {
-  const ramGb = s.memoryMb ? Math.round(s.memoryMb / 1024) : 0;
-  return [
-    s.cpuCores > 0 && `${s.cpuCores} ${s.cpuCores === 1 ? "core" : "cores"}`,
-    ramGb > 0 && `${ramGb} GB RAM`,
-    s.diskGb > 0 && `${s.diskGb} GB disk`,
-    s.dockerVersion && `Docker ${s.dockerVersion}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function Specs({ specs }: { specs: Promise<ServerSpecs> }) {
-  return specsLine(React.use(specs)) || "Not measured yet";
-}
-
-function SpecsText({ specs }: { specs: Promise<ServerSpecs> }) {
-  return (
-    <React.Suspense fallback={<Bone>4 cores · 16 GB RAM · 160 GB disk</Bone>}>
-      <Specs specs={specs} />
-    </React.Suspense>
-  );
-}
 
 function ServerStatus({ server }: { server: ServerCardData }) {
   if (server.member?.provisioning && server.cluster)
@@ -174,14 +135,6 @@ function ServerBadges({
         expected={server.expected}
         reach={server.reach}
       />
-      {m && m.leaseState !== "ok" && (
-        <Badge
-          variant={LEASE_BADGE[m.leaseState].variant}
-          title={m.leaseState === "fenced" ? FENCED_NOTE : undefined}
-        >
-          {LEASE_BADGE[m.leaseState].label}
-        </Badge>
-      )}
       {m && m.emptying !== "idle" && (
         <Badge
           variant={EMPTYING_BADGE[m.emptying].variant}
@@ -202,8 +155,11 @@ export function ServerCard({
   dragHandle,
   dragActive = false,
   busy = false,
+  leaderChoices = [],
+  deploMachineOutside = false,
   onJoin,
   onRemove,
+  onMakeLeader,
 }: {
   server: ServerCardData;
   view?: ListView;
@@ -215,14 +171,26 @@ export function ServerCard({
   dragActive?: boolean;
   /** A move is on its way: the card waits for it. */
   busy?: boolean;
+  /** Where the cluster's leader may run; empty outside a cluster. */
+  leaderChoices?: LeaderOption[];
+  /** Deplo's own machine is no server of this cluster, so only the leader's menu offers it. */
+  deploMachineOutside?: boolean;
   onJoin?: (clusterId: string) => void;
   onRemove?: () => void;
+  onMakeLeader?: (choice: LeaderOption) => void;
 }) {
   const router = useRouter();
   const { checkOne, isChecking } = useServerHealth();
   const [pending, startTransition] = React.useTransition();
   const href = `/settings/servers/${server.id}`;
   const m = server.member;
+  const makeLeader = server.leader
+    ? undefined
+    : leaderChoices.find((c) => c.serverId === server.id && !c.current);
+  const leaderBack =
+    server.leader && deploMachineOutside
+      ? leaderChoices.find((c) => c.onDeploHost && !c.current)
+      : undefined;
 
   const member = (query: string, extra: Record<string, unknown> = {}) =>
     startTransition(async () => {
@@ -237,6 +205,14 @@ export function ServerCard({
 
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+      {server.leader && (
+        <SimpleTooltip content="The cluster's leader runs here: it decides where each App runs and moves them when a server stops.">
+          <Badge variant="muted" className="gap-1">
+            <Crown className="size-3" />
+            Leader
+          </Badge>
+        </SimpleTooltip>
+      )}
       <ServerStatus server={server} />
       {dragHandle && (
         <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
@@ -315,6 +291,40 @@ export function ServerCard({
             {m && server.cluster && (
               <>
                 <DropdownMenuSeparator />
+                {makeLeader && (
+                  <SimpleTooltip
+                    content={
+                      makeLeader.blocked ||
+                      "Run the cluster's leader on this server"
+                    }
+                    side="left"
+                  >
+                    <DropdownMenuItem
+                      disabled={Boolean(makeLeader.blocked)}
+                      onSelect={() => onMakeLeader?.(makeLeader)}
+                    >
+                      <Crown className="size-4" />
+                      Make leader
+                    </DropdownMenuItem>
+                  </SimpleTooltip>
+                )}
+                {leaderBack && (
+                  <SimpleTooltip
+                    content={
+                      leaderBack.blocked ||
+                      "Run the cluster's leader on Deplo's own machine again"
+                    }
+                    side="left"
+                  >
+                    <DropdownMenuItem
+                      disabled={Boolean(leaderBack.blocked)}
+                      onSelect={() => onMakeLeader?.(leaderBack)}
+                    >
+                      <Crown className="size-4" />
+                      Move leader to Deplo&apos;s machine
+                    </DropdownMenuItem>
+                  </SimpleTooltip>
+                )}
                 {m.emptying === "stopped" && (
                   <DropdownMenuItem
                     disabled={pending}
@@ -388,7 +398,6 @@ export function ServerCard({
     server.uninstallPending && "Deplo is removing its agent from this machine.",
     server.uninstallError &&
       `Deplo could not remove its agent: ${server.uninstallError}`,
-    m?.leaseState === "fenced" && FENCED_NOTE,
     m?.progress,
     m?.error,
   ].filter((n): n is string => Boolean(n));
@@ -400,9 +409,6 @@ export function ServerCard({
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
           {tile}
           {identity}
-          <span className="hidden max-w-72 truncate text-xs text-muted-foreground md:inline">
-            <SpecsText specs={server.specs} />
-          </span>
           <div className="hidden items-center gap-1.5 lg:flex [&>*]:pointer-events-auto">
             <ServerBadges server={server} showCluster={showCluster} />
           </div>
@@ -421,13 +427,7 @@ export function ServerCard({
             {actions}
           </div>
           <div className="rounded-lg border border-border bg-surface p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Cpu className="size-3 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">
-                <SpecsText specs={server.specs} />
-              </span>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 [&>*]:pointer-events-auto">
+            <div className="flex flex-wrap items-center gap-1.5 [&>*]:pointer-events-auto">
               <ServerBadges server={server} showCluster={showCluster} />
             </div>
             {notes.map((note) => (
@@ -483,12 +483,7 @@ export function ServerCardSkeleton() {
           </div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="min-w-0 flex-1 truncate">
-              <Bone>4 cores · 16 GB RAM · 160 GB disk</Bone>
-            </span>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Bone box>
               <ServerUseBadge use="everything" />
             </Bone>

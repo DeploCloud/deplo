@@ -217,7 +217,10 @@ export async function getClusterDeletion(
         .orderBy(teamsTable.name)
     : [];
   return {
-    failoverOn: failoverOn((await clusterMemberServerIds(clusterId)).length),
+    failoverOn: failoverOn(
+      (await clusterMemberServerIds(clusterId)).length,
+      cluster.failoverEnabled,
+    ),
     workloads: held
       .filter((w) => w.teamId === teamId)
       .map((w) => ({
@@ -630,7 +633,7 @@ export async function deleteCluster(clusterId: string): Promise<void> {
   await endStandbys(held);
   await leaveTunnels(held, user);
 
-  const failover = failoverOn(members.length);
+  const failover = failoverOn(members.length, cluster.failoverEnabled);
   const mine = held.filter((w) => w.teamId === teamId);
   await recordActivity(
     "server",

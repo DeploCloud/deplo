@@ -5,6 +5,7 @@ const CLUSTER_FIELDS = /* GraphQL */ `
   id
   name
   allTeams
+  failoverEnabled
   leaderEpoch
   createdAt
 `;
