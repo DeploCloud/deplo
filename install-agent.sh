@@ -1402,6 +1402,139 @@ fi
 # SAME argv, so it would outlive every upgrade. `Environment=` in the unit is no
 # better: `systemctl show` prints it to unprivileged callers. A 0600 file read by
 # systemd leaks through neither, and `/proc/<pid>/environ` is owner-only.
+# ------------------------------------------------------------------------------
+# A local DNS cache (CoreDNS) so container lookups are answered from cache instead
+# of hammering the upstream resolvers on every name. see
+# https://deplo.build/docs/guides/networking/dns-cache
+# Only where we can own /etc/resolv.conf as a plain file: on a systemd-resolved or
+# resolvconf host the file Docker reads is a loopback stub it discards for
+# containers (they fall back to 8.8.8.8 and bypass the cache), so there we skip.
+# ------------------------------------------------------------------------------
+dns_cache_ownable() {
+  [ ! -L /etc/resolv.conf ] \
+    && ! systemctl is-active --quiet systemd-resolved 2>/dev/null \
+    && [ ! -d /etc/resolvconf/resolv.conf.d ]
+}
+
+configure_dns_cache() {
+  local image="coredns/coredns:1.15.0"
+  local iface="deplo-dns0" ip="10.201.0.1"
+  local ifup="/usr/local/sbin/deplo-dns-iface"
+  local unit="/etc/systemd/system/deplo-dns-iface.service"
+  local dir="$AGENT_DATA/dns-cache"
+
+  [ "$IMPORT_ONLY" = "1" ] && { skip "Migration source: leaving its DNS untouched"; return 0; }
+  command -v docker >/dev/null 2>&1 || { skip "No Docker: skipping the DNS cache"; return 0; }
+  if [ "$IPV6_ONLY" = true ]; then
+    note "DNS cache skipped on this IPv6-only host (its resolvers run through NAT64)."
+    return 0
+  fi
+  if ! dns_cache_ownable; then
+    note "DNS cache skipped: /etc/resolv.conf here is managed (systemd-resolved/resolvconf)."
+    return 0
+  fi
+
+  # Forward to the resolvers the host uses now - read from the pre-cache backup on
+  # a re-run so we never forward the cache to itself.
+  local src=/etc/resolv.conf up
+  [ -e /etc/resolv.conf.deplo-bak ] && src=/etc/resolv.conf.deplo-bak
+  up="$(awk '/^nameserver/{print $2}' "$src" 2>/dev/null \
+        | grep -vE '^(10\.201\.0\.1|127\.|::1)' | tr '\n' ' ')"
+  [ -n "$up" ] || up="1.1.1.1 8.8.8.8"
+
+  spin_start "Starting a local DNS cache"
+
+  # A dedicated non-loopback address, up before Docker so the cache can bind it.
+  cat > "$ifup" <<SH
+#!/bin/sh
+ip link show $iface >/dev/null 2>&1 || ip link add $iface type dummy
+ip addr show $iface 2>/dev/null | grep -q '$ip/24' || ip addr add $ip/24 dev $iface
+ip link set $iface up
+SH
+  chmod 0755 "$ifup"
+  cat > "$unit" <<UNIT
+[Unit]
+Description=Deplo DNS cache address ($ip)
+Before=docker.service
+Wants=network-pre.target
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=$ifup
+ExecStop=/sbin/ip link del $iface
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload >&9 2>&9 || true
+  systemctl enable --now deplo-dns-iface >&9 2>&9 || sh "$ifup" >&9 2>&9 || true
+
+  mkdir -p "$dir"
+  cat > "$dir/Corefile" <<CORE
+.:53 {
+    cache {
+        success 10000
+        denial 2000
+    }
+    forward . $up
+    loop
+    errors
+}
+CORE
+  cat > "$dir/docker-compose.yml" <<YAML
+services:
+  coredns:
+    image: $image
+    container_name: deplo-dns-cache
+    restart: unless-stopped
+    command: ["-conf", "/etc/coredns/Corefile"]
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    volumes:
+      - $dir/Corefile:/etc/coredns/Corefile:ro
+    ports:
+      - "$ip:53:53/udp"
+      - "$ip:53:53/tcp"
+YAML
+  if ! { docker compose -f "$dir/docker-compose.yml" up -d >&9 2>&9 </dev/null \
+      || docker-compose -f "$dir/docker-compose.yml" up -d >&9 2>&9 </dev/null; }; then
+    spin_err "DNS cache did not start - DNS left as it was"
+    return 0
+  fi
+
+  # Point the host at the cache, keeping the pre-cache file as .deplo-bak (uninstall
+  # restores it). Verify, and on failure put the resolvers straight back.
+  [ -e /etc/resolv.conf.deplo-bak ] || cp -P /etc/resolv.conf /etc/resolv.conf.deplo-bak
+  printf 'nameserver %s\n' "$ip" > /etc/resolv.conf
+  local i=0 served=false
+  while [ "$i" -lt 5 ]; do
+    if getent hosts ghcr.io >/dev/null 2>&1 || getent hosts github.com >/dev/null 2>&1; then
+      served=true; break
+    fi
+    i=$((i + 1)); sleep 1
+  done
+  if [ "$served" = true ]; then
+    spin_ok "Local DNS cache serving" "deplo-dns-cache on $ip"
+  else
+    rm -f /etc/resolv.conf
+    mv /etc/resolv.conf.deplo-bak /etc/resolv.conf 2>/dev/null \
+      || printf 'nameserver %s\n' "${up%% *}" > /etc/resolv.conf
+    docker rm -f deplo-dns-cache >&9 2>&9 || true
+    systemctl disable --now deplo-dns-iface >&9 2>&9 || true
+    ip link del "$iface" >&9 2>&9 || true
+    spin_err "DNS cache did not resolve - rolled back to the previous resolvers"
+  fi
+}
+
+phase "DNS cache"
+
+configure_dns_cache
+
 phase "Service"
 
 # mkdir here and not only in the Traefik block above: that one is skipped on a

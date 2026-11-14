@@ -34,7 +34,7 @@ TRAEFIK_DIR="$AGENT_DATA/traefik"
 # label sweep below would miss them): the reverse proxy and the legacy SSH
 # gateway pair (dev mode was removed from Deplo; hosts provisioned before the
 # removal may still carry the two gateway containers, so the sweep stays).
-NAMED_CONTAINERS=(deplo-traefik deplo-ssh-gateway deplo-ssh-gateway-proxy)
+NAMED_CONTAINERS=(deplo-traefik deplo-dns-cache deplo-ssh-gateway deplo-ssh-gateway-proxy)
 
 # The control plane's own containers, named by compose from the directory it
 # lives in: /opt/deplo -> project `deplo`, /opt/deplo/traefik -> project `traefik`.
@@ -531,6 +531,19 @@ if [ -f /etc/systemd/system/deplo-clat.service ]; then
   run rm -f /etc/systemd/system/deplo-clat.service /usr/local/sbin/deplo-clat
   run systemctl daemon-reload
   applied "deplo-clat removed"
+fi
+# The local DNS cache: its container, the address interface + unit, the forward dir.
+# resolv.conf is put back by the .deplo-bak restore just below.
+if [ -f /etc/systemd/system/deplo-dns-iface.service ] \
+  || docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx deplo-dns-cache; then
+  step "Removing the local DNS cache"
+  run docker rm -f deplo-dns-cache 2>/dev/null
+  run systemctl disable --now deplo-dns-iface 2>/dev/null
+  run rm -f /etc/systemd/system/deplo-dns-iface.service /usr/local/sbin/deplo-dns-iface
+  run ip link del deplo-dns0 2>/dev/null
+  run systemctl daemon-reload
+  run rm -rf /var/lib/deplo-agent/dns-cache
+  applied "DNS cache removed"
 fi
 NAT64_LEFT=false
 for f in /etc/systemd/resolved.conf.d/deplo-nat64.conf /etc/resolvconf/resolv.conf.d/head.deplo-bak \
