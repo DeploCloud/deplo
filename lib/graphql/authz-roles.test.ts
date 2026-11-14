@@ -79,7 +79,8 @@ async function callAs(userId: string, doc: string): Promise<string[]> {
   });
 }
 
-const REFUSED = /not authorized|don't have permission/i;
+const REFUSED =
+  /not authorized|don't have permission|with your current team role/i;
 const refused = (m: string[]): boolean => m.some((x) => REFUSED.test(x));
 
 test("a role granting one permission grants exactly that one, for all forty", async () => {
@@ -110,8 +111,11 @@ test("editing a role re-answers the API for everyone holding it, with nothing ca
   await asOwner(() =>
     updateRole({ id: role.id, name: "Deployer", capabilities: ["view_logs"] }),
   );
-  assert.ok(
-    refused(await callAs(USER_M, deploy)),
+  assert.deepEqual(
+    await callAs(USER_M, deploy),
+    [
+      "You can’t redeploy this App with your current team role. Ask a team admin for the Deploy apps capability.",
+    ],
     "dropping the permission from the role must refuse the very next call",
   );
   assert.deepEqual(await effectiveCaps(), ["view", "view_logs"]);

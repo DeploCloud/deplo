@@ -50,6 +50,8 @@ builder.mutationFields((t) => ({
   redeploy: t.field({
     type: DeploymentRef,
     authScopes: { capability: "deploy_apps" },
+    unauthorizedError: () =>
+      "You can’t redeploy this App with your current team role. Ask a team admin for the Deploy apps capability.",
     description:
       "Deploy the app again from the latest commit of its branch. With " +
       "`deploymentId`, the latest commit of that deployment's branch or tag " +

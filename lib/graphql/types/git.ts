@@ -200,6 +200,8 @@ builder.mutationFields((t) => ({
   connectGitProvider: t.field({
     type: GitConnectionRef,
     authScopes: { capability: "manage_git" },
+    unauthorizedError: () =>
+      "You can’t connect a Git provider with your current team role. Ask a team admin for the Manage Git connections capability.",
     description:
       "Store credentials for a git host, after proving the token works against it.",
     args: {
@@ -218,6 +220,8 @@ builder.mutationFields((t) => ({
   updateGitConnection: t.field({
     type: GitConnectionRef,
     authScopes: { capability: "manage_git" },
+    unauthorizedError: () =>
+      "You can’t edit this Git connection with your current team role. Ask a team admin for the Manage Git connections capability.",
     description: "Rename a git connection or rotate its token.",
     args: {
       id: t.arg.string({ required: true }),
@@ -228,6 +232,8 @@ builder.mutationFields((t) => ({
   testGitConnection: t.field({
     type: GitConnectionRef,
     authScopes: { capability: "manage_git" },
+    unauthorizedError: () =>
+      "You can’t test this Git connection with your current team role. Ask a team admin for the Manage Git connections capability.",
     description:
       "Ask the provider who the stored token belongs to and record the answer.",
     args: { id: t.arg.string({ required: true }) },
@@ -236,6 +242,8 @@ builder.mutationFields((t) => ({
   removeGitConnection: t.field({
     type: "Int",
     authScopes: { capability: "manage_git" },
+    unauthorizedError: () =>
+      "You can’t remove this Git connection with your current team role. Ask a team admin for the Manage Git connections capability.",
     description:
       "Disconnect a git provider. Returns how many apps were unlinked (their auto-deploy is turned off).",
     args: { id: t.arg.string({ required: true }) },

@@ -134,6 +134,8 @@ builder.mutationFields((t) => ({
   setMemberAccess: t.field({
     type: [UserTeamAccessRef],
     authScopes: { capability: "manage_members" },
+    unauthorizedError: () =>
+      "You can’t change this team member’s access with your current team role. Ask a team admin for the Manage members capability.",
     description:
       "Set one member's role and per-node overrides in the ACTIVE team. The team is the caller's own - there is no id to pass, which is what keeps it from reaching another one.",
     args: { input: t.arg({ type: SetMemberAccessInputType, required: true }) },

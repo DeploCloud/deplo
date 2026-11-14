@@ -42,7 +42,7 @@ export async function gql(
 }
 
 const REFUSAL =
-  /permission|not found|not authorized|unauthorized|can't|cannot|only |limited to|part of this team|not a member|no longer belongs|two-factor|hold yourself|isn't in this team|no active team/i;
+  /permission|not found|not authorized|unauthorized|can['’]t|cannot|only |limited to|part of this team|not a member|no longer belongs|two-factor|hold yourself|isn't in this team|no active team/i;
 
 export type Verdict = "allowed" | "refused" | "blocked";
 
