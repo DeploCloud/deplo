@@ -25,7 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
+import { comesAlong, type ClusterJoinOption } from "./cluster-join";
 import {
   ServerTeamAccess,
   accessIsComplete,
@@ -38,11 +40,14 @@ export function ClusterActions({
   teams,
   open,
   onOpenChange: setOpen,
+  trigger = true,
 }: {
   cluster: { id: string; name: string; allTeams: boolean; teamIds: string[] };
   teams: TeamOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // A card's menu opens it instead.
+  trigger?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -97,12 +102,14 @@ export function ClusterActions({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Settings2 className="size-4" />
-          Manage
-        </Button>
-      </DialogTrigger>
+      {trigger && (
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm">
+            <Settings2 className="size-4" />
+            Manage
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Manage cluster</DialogTitle>
@@ -336,19 +343,87 @@ export function MoveLeaderButton({
   );
 }
 
-export type JoinOption = {
-  serverId: string;
-  serverName: string;
-  /** The first thing that stops it joining; empty when it can. */
-  blocked: string;
-};
+const ADD_MEMBER = /* GraphQL */ `
+  mutation AddClusterMember($clusterId: String!, $serverId: String!) {
+    addClusterMember(clusterId: $clusterId, serverId: $serverId) {
+      note
+    }
+  }
+`;
+
+/** Puts a server in a cluster; the note is the one line the cluster has to say about its new size. */
+export async function joinCluster(clusterId: string, serverId: string) {
+  return gqlAction<
+    { addClusterMember: { note: string | null } },
+    string | null
+  >(ADD_MEMBER, { clusterId, serverId }, (d) => d.addClusterMember.note);
+}
+
+// What joining does to a server that already runs something. Shown before the join, never after.
+export function JoinsWith({
+  option,
+  clusterName,
+}: {
+  option: ClusterJoinOption;
+  clusterName: string;
+}) {
+  const what = comesAlong(option.apps, option.databases);
+  if (!what) return null;
+  return (
+    <p className="text-sm text-muted-foreground">
+      {what} on {option.serverName} move into {clusterName} with it. They keep
+      running, and from then on the cluster decides where.
+    </p>
+  );
+}
+
+/** Asked before a server that runs something joins: its Apps and databases move into the cluster with it. */
+export function JoinClusterConfirm({
+  open,
+  onOpenChange,
+  option,
+  cluster,
+  onJoin,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  option: ClusterJoinOption;
+  cluster: { id: string; name: string };
+  onJoin: () => ReturnType<typeof joinCluster>;
+}) {
+  return (
+    <ConfirmAction
+      open={open}
+      onOpenChange={onOpenChange}
+      variant="default"
+      title={`Move ${option.serverName} into ${cluster.name}?`}
+      description={
+        <>
+          <strong>{comesAlong(option.apps, option.databases)}</strong> on it
+          move into the cluster too. <DocsLink topic="clusters.overview" />
+        </>
+      }
+      extra={
+        <p className="text-sm text-muted-foreground">
+          They keep running without a restart. From then on {cluster.name}{" "}
+          decides where they run, and nothing is placed on {option.serverName}{" "}
+          directly.
+        </p>
+      }
+      confirmLabel="Move"
+      onConfirm={onJoin}
+    />
+  );
+}
 
 export function JoinClusterButton({
   clusterId,
+  clusterName,
   options,
 }: {
   clusterId: string;
-  options: JoinOption[];
+  clusterName: string;
+  options: ClusterJoinOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -359,20 +434,9 @@ export function JoinClusterButton({
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
-      const res = await gqlAction<{
-        addClusterMember: { note: string | null };
-      }>(
-        /* GraphQL */ `
-          mutation AddClusterMember($clusterId: String!, $serverId: String!) {
-            addClusterMember(clusterId: $clusterId, serverId: $serverId) {
-              note
-            }
-          }
-        `,
-        { clusterId, serverId },
-      );
+      const res = await joinCluster(clusterId, serverId);
       if (!res.ok) return void toast.error(res.error);
-      toast.success(res.data?.addClusterMember.note ?? "Server added");
+      toast.success(res.data ?? "Server added");
       setOpen(false);
       setServerId("");
       router.refresh();
@@ -406,6 +470,7 @@ export function JoinClusterButton({
               hint: o.blocked,
             }))}
           />
+          {chosen && <JoinsWith option={chosen} clusterName={clusterName} />}
           <DialogFooter>
             <Button
               variant="outline"

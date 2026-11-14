@@ -1,35 +1,22 @@
 import { notFound } from "next/navigation";
-import Link from "@/components/ui/link";
-import { Suspense } from "react";
-import {
-  Server as ServerIcon,
-  Cpu,
-  MemoryStick,
-  HardDrive,
-  Boxes,
-  Settings2,
-} from "lucide-react";
+import { Server as ServerIcon } from "lucide-react";
 
+import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
-import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
-import { ClusterCard } from "@/components/servers/cluster-card";
+import type { ClusterCardData } from "@/components/servers/cluster-card";
 import {
-  ServerUseBadge,
-  serverUse,
-} from "@/components/servers/server-role-badge";
-import {
-  ServersList,
-  type ServerListItem,
-} from "@/components/servers/servers-list";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { TableCell, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/shared/copy-button";
+  memberState,
+  type ClusterJoinOption,
+} from "@/components/servers/cluster-join";
+import { ClusterPanel } from "@/components/servers/cluster-panel";
+import { serverUse } from "@/components/servers/server-role-badge";
 import { listAllServers } from "@/lib/data/servers/roster";
 import { listAllServerTeamIds } from "@/lib/data/servers/team-access";
+import {
+  listClusterJoinCandidates,
+  listClusterMembers,
+} from "@/lib/data/clusters/members";
 import {
   listAllClusterTeamIds,
   listAllClusters,
@@ -41,6 +28,7 @@ import {
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
+import { failoverOn } from "@/lib/types/cluster";
 import { serverLabel } from "@/lib/utils";
 import {
   AGENT_VERSION,
@@ -51,263 +39,44 @@ import {
 import { offlineAdvice } from "@/lib/data/server-health";
 import type { Server } from "@/lib/types/server";
 import type { TeamOption } from "@/components/servers/server-team-access";
-import { AgentVersionBadge } from "./agent-version-badge";
-import { ServerHealthChip } from "./server-health-chip";
-import { ServerTraefikBadge } from "./server-traefik-badge";
-import { ServersHeader, Spec, SpecTilesSkeleton } from "./servers-shell";
+import type { ServerCardData, ServerSpecs } from "./server-card";
+import { ServersGrid } from "./servers-grid";
+import { ServersHeader } from "./servers-shell";
 import {
   ServerHealthProvider,
   type ServerHealthState,
 } from "./server-health-provider";
-import {
-  CheckStatusButton,
-  RefreshFleetButton,
-  ServerRowActions,
-} from "./check-status-button";
+import { RefreshFleetButton } from "./check-status-button";
 
 export const metadata = { title: "Servers" };
 
-async function SpecTiles({ specs }: { specs: Promise<Server> }) {
-  const server = await specs;
-  const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
-  const num = (n: number) => (n > 0 ? String(n) : "—");
-  return (
-    <>
-      <Spec
-        icon={Cpu}
-        label="CPU"
-        value={num(server.cpuCores)}
-        unit={server.cpuCores === 1 ? "core" : "cores"}
-      />
-      <Spec
-        icon={MemoryStick}
-        label="Memory"
-        value={num(ramGb)}
-        unit="GB RAM"
-      />
-      <Spec
-        icon={HardDrive}
-        label="Disk"
-        value={num(server.diskGb)}
-        unit="GB"
-      />
-      <Spec
-        icon={Boxes}
-        label="Docker"
-        value={server.dockerVersion || "—"}
-        unit="engine"
-      />
-    </>
-  );
-}
+const first = (v: string | string[] | undefined) =>
+  Array.isArray(v) ? v[0] : v;
 
-function ServerCard({
-  server,
-  specs,
-  accessTeamIds,
-  isDeploHost,
-  expected,
-  reach,
-  advice,
-}: {
-  server: Server;
-  specs: Promise<Server>;
-  accessTeamIds: string[];
-  isDeploHost: boolean;
-  expected: string;
-  reach: AgentReach;
-  advice: string;
-}) {
-  const agentVersion = reportedAgentVersion(server);
-  const accessLabel = server.allTeams
-    ? "All teams"
-    : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`;
-  return (
-    <Card className="transition-colors hover:border-foreground/20">
-      <CardHeader className="space-y-3">
-        <div className="flex items-start gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <CardTitle className="min-w-0 truncate" title={serverLabel(server)}>
-              {serverLabel(server)}
-            </CardTitle>
-            <ServerHealthChip
-              serverId={server.id}
-              fallback={{
-                status: server.status,
-                checkedAt: server.statusCheckedAt ?? null,
-                message: server.statusMessage ?? null,
-                traefikEnabled: server.traefikEnabled,
-                lastReachedAt: server.lastSeenAt ?? null,
-              }}
-              offlineAdvice={advice}
-            />
-            {isDeploHost && (
-              <Badge
-                className="shrink-0 gap-1"
-                title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
-              >
-                <DeploMark size={12} className="text-current" />
-                Deplo host
-              </Badge>
-            )}
-            <ServerUseBadge use={serverUse(server)} />
-            <Badge
-              variant="muted"
-              title="Which teams can deploy to this server"
-            >
-              {accessLabel}
-            </Badge>
-          </div>
-          <ServerRowActions
-            serverId={server.id}
-            serverName={serverLabel(server)}
-          >
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              <CheckStatusButton
-                serverId={server.id}
-                serverName={serverLabel(server)}
-              />
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/settings/servers/${server.id}`}>
-                  <Settings2 className="size-4" />
-                  Manage
-                </Link>
-              </Button>
-            </div>
-          </ServerRowActions>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-          <span className="flex items-center gap-0.5">
-            <span className="font-mono text-muted-foreground">{server.ip}</span>
-            <CopyButton value={server.ip} className="size-6" />
-          </span>
-          <AgentVersionBadge
-            version={agentVersion}
-            expected={expected}
-            reach={reach}
-          />
-        </div>
-        {server.uninstallPending && (
-          <p className="text-xs text-muted-foreground">
-            Deplo is removing its agent from this machine.
-          </p>
-        )}
-        {server.uninstallError && (
-          <p className="text-xs text-[var(--warning)]">
-            Deplo could not remove its agent: {server.uninstallError}
-          </p>
-        )}
-      </CardHeader>
-      {!server.importOnly && (
-        <CardContent>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Suspense fallback={<SpecTilesSkeleton />}>
-              <SpecTiles specs={specs} />
-            </Suspense>
-          </div>
-        </CardContent>
-      )}
-    </Card>
-  );
-}
+const healthOf = (s: Server): ServerHealthState => ({
+  status: s.status,
+  checkedAt: s.statusCheckedAt ?? null,
+  message: s.statusMessage ?? null,
+  traefikEnabled: s.traefikEnabled,
+  lastReachedAt: s.lastSeenAt ?? null,
+});
 
-function ServerListRow({
-  server,
-  accessTeamIds,
-  isDeploHost,
-  expected,
-  reach,
-  advice,
-}: {
-  server: Server;
-  accessTeamIds: string[];
-  isDeploHost: boolean;
-  expected: string;
-  reach: AgentReach;
-  advice: string;
-}) {
-  const health = {
-    status: server.status,
-    checkedAt: server.statusCheckedAt ?? null,
-    message: server.statusMessage ?? null,
-    traefikEnabled: server.traefikEnabled,
-    lastReachedAt: server.lastSeenAt ?? null,
-  };
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <span className="truncate font-medium">{serverLabel(server)}</span>
-          {isDeploHost && (
-            <Badge className="shrink-0 gap-1">
-              <DeploMark size={12} className="text-current" />
-              Deplo host
-            </Badge>
-          )}
-        </div>
-        <span className="font-mono text-xs text-muted-foreground">
-          {server.ip}
-        </span>
-      </TableCell>
-      <TableCell>
-        <ServerHealthChip
-          serverId={server.id}
-          fallback={health}
-          offlineAdvice={advice}
-        />
-      </TableCell>
-      <TableCell>
-        <ServerUseBadge use={serverUse(server)} />
-      </TableCell>
-      <TableCell>
-        {serverUse(server) === "everything" ? (
-          <ServerTraefikBadge serverId={server.id} fallback={health} />
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-      <TableCell>
-        <AgentVersionBadge
-          version={reportedAgentVersion(server)}
-          expected={expected}
-          reach={reach}
-        />
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {server.allTeams
-          ? "All teams"
-          : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`}
-      </TableCell>
-      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
-        <ServerRowActions serverId={server.id} serverName={serverLabel(server)}>
-          <div className="flex items-center justify-end gap-1">
-            <CheckStatusButton
-              serverId={server.id}
-              serverName={serverLabel(server)}
-            />
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/settings/servers/${server.id}`}>
-                <Settings2 className="size-4" />
-                Manage
-              </Link>
-            </Button>
-          </div>
-        </ServerRowActions>
-      </TableCell>
-    </TableRow>
-  );
-}
+const specsOf = (s: Server): ServerSpecs => ({
+  cpuCores: s.cpuCores,
+  memoryMb: s.memoryMb,
+  diskGb: s.diskGb,
+  dockerVersion: s.dockerVersion ?? "",
+});
 
 export default async function ServersPage(
   props: PageProps<"/[team]/settings/servers">,
 ) {
   if (!(await isInstanceAdmin())) notFound();
 
-  const { new: newParam } = await props.searchParams;
-  const autoOpenServer =
-    (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
+  const params = await props.searchParams;
+  const autoOpenServer = first(params.new) === "1";
+  const view = first(params.view) === "list" ? "list" : "grid";
 
-  const expected = AGENT_VERSION;
   const [serversRaw, serverTeamIds, teamsRaw, clusters, clusterTeamIds] =
     await Promise.all([
       listAllServers().then((all) => all.filter((s) => !s.importOnly)),
@@ -320,9 +89,10 @@ export default async function ServersPage(
     .catch(() => serversRaw)
     .then((list) => new Map(list.map((s) => [s.id, s])));
   const specsFor = (server: Server) =>
-    server.cpuCores > 0
+    (server.cpuCores > 0
       ? Promise.resolve(server)
-      : measured.then((m) => m.get(server.id) ?? server);
+      : measured.then((m) => m.get(server.id) ?? server)
+    ).then(specsOf);
   const teams: TeamOption[] = teamsRaw.map((t) => ({
     id: t.id,
     name: t.name,
@@ -334,6 +104,31 @@ export default async function ServersPage(
     (a, b) =>
       Number(isDeploHostServer(b, selfAddrs)) -
       Number(isDeploHostServer(a, selfAddrs)),
+  );
+
+  const clusterRows = await Promise.all(
+    clusters.map(async (cluster) => {
+      const [members, candidates] = await Promise.all([
+        listClusterMembers(cluster.id),
+        listClusterJoinCandidates(cluster.id),
+      ]);
+      const joinOptions: ClusterJoinOption[] = candidates.map((c) => ({
+        serverId: c.serverId,
+        serverName: c.serverName,
+        blocked: c.reasons[0]?.message ?? "",
+        apps: c.apps,
+        databases: c.databases,
+      }));
+      return { cluster, members, joinOptions };
+    }),
+  );
+  const memberOf = new Map(
+    clusterRows.flatMap(({ cluster, members }) =>
+      members.map((m, order) => [
+        m.serverId,
+        { cluster, member: m, order, servers: members.length },
+      ]),
+    ),
   );
 
   // Nothing to refuse until its agent has enrolled.
@@ -351,55 +146,72 @@ export default async function ServersPage(
       { slug: t.slug, name: t.name, avatarUrl: t.avatarUrl },
     ]),
   );
-  const items: ServerListItem[] = servers.map((server) => ({
-    id: server.id,
-    search: [server.name, server.host, server.ip].join(" ").toLowerCase(),
-    use: serverUse(server),
-    teams: server.allTeams
-      ? [...teamRefs.values()]
-      : (serverTeamIds.get(server.id) ?? []).flatMap((id) => {
-          const t = teamRefs.get(id);
-          return t ? [t] : [];
-        }),
-    card: (
-      <ServerCard
-        server={server}
-        specs={specsFor(server)}
-        accessTeamIds={serverTeamIds.get(server.id) ?? []}
-        isDeploHost={isDeploHostServer(server, selfAddrs)}
-        expected={expected}
-        reach={reachOf(server)}
-        advice={advice.get(server.id)!}
-      />
-    ),
-    row: (
-      <ServerListRow
-        server={server}
-        accessTeamIds={serverTeamIds.get(server.id) ?? []}
-        isDeploHost={isDeploHostServer(server, selfAddrs)}
-        expected={expected}
-        reach={reachOf(server)}
-        advice={advice.get(server.id)!}
-      />
-    ),
-  }));
+  const cards: ServerCardData[] = servers.map((server) => {
+    const accessTeamIds = serverTeamIds.get(server.id) ?? [];
+    const held = memberOf.get(server.id);
+    return {
+      id: server.id,
+      name: serverLabel(server),
+      ip: server.ip,
+      search: [server.name, server.host, server.ip].join(" ").toLowerCase(),
+      use: serverUse(server),
+      teams: server.allTeams
+        ? [...teamRefs.values()]
+        : accessTeamIds.flatMap((id) => {
+            const t = teamRefs.get(id);
+            return t ? [t] : [];
+          }),
+      isDeploHost: isDeploHostServer(server, selfAddrs),
+      accessLabel: server.allTeams
+        ? "All teams"
+        : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`,
+      agentVersion: reportedAgentVersion(server),
+      expected: AGENT_VERSION,
+      reach: reachOf(server),
+      health: healthOf(server),
+      advice: advice.get(server.id)!,
+      specs: specsFor(server),
+      uninstallPending: Boolean(server.uninstallPending),
+      uninstallError: server.uninstallError ?? null,
+      cluster: held
+        ? {
+            id: held.cluster.id,
+            name: held.cluster.name,
+            servers: held.servers,
+          }
+        : null,
+      member: held ? memberState(held.member) : null,
+    };
+  });
+
+  const open =
+    clusterRows.find((r) => r.cluster.id === first(params.cluster)) ?? null;
+  const clusterCards: ClusterCardData[] = clusterRows.map(
+    ({ cluster, members, joinOptions }) => ({
+      id: cluster.id,
+      name: cluster.name,
+      allTeams: cluster.allTeams,
+      teamIds: clusterTeamIds.get(cluster.id) ?? [],
+      servers: members.length,
+      failoverOn: failoverOn(members.length),
+      provisioning: members.filter((m) => m.provisioning).length,
+      joinOptions,
+    }),
+  );
+  // In the order they joined, as the cluster itself lists them.
+  const openServers = open
+    ? cards
+        .filter((c) => c.cluster?.id === open.cluster.id)
+        .sort((a, b) => memberOf.get(a.id)!.order - memberOf.get(b.id)!.order)
+    : cards;
 
   const healthSeed: Record<string, ServerHealthState> = Object.fromEntries(
-    servers.map((s) => [
-      s.id,
-      {
-        status: s.status,
-        checkedAt: s.statusCheckedAt ?? null,
-        message: s.statusMessage ?? null,
-        traefikEnabled: s.traefikEnabled,
-        lastReachedAt: s.lastSeenAt ?? null,
-      },
-    ]),
+    servers.map((s) => [s.id, healthOf(s)]),
   );
 
   return (
     <ServerHealthProvider seed={healthSeed}>
-      <div className="space-y-6">
+      <div className="space-y-5">
         <ServersHeader
           actions={
             <>
@@ -409,20 +221,12 @@ export default async function ServersPage(
           }
         />
 
-        {clusters.length > 0 && (
-          <div className="grid items-start gap-4 sm:grid-cols-2">
-            {clusters.map((c) => (
-              <ClusterCard
-                key={c.id}
-                cluster={c}
-                teamIds={clusterTeamIds.get(c.id) ?? []}
-                teams={teams}
-              />
-            ))}
-          </div>
-        )}
+        {/* A server that is joining stops reading Provisioning on its own. */}
+        <AutoRefresh
+          active={!open && clusterCards.some((c) => c.provisioning > 0)}
+        />
 
-        {items.length === 0 ? (
+        {servers.length === 0 && clusters.length === 0 ? (
           <EmptyState
             icon={ServerIcon}
             title="No servers connected"
@@ -430,7 +234,26 @@ export default async function ServersPage(
             description="Use Add above to register your first Linux host, then run the one-time install command it gives you on the box."
           />
         ) : (
-          <ServersList items={items} />
+          <ServersGrid
+            servers={openServers}
+            clusters={open ? [] : clusterCards}
+            teams={teams}
+            openCluster={
+              open ? { id: open.cluster.id, name: open.cluster.name } : null
+            }
+            view={view}
+            panel={
+              open ? (
+                <ClusterPanel
+                  cluster={open.cluster}
+                  members={open.members}
+                  joinOptions={open.joinOptions}
+                  teamIds={clusterTeamIds.get(open.cluster.id) ?? []}
+                  teams={teams}
+                />
+              ) : undefined
+            }
+          />
         )}
       </div>
     </ServerHealthProvider>

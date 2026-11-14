@@ -18,6 +18,7 @@ export function SortableItem({
   selected = false,
   groupDragging = false,
   locked = false,
+  dropOnly = false,
   dataKind,
   onSelect,
   children,
@@ -28,6 +29,8 @@ export function SortableItem({
   selected?: boolean;
   groupDragging?: boolean;
   locked?: boolean;
+  // Takes a drop and never moves itself: a card that only holds other cards.
+  dropOnly?: boolean;
   dataKind?: string;
   onSelect?: (e: React.MouseEvent) => void;
   children: (opts: {
@@ -46,7 +49,10 @@ export function SortableItem({
     isDragging,
     isOver,
     index,
-  } = useSortable({ id, disabled: locked });
+  } = useSortable({
+    id,
+    disabled: dropOnly ? { draggable: true, droppable: false } : locked,
+  });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),

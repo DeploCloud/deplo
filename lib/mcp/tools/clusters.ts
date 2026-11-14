@@ -28,7 +28,7 @@ export const CLUSTERS: McpToolDef[] = [
     name: "get_cluster",
     title: "Get a cluster",
     description:
-      "One cluster: the teams that may use it, its servers with their status, leaseState and how far one being removed has got, whether failover is on, and the Apps waiting for room after a server stopped.",
+      "One cluster: the teams that may use it, its servers with status, leaseState, whether one is still joining and how far a removal has got, whether failover is on, and the Apps waiting for room after a server stopped.",
     group: "Servers",
     requires: "view",
     readOnly: true,
@@ -45,7 +45,7 @@ export const CLUSTERS: McpToolDef[] = [
           failoverOn
           waiting
           members {
-            serverId serverName status leaseState joinedAt emptyingSince
+            serverId serverName status leaseState provisioning joinedAt emptyingSince
             emptying { total left moving error }
           }
           teams { id name slug }

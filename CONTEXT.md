@@ -854,8 +854,10 @@ member is a server).
 
 **Cluster member**:
 A **server** that belongs to a **cluster**. It runs what the cluster's leader places on it and
-stops its databases and Apps with files when the leader has not renewed it for a minute. In
-copy a member is "a server" of the cluster; "member" is for code and these docs.
+stops its databases and Apps with files when the leader has not renewed it for a minute. It
+reads **Provisioning** from the moment it joins until the leader first answers for it. On the
+Servers page a cluster opens like a folder: its members are found inside it. In copy a member
+is "a server" of the cluster; "member" is for code and these docs.
 _Avoid_: node, worker, host, replica (those are copies of an App).
 
 **Workload**:

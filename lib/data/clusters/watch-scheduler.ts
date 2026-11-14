@@ -16,6 +16,7 @@ import { leaderHost } from "./host";
 import { BEAT_EVERY_MS, beatClusterLeaders } from "./leader-beat";
 import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
+import { settleProvisioningMembers } from "./member-ready";
 import { getClusterById } from "./roster";
 import { runClusterWatch } from "./watch";
 import { messageOf } from "../../utils";
@@ -108,10 +109,13 @@ export async function runClusterWatchTick(): Promise<void> {
         leading.set(id, host);
         void runClusterWatch(id, c.signal);
       }
-      if (cluster)
+      if (cluster) {
         await pushLeaderRoster(cluster, { onlyIfChanged: true }).catch(
           () => false,
         );
+        // A server that just joined stops reading Provisioning once the leader answers for it.
+        await settleProvisioningMembers(cluster).catch(() => 0);
+      }
       // A member back online takes the failover backup now, not at the 12-hour sweep.
       await rehomeFailoverBackups(id).catch((e) =>
         console.warn(`[failover-backup] ${id}: ${messageOf(e)}`),

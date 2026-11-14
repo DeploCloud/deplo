@@ -95,10 +95,13 @@ export function DeleteClusterButton({
   cluster,
   open,
   onOpenChange,
+  trigger = true,
 }: {
   cluster: { id: string; name: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // A card's menu opens it instead.
+  trigger?: boolean;
 }) {
   const router = useRouter();
   const [info, setInfo] = React.useState<ClusterDeletion | null>(null);
@@ -128,10 +131,12 @@ export function DeleteClusterButton({
         onOpenChange(v);
       }}
       trigger={
-        <Button variant="outline" size="sm">
-          <Trash2 className="size-4" />
-          Delete
-        </Button>
+        trigger ? (
+          <Button variant="outline" size="sm">
+            <Trash2 className="size-4" />
+            Delete
+          </Button>
+        ) : undefined
       }
       title={`Delete ${cluster.name}`}
       description={

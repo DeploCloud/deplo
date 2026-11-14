@@ -110,6 +110,8 @@ export const clusterMembers = pgTable(
     // What the leader last said about this member's lease: ok, not_responding or fenced.
     leaseState: text("lease_state").notNull().default("ok"),
     leaseChangedAt: isoTimestamptz("lease_changed_at"),
+    // Null until the cluster's leader first answers for this member: it reads Provisioning until then.
+    readyAt: isoTimestamptz("ready_at"),
   },
   (t) => [index("cluster_members_cluster_idx").on(t.clusterId)],
 );

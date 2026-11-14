@@ -109,6 +109,18 @@ async function workloadTeamIds(serverId: string, db: Exec): Promise<string[]> {
   return [...new Set([...a, ...d].map((r) => r.teamId))];
 }
 
+/** How many Apps and databases run on `serverId`: what joins a cluster with it. */
+async function workloadCounts(
+  serverId: string,
+): Promise<{ apps: number; databases: number }> {
+  const db = getDb();
+  const [apps, databases] = await Promise.all([
+    db.$count(appsTable, eq(appsTable.serverId, serverId)),
+    db.$count(databasesTable, eq(databasesTable.serverId, serverId)),
+  ]);
+  return { apps, databases };
+}
+
 async function otherTeamsReason(
   cluster: Cluster,
   serverName: string,
@@ -190,6 +202,7 @@ export async function listClusterJoinCandidates(
       serverId: s.id,
       serverName: s.name,
       reasons: await staticReasons(cluster, s),
+      ...(await workloadCounts(s.id)),
     });
   return out;
 }
@@ -226,6 +239,7 @@ interface MemberRow {
   emptyingWorkloadKind: string;
   emptyingTotal: number;
   leaseState: string;
+  readyAt: string | null;
 }
 
 /** Who reads the card: an instance admin reads all of it, a team only the names of its own work. */
@@ -270,6 +284,7 @@ async function toMember(r: MemberRow, viewer: Viewer): Promise<ClusterMember> {
     emptying: emptyingOf(r, held, viewer),
     held: held.length,
     leaseState: toLeaseState(r.leaseState),
+    provisioning: !r.readyAt,
   };
 }
 
@@ -293,6 +308,7 @@ async function readMembers(
       emptyingWorkloadKind: membersTable.emptyingWorkloadKind,
       emptyingTotal: membersTable.emptyingTotal,
       leaseState: membersTable.leaseState,
+      readyAt: membersTable.readyAt,
     })
     .from(membersTable)
     .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))

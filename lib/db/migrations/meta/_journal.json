@@ -1695,6 +1695,13 @@
       "when": 1795716000001,
       "tag": "0252_clear_member_emptying",
       "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1795802400000,
+      "tag": "0253_cluster_member_ready",
+      "breakpoints": true
     }
   ]
 }

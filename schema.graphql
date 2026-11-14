@@ -1257,6 +1257,11 @@ type ClusterJoin {
 
 """A server the join picker offers; an empty `reasons` means it can join."""
 type ClusterJoinCandidate {
+  """The Apps on it now: they join the cluster with it."""
+  apps: Int
+
+  """The databases on it now: they join the cluster with it."""
+  databases: Int
   reasons: [ClusterJoinReason!]
   serverId: ID
   serverName: String
@@ -1378,6 +1383,11 @@ type ClusterMember {
   What the cluster's leader last said: answering, not responding (3 seconds without an answer), or fenced (it has stopped its databases and Apps with files).
   """
   leaseState: ClusterLeaseState
+
+  """
+  True from the moment it joins until the cluster's leader answers for it.
+  """
+  provisioning: Boolean
   serverId: ID
   serverName: String
   status: ServerStatus

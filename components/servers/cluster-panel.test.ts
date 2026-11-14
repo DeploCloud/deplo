@@ -4,7 +4,7 @@ import { createElement } from "react";
 
 import type { ClusterLeader } from "@/lib/types/cluster";
 import { MoveLeaderLead } from "./cluster-actions";
-import { FailoverNote, LeaderView } from "./cluster-card";
+import { FailoverNote, LeaderView } from "./cluster-panel";
 import { renderServerView } from "./server-test-helpers";
 
 const leader = (over: Partial<ClusterLeader> = {}): ClusterLeader => ({

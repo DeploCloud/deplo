@@ -207,6 +207,10 @@ const ClusterMemberRef = builder
         description:
           "How many Apps and databases it holds. Removing it needs 0, except for the last member, which may keep them.",
       }),
+      provisioning: t.exposeBoolean("provisioning", {
+        description:
+          "True from the moment it joins until the cluster's leader answers for it.",
+      }),
     }),
   });
 
@@ -307,6 +311,12 @@ const ClusterJoinCandidateRef = builder
       reasons: t.field({
         type: [ClusterJoinReasonRef],
         resolve: (c) => c.reasons,
+      }),
+      apps: t.exposeInt("apps", {
+        description: "The Apps on it now: they join the cluster with it.",
+      }),
+      databases: t.exposeInt("databases", {
+        description: "The databases on it now: they join the cluster with it.",
       }),
     }),
   });

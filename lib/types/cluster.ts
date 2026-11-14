@@ -103,6 +103,8 @@ export interface ClusterMember {
   /** How many Apps and databases it holds; removing it needs none, except for the last member. */
   held: number;
   leaseState: ClusterLeaseState;
+  /** It joined and the cluster's leader has not answered for it yet. */
+  provisioning: boolean;
 }
 
 export type ClusterJoinReasonCode =
@@ -119,6 +121,9 @@ export interface ClusterJoinCandidate {
   serverId: ID;
   serverName: string;
   reasons: ClusterJoinReason[];
+  /** The Apps and databases on it now: they join the cluster with it. */
+  apps: number;
+  databases: number;
 }
 
 export interface ClusterJoin {
