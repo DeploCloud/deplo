@@ -33,6 +33,8 @@ interface Registry {
   listeners: Set<(e: AgentLinkEvent) => void>;
   doorOpenedAt: number | null;
   nextId: number;
+  /** When each server was last heard on a link that has since ended. */
+  lastHeard?: Map<string, number>;
 }
 
 // In memory: the control plane is one process (ADR-0006), and the door and its callers share it.
@@ -52,15 +54,21 @@ export function currentLink(serverId: string): AgentLink | undefined {
   return registry.links.get(serverId);
 }
 
+const lastHeard = (registry.lastHeard ??= new Map());
+
 /**
- * Whether the server's agent answers right now: a link it was heard on moments ago. Null when this
- * process has no link door, so it cannot tell.
+ * Whether the server's agent answers right now: heard on a link in the last LINK_SILENT_MS. Null when
+ * this process cannot tell: no link door, or one opened so recently its agent may still be on its way.
  */
 export function serverAnswers(serverId: string): boolean | null {
-  if (registry.doorOpenedAt === null) return null;
+  const opened = registry.doorOpenedAt;
+  if (opened === null) return null;
   const link = registry.links.get(serverId);
-  if (!link) return false;
-  return Date.now() - (link.heardAt?.() ?? Date.now()) <= LINK_SILENT_MS;
+  const heard = link
+    ? (link.heardAt?.() ?? Date.now())
+    : lastHeard.get(serverId);
+  if (heard !== undefined) return Date.now() - heard <= LINK_SILENT_MS;
+  return Date.now() - opened < LINK_SETTLE_MS ? null : false;
 }
 
 export function hasLinked(serverId: string): boolean {
@@ -149,11 +157,13 @@ export function admitLink(link: AgentLink, generation: number): boolean {
 export function linkEnded(link: AgentLink, reason: string): void {
   if (registry.links.get(link.serverId) !== link) return;
   registry.links.delete(link.serverId);
+  lastHeard.set(link.serverId, link.heardAt?.() ?? Date.now());
   emit({ type: "down", serverId: link.serverId, reason });
 }
 
-export function doorOpened(): void {
-  registry.doorOpenedAt = Date.now();
+/** `at` lets a test open the door as long ago as it needs. */
+export function doorOpened(at = Date.now()): void {
+  registry.doorOpenedAt = at;
 }
 
 /** The door closed: every link ends, and nothing is waited for any more. */
@@ -162,6 +172,7 @@ export function doorClosed(): void {
   for (const link of [...registry.links.values()])
     link.close(LINK_CLOSE.stopping, "panel stopping");
   registry.seen.clear();
+  lastHeard.clear();
   for (const waiting of [...registry.waiters.values()])
     for (const done of [...waiting]) done(null);
 }

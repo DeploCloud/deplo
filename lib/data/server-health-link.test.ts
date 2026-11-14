@@ -149,7 +149,7 @@ async function until(
 }
 
 test(
-  "a linked server shows offline the moment its link goes, and is stored offline after about 10 s",
+  "a linked server shows offline once it has been silent for 8 s, and is stored offline after about 10 s",
   { timeout: 20_000 },
   async () => {
     startServerLinkStatus();
@@ -157,7 +157,22 @@ test(
 
     await cut(link);
     const started = performance.now();
-    assert.equal((await shown()).status, "offline", "shown at once");
+    assert.notEqual(
+      (await shown()).status,
+      "offline",
+      "a reconnect is not an outage",
+    );
+    await until(
+      async () => (await shown()).status === "offline",
+      "shown offline",
+      10_000,
+    );
+    const silent = performance.now() - started;
+    assert.ok(
+      silent > 7_500 && silent < 9_500,
+      `shown offline after ${silent} ms`,
+    );
+    assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
     await until(
       async () => (await stored()).status === "offline",
       "the server is stored offline",
@@ -297,7 +312,7 @@ test("checking a server whose link stayed away shows it offline at once, without
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("checking a server whose link just dropped shows it offline but stores nothing until the grace is over", async () => {
+test("checking a server whose link just dropped changes nothing while it was heard moments ago", async () => {
   startServerLinkStatus();
   const link = await linkIn();
   await until(async () => (await stored()).checkedAt !== null, "linked");
@@ -307,7 +322,7 @@ test("checking a server whose link just dropped shows it offline but stores noth
   await cut(link);
   const s = await check();
   assert.ok(s.took < 1_500, `the check took ${s.took} ms`);
-  assert.equal(s.status, "offline");
+  assert.notEqual(s.status, "offline");
   assert.deepEqual(await stored(), before);
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });

@@ -26,13 +26,14 @@ import { narrowedScope } from "../../auth/request-context";
 import { clusterMemberServerIdSet } from "../clusters/members";
 import type { Server } from "../../types/server";
 import { serverAnswers } from "../../infra/agent-link/registry";
+import { HEALTH_MESSAGES } from "../../infra/server-health";
 
 /** As the agent link says now (ADR-0040): a server whose agent does not answer is offline, whatever was stored. */
 export function withLiveStatus(server: Server): Server {
   if (!server.agent?.certFingerprint || server.status === "offline")
     return server;
   return serverAnswers(server.id) === false
-    ? { ...server, status: "offline" }
+    ? { ...server, status: "offline", statusMessage: HEALTH_MESSAGES.offline }
     : server;
 }
 

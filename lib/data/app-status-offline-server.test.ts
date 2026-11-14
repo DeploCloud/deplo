@@ -18,6 +18,7 @@ import { recordContainerSample } from "../monitoring/container-history";
 import type { ContainerMetricsSample } from "./container-metrics";
 import { displayStatus } from "../apps/display-status";
 import { doorClosed, doorOpened } from "../infra/agent-link/registry";
+import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
 import { getServerById } from "./servers/roster";
 import { getAppRuntime } from "./console/runtime";
 import {
@@ -111,7 +112,7 @@ test("a server whose agent is not linked is offline at once, whatever its stored
     .update(serversTable)
     .set({ agentCertFingerprint: "fp-live" })
     .where(eq(serversTable.id, SERVER_1));
-  doorOpened();
+  doorOpened(Date.now() - LINK_SETTLE_MS);
   assert.equal((await getServerById(SERVER_1))?.status, "offline");
   const [state] = await overview(appId);
   assert.equal(shown(state), "unreachable");
@@ -124,7 +125,7 @@ test("reading an App on a server that is not answering fails at once, with no wa
     .update(serversTable)
     .set({ agentCertFingerprint: "fp-live" })
     .where(eq(serversTable.id, SERVER_1));
-  doorOpened();
+  doorOpened(Date.now() - LINK_SETTLE_MS);
   const started = performance.now();
   const runtime = await runWithIdentity({ userId: OWNER, teamId: TEAM_A }, () =>
     getAppRuntime(appId),
