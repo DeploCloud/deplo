@@ -371,6 +371,49 @@ test("behind the panel's Cloudflare Tunnel the relay's path is carried to the ho
   }
 });
 
+test("a panel run on the host behind its tunnel leaves the proxy alone with no cluster, sweep after sweep", async () => {
+  const { cf, restore } = fakeCloudflare();
+  const cloudflareFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).startsWith("https://api.cloudflare.com")
+      ? cloudflareFetch(input, init)
+      : Promise.resolve(new Response(SUMS))) as typeof fetch;
+  try {
+    cf.tunnels.set("tun1", {
+      accountId: "acct1",
+      name: "deplo",
+      ingress: null,
+      status: "healthy",
+      connections: 1,
+    });
+    await savePanelTunnel({
+      hostname: "deplo.example.com",
+      accountId: "acct1",
+      zoneId: "zone1",
+      tunnelId: "tun1",
+      dnsRecordId: null,
+      apiTokenEnc: encryptSecret("cf-api-token-0123456789"),
+    });
+    const onHost = withPanelRoute(TRAEFIK, {
+      ...ROUTE,
+      target: "http://host.docker.internal:3000",
+    });
+    const host = deploHost({
+      proxy: {
+        yaml: withPanelTunnel(onHost, "connectortoken0123"),
+        applied: 0,
+        refuse: "",
+      },
+    });
+    assert.equal(await syncClusterRelayRoute(), "unchanged");
+    assert.equal(await syncClusterRelayRoute(), "unchanged");
+    assert.equal(host.proxy.applied, 0, "the proxy is never re-applied");
+    assert.equal(panelTunnelReachesHost(host.proxy.yaml), true);
+  } finally {
+    restore();
+  }
+});
+
 test("a Cloudflare token that is refused still leaves the relay on the panel's backup address, and says so", async () => {
   const { cf, restore } = fakeCloudflare();
   const cloudflareFetch = globalThis.fetch;

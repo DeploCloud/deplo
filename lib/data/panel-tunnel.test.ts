@@ -1,5 +1,7 @@
 import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
@@ -16,6 +18,7 @@ import {
 } from "./identity-test-helpers";
 import { seedServerRow, TRUNCATE_INFRA } from "./infra-test-helpers";
 import { panelRoute, withPanelRoute } from "../deploy/traefik-stack";
+import { __setRunsInContainerForTest } from "../deploy/domains";
 import {
   panelTunnelReachesHost,
   panelTunnelToken,
@@ -185,6 +188,58 @@ test("a cluster relay route on the panel travels with the tunnel: its rule in Cl
   );
   assert.equal(panelTunnelReachesHost(host.yaml), true);
   assert.equal(panelRoute(host.yaml)?.relay, true);
+});
+
+test("a panel run as a process on its host is found on its loopback and carried by the gateway name", async () => {
+  const panel = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.end(req.url === "/api/health" ? '{"ok":true}' : "{}");
+  });
+  await new Promise<void>((r) => panel.listen(0, "127.0.0.1", r));
+  const port = (panel.address() as AddressInfo).port;
+  const prevPort = process.env.DEPLO_PANEL_PORT;
+  process.env.DEPLO_PANEL_PORT = String(port);
+  __setRunsInContainerForTest(false);
+  try {
+    host.yaml = TRAEFIK_STACK;
+    await turnOn();
+    const [, made] = [...cf.tunnels.entries()][0];
+    assert.deepEqual(made.ingress, [
+      {
+        hostname: "deplo.example.com",
+        path: "^/api/agent/link$",
+        service: "http://host.docker.internal:3001",
+      },
+      {
+        hostname: "deplo.example.com",
+        service: `http://host.docker.internal:${port}`,
+      },
+      { service: "http_status:404" },
+    ]);
+    assert.equal(
+      panelRoute(host.yaml)?.target,
+      `http://host.docker.internal:${port}`,
+    );
+    assert.equal(panelTunnelReachesHost(host.yaml), true);
+    assert.equal(host.applied, 1, "the relay sweep after it changes nothing");
+  } finally {
+    __setRunsInContainerForTest();
+    if (prevPort === undefined) delete process.env.DEPLO_PANEL_PORT;
+    else process.env.DEPLO_PANEL_PORT = prevPort;
+    await new Promise((r) => panel.close(r));
+  }
+});
+
+test("a panel in a container that answers nowhere Deplo knows is still refused, with no tunnel left behind", async () => {
+  __setRunsInContainerForTest(true);
+  try {
+    host.yaml = TRAEFIK_STACK;
+    await assert.rejects(turnOn(), /Re-run the installer/);
+    assert.equal(cf.tunnels.size, 0);
+    assert.equal(host.applied, 0);
+  } finally {
+    __setRunsInContainerForTest();
+  }
 });
 
 test("only an instance admin can read, set or turn off the tunnel", async () => {

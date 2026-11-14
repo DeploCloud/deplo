@@ -144,6 +144,36 @@ test("the connector reaches the host's relay by the gateway name only while a re
   assert.equal(panelTunnelReachesHost(STACK), false);
 });
 
+test("a panel run on the host keeps the connector on the gateway name with no relay", () => {
+  const routed = withPanelRoute(STACK, {
+    domain: "deplo.example.com",
+    fallbackDomain: null,
+    https: true,
+    certResolver: null,
+    target: "http://host.docker.internal:3000",
+  });
+  const on = withPanelTunnel(routed, TOKEN);
+  assert.deepEqual(
+    (parse(on) as Compose).services[TUNNEL_SERVICE].extra_hosts,
+    ["host.docker.internal:host-gateway"],
+  );
+  assert.equal(panelTunnelReachesHost(withPanelTunnel(on, TOKEN)), true);
+  assert.deepEqual(
+    panelTunnelIngress("deplo.example.com", panelRoute(on)!.target).slice(0, 2),
+    [
+      {
+        hostname: "deplo.example.com",
+        path: "^/api/agent/link$",
+        service: "http://host.docker.internal:3001",
+      },
+      {
+        hostname: "deplo.example.com",
+        service: "http://host.docker.internal:3000",
+      },
+    ],
+  );
+});
+
 test("the tunnel routes the link door to the link listener, then the panel, then nothing", () => {
   assert.deepEqual(
     panelTunnelIngress("deplo.example.com", "http://deplo:3000"),

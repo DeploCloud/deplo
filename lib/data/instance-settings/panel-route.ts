@@ -14,7 +14,12 @@ import {
   withPanelRoute,
   type PanelRoute,
 } from "../../deploy/traefik-stack";
-import { isPanelFallbackHost, panelFallbackHost } from "../../deploy/domains";
+import { HOST_GATEWAY_ALIAS } from "../../deploy/cluster-relay";
+import {
+  isPanelFallbackHost,
+  panelFallbackHost,
+  runsInContainer,
+} from "../../deploy/domains";
 import { recordActivity } from "../activity";
 import {
   SETTINGS_ID,
@@ -44,6 +49,7 @@ import {
 } from "./panel-tunnel-store";
 import { withPanelTunnel } from "../../deploy/panel-tunnel-stack";
 import { whilePanelAddressesChange } from "../servers/link-addresses";
+import { panelHostPort } from "../servers/panel-address";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { waitForLink } from "../../infra/agent-link/registry";
 import { LINK_SETTLE_MS } from "../../infra/agent-link/protocol";
@@ -331,8 +337,8 @@ async function adoptPanelRoute(currentYaml: string): Promise<PanelRoute> {
   const reason = noRouteReason(url);
   if (reason) throw new Error(reason);
 
-  const reached = await probePanel(DEFAULT_PANEL_TARGET);
-  if (!reached.ok)
+  const target = await adoptedPanelTarget();
+  if (!target)
     throw new Error(
       "This panel is published by its own container, from before Deplo could manage it, and Deplo cannot tell where it listens. Re-run the installer to hand it over.",
     );
@@ -344,8 +350,17 @@ async function adoptPanelRoute(currentYaml: string): Promise<PanelRoute> {
     certResolver: url.startsWith("https://")
       ? stackCertResolver(currentYaml)
       : null,
-    target: DEFAULT_PANEL_TARGET,
+    target,
   };
+}
+
+// A panel run as a process on its host answers on loopback, and the proxy reaches it by the gateway name.
+async function adoptedPanelTarget(): Promise<string | null> {
+  if ((await probePanel(DEFAULT_PANEL_TARGET)).ok) return DEFAULT_PANEL_TARGET;
+  if (runsInContainer()) return null;
+  const port = panelHostPort();
+  if (!(await probePanel(`http://127.0.0.1:${port}`)).ok) return null;
+  return `http://${HOST_GATEWAY_ALIAS}:${port}`;
 }
 
 async function movePanelRoute(url: string): Promise<void> {

@@ -16,7 +16,12 @@ type ServerAddress = { ip?: string; host?: string };
 /** Where a server's agent calls home: the panel's own server over loopback, before the proxy's ports are Deplo's. */
 export async function bootstrapBaseUrl(server: ServerAddress): Promise<string> {
   if (!isDeploHostServer(server)) return instancePublicBaseUrl();
-  return `http://127.0.0.1:${hostPort(process.env.DEPLO_PANEL_PORT, 3000)}`;
+  return `http://127.0.0.1:${panelHostPort()}`;
+}
+
+/** The port the panel answers on at its own machine's loopback. */
+export function panelHostPort(): number {
+  return hostPort(process.env.DEPLO_PANEL_PORT, 3000);
 }
 
 /** Where a server's agent links (ADR-0040): the panel's own machine over loopback, never through its public address. */

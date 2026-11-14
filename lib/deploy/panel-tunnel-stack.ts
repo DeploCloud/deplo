@@ -1,9 +1,14 @@
 import { isMap, isScalar, isSeq, parseDocument, type Document } from "yaml";
 
 import { LINK_PATH } from "../infra/agent-link/protocol";
-import { HOST_GATEWAY_ENTRY, RELAY_PATH, RELAY_TARGET } from "./cluster-relay";
+import {
+  HOST_GATEWAY_ENTRY,
+  RELAY_PATH,
+  RELAY_TARGET,
+  throughHostGateway,
+} from "./cluster-relay";
 import { defaultLogging } from "./resources";
-import { linkTarget, TRAEFIK_CONTAINER } from "./traefik-stack";
+import { linkTarget, panelRoute, TRAEFIK_CONTAINER } from "./traefik-stack";
 
 // KEEP IN SYNC with install.sh, which carries this service over on an update by its name.
 export const TUNNEL_SERVICE = "deplo-tunnel";
@@ -43,7 +48,12 @@ export function withPanelTunnel(
   token: string | null,
   opts: { relay?: boolean } = {},
 ): string {
-  return withTunnelConnector(currentYaml, TUNNEL_SERVICE, token, opts);
+  // A panel run on the host is reached by the gateway name too, relay or not.
+  const reachesHost =
+    opts.relay === true || throughHostGateway(panelRoute(currentYaml)?.target);
+  return withTunnelConnector(currentYaml, TUNNEL_SERVICE, token, {
+    reachesHost,
+  });
 }
 
 const PROXY_TARGET = `http://${TRAEFIK_CONTAINER}:80`;
@@ -78,7 +88,7 @@ export function withTunnelConnector(
   currentYaml: string,
   service: string,
   token: string | null,
-  opts: { relay?: boolean; startAfterReady?: boolean } = {},
+  opts: { reachesHost?: boolean; startAfterReady?: boolean } = {},
 ): string {
   const doc = parseStack(currentYaml);
   const services = doc.get("services", true);
@@ -103,8 +113,8 @@ export function withTunnelConnector(
       command: ["tunnel", "--no-autoupdate", "run"],
       environment: [`${TOKEN_ENV}=${value}`],
       networks: [PLATFORM_NETWORK],
-      // The relay is a process on the host: the connector reaches it by Docker's host gateway.
-      ...(opts.relay ? { extra_hosts: [HOST_GATEWAY_ENTRY] } : {}),
+      // The relay, or a panel run on the host: the connector reaches it by Docker's host gateway.
+      ...(opts.reachesHost ? { extra_hosts: [HOST_GATEWAY_ENTRY] } : {}),
       // Kept in the stack file, so the agent holds it back on every later start too.
       ...(opts.startAfterReady
         ? { labels: { [START_AFTER_READY_LABEL]: "true" } }

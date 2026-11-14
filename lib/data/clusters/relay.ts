@@ -14,6 +14,7 @@ import {
   panelTunnelToken,
   withPanelTunnel,
 } from "../../deploy/panel-tunnel-stack";
+import { throughHostGateway } from "../../deploy/cluster-relay";
 import { isDeploHostServer } from "../../deploy/domains";
 import {
   panelRoute,
@@ -229,7 +230,9 @@ export async function syncClusterRelayRoute(): Promise<RelayRouteChange> {
     const route = yaml ? panelRoute(yaml) : null;
     if (!yaml || !route) return "unmanaged";
     const tunnel = await loadPanelTunnel();
-    const connectorOn = tunnel ? panelTunnelReachesHost(yaml) : wanted;
+    // A panel run on the host keeps its connector on the gateway name with no cluster at all.
+    const connectorWanted = wanted || throughHostGateway(route.target);
+    const connectorOn = tunnel ? panelTunnelReachesHost(yaml) : connectorWanted;
     const token = tunnel
       ? decryptSecretOrThrow(tunnel.apiTokenEnc, "the Cloudflare API token")
       : "";
@@ -249,7 +252,7 @@ export async function syncClusterRelayRoute(): Promise<RelayRouteChange> {
         throw new CloudflareRelayError(e, wanted, !!route.fallbackDomain);
       }
     };
-    if ((route.relay === true) === wanted && connectorOn === wanted) {
+    if ((route.relay === true) === wanted && connectorOn === connectorWanted) {
       // The proxy file says nothing about Cloudflare's side, which an older Deplo or an edit there may have lost.
       await cloudflareSide();
       noteRelayProblem(null);

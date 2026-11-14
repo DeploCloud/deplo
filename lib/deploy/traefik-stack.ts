@@ -9,7 +9,12 @@ import {
 } from "yaml";
 
 import { LINK_PATH, LINK_PORT } from "../infra/agent-link/protocol";
-import { HOST_GATEWAY_ENTRY, RELAY_PATH, RELAY_TARGET } from "./cluster-relay";
+import {
+  HOST_GATEWAY_ENTRY,
+  RELAY_PATH,
+  RELAY_TARGET,
+  throughHostGateway,
+} from "./cluster-relay";
 import { composeTruthy } from "./compose-lint/document";
 
 export const TRAEFIK_CONTAINER = "deplo-traefik";
@@ -422,7 +427,11 @@ export function withPanelRoute(
     "the panel's own route",
     panelFile(currentContent, { ...route, domain, fallbackDomain, target }),
   );
-  setHostGateway(doc, service, route.relay === true);
+  setHostGateway(
+    doc,
+    service,
+    route.relay === true || throughHostGateway(target),
+  );
   return dump(doc);
 }
 

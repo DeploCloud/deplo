@@ -105,3 +105,22 @@ test("another entry the proxy already has in extra_hosts is kept when the relay 
     ["metrics.internal:10.0.0.9"],
   );
 });
+
+test("a panel run on the host keeps the gateway name on the proxy with no relay route", () => {
+  const onHost = { ...PANEL_ROUTE, target: "http://host.docker.internal:3000" };
+  const routed = withPanelRoute(INSTALLED_WITH_PANEL, onHost);
+  const hosts = (s: string) =>
+    Object.values(proxyOf(s)).find((x) => x.extra_hosts)?.extra_hosts;
+  assert.deepEqual(hosts(routed), ["host.docker.internal:host-gateway"]);
+  assert.equal(panelRoute(routed)?.relay, undefined);
+  assert.deepEqual(
+    hosts(withPanelRoute(routed, { ...onHost, relay: true })),
+    ["host.docker.internal:host-gateway"],
+    "one entry, not two, once a relay comes",
+  );
+  assert.equal(
+    hosts(withPanelRoute(routed, PANEL_ROUTE)),
+    undefined,
+    "and none once the panel is a container again",
+  );
+});

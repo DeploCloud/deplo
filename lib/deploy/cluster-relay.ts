@@ -11,3 +11,12 @@ export const HOST_GATEWAY_ALIAS = "host.docker.internal";
 export const HOST_GATEWAY_ENTRY = `${HOST_GATEWAY_ALIAS}:host-gateway`;
 
 export const RELAY_TARGET = `http://${HOST_GATEWAY_ALIAS}:${RELAY_PORT}`;
+
+/** Whether `target` is a process on the host, which a container reaches only by the gateway name. */
+export function throughHostGateway(target: string | null | undefined): boolean {
+  try {
+    return new URL(target ?? "").hostname === HOST_GATEWAY_ALIAS;
+  } catch {
+    return false;
+  }
+}
