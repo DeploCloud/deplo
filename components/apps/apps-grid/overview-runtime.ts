@@ -40,11 +40,12 @@ const POLL_MS = 5_000;
 
 export function useOverviewAppStates(
   services: AppSummary[],
+  initial: OverviewAppStateView[] = [],
 ): ReadonlyMap<string, OverviewAppStateView> {
   const idKey = services.map((app) => app.id).join("\0");
   const ids = React.useMemo(() => (idKey ? idKey.split("\0") : []), [idKey]);
   const [states, setStates] = React.useState<Map<string, OverviewAppStateView>>(
-    () => new Map(),
+    () => new Map(initial.map((s) => [s.appId, s])),
   );
 
   React.useEffect(() => {

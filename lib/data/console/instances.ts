@@ -1,6 +1,6 @@
 import "server-only";
 
-import { connectAgent } from "../../infra/agent-client/connect";
+import { readAgent } from "../../infra/agent-client/connect";
 import type { App } from "../../types/app";
 import { primaryDomainApp } from "../domains/primary-domain";
 import { byReplicaIndex, tagReplicas } from "./replicas";
@@ -30,7 +30,7 @@ export function containerName(p: App, deployKey: string = p.slug): string {
 
 export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   const exposeService = await primaryDomainApp(p.id);
-  const conn = await connectAgent(p.serverId);
+  const conn = await readAgent(p.serverId);
   try {
     return tagReplicas(
       orderInstances(p, await conn.listInstances(p.id, p.slug, exposeService)),

@@ -21,6 +21,7 @@ import {
   hasLinked,
   linkMayCome,
   onAgentLink,
+  serverAnswers,
 } from "../infra/agent-link/registry";
 import {
   classifyServerHealth,
@@ -316,7 +317,9 @@ type LinkState = "linked" | "waiting" | "offline";
 
 /** How a server stands, read off its agent link without a dial. */
 function linkState(serverId: string): LinkState {
-  if (currentLink(serverId)) return "linked";
+  // A link nothing was heard on is a server that stopped answering, before its socket is cut.
+  if (currentLink(serverId))
+    return serverAnswers(serverId) === false ? "offline" : "linked";
   const gone = watch.gone.get(serverId);
   if (gone)
     return Date.now() - gone.since >= watch.graceMs ? "offline" : "waiting";

@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AgentClient, HelloResponse } from "../../agent/gen/agent";
-import { LINK_CLOSE, LINK_SETTLE_MS } from "./protocol";
+import { LINK_CLOSE, LINK_SETTLE_MS, LINK_SILENT_MS } from "./protocol";
 
 /** A verified agent link, shared across bundles: its grpc-js client needs one grpc-js per process (next.config.ts). */
 export interface AgentLink {
@@ -13,6 +13,8 @@ export interface AgentLink {
   readonly client: AgentClient;
   readonly hello: HelloResponse;
   readonly openedAt: number;
+  /** When the agent was last heard on it: a ping, a pong or a frame. */
+  readonly heardAt?: () => number;
   /** Ends the link now: calls still on it fail as unreachable. */
   close(code: number, reason: string): void;
 }
@@ -48,6 +50,17 @@ const registry: Registry = (g[KEY] ??= {
 
 export function currentLink(serverId: string): AgentLink | undefined {
   return registry.links.get(serverId);
+}
+
+/**
+ * Whether the server's agent answers right now: a link it was heard on moments ago. Null when this
+ * process has no link door, so it cannot tell.
+ */
+export function serverAnswers(serverId: string): boolean | null {
+  if (registry.doorOpenedAt === null) return null;
+  const link = registry.links.get(serverId);
+  if (!link) return false;
+  return Date.now() - (link.heardAt?.() ?? Date.now()) <= LINK_SILENT_MS;
 }
 
 export function hasLinked(serverId: string): boolean {

@@ -21,7 +21,7 @@ export function AppsGrid(props: AppsGridProps) {
     });
   }, []);
   const visibleServices = props.services.filter((p) => !deleted.has(p.id));
-  const liveStates = useOverviewAppStates(visibleServices);
+  const liveStates = useOverviewAppStates(visibleServices, props.initialStates);
   const grid: GridProps = {
     ...props,
     services: visibleServices,

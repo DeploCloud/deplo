@@ -23,6 +23,7 @@ import {
   LINK_CERT_HEADER,
   LINK_CLOSE,
   LINK_PATH,
+  LINK_PING_MS,
   LINK_RATE_LIMIT,
   LINK_SUBPROTOCOL,
 } from "./protocol";
@@ -92,11 +93,13 @@ async function holdLink(
   const hear = () => void (heard = Date.now());
   ws.on("ping", hear).on("pong", hear).on("message", hear);
   ws.on("error", () => {});
+  // A server that crashed sends no close: the pong it stops answering is how its link ends.
   const watchdog = setInterval(
     () => {
-      if (Date.now() - heard > door.watchdogMs) ws.terminate();
+      if (Date.now() - heard > door.watchdogMs) return void ws.terminate();
+      if (ws.readyState === ws.OPEN) ws.ping();
     },
-    Math.min(5_000, door.watchdogMs / 3),
+    Math.min(LINK_PING_MS, door.watchdogMs / 3),
   );
   watchdog.unref();
   let channel: AgentChannel | null = null;
@@ -132,6 +135,7 @@ async function holdLink(
       client: channel.client,
       hello,
       openedAt,
+      heardAt: () => heard,
       close(code, reason) {
         linkEnded(verified, reason);
         ws.close(code, reason);

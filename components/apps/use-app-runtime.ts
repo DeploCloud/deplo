@@ -3,6 +3,7 @@
 import * as React from "react";
 import { gql } from "@/lib/graphql-client";
 import type { RuntimeSnapshot } from "@/lib/apps/display-status";
+import { useLiveApp } from "@/components/apps/app-live-status";
 
 const APP_RUNTIME_QUERY = /* GraphQL */ `
   query AppRuntime($appId: String!) {
@@ -49,12 +50,19 @@ export interface AppRuntimeView extends RuntimeSnapshot {
 type Response = { appRuntime: AppRuntimeView | null };
 
 const POLL_MS = 5_000;
+// Wide enough for a slow first load; a tab opened later than this asks again.
+const SEED_MS = 15_000;
 
 export function useAppRuntime(
   appId: string,
   { enabled = true }: { enabled?: boolean } = {},
 ): AppRuntimeView | null {
-  const [runtime, setRuntime] = React.useState<AppRuntimeView | null>(null);
+  const live = useLiveApp();
+  const seed = live?.id === appId ? live.runtime : undefined;
+  // The server's own read while it is fresh: never a stored status shown as live.
+  const [runtime, setRuntime] = React.useState<AppRuntimeView | null>(() =>
+    seed && Date.now() - seed.at < SEED_MS ? seed.value : null,
+  );
 
   React.useEffect(() => {
     if (!enabled) return;

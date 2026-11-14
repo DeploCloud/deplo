@@ -5,6 +5,7 @@ import { gqlSubscribe } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
 import type { AppStatus } from "@/lib/types/app";
 import type { DeploymentStatus } from "@/lib/types/deployment";
+import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 
 export type LiveApp = {
   id: string;
@@ -16,6 +17,8 @@ export type LiveApp = {
   latestScreenshotAt: string | null;
   restartLoopStoppedAt: string | null;
   restartsPausedAt: string | null;
+  /** What the server read off the App's containers as it rendered the page. */
+  runtime?: { at: number; value: AppRuntimeView | null };
 };
 
 const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
@@ -76,7 +79,8 @@ export function AppLiveStatusProvider({
       (data) => {
         const p = data.appStatus;
         if (!p) return;
-        setLive({
+        setLive((prev) => ({
+          runtime: prev.runtime,
           id: p.id,
           slug: p.slug,
           status: p.status,
@@ -86,7 +90,7 @@ export function AppLiveStatusProvider({
           latestDeploymentId: p.latestDeployment?.id ?? null,
           latestDeploymentStatus: p.latestDeployment?.status ?? null,
           latestScreenshotAt: p.latestDeployment?.screenshotAt ?? null,
-        });
+        }));
         // A picture lands after Ready, so it is part of what makes the page stale.
         const deploy = `${p.latestDeployment?.id ?? null}:${p.latestDeployment?.status ?? null}:${p.latestDeployment?.screenshotAt ?? null}`;
         if (deploy !== seenDeploy.current) {

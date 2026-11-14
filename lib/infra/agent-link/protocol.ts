@@ -7,8 +7,11 @@ export const LINK_SUBPROTOCOL = "deplo-agent-link.v1";
 /** sha256 of the agent's own leaf certificate, lowercase hex: the value the handshake pins. */
 export const LINK_CERT_HEADER = "deplo-agent-cert";
 
-/** The agent pings every 20 s; a link nothing was heard from for this long is cut. */
-export const LINK_WATCHDOG_MS = 45_000;
+/** The panel pings every 3 s (the agent every 20 s); a link nothing was heard from for this long is cut. */
+export const LINK_WATCHDOG_MS = 20_000;
+export const LINK_PING_MS = 3_000;
+/** A link silent this long no longer answers: its server reads offline while the socket waits for the watchdog. */
+export const LINK_SILENT_MS = 8_000;
 /** How long a call waits for a server's missing link before it fails as offline. */
 export const LINK_WAIT_MS = 10_000;
 /** After the door opens, servers still on their way back are waited for: the agent backs off up to 30 s. */

@@ -25,6 +25,7 @@ type AnyStatus =
   | "unhealthy"
   | "unresponsive"
   | "down"
+  | "unreachable"
   | "not_deployed"
   | "blocked"
   | "evicted";
@@ -58,6 +59,7 @@ const COLORS: Record<string, string> = {
   misconfigured: "bg-destructive",
   offline: "bg-destructive",
   down: "bg-destructive",
+  unreachable: "bg-destructive",
   idle: "bg-muted-foreground",
   stopped: "bg-muted-foreground",
   canceled: "bg-muted-foreground",
@@ -103,6 +105,7 @@ const VARIANTS: Record<
   misconfigured: "destructive",
   offline: "destructive",
   down: "destructive",
+  unreachable: "destructive",
   never: "muted",
   idle: "muted",
   not_deployed: "muted",
@@ -144,7 +147,8 @@ const LABELS: Record<string, string> = {
   blocked: "Needs approval",
   evicted: "Over the limit",
   active: "Running",
-  down: "Not running",
+  down: "Offline",
+  unreachable: "Offline",
   cloudflare: "Proxied",
 };
 

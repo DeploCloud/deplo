@@ -10,7 +10,9 @@ import type { OverviewRuntimeView } from "../apps-grid/overview-state";
 type StatusRuntime = AppRuntimeView | OverviewRuntimeView;
 
 export function detailFor(runtime: StatusRuntime | null): string | null {
-  if (!runtime || runtime.unreachable) return null;
+  if (runtime?.unreachable)
+    return "The server this app runs on is not answering Deplo, so the app counts as offline. The Servers page shows why.";
+  if (!runtime) return null;
 
   if (runtime.restarting > 0) {
     const restarts = maxRestartCount(runtime);

@@ -3,7 +3,7 @@ import type {
   AgentConnection,
   FollowLogsOptions,
 } from "../infra/agent-client/connection";
-import { connectAgent } from "../infra/agent-client/connect";
+import { readAgent } from "../infra/agent-client/connect";
 import { AgentUnreachableError } from "../infra/agent-client/errors";
 import { mergeReplicaLogs, type ReplicaSource } from "./merge-replicas";
 
@@ -64,7 +64,7 @@ export async function openLogs(
   opts?: FollowLogsOptions,
 ): Promise<{ handle: AttachHandle; close: () => void }> {
   if (!place.members) {
-    const conn = await connectAgent(place.server.id);
+    const conn = await readAgent(place.server.id);
     return {
       handle: followGroup(conn, appId, place.group, tail, opts),
       close: () => conn.close(),
@@ -78,7 +78,7 @@ export async function openLogs(
     for (const m of place.members) {
       let conn: AgentConnection;
       try {
-        conn = await connectAgent(m.server.id);
+        conn = await readAgent(m.server.id);
       } catch {
         gone.push(m.server.name);
         continue;

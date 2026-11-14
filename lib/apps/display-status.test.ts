@@ -78,14 +78,13 @@ test("a crash loop outranks an unhealthy sidecar", () => {
   );
 });
 
-test("an unreachable agent proves nothing: keep the stored status", () => {
-  assert.equal(
-    displayStatus(
-      "active",
-      runtime({ total: 0, running: 0, unreachable: true }),
-    ),
-    "active",
-  );
+test("an unreachable server is never shown as a running App", () => {
+  const gone = runtime({ total: 0, running: 0, unreachable: true });
+  assert.equal(displayStatus("active", gone), "unreachable");
+  assert.equal(displayStatus("active", gone, false, true), "unreachable");
+  // Only a running App is contradicted: a stopped one stays stopped.
+  assert.equal(displayStatus("idle", gone), "idle");
+  assert.equal(displayStatus("building", gone), "building");
 });
 
 test("no probe yet: keep the stored status", () => {

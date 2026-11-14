@@ -30,7 +30,9 @@ function useDisplayStatus(
 }
 
 function detailFor(runtime: DatabaseRuntimeView | null): string | null {
-  if (!runtime || runtime.unreachable) return null;
+  if (runtime?.unreachable)
+    return "The server this database runs on is not answering Deplo, so the database counts as offline. The Servers page shows why.";
+  if (!runtime) return null;
   if (runtime.restarting > 0) {
     const restarts = Math.max(
       ...runtime.containers.map((c) => c.restartCount),

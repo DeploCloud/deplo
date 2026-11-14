@@ -6,6 +6,7 @@ export type DisplayStatus =
   | "unhealthy"
   | "unresponsive"
   | "down"
+  | "unreachable"
   | "not_deployed";
 
 export interface RuntimeSnapshot {
@@ -26,6 +27,8 @@ export function displayStatus(
   if (neverDeployed && status === "idle") return "not_deployed";
 
   const paused = status === "active" && !!restartsPaused;
+  // A server that does not answer says nothing about its Apps: never show the last state as live.
+  if (runtime?.unreachable && status === "active") return "unreachable";
   if (!runtime || runtime.unreachable) return paused ? "unresponsive" : status;
 
   if (status !== "active") return status;

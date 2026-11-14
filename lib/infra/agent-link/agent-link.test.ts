@@ -334,6 +334,37 @@ test(
   },
 );
 
+test(
+  "an agent that never pings stays linked while it answers the panel's pings",
+  { timeout: 15_000 },
+  async () => {
+    await stopAgentLinkListener();
+    door = (
+      await startAgentLinkListener({
+        port: 0,
+        host: "127.0.0.1",
+        watchdogMs: 600,
+      })
+    ).port;
+    const up = linkUp();
+    const link = await agent.link(door);
+    await up;
+    let cut = false;
+    const down = new Promise<void>((resolve) => {
+      const off = onAgentLink((e) => {
+        if (e.serverId !== SERVER || e.type !== "down") return;
+        cut = true;
+        off();
+        resolve();
+      });
+    });
+    await new Promise((r) => setTimeout(r, 1_500));
+    assert.equal(cut, false);
+    link.freeze();
+    await down;
+  },
+);
+
 test("removing a server closes its link and turns its agent away", async () => {
   process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
   await pg.exec(TRUNCATE_IDENTITY);

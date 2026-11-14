@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid } from "@/components/apps/apps-grid/apps-grid";
+import { getOverviewAppStates } from "@/lib/data/console";
 import { gridClass } from "@/components/apps/apps-grid/grid-contract";
 import { NewRepoCards } from "@/components/apps/new-repo-cards";
 import { SecurityOverviewNotice } from "@/components/security-updates/security-overview-notice";
@@ -163,6 +164,13 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         ? []
         : folders.filter((f) => (f.parentId ?? null) === null);
   const visibleProjects = flat || openFolder || openProject ? [] : projects;
+
+  const initialStates = (
+    await getOverviewAppStates(visibleApps.map((p) => p.id)).catch(() => [])
+  ).map((s) => ({
+    ...s,
+    runtime: s.runtime ? { ...s.runtime, missing: [] } : null,
+  }));
 
   const enrichedFolders = await Promise.all(
     visibleFolders.map(async (f) => ({
@@ -457,6 +465,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
           <AppsGrid
             key={gridKey}
             services={visibleApps}
+            initialStates={initialStates}
             allAppIds={allAppIds}
             folders={enrichedFolders}
             projects={enrichedProjects}

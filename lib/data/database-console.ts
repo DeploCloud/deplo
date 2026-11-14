@@ -6,7 +6,7 @@ import {
   requireCapability,
 } from "../membership";
 import { loadDatabaseForTeam } from "./databases/rows";
-import { connectAgent } from "../infra/agent-client/connect";
+import { connectAgent, readAgent } from "../infra/agent-client/connect";
 import type {
   AgentConnection,
   AgentConsoleInstance,
@@ -49,7 +49,7 @@ export async function getDatabaseRuntime(
 async function probeRuntime(db: Database): Promise<AppRuntime> {
   let conn: AgentConnection;
   try {
-    conn = await connectAgent(db.serverId);
+    conn = await readAgent(db.serverId);
   } catch {
     return unknownDatabaseRuntime();
   }
@@ -99,7 +99,7 @@ function unknownDatabaseRuntime(): AppRuntime {
 }
 
 async function listDatabaseInstances(db: Database): Promise<ConsoleInstance[]> {
-  const conn = await connectAgent(db.serverId);
+  const conn = await readAgent(db.serverId);
   try {
     const instances: AgentConsoleInstance[] = await conn.listInstances(
       db.id,

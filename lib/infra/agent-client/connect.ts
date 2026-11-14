@@ -12,9 +12,10 @@ import { cronRpc } from "./cron-rpc";
 import { dataCopyRpc } from "./data-copy-rpc";
 import { HELLO_TIMEOUT_MS } from "./deadlines";
 import { agentReach } from "../../version";
-import { currentLink } from "../agent-link/registry";
+import { currentLink, serverAnswers } from "../agent-link/registry";
 import {
   AgentNeedsReinstallError,
+  AgentOfflineError,
   AgentUnreachableError,
   assertAgentUsable,
 } from "./errors";
@@ -74,6 +75,14 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
   }
   // A link can die before the door hears of it; the failed Hello retired its channel, so this waits for the next link.
   return gate(await serverChannel(serverId, pin.fingerprint));
+}
+
+/** For what only reads (logs, containers): a server that is not answering fails now, not after waiting for its link. */
+export async function readAgent(serverId: string): Promise<AgentConnection> {
+  const stub = await connector?.(serverId);
+  if (stub) return stub;
+  if (serverAnswers(serverId) === false) throw new AgentOfflineError(serverId);
+  return connectAgent(serverId);
 }
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */

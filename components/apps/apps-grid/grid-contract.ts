@@ -26,6 +26,8 @@ export interface AppsGridProps {
   canManageProjects: boolean;
   environments?: { id: string; name: string }[];
   leading?: ReactNode;
+  /** What the server found when it rendered the page, so no App shows its stored status as live. */
+  initialStates?: OverviewAppStateView[];
 }
 
 export type GridProps = AppsGridProps & {

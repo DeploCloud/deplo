@@ -25,13 +25,26 @@ import {
 import { narrowedScope } from "../../auth/request-context";
 import { clusterMemberServerIdSet } from "../clusters/members";
 import type { Server } from "../../types/server";
+import { serverAnswers } from "../../infra/agent-link/registry";
+
+/** As the agent link says now (ADR-0040): a server whose agent does not answer is offline, whatever was stored. */
+export function withLiveStatus(server: Server): Server {
+  if (!server.agent?.certFingerprint || server.status === "offline")
+    return server;
+  return serverAnswers(server.id) === false
+    ? { ...server, status: "offline" }
+    : server;
+}
+
+const assemble = (row: Parameters<typeof assembleServer>[0]) =>
+  withLiveStatus(assembleServer(row));
 
 export async function listAllServers(): Promise<Server[]> {
   const rows = await getDb()
     .select()
     .from(serversTable)
     .orderBy(asc(serversTable.createdAt), asc(serversTable.id));
-  return rows.map(assembleServer);
+  return rows.map(assemble);
 }
 
 export async function getServerById(id: string): Promise<Server | null> {
@@ -40,7 +53,7 @@ export async function getServerById(id: string): Promise<Server | null> {
     .from(serversTable)
     .where(eq(serversTable.id, id))
     .limit(1);
-  return rows[0] ? assembleServer(rows[0]) : null;
+  return rows[0] ? assemble(rows[0]) : null;
 }
 
 export async function listServers(): Promise<Server[]> {
@@ -88,7 +101,7 @@ export async function listServersForTeam(teamId: string): Promise<Server[]> {
       ),
     )
     .orderBy(asc(serversTable.createdAt), asc(serversTable.id));
-  return rows.map(assembleServer);
+  return rows.map(assemble);
 }
 
 export async function listServersForCurrentTeam(): Promise<Server[]> {

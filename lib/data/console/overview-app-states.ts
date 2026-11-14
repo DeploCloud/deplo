@@ -4,6 +4,9 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
+import { listWorkloadPlacements } from "../clusters/placement";
+import { serverAnswers } from "../../infra/agent-link/registry";
 import { requireActiveTeamId } from "../../membership";
 import { appCapabilitiesForTeam } from "../node-access";
 import { inAppScope } from "../../auth/request-context";
@@ -199,6 +202,54 @@ function prune(activeIds: ReadonlySet<string>): void {
   }
 }
 
+const UNREACHABLE: OverviewRuntime = {
+  total: 0,
+  running: 0,
+  restarting: 0,
+  unhealthy: 0,
+  maxRestartCount: 0,
+  unhealthyContainers: [],
+  unreachable: true,
+};
+
+/** The Apps none of whose servers answers: their last telemetry or probe is history, not their state. */
+async function serversCutOff(
+  rows: { id: string; serverId: string; clusterId: string | null }[],
+): Promise<Set<string>> {
+  if (rows.length === 0) return new Set();
+  const placed = await listWorkloadPlacements(
+    "app",
+    rows.filter((r) => r.clusterId).map((r) => r.id),
+  );
+  const membersOf = new Map(
+    rows.map((r) => [
+      r.id,
+      new Set([
+        r.serverId,
+        ...(placed.get(r.id) ?? []).flatMap((p) =>
+          p.serverId ? [p.serverId] : [],
+        ),
+      ]),
+    ]),
+  );
+  const ids = [...new Set([...membersOf.values()].flatMap((m) => [...m]))];
+  const servers = await getDb()
+    .select({ id: serversTable.id, status: serversTable.status })
+    .from(serversTable)
+    .where(inArray(serversTable.id, ids));
+  // The link says it now; the stored status only where this process has no link door.
+  const offline = new Set(
+    servers
+      .filter((s) => (serverAnswers(s.id) ?? s.status !== "offline") === false)
+      .map((s) => s.id),
+  );
+  return new Set(
+    [...membersOf]
+      .filter(([, members]) => [...members].every((id) => offline.has(id)))
+      .map(([id]) => id),
+  );
+}
+
 export async function loadOverviewAppStates(
   requestedIds: string[],
   probe: RuntimeProbe,
@@ -213,6 +264,7 @@ export async function loadOverviewAppStates(
     .select({
       id: appsTable.id,
       serverId: appsTable.serverId,
+      clusterId: appsTable.clusterId,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
@@ -237,6 +289,9 @@ export async function loadOverviewAppStates(
   const visible = scoped.filter(
     (row) => (capabilities.get(row.id)?.length ?? 0) > 0,
   );
+  const cutOff = await serversCutOff(
+    visible.filter((row) => row.status === "active"),
+  );
   const activeIds = new Set(
     visible.filter((row) => row.status === "active").map((row) => row.id),
   );
@@ -252,6 +307,7 @@ export async function loadOverviewAppStates(
         const legacy = metricsStreamUnsupported(row.serverId);
         if (
           row.status !== "active" ||
+          cutOff.has(row.id) ||
           (!legacy && telemetry.get(row.id) != null && !asksTheAgent(row))
         )
           return false;
@@ -284,6 +340,14 @@ export async function loadOverviewAppStates(
         runtime: null,
       };
     }
+    if (cutOff.has(row.id))
+      return {
+        appId: row.id,
+        status: row.status as AppStatus,
+        neverDeployed: false,
+        restartsPaused: row.restartsPausedAt != null,
+        runtime: UNREACHABLE,
+      };
     if (live && !legacy && !asksTheAgent(row))
       return {
         appId: row.id,

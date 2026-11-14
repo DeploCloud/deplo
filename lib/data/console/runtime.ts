@@ -1,7 +1,7 @@
 import "server-only";
 
 import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
-import { connectAgent } from "../../infra/agent-client/connect";
+import { readAgent } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { AgentUnreachableError } from "../../infra/agent-client/errors";
 import { requireActiveTeamId } from "../../membership";
@@ -104,7 +104,7 @@ async function probeRuntimeOn(p: App): Promise<AppRuntime> {
   const exposeService = await primaryDomainApp(p.id);
   let conn: AgentConnection;
   try {
-    conn = await connectAgent(p.serverId);
+    conn = await readAgent(p.serverId);
   } catch {
     return unknownRuntime();
   }

@@ -126,6 +126,16 @@ async function shown(serverId = SERVER) {
   };
 }
 
+// What was written: an alert follows it, and it waits out the grace that the screen does not.
+async function stored(serverId = SERVER) {
+  const [row] = await db.select().from(servers).where(eq(servers.id, serverId));
+  return {
+    status: row!.status,
+    message: row!.statusMessage ?? null,
+    checkedAt: row!.statusCheckedAt ?? null,
+  };
+}
+
 async function until(
   check: () => Promise<boolean>,
   what: string,
@@ -139,7 +149,7 @@ async function until(
 }
 
 test(
-  "a linked server shows offline once its link has been gone for about 10 s",
+  "a linked server shows offline the moment its link goes, and is stored offline after about 10 s",
   { timeout: 20_000 },
   async () => {
     startServerLinkStatus();
@@ -147,21 +157,22 @@ test(
 
     await cut(link);
     const started = performance.now();
+    assert.equal((await shown()).status, "offline", "shown at once");
     await until(
-      async () => (await shown()).status === "offline",
-      "the server shows offline",
+      async () => (await stored()).status === "offline",
+      "the server is stored offline",
       13_000,
     );
     const waited = performance.now() - started;
     assert.ok(waited > 9_500 && waited < 12_000, `offline after ${waited} ms`);
-    assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
+    assert.equal((await stored()).message, HEALTH_MESSAGES.offline);
     assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
   },
 );
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-test("the grace counts from the latest drop: a link that flaps is not offline", async () => {
+test("the grace counts from the latest drop: a link that flaps is not stored offline", async () => {
   const GRACE = 1_500;
   startServerLinkStatus({ graceMs: GRACE });
   let link = await linkIn();
@@ -174,9 +185,9 @@ test("the grace counts from the latest drop: a link that flaps is not offline", 
   const secondDrop = performance.now();
 
   await sleep(GRACE + 200 - (performance.now() - firstDrop));
-  assert.notEqual((await shown()).status, "offline", "offline too early");
+  assert.notEqual((await stored()).status, "offline", "offline too early");
   await until(
-    async () => (await shown()).status === "offline",
+    async () => (await stored()).status === "offline",
     "offline once the second drop outlasts the grace",
   );
   assert.ok(performance.now() - secondDrop >= GRACE);
@@ -275,7 +286,7 @@ test("checking a linked server asks its Hello over the link and never dials it",
 test("checking a server whose link stayed away shows it offline at once, without dialing it", async () => {
   startServerLinkStatus({ graceMs: 200 });
   await cut(await linkIn());
-  await until(async () => (await shown()).status === "offline", "offline");
+  await until(async () => (await stored()).status === "offline", "offline");
   await ageObservation();
 
   const s = await check();
@@ -286,18 +297,18 @@ test("checking a server whose link stayed away shows it offline at once, without
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("checking a server whose link just dropped changes nothing until the grace is over", async () => {
+test("checking a server whose link just dropped shows it offline but stores nothing until the grace is over", async () => {
   startServerLinkStatus();
   const link = await linkIn();
-  await until(async () => (await shown()).checkedAt !== null, "linked");
+  await until(async () => (await stored()).checkedAt !== null, "linked");
   await ageObservation();
-  const before = await shown();
+  const before = await stored();
 
   await cut(link);
   const s = await check();
   assert.ok(s.took < 1_500, `the check took ${s.took} ms`);
-  assert.equal(s.status, "online");
-  assert.deepEqual(await shown(), before);
+  assert.equal(s.status, "offline");
+  assert.deepEqual(await stored(), before);
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 

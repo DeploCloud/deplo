@@ -2,7 +2,7 @@ import { displayStatus, type RuntimeSnapshot } from "@/lib/apps/display-status";
 import type { DatabaseStatus } from "@/lib/types/database";
 
 export type DatabaseDisplayStatus =
-  DatabaseStatus | "restarting" | "unhealthy" | "down";
+  DatabaseStatus | "restarting" | "unhealthy" | "down" | "unreachable";
 
 export function databaseDisplayStatus(
   status: DatabaseStatus,
@@ -19,6 +19,8 @@ export function databaseDisplayStatus(
       return "unhealthy";
     case "down":
       return "down";
+    case "unreachable":
+      return "unreachable";
     default:
       return "running";
   }

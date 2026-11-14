@@ -27,8 +27,18 @@ import {
 import { AppHeader } from "@/components/apps/app-header";
 import { WaitingForRoom } from "@/components/shared/waiting-for-room";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
+import { getAppRuntime } from "@/lib/data/console";
 
 const PROJECT_TITLE_MAX = 24;
+
+// The server reads the App's containers as it renders, so its status never starts from the stored one.
+async function runtimeSeed(appId: string) {
+  const value = await Promise.race([
+    getAppRuntime(appId).catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
+  ]);
+  return value ? { at: Date.now(), value } : null;
+}
 
 export async function generateMetadata(
   props: LayoutProps<"/[team]/apps/[slug]">,
@@ -62,6 +72,8 @@ export default async function AppLayout(
       appWaitingNote(project),
     ]);
 
+  const runtime =
+    project.status === "active" ? await runtimeSeed(project.id) : null;
   const initialLive: LiveApp = {
     id: project.id,
     slug: project.slug,
@@ -72,6 +84,7 @@ export default async function AppLayout(
     latestDeploymentId: project.latestDeployment?.id ?? null,
     latestDeploymentStatus: project.latestDeployment?.status ?? null,
     latestScreenshotAt,
+    ...(runtime ? { runtime } : {}),
   };
 
   return (
