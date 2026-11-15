@@ -127,7 +127,7 @@ export async function alignSharedRecords(
           zoneId: owner.zoneId,
           recordId: owner.recordId,
           tunnelId: owner.tunnelId,
-          created: d.recordId === owner.recordId ? d.created : false,
+          created: d.recordId === owner.recordId && d.created === true,
         })
         .where(eq(domainDnsRecords.domainId, d.id));
     }
