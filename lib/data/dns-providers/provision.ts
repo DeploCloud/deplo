@@ -22,6 +22,7 @@ import { requireActiveTeamId } from "../../membership";
 import { loadAppGraph } from "../app-graph-load";
 import { appServerAddresses } from "../domains/dns-check";
 import { ensureAppTunnel, settleAppTunnel } from "../clusters/app-tunnel";
+import { recordOfAnotherApp } from "./shared-hostname";
 import {
   ensureServerTunnel,
   loadProviderSecret,
@@ -136,6 +137,16 @@ export async function provisionDomainDns(input: {
   userId: string;
   tunnel: boolean;
 }): Promise<ProvisionedDns | null> {
+  // Another App answers on this hostname already: one record serves every path, wherever it points.
+  const shared = await recordOfAnotherApp(input.hostname, input.appId);
+  if (shared)
+    return {
+      providerId: shared.providerId,
+      zoneId: shared.zoneId,
+      recordId: shared.recordId,
+      tunnelRowId: shared.tunnelId,
+      created: false,
+    };
   const match = await providerForHostname(
     input.hostname,
     input.teamId,

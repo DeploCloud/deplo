@@ -19,6 +19,7 @@ import {
   appTunnelIngress,
   appTunnelService,
   hasTunnelConnector,
+  sameIngress,
   withTunnelConnector,
 } from "../../deploy/panel-tunnel-stack";
 import { newId, nowIso } from "../../ids";
@@ -84,6 +85,79 @@ export async function syncTunnelIngress(
       await tunnelHostnames(tunnel.id, opts.extra, opts.without),
     ),
   );
+}
+
+/** The server tunnel's ingress again, from the hostnames that point at it now. */
+export async function resyncServerTunnel(tunnelRowId: string): Promise<void> {
+  const [t] = await getDb()
+    .select({
+      id: dnsProviderTunnels.id,
+      tunnelId: dnsProviderTunnels.tunnelId,
+      providerId: dnsProviderTunnels.providerId,
+    })
+    .from(dnsProviderTunnels)
+    .where(eq(dnsProviderTunnels.id, tunnelRowId));
+  const provider = t
+    ? await loadProviderSecret(t.providerId).catch(() => null)
+    : null;
+  if (t && provider) await syncTunnelIngress(provider, t).catch(() => {});
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Whether a connector of the tunnel reaches Cloudflare, looking again for up to `waitMs`. */
+export async function waitForConnector(
+  provider: ProviderSecret,
+  tunnelId: string,
+  waitMs: number,
+): Promise<boolean> {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const health = await cloudflare
+      .tunnelHealth(provider.token, provider.accountId, tunnelId)
+      .catch(() => null);
+    if (health && health.connections > 0) return true;
+    if (Date.now() >= until) return false;
+    await sleep(Math.min(2000, waitMs));
+  }
+}
+
+/**
+ * Puts back the routes of every server tunnel whose ingress in Cloudflare is not the one Deplo derives, e.g. a
+ * rule edited by hand to name an address. Returns how many it rewrote; one it cannot reach is tried next time.
+ */
+export async function healServerTunnelIngress(): Promise<number> {
+  const rows = await getDb()
+    .select({
+      id: dnsProviderTunnels.id,
+      tunnelId: dnsProviderTunnels.tunnelId,
+      providerId: dnsProviderTunnels.providerId,
+    })
+    .from(dnsProviderTunnels);
+  let healed = 0;
+  for (const t of rows) {
+    try {
+      const provider = await loadProviderSecret(t.providerId);
+      if (!provider) continue;
+      const wanted = appTunnelIngress(await tunnelHostnames(t.id));
+      const held = await cloudflare.tunnelIngress(
+        provider.token,
+        provider.accountId,
+        t.tunnelId,
+      );
+      if (sameIngress(held, wanted)) continue;
+      await cloudflare.setTunnelIngress(
+        provider.token,
+        provider.accountId,
+        t.tunnelId,
+        wanted,
+      );
+      healed++;
+    } catch (e) {
+      console.warn(`[tunnel] ${t.tunnelId}: ${messageOf(e)}`);
+    }
+  }
+  return healed;
 }
 
 /**

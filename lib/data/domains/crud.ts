@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -179,11 +179,18 @@ async function addDomainUnlocked(
     );
   await assertHostnameClaimable(clean, membership.teamId);
 
+  // Another App's paths on this hostname: one DNS record serves them all, so this one is served the same way.
+  const [shared] = await getDb()
+    .select({ tunnel: domainsTable.tunnel })
+    .from(domainsTable)
+    .where(and(eq(domainsTable.name, clean), ne(domainsTable.appId, appId)))
+    .limit(1);
   // A cluster App's domain in a connected Cloudflare zone is always served by the App's own tunnel.
-  const tunnel =
-    config.tunnel === true ||
-    (project.clusterId != null &&
-      (await providerForHostname(clean, membership.teamId, user.id)) != null);
+  const tunnel = shared
+    ? shared.tunnel === true
+    : config.tunnel === true ||
+      (project.clusterId != null &&
+        (await providerForHostname(clean, membership.teamId, user.id)) != null);
   await assertTeamLetsencryptQuota(
     membership.teamId,
     tunnel ? "cloudflare" : (config.certProvider ?? "none"),

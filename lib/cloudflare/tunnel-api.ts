@@ -128,6 +128,26 @@ export async function setTunnelIngress(
   );
 }
 
+/** The routes Cloudflare holds for the tunnel; null when none were ever set. */
+export async function tunnelIngress(
+  token: string,
+  accountId: string,
+  tunnelId: string,
+): Promise<TunnelIngressRule[] | null> {
+  const res = await cf<{ config?: { ingress?: unknown } | null }>(
+    token,
+    "GET",
+    `/accounts/${accountId}/cfd_tunnel/${tunnelId}/configurations`,
+  );
+  const ingress = res?.config?.ingress;
+  if (!Array.isArray(ingress)) return null;
+  return ingress.map((r: Record<string, unknown>) => ({
+    ...(typeof r.hostname === "string" ? { hostname: r.hostname } : {}),
+    ...(typeof r.path === "string" ? { path: r.path } : {}),
+    service: typeof r.service === "string" ? r.service : "",
+  }));
+}
+
 export type TunnelHealth = {
   status: "healthy" | "degraded" | "down" | "inactive" | "unknown";
   connections: number;

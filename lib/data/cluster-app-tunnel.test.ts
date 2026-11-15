@@ -698,3 +698,97 @@ test("a domain in another Cloudflare account stays on its address, and Activity 
     ),
   );
 });
+
+const PROXY_STACK = `services:
+  traefik:
+    image: traefik:v3.7
+    container_name: deplo-traefik
+networks:
+  deplo:
+    external: true
+`;
+
+const docsApp = (placement: { serverId?: string; clusterId?: string }) =>
+  asAdmin(() =>
+    createApp({
+      name: "docs",
+      source: "compose",
+      repo: null,
+      compose: COMPOSE.replace("web:", "docs:"),
+      deploy: false,
+      ...placement,
+    }),
+  );
+
+test("a hostname two Apps share goes into the tunnel of the App on the whole host, and the other's path rides on it", async () => {
+  const cluster = await eu();
+  await connectCloudflare();
+  hosts[SERVER_1].proxy.yaml = PROXY_STACK;
+  const web = await soloApp();
+  const docs = await docsApp({ serverId: SERVER_1 });
+  await asAdmin(() =>
+    addDomain(web.id, HOST, { service: "web", port: 80, tunnel: true }),
+  );
+  await asAdmin(() =>
+    addDomain(docs.id, HOST, {
+      service: "docs",
+      port: 80,
+      pathPrefix: "/docs",
+    }),
+  );
+  const [serverTunnel] = [...cf.tunnels.keys()];
+
+  await asAdmin(() => moveAppToCluster(web.id, cluster.id));
+  await asAdmin(() => moveAppToCluster(docs.id, cluster.id));
+  assert.equal(
+    cf.tunnels.size,
+    2,
+    "the App on the whole host gets one, the path none",
+  );
+  const ownTunnel = [...cf.tunnels.keys()].find((id) => id !== serverTunnel)!;
+
+  await deployOn(web);
+  await applyDomainEditsMadeDuringBuild("dpl_1", web.id, []);
+  assert.deepEqual(records(), [
+    { type: "CNAME", content: `${ownTunnel}.cfargotunnel.com`, proxied: true },
+  ]);
+  assert.deepEqual(
+    (cf.tunnels.get(serverTunnel)?.ingress as { hostname?: string }[]).map(
+      (r) => r.hostname,
+    ),
+    [undefined],
+    "the old server's tunnel no longer routes it",
+  );
+  const rows = await db.select().from(domainDnsRecords);
+  assert.equal(rows.length, 2);
+  assert.equal(new Set(rows.map((r) => r.recordId)).size, 1);
+  assert.ok(rows.every((r) => r.tunnelId === null));
+
+  const req = await deployOn(docs, "srv_2", "dpl_2");
+  assert.deepEqual(req.startAfterReady, [], "no connector of its own");
+});
+
+test("a path added to a hostname another cluster App serves rides on its record", async () => {
+  const cluster = await eu();
+  await connectCloudflare();
+  const web = await soloApp();
+  await withDomain(web.id);
+  await asAdmin(() => moveAppToCluster(web.id, cluster.id));
+  await deployOn(web);
+  await applyDomainEditsMadeDuringBuild("dpl_1", web.id, []);
+  const [ownTunnel] = [...cf.tunnels.keys()];
+
+  const docs = await docsApp({ clusterId: cluster.id });
+  const added = await asAdmin(() =>
+    addDomain(docs.id, HOST, {
+      service: "docs",
+      port: 80,
+      pathPrefix: "/docs",
+    }),
+  );
+  assert.equal(added.tunnel, true);
+  assert.deepEqual([...cf.tunnels.keys()], [ownTunnel]);
+  assert.deepEqual(records(), [
+    { type: "CNAME", content: `${ownTunnel}.cfargotunnel.com`, proxied: true },
+  ]);
+});

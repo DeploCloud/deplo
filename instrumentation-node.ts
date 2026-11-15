@@ -248,6 +248,10 @@ export async function register(): Promise<void> {
         const { reconcileAppTunnels } =
           await import("./lib/data/clusters/app-tunnel");
         await reconcileAppTunnels();
+        // A hostname follows its App to the server it runs on, and every tunnel routes as Deplo derives it.
+        const { reconcileTunnelDomains } =
+          await import("./lib/data/dns-providers/follow");
+        await reconcileTunnelDomains();
       };
       const tick = () =>
         void run().catch((e) =>

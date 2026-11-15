@@ -67,6 +67,20 @@ export function appTunnelIngress(hostnames: string[]): TunnelIngressRule[] {
   ];
 }
 
+/** Whether Cloudflare routes exactly as `wanted`: same hostnames, paths and services, in order. */
+export function sameIngress(
+  held: TunnelIngressRule[] | null,
+  wanted: TunnelIngressRule[],
+): boolean {
+  if (!held || held.length !== wanted.length) return false;
+  return held.every(
+    (r, i) =>
+      (r.hostname ?? "") === (wanted[i].hostname ?? "") &&
+      (r.path ?? "") === (wanted[i].path ?? "") &&
+      r.service === wanted[i].service,
+  );
+}
+
 // One connector per DNS provider account on a server. KEEP IN SYNC with install.sh, which carries it over by this prefix.
 export function appTunnelService(providerId: string): string {
   return `deplo-dns-tunnel-${providerId.replace(/[^a-z0-9]/gi, "").toLowerCase()}`;

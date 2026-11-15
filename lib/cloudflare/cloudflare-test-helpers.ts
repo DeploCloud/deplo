@@ -100,6 +100,19 @@ export function fakeCloudflare(seed: Partial<FakeCloudflare> = {}): {
         t.ingress = body.config.ingress;
         return ok({});
       }
+      if (rest === "/configurations" && method === "GET")
+        return ok({
+          tunnel_id: m[1],
+          config: t.ingress
+            ? {
+                // Cloudflare hands each rule back with its origin settings.
+                ingress: (t.ingress as object[]).map((r) => ({
+                  ...r,
+                  originRequest: {},
+                })),
+              }
+            : null,
+        });
       if (rest === "/token" && method === "GET") return ok(`token-for-${m[1]}`);
       if (rest === "/connections" && method === "DELETE") return ok({});
       if (rest === "" && method === "DELETE") {

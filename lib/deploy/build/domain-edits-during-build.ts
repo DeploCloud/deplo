@@ -2,6 +2,7 @@ import "server-only";
 
 import { loadDeployment } from "../../data/app-graph-load";
 import { activateAppTunnel } from "../../data/clusters/app-tunnel";
+import { followAppServer } from "../../data/dns-providers/follow";
 import {
   primaryDomainName,
   syncProductionUrl,
@@ -30,6 +31,20 @@ export async function applyDomainEditsMadeDuringBuild(
     // The App is up and its connector has just started: its domains switch once Cloudflare sees it.
     if ((await activateAppTunnel(appId, CONNECTOR_WAIT_MS)) > 0)
       log(depId, "info", "Switched its Cloudflare domains to the App's tunnel");
+    // It may run on another server than before: its Cloudflare domains reach it through that server's tunnel.
+    const followed = await followAppServer(appId, CONNECTOR_WAIT_MS);
+    if (followed.moved.length > 0)
+      log(
+        depId,
+        "info",
+        `Moved ${followed.moved.join(", ")} to the Cloudflare Tunnel on this server`,
+      );
+    if (followed.problems.length > 0)
+      log(
+        depId,
+        "warn",
+        `Could not move these to the Cloudflare Tunnel on this server, Deplo tries again shortly: ${followed.problems.join("; ")}`,
+      );
     const current = await routableForDeploy(
       appId,
       "production",

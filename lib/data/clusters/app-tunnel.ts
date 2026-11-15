@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 
-import { and, eq, isNotNull, ne } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 
 import { getCurrentUser } from "../../auth/current-user";
 import * as cloudflare from "../../cloudflare/tunnel-api";
@@ -12,13 +12,11 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   appTunnelDomains,
   appTunnels,
-  dnsProviderTunnels,
   domainDnsRecords,
 } from "../../db/schema/control-plane/dns-providers";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
-import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { ADDRESS_CHANGES_NOTE } from "../../clusters/address-note";
-import { appTunnelIngress } from "../../deploy/panel-tunnel-stack";
+import { appTunnelIngress, sameIngress } from "../../deploy/panel-tunnel-stack";
 import { nowIso } from "../../ids";
 import { loadAppGraph, loadDomainsForApp } from "../app-graph-load";
 import { recordActivity } from "../activity";
@@ -29,8 +27,14 @@ import {
   rememberDomainDns,
 } from "../dns-providers/provision";
 import {
+  alignSharedRecords,
+  deploRecordTargets,
+  hostnameOwner,
+} from "../dns-providers/shared-hostname";
+import {
   loadProviderSecret,
-  syncTunnelIngress,
+  resyncServerTunnel,
+  waitForConnector,
   type ProviderSecret,
 } from "../dns-providers/tunnels";
 import { appServerAddresses, checkDomainDns } from "../domains/dns-check";
@@ -213,22 +217,18 @@ export async function retireAppTunnel(appId: string): Promise<string | null> {
   return problem;
 }
 
-// A hostname another App also answers on (a path of it) cannot move to this App's tunnel alone.
-async function sharedHostnames(appId: string): Promise<Set<string>> {
+// A hostname another App owns (this App answers on a path of it) is served from that App's tunnel.
+async function ownedElsewhere(appId: string): Promise<Set<string>> {
   const mine = await getDb()
-    .select({ name: domainsTable.name })
+    .selectDistinct({ name: domainsTable.name })
     .from(domainsTable)
     .where(eq(domainsTable.appId, appId));
-  const shared = new Set<string>();
+  const elsewhere = new Set<string>();
   for (const d of mine) {
-    const [other] = await getDb()
-      .select({ id: domainsTable.id })
-      .from(domainsTable)
-      .where(and(eq(domainsTable.name, d.name), ne(domainsTable.appId, appId)))
-      .limit(1);
-    if (other) shared.add(d.name);
+    const owner = await hostnameOwner(d.name);
+    if (owner && owner.appId !== appId) elsewhere.add(d.name);
   }
-  return shared;
+  return elsewhere;
 }
 
 // The zone that covers each domain the tunnel does not hold yet: the one its record is in, else one the actor may use.
@@ -237,7 +237,7 @@ async function coveredDomains(
   actorId: string,
 ): Promise<{ id: string; tunnel: boolean; providerId: string }[]> {
   const held = new Set((await heldDomains(app.id)).map((d) => d.id));
-  const shared = await sharedHostnames(app.id);
+  const elsewhere = await ownedElsewhere(app.id);
   const managed = new Map(
     (
       await getDb()
@@ -255,7 +255,8 @@ async function coveredDomains(
   );
   const out: { id: string; tunnel: boolean; providerId: string }[] = [];
   for (const d of all) {
-    if (held.has(d.id) || d.source === "auto" || shared.has(d.name)) continue;
+    if (held.has(d.id) || d.source === "auto" || elsewhere.has(d.name))
+      continue;
     const providerId =
       managed.get(d.id) ??
       (await providerForHostname(d.name, app.teamId, actorId))?.id;
@@ -323,32 +324,6 @@ export async function joinAppTunnel(
   return use.length;
 }
 
-async function knownServerAddresses(): Promise<Set<string>> {
-  const rows = await getDb()
-    .select({ ip: serversTable.ip, host: serversTable.host })
-    .from(serversTable);
-  return new Set(rows.flatMap((r) => [r.ip, r.host]).filter(Boolean));
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// DNS moves only once the connector has reached Cloudflare: before that the tunnel answers nobody.
-async function connected(
-  row: TunnelRow,
-  home: ProviderSecret,
-  waitMs: number,
-): Promise<boolean> {
-  const until = Date.now() + waitMs;
-  for (;;) {
-    const health = await cloudflare
-      .tunnelHealth(home.token, home.accountId, row.tunnelId)
-      .catch(() => null);
-    if (health && health.connections > 0) return true;
-    if (Date.now() >= until) return false;
-    await sleep(Math.min(2000, waitMs));
-  }
-}
-
 /**
  * Points each pending domain at the App's tunnel, hostname unchanged, once its connector is connected.
  * `waitMs` is how long to wait for a connector that has just started. Returns how many switched.
@@ -365,19 +340,15 @@ export async function activateAppTunnel(
     if (pending.length === 0) return 0;
     const app = await loadAppGraph(appId);
     const home = await loadProviderSecret(row.providerId).catch(() => null);
-    if (!app || !home || !(await connected(row, home, waitMs))) return 0;
+    // DNS moves only once the connector has reached Cloudflare: before that the tunnel answers nobody.
+    if (!app || !home || !(await waitForConnector(home, row.tunnelId, waitMs)))
+      return 0;
 
-    const addresses = await knownServerAddresses();
-    const serverTunnels = new Set(
-      (
-        await getDb()
-          .select({ id: dnsProviderTunnels.tunnelId })
-          .from(dnsProviderTunnels)
-      ).map((t) => `${t.id}${cloudflare.TUNNEL_TARGET_SUFFIX}`),
-    );
+    const targets = await deploRecordTargets();
     const switched: string[] = [];
     const kept: string[] = [];
     const resync = new Set<string>();
+    const reroute = new Set<string>();
     for (const d of pending) {
       try {
         const provider = await loadProviderSecret(d.providerId);
@@ -389,10 +360,7 @@ export async function activateAppTunnel(
           d.name,
           row.tunnelId,
           // Deplo's own record, or one that points at a server or a tunnel of this Deplo.
-          (r) =>
-            r.id === d.recordId ||
-            addresses.has(r.content) ||
-            serverTunnels.has(r.content.toLowerCase()),
+          (r) => r.id === d.recordId || targets.has(r.content.toLowerCase()),
           RECORD_COMMENT,
         );
         const created = pointed.created || d.created === true;
@@ -433,6 +401,10 @@ export async function activateAppTunnel(
           .set({ active: true, error: null })
           .where(eq(appTunnelDomains.domainId, d.id));
         if (d.oldTunnel) resync.add(d.oldTunnel);
+        // Another App's paths on the hostname ride on the same record.
+        const shared = await alignSharedRecords(d.id);
+        for (const t of shared.oldTunnels) resync.add(t);
+        for (const a of shared.rerouteApps) reroute.add(a);
         switched.push(d.name);
       } catch (e) {
         const error = messageOf(e);
@@ -445,6 +417,7 @@ export async function activateAppTunnel(
       }
     }
     for (const id of resync) await resyncServerTunnel(id);
+    await rerouteOthers(reroute);
     if (switched.length > 0)
       await recordActivity(
         "domain",
@@ -465,19 +438,44 @@ export async function activateAppTunnel(
   });
 }
 
-async function resyncServerTunnel(tunnelRowId: string): Promise<void> {
-  const [t] = await getDb()
-    .select({
-      id: dnsProviderTunnels.id,
-      tunnelId: dnsProviderTunnels.tunnelId,
-      providerId: dnsProviderTunnels.providerId,
-    })
-    .from(dnsProviderTunnels)
-    .where(eq(dnsProviderTunnels.id, tunnelRowId));
-  const provider = t
-    ? await loadProviderSecret(t.providerId).catch(() => null)
-    : null;
-  if (t && provider) await syncTunnelIngress(provider, t).catch(() => {});
+// Another App answering on a path of a hostname that changed how it is served: its routes follow.
+async function rerouteOthers(appIds: Iterable<string>): Promise<void> {
+  const { rerouteApp } = await import("../../deploy/build/reroute");
+  for (const id of appIds)
+    await rerouteApp(id).catch((e) =>
+      console.warn(`[app-tunnel] ${id}: ${messageOf(e)}`),
+    );
+}
+
+/** Puts back the routes of every App tunnel whose ingress in Cloudflare is not the one Deplo derives. */
+export async function healAppTunnelIngress(): Promise<number> {
+  const rows = await getDb().select().from(appTunnels);
+  let healed = 0;
+  for (const row of rows) {
+    try {
+      const provider = await loadProviderSecret(row.providerId);
+      if (!provider) continue;
+      const names = (await heldDomains(row.appId)).map((d) => d.name);
+      if (names.length === 0) continue;
+      const wanted = appTunnelIngress(names);
+      const held = await cloudflare.tunnelIngress(
+        provider.token,
+        provider.accountId,
+        row.tunnelId,
+      );
+      if (sameIngress(held, wanted)) continue;
+      await cloudflare.setTunnelIngress(
+        provider.token,
+        provider.accountId,
+        row.tunnelId,
+        wanted,
+      );
+      healed++;
+    } catch (e) {
+      console.warn(`[app-tunnel] ${row.appId}: ${messageOf(e)}`);
+    }
+  }
+  return healed;
 }
 
 /**
@@ -536,10 +534,14 @@ export async function leaveAppTunnel(
   if (!app) return;
   const back: string[] = [];
   const stuck: string[] = [];
+  const reroute = new Set<string>();
   for (const d of await heldDomains(appId)) {
     try {
       if (d.active) {
         await switchBack(d, app);
+        const shared = await alignSharedRecords(d.id);
+        for (const t of shared.oldTunnels) await resyncServerTunnel(t);
+        for (const a of shared.rerouteApps) reroute.add(a);
         back.push(d.name);
       }
       await getDb()
@@ -551,6 +553,7 @@ export async function leaveAppTunnel(
   }
   // A domain that could not go back keeps the tunnel, and with it the connector in the stack.
   await settleAppTunnel(appId);
+  await rerouteOthers(reroute);
   if (back.length > 0)
     await recordActivity(
       "domain",
