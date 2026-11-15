@@ -14,7 +14,28 @@ export type ServerMemberState = {
   error: string;
   /** How many Apps and databases it holds. */
   held: number;
+  /** One line when it does not reach every other server of the cluster directly; empty when it does. */
+  network: string;
+  /** It cannot reach one of them at all, which is worth a warning rather than a note. */
+  networkDown: boolean;
 };
+
+/** "eu-2" and "deplo and eu-2": the servers one reaches a certain way, for a card's line. */
+export function serverList(names: string[]): string {
+  const sorted = [...new Set(names)].sort();
+  if (sorted.length <= 1) return sorted.join("");
+  return `${sorted.slice(0, -1).join(", ")} and ${sorted[sorted.length - 1]}`;
+}
+
+/** "Reaches eu-2 through Deplo's relay": how a server's private network stands, when it is not all direct. */
+export function networkLine(n: ClusterMember["network"]): string {
+  const parts = [
+    n.unreachable.length > 0 && `Cannot reach ${serverList(n.unreachable)} now`,
+    n.relayed.length > 0 &&
+      `Reaches ${serverList(n.relayed)} through Deplo's relay, with more delay`,
+  ].filter(Boolean);
+  return parts.join(". ");
+}
 
 export function memberState(m: ClusterMember): ServerMemberState {
   const e = m.emptying;
@@ -28,6 +49,8 @@ export function memberState(m: ClusterMember): ServerMemberState {
         : "",
     error: e?.error ?? "",
     held: m.held,
+    network: networkLine(m.network),
+    networkDown: m.network.unreachable.length > 0,
   };
 }
 

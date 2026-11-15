@@ -10,6 +10,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { rehomeFailoverBackups } from "../databases/failover";
 import { shipChangeLogs } from "./change-log";
 import { runClusterRollout } from "./binary-rollout";
+import { reconcileClusterNetworks } from "./network";
 import { runEmptyingPass } from "./empty";
 import { reconcileClusterImages } from "./images";
 import { runLoadBalancingPass } from "./load-balancing";
@@ -31,6 +32,7 @@ const TICK_MS = 15_000;
 const CHANGE_LOG_EVERY_MS = 60_000;
 const ROLLOUT_EVERY_MS = 60_000;
 const IMAGES_EVERY_MS = 2 * 60_000;
+const NETWORK_EVERY_MS = 2 * 60_000;
 const WARNINGS_EVERY_MS = 30_000;
 const BALANCE_EVERY_MS = 30_000;
 // Renewed every tick: a Deplo that died without letting go must not leave failover off for the usual 2h.
@@ -50,6 +52,9 @@ interface State {
   rolledAt?: number;
   /** When failed or missing image copies were last retried. */
   imagesAt?: number;
+  /** When every cluster's private network was last put right, and whether a pass still runs. */
+  networkAt?: number;
+  networking?: boolean;
   /** When the clusters' warnings were last worked out, and whether a pass still runs. */
   warningsAt?: number;
   warning?: boolean;
@@ -158,6 +163,17 @@ export async function runClusterWatchTick(): Promise<void> {
       void reconcileClusterImages().catch((e) =>
         console.error("[cluster-images] retrying copies failed:", e),
       );
+    }
+    // A server whose agent just learned the network joins it, and the Servers page shows each pair's path as it is now.
+    if (
+      !state.networking &&
+      Date.now() - (state.networkAt ?? 0) >= NETWORK_EVERY_MS
+    ) {
+      state.networkAt = Date.now();
+      state.networking = true;
+      void reconcileClusterNetworks()
+        .catch((e) => console.error("[cluster-network] pass failed:", e))
+        .finally(() => (state.networking = false));
     }
     // The Servers page reads what this stored, so it never waits on a leader.
     if (

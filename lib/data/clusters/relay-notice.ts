@@ -7,6 +7,7 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { relayNoticeText } from "../../databases/relay-notice";
 import { requireActiveTeamId } from "../../membership";
+import { clusterNetworkLinksOf } from "./network";
 import { listWorkloadPlacements } from "./placement";
 
 /** The database page's sentence when Apps of its Environment run on another server of its cluster; null otherwise. */
@@ -66,9 +67,25 @@ export const databaseRelayNotice = cache(
     };
     const dbMembers = where(dbPlaced.get(databaseId), row.serverId);
     if (dbMembers.size === 0) return null;
+    const placed = new Map(
+      neighbours.map((a) => [a.id, where(appsPlaced.get(a.id), a.serverId)]),
+    );
+    const links = await clusterNetworkLinksOf(row.clusterId, [
+      ...new Set([...placed.values()].flatMap((s) => [...s])),
+    ]);
+    // Over the cluster's private network a server reached directly is no detour (ADR-0047): only a relayed pair is.
+    const relayed = (member: string) =>
+      [...dbMembers].some(
+        (d) =>
+          (links.get(member) ?? []).find((l) => l.peerServerId === d)?.path !==
+          "direct",
+      );
     const far = neighbours.filter((a) => {
-      const members = where(appsPlaced.get(a.id), a.serverId);
-      return members.size > 0 && [...members].some((m) => !dbMembers.has(m));
+      const members = placed.get(a.id)!;
+      return (
+        members.size > 0 &&
+        [...members].some((m) => !dbMembers.has(m) && relayed(m))
+      );
     });
     return relayNoticeText(far.map((a) => a.name));
   },

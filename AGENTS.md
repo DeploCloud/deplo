@@ -186,8 +186,8 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   **ciphertext**: the age wrap happens in the SOURCE agent's pipeline next to gzip, so nothing
   here ever holds plaintext. `lib/data/backup-transport.ts` owns all three shapes.
   **One artifact skips the control plane**: what a cluster member had left after a failover goes
-  to the destination's member over the cluster relay (ADR-0044), so it is saved while Deplo is
-  down. Same ciphertext, and that server agent keeps only the file its leader named for that sender.
+  to the destination's member over the cluster's private network (ADR-0047), so it is saved while
+  Deplo is down. Same ciphertext, and that server agent keeps only the file its leader named for that sender.
 - Compose is rendered control-plane-side as **opaque YAML** and shipped to the agent:
   `renderCompose` (single-image) / `buildComposeStack` (multi) / `traefikRouterLabels` (the only
   Traefik label grammar) / `portFor` (ADR-0001, the only port reader). **Never port routing /
@@ -232,9 +232,17 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   exactly half while Deplo named its epoch in the last 20 s (`beatClusterLeaders`, every 5 s, to
   `leaderHost` only). A takeover waits `TAKEOVER_AFTER_MS`, longer than a leader trusts a beat
   (`DeploFor` in `deplo-cluster`): change the two together, or two leaders each hold half a cluster.
+- **A cluster's servers share a private network** (ADR-0047, `lib/data/clusters/network.ts`): a
+  WireGuard tunnel between every two of them, run by each server agent in userspace, so nothing on
+  the host changes. Deplo hands each agent its peers (`SetClusterNetwork`, `cluster.network`), a
+  server's tunnel address comes from its id (`networkAddress`), and the agent keeps it all on disk,
+  so the network outlives Deplo and the leader. Every stream between servers goes through it, direct
+  where a UDP path answers and over the relay where none does; the relay stays as that fallback and
+  for agents without the capability. Nothing routes container addresses: names still cross by name
+  forwarders, and the leader reaches members through its host agent (`DEPLO_CLUSTER_MESH_SOCKET`).
 - **Replication streams member to member** (ADR-0046, `lib/data/clusters/replication.ts`): Deplo hands
   every member's server agent the cluster's replicated Apps (`SetClusterReplicas`, `cluster.replicas`)
-  and reads back how each copy stands; the agent that runs an App sends every change over the relay and
+  and reads back how each copy stands; the agent that runs an App sends every change over the private network and
   the others keep a copy apart from live data, which a restore marked `fromReplica` puts in place. It is
   the only way such an App fails over, it gives every database a standby copy, and load balancing needs it.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers

@@ -35,7 +35,10 @@ import {
   type ClusterJoinReason,
   type ClusterLeaseState,
   type ClusterMember,
+  type ClusterMemberNetwork,
 } from "../../types/cluster";
+import { isDeploHostServer } from "../../deploy/domains";
+import { clusterNetworkLinksOf } from "./network";
 import type { ServerStatus } from "../../types/server";
 import { TWO_SERVERS_JOINED } from "../../clusters/failover-reach";
 import { archivesChangeLog } from "../../databases/change-log";
@@ -273,7 +276,11 @@ function emptyingOf(
   };
 }
 
-async function toMember(r: MemberRow, viewer: Viewer): Promise<ClusterMember> {
+async function toMember(
+  r: MemberRow,
+  viewer: Viewer,
+  network: ClusterMemberNetwork = { relayed: [], unreachable: [] },
+): Promise<ClusterMember> {
   const held = await listMemberWorkloads(r.serverId);
   return {
     serverId: r.serverId,
@@ -285,7 +292,46 @@ async function toMember(r: MemberRow, viewer: Viewer): Promise<ClusterMember> {
     held: held.length,
     leaseState: toLeaseState(r.leaseState),
     provisioning: !r.readyAt,
+    network,
   };
+}
+
+/** How each member reaches the others: by name for a member, "Deplo's machine" or "the leader's server" otherwise. */
+async function membersNetwork(
+  clusterId: string,
+  rows: MemberRow[],
+): Promise<Map<string, ClusterMemberNetwork>> {
+  const out = new Map<string, ClusterMemberNetwork>();
+  const links = await clusterNetworkLinksOf(
+    clusterId,
+    rows.map((r) => r.serverId),
+  );
+  const members = new Map(rows.map((r) => [r.serverId, r]));
+  const others = new Map<string, { name: string; online: boolean }>();
+  const peer = async (id: string) => {
+    const m = members.get(id);
+    if (m) return { name: m.serverName, online: m.status === "online" };
+    if (!others.has(id)) {
+      const s = await getServerById(id);
+      others.set(id, {
+        name:
+          s && isDeploHostServer(s) ? "Deplo's machine" : "the leader's server",
+        online: s?.status === "online",
+      });
+    }
+    return others.get(id)!;
+  };
+  for (const r of rows) {
+    const n: ClusterMemberNetwork = { relayed: [], unreachable: [] };
+    for (const l of links.get(r.serverId) ?? []) {
+      if (l.path === "direct") continue;
+      const p = await peer(l.peerServerId);
+      if (l.path === "relay") n.relayed.push(p.name);
+      else if (p.online && r.status === "online") n.unreachable.push(p.name);
+    }
+    out.set(r.serverId, n);
+  }
+  return out;
 }
 
 function toLeaseState(s: string): ClusterLeaseState {
@@ -314,7 +360,10 @@ async function readMembers(
     .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
     .where(eq(membersTable.clusterId, clusterId))
     .orderBy(asc(membersTable.joinedAt), asc(membersTable.serverId));
-  return Promise.all(rows.map((r) => toMember(r, viewer)));
+  const network = await membersNetwork(clusterId, rows);
+  return Promise.all(
+    rows.map((r) => toMember(r, viewer, network.get(r.serverId))),
+  );
 }
 
 /** A cluster's members, for whoever may see the cluster: an instance admin, or a team it is shared with. */

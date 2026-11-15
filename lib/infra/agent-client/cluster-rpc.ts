@@ -24,6 +24,7 @@ export function clusterRpc(
   | "copyClusterImage"
   | "expectClusterImage"
   | "setClusterForwarders"
+  | "setClusterNetwork"
   | "setClusterReplicas"
   | "clusterReplicaStatus"
 > {
@@ -108,6 +109,25 @@ export function clusterRpc(
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return { held: r.held, served: r.served };
+    },
+    async setClusterNetwork(table) {
+      const r = await unary(
+        client.setClusterNetwork.bind(client),
+        table,
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return {
+        publicKey: r.publicKey,
+        port: r.port,
+        addresses: r.addresses,
+        peers: r.peers.map((p) => ({
+          fingerprint: p.fingerprint,
+          path:
+            p.path === "direct" || p.path === "relay"
+              ? (p.path as "direct" | "relay")
+              : "none",
+        })),
+      };
     },
     async setClusterReplicas(table) {
       const r = await unary(

@@ -24,6 +24,7 @@ const member = (over: Partial<ClusterMember> = {}): ClusterMember => ({
   held: 0,
   leaseState: "ok",
   provisioning: false,
+  network: { relayed: [], unreachable: [] },
   ...over,
 });
 
@@ -203,4 +204,37 @@ test("a server being removed says how far it has got, and why it stopped", () =>
   assert.equal(stopped.emptying, "stopped");
   assert.equal(stopped.error, "No other server has room for web.");
   assert.equal(memberState(member()).emptying, "idle");
+});
+
+test("a server of a cluster names the servers its private network does not reach directly, and nothing when all do", () => {
+  const relayed = server("server-d", {
+    cluster: eu,
+    member: memberState(
+      member({ network: { relayed: ["server-c"], unreachable: [] } }),
+    ),
+  });
+  const down = server("server-e", {
+    cluster: eu,
+    member: memberState(
+      member({ network: { relayed: [], unreachable: ["server-c"] } }),
+    ),
+  });
+  const html = grid({
+    servers: [SETTLED, relayed, down],
+    clusters: [CLUSTER],
+    openCluster: eu,
+  });
+  assert.match(html, /Relayed/);
+  assert.match(html, /Can(&#x27;|')t reach a server/);
+  assert.equal(memberState(member()).network, "");
+  assert.equal(
+    memberState(member({ network: { relayed: ["b", "a"], unreachable: [] } }))
+      .network,
+    "Reaches a and b through Deplo's relay, with more delay",
+  );
+  assert.equal(
+    memberState(member({ network: { relayed: ["a"], unreachable: ["c"] } }))
+      .network,
+    "Cannot reach c now. Reaches a through Deplo's relay, with more delay",
+  );
 });

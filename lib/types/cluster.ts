@@ -130,6 +130,14 @@ export interface ClusterMember {
   leaseState: ClusterLeaseState;
   /** It joined and the cluster's leader has not answered for it yet. */
   provisioning: boolean;
+  /** How it reaches the cluster's other servers over the private network, when not directly (ADR-0047). */
+  network: ClusterMemberNetwork;
+}
+
+/** The servers a member reaches only through Deplo's relay, or not at all though both are up. Empty: all direct. */
+export interface ClusterMemberNetwork {
+  relayed: string[];
+  unreachable: string[];
 }
 
 export type ClusterJoinReasonCode =

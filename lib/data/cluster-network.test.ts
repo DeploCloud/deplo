@@ -1,0 +1,246 @@
+import { test, before, after, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+
+import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
+
+import { makeTestDb, type TestDb } from "../db/test-harness";
+import { __setTestDb, __resetTestDb } from "../db/client";
+import { runWithIdentity } from "../auth/request-context";
+import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
+import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import { seedServerRow } from "./infra-test-helpers";
+import {
+  clusterMembers,
+  clusterNetworkLinks,
+  clusterNetworkPeers,
+  clusters as clustersTable,
+} from "../db/schema/control-plane/clusters";
+import { deploMoves } from "../db/schema/control-plane/deplo-move";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
+import { __resetReleaseCacheForTests } from "../agent/release";
+import { __setClusterPinForTest } from "../infra/agent-client/cluster-host";
+import {
+  fakeClusterHosts,
+  type FakeClusterHost,
+} from "../infra/agent-client/cluster-test-helpers";
+import { CLUSTER_NETWORK_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import { networkAddress } from "../deploy/cluster-network";
+import { createCluster } from "./clusters/manage";
+import { addClusterMember, listClusterMembers } from "./clusters/members";
+import {
+  reconcileClusterNetworks,
+  syncClusterNetwork,
+} from "./clusters/network";
+import { clusterRoster } from "./clusters/relay";
+import { invalidateFrozen } from "./deplo-move/freeze";
+
+let db: TestDb;
+let pg: PGlite;
+let fleet: ReturnType<typeof fakeClusterHosts>;
+let hosts: Record<string, FakeClusterHost>;
+let origFetch: typeof fetch;
+
+const SUMS =
+  `${"a".repeat(64)}  deplo-cluster-linux-amd64\n` +
+  `${"b".repeat(64)}  deplo-cluster-linux-arm64\n`;
+const everyone = { allTeams: true, teamIds: [] as string[] };
+const fp = (n: number) => String(n).repeat(64);
+const MEMBERS = ["srv_2", "srv_3"];
+
+before(async () => {
+  ({ db, pg } = await makeTestDb());
+  __setTestDb(db);
+});
+
+after(async () => {
+  __resetTestDb();
+  await pg.close();
+});
+
+beforeEach(async () => {
+  await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
+    truncate table clusters, cluster_network_peers, cluster_network_links, activities, registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
+  // srv_1 is Deplo's own machine: it leads the cluster and stands in for any other leader.
+  await seedServer(db);
+  process.env.DEPLO_SERVER_IP = "10.0.0.1";
+  await db
+    .update(serversTable)
+    .set({ agentCertFingerprint: fp(1) })
+    .where(eq(serversTable.id, "srv_1"));
+  for (const [i, id] of MEMBERS.entries()) {
+    await seedServerRow(db, {
+      id,
+      ip: `10.0.0.${i + 2}`,
+      host: `10.0.0.${i + 2}`,
+    });
+    await db
+      .update(serversTable)
+      .set({ agentCertFingerprint: fp(i + 2) })
+      .where(eq(serversTable.id, id));
+  }
+  fleet = fakeClusterHosts();
+  hosts = {};
+  const capabilities = (h: FakeClusterHost) => [
+    ...h.capabilities,
+    CLUSTER_NETWORK_CAPABILITY,
+  ];
+  hosts.srv_1 = fleet.host("srv_1", {
+    status: {
+      installed: true,
+      running: true,
+      version: "0.2.0",
+      relay: true,
+      member: false,
+      relayLinks: 0,
+    },
+  });
+  for (const id of MEMBERS) hosts[id] = fleet.host(id);
+  for (const h of Object.values(hosts)) h.capabilities = capabilities(h);
+  __setClusterPinForTest({ version: "0.2.0", min: "0.2.0" });
+  __resetReleaseCacheForTests();
+  origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(SUMS)) as typeof fetch;
+  invalidateFrozen();
+});
+
+afterEach(async () => {
+  fleet.restore();
+  __setClusterPinForTest(null);
+  __resetReleaseCacheForTests();
+  globalThis.fetch = origFetch;
+  await db.delete(deploMoves);
+  invalidateFrozen();
+});
+
+const asAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+async function eu() {
+  const c = await asAdmin(() => createCluster("eu", everyone));
+  for (const m of MEMBERS) await asAdmin(() => addClusterMember(c.id, m));
+  return c;
+}
+
+const last = (h: FakeClusterHost) =>
+  h.networkTables[h.networkTables.length - 1];
+
+test("every server of a cluster, and Deplo's machine that leads it, is handed every other one with its key", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  for (const [id, h] of Object.entries(hosts)) {
+    const t = last(h);
+    assert.equal(t.clusterId, c.id);
+    assert.equal(t.address, networkAddress(id));
+    const others = Object.keys(hosts).filter((o) => o !== id);
+    assert.deepEqual(
+      t.peers.map((p) => p.publicKey).sort(),
+      others.map((o) => `key-${o}`).sort(),
+      `${id}'s peers`,
+    );
+  }
+  // srv_3 is tried on the address Deplo knows it by and on the one its agent named, at the port it answered with.
+  const toSrv3 = last(hosts.srv_2).peers.find((p) => p.fingerprint === fp(3))!;
+  assert.ok(
+    toSrv3.endpoints.includes("10.0.0.3:51820"),
+    toSrv3.endpoints.join(" "),
+  );
+  const keys = await db.select().from(clusterNetworkPeers);
+  assert.equal(keys.length, 3);
+});
+
+test("a pass with nothing new is one call per server", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  const before = Object.values(hosts).map((h) => h.networkTables.length);
+  await syncClusterNetwork(c.id);
+  assert.deepEqual(
+    Object.values(hosts).map((h) => h.networkTables.length),
+    before.map((n) => n + 1),
+  );
+});
+
+test("an agent too old for the network stays off it and the others are not handed it", async () => {
+  hosts.srv_3.capabilities = hosts.srv_3.capabilities.filter(
+    (c) => c !== CLUSTER_NETWORK_CAPABILITY,
+  );
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  assert.equal(hosts.srv_3.networkTables.length, 0);
+  assert.ok(!last(hosts.srv_2).peers.some((p) => p.fingerprint === fp(3)));
+});
+
+test("a server that leaves the cluster is taken off the network, and the others stop being handed it", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  await db.delete(clusterMembers).where(eq(clusterMembers.serverId, "srv_3"));
+  await syncClusterNetwork(c.id);
+  assert.deepEqual(last(hosts.srv_3).peers, []);
+  assert.ok(!last(hosts.srv_2).peers.some((p) => p.fingerprint === fp(3)));
+  const left = await db
+    .select()
+    .from(clusterNetworkPeers)
+    .where(eq(clusterNetworkPeers.serverId, "srv_3"));
+  assert.equal(left.length, 0);
+});
+
+test("a deleted cluster's servers are taken off its network by the sweep", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  await db.delete(clustersTable).where(eq(clustersTable.id, c.id));
+  await reconcileClusterNetworks();
+  for (const h of Object.values(hosts)) assert.deepEqual(last(h).peers, []);
+  assert.equal((await db.select().from(clusterNetworkPeers)).length, 0);
+});
+
+test("a server that cannot be told it left keeps its row, so the next pass tries again", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  await db.delete(clusterMembers).where(eq(clusterMembers.serverId, "srv_3"));
+  hosts.srv_3.unreachable = true;
+  await syncClusterNetwork(c.id);
+  const kept = await db
+    .select()
+    .from(clusterNetworkPeers)
+    .where(eq(clusterNetworkPeers.serverId, "srv_3"));
+  assert.equal(kept.length, 1);
+});
+
+test("a server's card names who it reaches only through the relay, or not at all", async () => {
+  const c = await eu();
+  hosts.srv_2.networkPath = (f) =>
+    f === fp(3) ? "relay" : f === fp(1) ? "none" : "direct";
+  await syncClusterNetwork(c.id);
+  const members = await asAdmin(() => listClusterMembers(c.id));
+  const srv2 = members.find((m) => m.serverId === "srv_2")!;
+  assert.deepEqual(srv2.network, {
+    relayed: ["srv_3"],
+    unreachable: ["Deplo's machine"],
+  });
+  const srv3 = members.find((m) => m.serverId === "srv_3")!;
+  assert.deepEqual(srv3.network, { relayed: [], unreachable: [] });
+  const links = await db
+    .select()
+    .from(clusterNetworkLinks)
+    .where(eq(clusterNetworkLinks.serverId, "srv_2"));
+  assert.equal(links.length, 2);
+});
+
+test("the relay lets a leader's server through as a member too, for the network's packets", async () => {
+  const c = await eu();
+  const roster = await clusterRoster(c.id, MEMBERS);
+  assert.ok(
+    roster.parties.some((p) => p.fingerprint === fp(1) && p.role === "leader"),
+  );
+  assert.ok(
+    roster.parties.some((p) => p.fingerprint === fp(1) && p.role === "member"),
+  );
+  assert.equal(
+    roster.parties.filter((p) => p.fingerprint === fp(2) && p.role === "member")
+      .length,
+    1,
+  );
+});

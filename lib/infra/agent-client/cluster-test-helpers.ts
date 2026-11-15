@@ -18,6 +18,7 @@ import type {
   ClusterHostStatus,
   ClusterReplicaReport,
   ClusterReplicaTable,
+  ClusterNetworkTable,
 } from "./connection";
 import { __forgetMemberProbes } from "./cluster-host";
 import {
@@ -63,6 +64,9 @@ export interface FakeClusterHost {
   imageExpects: { imageRef: string; sourceFingerprint: string; keep: number }[];
   /** Every name-forwarder table this host's agent was handed, in order (#200). */
   forwarders: ClusterForwarderTable[];
+  /** Every network table this host's agent was handed, in order, and how it says it reaches a peer (ADR-0047). */
+  networkTables: ClusterNetworkTable[];
+  networkPath: (fingerprint: string) => "direct" | "relay" | "none";
   /** Every replication table this host's agent was handed, in order, and what it says of its copies (ADR-0046). */
   replicaTables: ClusterReplicaTable[];
   replicaReports: ClusterReplicaReport[];
@@ -371,6 +375,19 @@ export function fakeClusterHosts(): {
           h.forwarders.push(table);
           return { held: table.hold.length, served: table.serve.length };
         }),
+      setClusterNetwork: (table) =>
+        guard(() => {
+          h.networkTables.push(table);
+          return {
+            publicKey: `key-${serverId}`,
+            port: table.peers.length > 0 ? 51820 : 0,
+            addresses: [`192.168.7.${hosts.size}`],
+            peers: table.peers.map((p) => ({
+              fingerprint: p.fingerprint,
+              path: h.networkPath(p.fingerprint),
+            })),
+          };
+        }),
       setClusterReplicas: (table) =>
         guard(() => {
           h.replicaTables.push(table);
@@ -410,6 +427,8 @@ export function fakeClusterHosts(): {
         imageCopies: [],
         imageExpects: [],
         forwarders: [],
+        networkTables: [],
+        networkPath: () => "direct",
         replicaTables: [],
         replicaReports: [],
         deploys: [],

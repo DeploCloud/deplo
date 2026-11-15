@@ -3172,6 +3172,41 @@ export interface SetClusterForwardersResponse {
   served: number;
 }
 
+export interface SetClusterNetworkRequest {
+  clusterId: string;
+  /** This server's own address inside the tunnel. */
+  address: string;
+  peers: ClusterNetworkPeer[];
+}
+
+export interface ClusterNetworkPeer {
+  /** The peer's agent certificate: how its streams are pinned. */
+  fingerprint: string;
+  /** Its WireGuard public key, base64. */
+  publicKey: string;
+  address: string;
+  /** host:port pairs it may answer on directly; with none, a relay carries its packets. */
+  endpoints: string[];
+}
+
+export interface SetClusterNetworkResponse {
+  /** This server's WireGuard public key, base64, and the UDP port it answers on. */
+  publicKey: string;
+  port: number;
+  /** This host's own addresses, for its peers to try. */
+  addresses: string[];
+  peers: ClusterNetworkPeerState[];
+}
+
+export interface ClusterNetworkPeerState {
+  fingerprint: string;
+  /** "direct", "relay" (no direct path answers) or "none". */
+  path: string;
+  /** The host:port a direct path uses. */
+  endpoint: string;
+  lastHandshakeUnix: number;
+}
+
 export interface SetClusterReplicasRequest {
   clusterId: string;
   /** Every member of the cluster, by the server id the leader's placement names it with. */
@@ -23945,6 +23980,482 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
   },
 };
 
+function createBaseSetClusterNetworkRequest(): SetClusterNetworkRequest {
+  return { clusterId: "", address: "", peers: [] };
+}
+
+export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
+  encode(message: SetClusterNetworkRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.clusterId !== "") {
+      writer.uint32(10).string(message.clusterId);
+    }
+    if (message.address !== "") {
+      writer.uint32(18).string(message.address);
+    }
+    for (const v of message.peers) {
+      ClusterNetworkPeer.encode(v!, writer.uint32(26).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterNetworkRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterNetworkRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.address = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.peers.push(ClusterNetworkPeer.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterNetworkRequest {
+    return {
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      address: isSet(object.address) ? globalThis.String(object.address) : "",
+      peers: globalThis.Array.isArray(object?.peers)
+        ? object.peers.map((e: any) => ClusterNetworkPeer.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: SetClusterNetworkRequest): unknown {
+    const obj: any = {};
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.address !== "") {
+      obj.address = message.address;
+    }
+    if (message.peers?.length) {
+      obj.peers = message.peers.map((e) => ClusterNetworkPeer.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterNetworkRequest>, I>>(base?: I): SetClusterNetworkRequest {
+    return SetClusterNetworkRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterNetworkRequest>, I>>(object: I): SetClusterNetworkRequest {
+    const message = createBaseSetClusterNetworkRequest();
+    message.clusterId = object.clusterId ?? "";
+    message.address = object.address ?? "";
+    message.peers = object.peers?.map((e) => ClusterNetworkPeer.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseClusterNetworkPeer(): ClusterNetworkPeer {
+  return { fingerprint: "", publicKey: "", address: "", endpoints: [] };
+}
+
+export const ClusterNetworkPeer: MessageFns<ClusterNetworkPeer> = {
+  encode(message: ClusterNetworkPeer, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.fingerprint !== "") {
+      writer.uint32(10).string(message.fingerprint);
+    }
+    if (message.publicKey !== "") {
+      writer.uint32(18).string(message.publicKey);
+    }
+    if (message.address !== "") {
+      writer.uint32(26).string(message.address);
+    }
+    for (const v of message.endpoints) {
+      writer.uint32(34).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterNetworkPeer {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterNetworkPeer();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.fingerprint = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.publicKey = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.address = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.endpoints.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterNetworkPeer {
+    return {
+      fingerprint: isSet(object.fingerprint) ? globalThis.String(object.fingerprint) : "",
+      publicKey: isSet(object.publicKey)
+        ? globalThis.String(object.publicKey)
+        : isSet(object.public_key)
+        ? globalThis.String(object.public_key)
+        : "",
+      address: isSet(object.address) ? globalThis.String(object.address) : "",
+      endpoints: globalThis.Array.isArray(object?.endpoints)
+        ? object.endpoints.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ClusterNetworkPeer): unknown {
+    const obj: any = {};
+    if (message.fingerprint !== "") {
+      obj.fingerprint = message.fingerprint;
+    }
+    if (message.publicKey !== "") {
+      obj.publicKey = message.publicKey;
+    }
+    if (message.address !== "") {
+      obj.address = message.address;
+    }
+    if (message.endpoints?.length) {
+      obj.endpoints = message.endpoints;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterNetworkPeer>, I>>(base?: I): ClusterNetworkPeer {
+    return ClusterNetworkPeer.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterNetworkPeer>, I>>(object: I): ClusterNetworkPeer {
+    const message = createBaseClusterNetworkPeer();
+    message.fingerprint = object.fingerprint ?? "";
+    message.publicKey = object.publicKey ?? "";
+    message.address = object.address ?? "";
+    message.endpoints = object.endpoints?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterNetworkResponse(): SetClusterNetworkResponse {
+  return { publicKey: "", port: 0, addresses: [], peers: [] };
+}
+
+export const SetClusterNetworkResponse: MessageFns<SetClusterNetworkResponse> = {
+  encode(message: SetClusterNetworkResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.publicKey !== "") {
+      writer.uint32(10).string(message.publicKey);
+    }
+    if (message.port !== 0) {
+      writer.uint32(16).uint32(message.port);
+    }
+    for (const v of message.addresses) {
+      writer.uint32(26).string(v!);
+    }
+    for (const v of message.peers) {
+      ClusterNetworkPeerState.encode(v!, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterNetworkResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterNetworkResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.publicKey = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.port = reader.uint32();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.addresses.push(reader.string());
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.peers.push(ClusterNetworkPeerState.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterNetworkResponse {
+    return {
+      publicKey: isSet(object.publicKey)
+        ? globalThis.String(object.publicKey)
+        : isSet(object.public_key)
+        ? globalThis.String(object.public_key)
+        : "",
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      addresses: globalThis.Array.isArray(object?.addresses)
+        ? object.addresses.map((e: any) => globalThis.String(e))
+        : [],
+      peers: globalThis.Array.isArray(object?.peers)
+        ? object.peers.map((e: any) => ClusterNetworkPeerState.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: SetClusterNetworkResponse): unknown {
+    const obj: any = {};
+    if (message.publicKey !== "") {
+      obj.publicKey = message.publicKey;
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.addresses?.length) {
+      obj.addresses = message.addresses;
+    }
+    if (message.peers?.length) {
+      obj.peers = message.peers.map((e) => ClusterNetworkPeerState.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterNetworkResponse>, I>>(base?: I): SetClusterNetworkResponse {
+    return SetClusterNetworkResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterNetworkResponse>, I>>(object: I): SetClusterNetworkResponse {
+    const message = createBaseSetClusterNetworkResponse();
+    message.publicKey = object.publicKey ?? "";
+    message.port = object.port ?? 0;
+    message.addresses = object.addresses?.map((e) => e) || [];
+    message.peers = object.peers?.map((e) => ClusterNetworkPeerState.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseClusterNetworkPeerState(): ClusterNetworkPeerState {
+  return { fingerprint: "", path: "", endpoint: "", lastHandshakeUnix: 0 };
+}
+
+export const ClusterNetworkPeerState: MessageFns<ClusterNetworkPeerState> = {
+  encode(message: ClusterNetworkPeerState, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.fingerprint !== "") {
+      writer.uint32(10).string(message.fingerprint);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    if (message.endpoint !== "") {
+      writer.uint32(26).string(message.endpoint);
+    }
+    if (message.lastHandshakeUnix !== 0) {
+      writer.uint32(32).int64(message.lastHandshakeUnix);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterNetworkPeerState {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterNetworkPeerState();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.fingerprint = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.path = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.endpoint = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.lastHandshakeUnix = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterNetworkPeerState {
+    return {
+      fingerprint: isSet(object.fingerprint) ? globalThis.String(object.fingerprint) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      endpoint: isSet(object.endpoint) ? globalThis.String(object.endpoint) : "",
+      lastHandshakeUnix: isSet(object.lastHandshakeUnix)
+        ? globalThis.Number(object.lastHandshakeUnix)
+        : isSet(object.last_handshake_unix)
+        ? globalThis.Number(object.last_handshake_unix)
+        : 0,
+    };
+  },
+
+  toJSON(message: ClusterNetworkPeerState): unknown {
+    const obj: any = {};
+    if (message.fingerprint !== "") {
+      obj.fingerprint = message.fingerprint;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.endpoint !== "") {
+      obj.endpoint = message.endpoint;
+    }
+    if (message.lastHandshakeUnix !== 0) {
+      obj.lastHandshakeUnix = Math.round(message.lastHandshakeUnix);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterNetworkPeerState>, I>>(base?: I): ClusterNetworkPeerState {
+    return ClusterNetworkPeerState.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterNetworkPeerState>, I>>(object: I): ClusterNetworkPeerState {
+    const message = createBaseClusterNetworkPeerState();
+    message.fingerprint = object.fingerprint ?? "";
+    message.path = object.path ?? "";
+    message.endpoint = object.endpoint ?? "";
+    message.lastHandshakeUnix = object.lastHandshakeUnix ?? 0;
+    return message;
+  },
+};
+
 function createBaseSetClusterReplicasRequest(): SetClusterReplicasRequest {
   return { clusterId: "", members: [], entries: [] };
 }
@@ -25104,6 +25615,21 @@ export const AgentService = {
       Buffer.from(ClusterReplicaStatusResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): ClusterReplicaStatusResponse => ClusterReplicaStatusResponse.decode(value),
   },
+  /**
+   * Put this server on a cluster's private network with every other server of the cluster, or take
+   * it off with no peers. The full set each time; it answers with its key and how each peer is reached.
+   */
+  setClusterNetwork: {
+    path: "/deplo.agent.v1.Agent/SetClusterNetwork" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterNetworkRequest): Buffer =>
+      Buffer.from(SetClusterNetworkRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterNetworkRequest => SetClusterNetworkRequest.decode(value),
+    responseSerialize: (value: SetClusterNetworkResponse): Buffer =>
+      Buffer.from(SetClusterNetworkResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterNetworkResponse => SetClusterNetworkResponse.decode(value),
+  },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
     path: "/deplo.agent.v1.Agent/Backup" as const,
@@ -25861,6 +26387,11 @@ export interface AgentServer extends UntypedServiceImplementation {
   setClusterReplicas: handleUnaryCall<SetClusterReplicasRequest, SetClusterReplicasResponse>;
   /** How each copy on this member stands. */
   clusterReplicaStatus: handleUnaryCall<ClusterReplicaStatusRequest, ClusterReplicaStatusResponse>;
+  /**
+   * Put this server on a cluster's private network with every other server of the cluster, or take
+   * it off with no peers. The full set each time; it answers with its key and how each peer is reached.
+   */
+  setClusterNetwork: handleUnaryCall<SetClusterNetworkRequest, SetClusterNetworkResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -26673,6 +27204,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ClusterReplicaStatusResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Put this server on a cluster's private network with every other server of the cluster, or take
+   * it off with no peers. The full set each time; it answers with its key and how each peer is reached.
+   */
+  setClusterNetwork(
+    request: SetClusterNetworkRequest,
+    callback: (error: ServiceError | null, response: SetClusterNetworkResponse) => void,
+  ): ClientUnaryCall;
+  setClusterNetwork(
+    request: SetClusterNetworkRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterNetworkResponse) => void,
+  ): ClientUnaryCall;
+  setClusterNetwork(
+    request: SetClusterNetworkRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterNetworkResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

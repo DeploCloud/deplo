@@ -14,11 +14,14 @@ import type {
   ClusterForwarderTable,
   ClusterHostStatus,
   ClusterLeaderPins,
+  ClusterNetworkReport,
+  ClusterNetworkTable,
 } from "./connection";
 import {
   AgentClusterForwardersUnsupportedError,
   AgentClusterImagesUnsupportedError,
   AgentClusterMemberUnsupportedError,
+  AgentClusterNetworkUnsupportedError,
   AgentClusterUnsupportedError,
   AgentTooOldError,
   CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
@@ -35,6 +38,7 @@ import {
   CLUSTER_FORWARDERS_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
+  CLUSTER_NETWORK_CAPABILITY,
   CLUSTER_STANDBY_CAPABILITY,
 } from "./hello-capabilities";
 
@@ -367,6 +371,24 @@ export async function setClusterForwarders(
         CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
       );
     throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+/** Puts one server on its cluster's network, or takes it off with no peers (ADR-0047). */
+export async function setClusterNetwork(
+  serverId: string,
+  table: ClusterNetworkTable,
+): Promise<ClusterNetworkReport> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_NETWORK_CAPABILITY))
+      throw new AgentClusterNetworkUnsupportedError(
+        "The server agent on this server is too old for its cluster's private network.",
+      );
+    return await conn.setClusterNetwork(table);
   } finally {
     conn.close();
   }

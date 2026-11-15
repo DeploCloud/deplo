@@ -88,10 +88,14 @@ export async function clusterRoster(
       if (fp) leaders.add(fp);
     }
     for (const fp of leaders) parties.push({ fingerprint: fp, role: "leader" });
+    // A leader's own server is on the cluster's network too, and its agent needs the relay for the packets no
+    // direct path carries (ADR-0047): it is let through as a member as well.
+    const members = new Set<string>(leaders);
     for (const id of new Set(memberServerIds)) {
       const m = await fingerprintOf(id);
-      if (m) parties.push({ fingerprint: m, role: "member" });
+      if (m) members.add(m);
     }
+    for (const fp of members) parties.push({ fingerprint: fp, role: "member" });
   }
   return { cluster: clusterId, parties };
 }
@@ -191,11 +195,13 @@ export async function pushMembership(clusterIds: string[]): Promise<void> {
   await pushClusterRosters(clusterIds);
   const { pushLeaderRoster } = await import("./leader-sync");
   const { syncNameForwarders } = await import("./forwarders");
+  const { syncClusterNetwork } = await import("./network");
   for (const id of clusterIds) {
     const cluster = await getClusterById(id);
     if (!cluster) continue;
     const warn = (e: unknown) =>
       console.warn(`[cluster-relay] ${id}: ${messageOf(e)}`);
+    await syncClusterNetwork(id).catch(warn);
     await pushLeaderRoster(cluster).catch(warn);
     await syncNameForwarders(id).catch(warn);
   }

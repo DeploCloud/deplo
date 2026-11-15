@@ -232,6 +232,15 @@ third: `leader.beat`, 5 s apart, trusted for 20 s by the leader and waited out f
 A member refuses an older epoch and keeps the one it holds across restarts, so never lower the epoch a
 leader sends; Deplo adopts a newer one the leader reports.
 
+The cluster network ([ADR-0047](../adr/0047-a-cluster-shares-a-private-network-over-wireguard.md)) is a
+fourth, and only `party.go` (the hand-kept copy) and the leader's door cross into this binary: a stream
+through the tunnel opens with `FROM <party>` and then the same mutual TLS as a relayed one (`Direct`,
+`Answer`), and the leader asks the agent beside it for one on `DEPLO_CLUSTER_MESH_SOCKET` (`DIAL <party>`,
+`UP`). The rest lives in `deplo-agent` (`internal/mesh`, the `MESH` verb that carries the tunnel's
+packets over a relay, stream port 7000 inside the tunnel). An agent without the Hello capability
+`cluster.network` is left off the network and its streams take the relay, and a leader whose agent has
+no door dials the relays only, so the agent and the binary may ship in either order; ship the agent first.
+
 ## 8. Rollback is forward-only
 
 Same as the fleet (`fleet-rollout.md` §10): nothing installs an older cluster binary than the one

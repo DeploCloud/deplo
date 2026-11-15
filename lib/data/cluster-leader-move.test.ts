@@ -100,6 +100,8 @@ test("a server that answers on 443 runs a relay beside the leader, and every mem
   const parties = [
     { fingerprint: "4".repeat(64), role: "leader" },
     { fingerprint: "1".repeat(64), role: "leader" },
+    { fingerprint: "4".repeat(64), role: "member" },
+    { fingerprint: "1".repeat(64), role: "member" },
     { fingerprint: "2".repeat(64), role: "member" },
     { fingerprint: "3".repeat(64), role: "member" },
   ];
@@ -179,7 +181,7 @@ test("moving the leader back to Deplo's machine takes the old one, its relay and
     relayRosters(hosts[SERVER_1])
       .at(-1)!
       .parties.map((p) => p.role),
-    ["leader", "member", "member"],
+    ["leader", "member", "member", "member"],
   );
   assert.ok(
     (await messages()).includes(

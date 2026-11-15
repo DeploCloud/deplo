@@ -104,6 +104,9 @@ export const CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE =
   "The server agent on this server is too old to keep names working across the servers of its cluster. " +
   "Deplo updates it on its own.";
 
+/** An agent without `cluster.network`: it stays off its cluster's network and its streams take the relay. */
+export class AgentClusterNetworkUnsupportedError extends Error {}
+
 export class ClusterReleaseUnavailableError extends Error {}
 
 /** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */

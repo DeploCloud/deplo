@@ -228,6 +228,23 @@ const ClusterEmptyingRef = builder
     }),
   });
 
+const ClusterMemberNetworkRef = builder
+  .objectRef<ClusterMember["network"]>("ClusterMemberNetwork")
+  .implement({
+    description:
+      "How a server reaches the other servers of its cluster over their private network. Both lists empty: it reaches every one directly.",
+    fields: (t) => ({
+      relayed: t.exposeStringList("relayed", {
+        description:
+          "The servers it reaches only through Deplo's relay, because no direct path answers between them. It works, with more delay.",
+      }),
+      unreachable: t.exposeStringList("unreachable", {
+        description:
+          "The servers it cannot reach at all now, though both are online.",
+      }),
+    }),
+  });
+
 const ClusterMemberRef = builder
   .objectRef<ClusterMember>("ClusterMember")
   .implement({
@@ -262,6 +279,10 @@ const ClusterMemberRef = builder
       provisioning: t.exposeBoolean("provisioning", {
         description:
           "True from the moment it joins until the cluster's leader answers for it.",
+      }),
+      network: t.field({
+        type: ClusterMemberNetworkRef,
+        resolve: (m) => m.network,
       }),
     }),
   });

@@ -1422,6 +1422,7 @@ type ClusterMember {
   What the cluster's leader last said: answering, not responding (3 seconds without an answer), or fenced (it has stopped its databases and Apps with files).
   """
   leaseState: ClusterLeaseState
+  network: ClusterMemberNetwork
 
   """
   True from the moment it joins until the cluster's leader answers for it.
@@ -1430,6 +1431,19 @@ type ClusterMember {
   serverId: ID
   serverName: String
   status: ServerStatus
+}
+
+"""
+How a server reaches the other servers of its cluster over their private network. Both lists empty: it reaches every one directly.
+"""
+type ClusterMemberNetwork {
+  """
+  The servers it reaches only through Deplo's relay, because no direct path answers between them. It works, with more delay.
+  """
+  relayed: [String!]
+
+  """The servers it cannot reach at all now, though both are online."""
+  unreachable: [String!]
 }
 
 """

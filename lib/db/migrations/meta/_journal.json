@@ -1730,6 +1730,13 @@
       "when": 1796061600000,
       "tag": "0257_cluster_replication",
       "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1796061700000,
+      "tag": "0258_cluster_network",
+      "breakpoints": true
     }
   ]
 }

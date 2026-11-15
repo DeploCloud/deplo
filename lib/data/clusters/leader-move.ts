@@ -28,6 +28,7 @@ import {
 import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
 import { getClusterById, requireClusterAdmin } from "./roster";
 import { messageOf } from "../../utils";
+import { syncClusterNetworkSoon } from "./network";
 
 // Running the leader on another server (spec #176).
 // https://deplo.build/docs/operations/clusters/leader#run-the-leader-on-another-server
@@ -82,6 +83,9 @@ export async function leadFrom(
   // The watch's next pass repeats a roster this leader did not take.
   const led = (await getClusterById(cluster.id))!;
   await pushLeaderRoster(led).catch((e) => warn(cluster.id, e));
+  // The leader's new server joins the cluster's network, and one it left goes off it.
+  if (to.leaderServerId !== cluster.leaderServerId)
+    syncClusterNetworkSoon(cluster.id);
   // A takeover is from a leader that does not answer; any other one hears it was replaced and stops at once.
   if (before && before.id !== next.id && !to.leaderTakeoverAt)
     await tellLeaderReplaced(before.id, cluster.id, led.leaderEpoch).catch(

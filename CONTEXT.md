@@ -877,14 +877,24 @@ _Avoid_: master, manager, control plane (that is Deplo itself), scheduler.
 
 **Cluster relay**:
 The meeting point of one **cluster**: its leader and every member dial out to it and it passes
-their traffic between them, unable to read it. Deplo's machine always runs one; a leader on
-another server runs a second one there
+their traffic between them, unable to read it. Since the **cluster network**, it carries only what
+no direct path between two servers can, and the streams of a server agent too old for the
+network. Deplo's machine always runs one; a leader on another server runs a second one there
 ([ADR-0044](docs/adr/0044-cluster-members-meet-through-a-relay-over-tcp.md)).
 _Avoid_: proxy (that is Traefik), tunnel (that is Cloudflare's), mesh, VPN.
 
+**Cluster network**:
+The private network the servers of one **cluster** share: a WireGuard tunnel between every two of
+them, run inside their server agents, so nothing on a server changes and nobody configures it.
+Every stream between two of them goes through it: directly when they can reach each other, through
+the **cluster relay** when they cannot. Once up it needs neither Deplo nor the leader. In copy it
+is "the cluster's private network"; a server whose pair goes through the relay reads **Relayed**
+([ADR-0047](docs/adr/0047-a-cluster-shares-a-private-network-over-wireguard.md)).
+_Avoid_: VPN, mesh, overlay, tunnel (that is Cloudflare's), WireGuard (in copy).
+
 **Name forwarder**:
 The small forwarder on an Environment's network that holds a workload's name on every **cluster**
-member and carries each connection to the member running it, over the **cluster relay**, so
+member and carries each connection to the member running it, over the **cluster network**, so
 Apps reach each other by name across members
 ([ADR-0028](docs/adr/0028-an-environment-owns-a-network.md)).
 _Avoid_: stand-in (that is an overlap deploy's next release), proxy (that is Traefik), tunnel, mesh.

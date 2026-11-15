@@ -273,11 +273,12 @@ test("removing Deplo's own server: its agent leaves and the leader keeps running
     member: false,
     relays: [],
   });
-  // It is still the leader's host: the relay lets it through as a leader, and nothing was uninstalled.
+  // It is still the leader's host, on the cluster's network: the relay lets it through, and nothing was uninstalled.
   assert.deepEqual(relayRosters(hosts[SERVER_1]).at(-1), {
     cluster: cluster.id,
     parties: [
       { fingerprint: FP1, role: "leader" },
+      { fingerprint: FP1, role: "member" },
       { fingerprint: FP2, role: "member" },
     ],
   });

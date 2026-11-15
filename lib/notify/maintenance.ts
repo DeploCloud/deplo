@@ -29,6 +29,7 @@ import { reconcileFailoverBackupHomes } from "../data/databases/failover";
 import { reconcileStandbys } from "../data/databases/standby";
 import { rehostClusterAddresses } from "../data/clusters/failover-address";
 import { reconcileClusterRelay } from "../data/clusters/relay";
+import { reconcileClusterNetworks } from "../data/clusters/network";
 import { sweepCloudflareCertificates } from "../data/domains/cloudflare-mode";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo, type UpdateInfo } from "../data/updates";
@@ -55,6 +56,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
   await settle("cluster relay", reconcileClusterRelay);
+  await settle("cluster network", reconcileClusterNetworks);
   await settle("dissolved clusters", reconcileDissolvedClusters);
   await settle("cluster images", reconcileClusterImages);
   await settle("name forwarders", reconcileNameForwarders);

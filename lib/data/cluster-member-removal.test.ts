@@ -58,6 +58,7 @@ test("removing an empty member cuts it off at once: no roster names it and its a
     cluster: cluster.id,
     parties: [
       { fingerprint: FP[SERVER_1], role: "leader" },
+      { fingerprint: FP[SERVER_1], role: "member" },
       { fingerprint: FP.srv_2, role: "member" },
     ],
   });

@@ -67,6 +67,26 @@ export interface ClusterReplicaReport {
   fromServerId: string;
 }
 
+/** One server's place on its cluster's network (ADR-0047): its tunnel address and every other server of the cluster. */
+export interface ClusterNetworkTable {
+  clusterId: string;
+  address: string;
+  peers: {
+    fingerprint: string;
+    publicKey: string;
+    address: string;
+    endpoints: string[];
+  }[];
+}
+
+/** What a server's agent says back: its key and port, its own addresses, and how it reaches each peer. */
+export interface ClusterNetworkReport {
+  publicKey: string;
+  port: number;
+  addresses: string[];
+  peers: { fingerprint: string; path: "direct" | "relay" | "none" }[];
+}
+
 /** What one cluster member is handed to run its name forwarders (#200). */
 export interface ClusterForwarderTable {
   clusterId: string;
@@ -325,6 +345,8 @@ export interface AgentConnection {
   setClusterForwarders(
     table: ClusterForwarderTable,
   ): Promise<{ held: number; served: number }>;
+  // Needs `cluster.network` (ADR-0047): this server's place on its cluster's network; no peers takes it off.
+  setClusterNetwork(table: ClusterNetworkTable): Promise<ClusterNetworkReport>;
   // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.
   setClusterReplicas(table: ClusterReplicaTable): Promise<{ entries: number }>;
   clusterReplicaStatus(): Promise<ClusterReplicaReport[]>;

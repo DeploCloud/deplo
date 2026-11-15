@@ -143,6 +143,13 @@ function ServerBadges({
           {EMPTYING_BADGE[m.emptying].label}
         </Badge>
       )}
+      {m?.network && (
+        <SimpleTooltip content={m.network}>
+          <Badge variant={m.networkDown ? "warning" : "muted"}>
+            {m.networkDown ? "Can't reach a server" : "Relayed"}
+          </Badge>
+        </SimpleTooltip>
+      )}
     </>
   );
 }

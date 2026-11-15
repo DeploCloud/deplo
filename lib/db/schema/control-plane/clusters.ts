@@ -250,3 +250,40 @@ export const clusterEntrances = pgTable("cluster_entrances", {
     .references(() => servers.id, { onDelete: "cascade" }),
   chosenAt: isoTimestamptz("chosen_at").notNull(),
 });
+
+// Each server's end of its cluster's network (ADR-0047): the WireGuard key and UDP port its agent answered with.
+// No foreign key to the cluster: a deleted cluster's rows are how the sweep finds the servers to take off it.
+export const clusterNetworkPeers = pgTable(
+  "cluster_network_peers",
+  {
+    clusterId: text("cluster_id").notNull(),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    publicKey: text("public_key").notNull(),
+    port: integer("port").notNull().default(0),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.clusterId, t.serverId] }),
+    index("cluster_network_peers_server_idx").on(t.serverId),
+  ],
+);
+
+// How one server of a cluster reaches another through the network, as its agent last said.
+export const clusterNetworkLinks = pgTable(
+  "cluster_network_links",
+  {
+    clusterId: text("cluster_id").notNull(),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    peerServerId: text("peer_server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    // "direct" | "relay" | "none"
+    path: text("path").notNull(),
+    checkedAt: isoTimestamptz("checked_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.clusterId, t.serverId, t.peerServerId] })],
+);

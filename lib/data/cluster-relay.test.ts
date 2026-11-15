@@ -168,7 +168,10 @@ test("the first cluster starts the relay with the leader on Deplo's machine and 
   assert.deepEqual(rosterCalls(host), [
     {
       cluster: cluster.id,
-      parties: [{ fingerprint: FP1, role: "leader" }],
+      parties: [
+        { fingerprint: FP1, role: "leader" },
+        { fingerprint: FP1, role: "member" },
+      ],
     },
   ]);
 });
@@ -195,6 +198,7 @@ test("the roster names the leader and each member by the certificate their serve
     cluster: c.id,
     parties: [
       { fingerprint: FP1, role: "leader" },
+      { fingerprint: FP1, role: "member" },
       { fingerprint: FP2, role: "member" },
     ],
   });
@@ -220,7 +224,7 @@ test("a member whose agent is too old is named, and the roster still goes out", 
   assert.equal(push.failed.length, 1);
   assert.equal(push.failed[0].serverId, "srv_2");
   assert.match(push.failed[0].message, /too old to join a cluster/);
-  assert.equal(rosterCalls(host).at(-1).parties.length, 2);
+  assert.equal(rosterCalls(host).at(-1).parties.length, 3);
 });
 
 test("rotating a server's certificate pushes a roster that has only the new one", async () => {
@@ -230,7 +234,10 @@ test("rotating a server's certificate pushes a roster that has only the new one"
   await pushRostersForServer(SERVER_1);
   const last = rosterCalls(host).at(-1);
   assert.equal(last.cluster, c.id);
-  assert.deepEqual(last.parties, [{ fingerprint: FP1_NEW, role: "leader" }]);
+  assert.deepEqual(last.parties, [
+    { fingerprint: FP1_NEW, role: "leader" },
+    { fingerprint: FP1_NEW, role: "member" },
+  ]);
   assert.ok(!JSON.stringify(last).includes(FP1), "the old identity is gone");
 });
 

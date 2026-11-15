@@ -224,6 +224,7 @@ test("joining records Activity and pushes the roster with the new member", async
   const body = JSON.parse(new TextDecoder().decode(roster.payload));
   assert.deepEqual(body.parties, [
     { fingerprint: FP1, role: "leader" },
+    { fingerprint: FP1, role: "member" },
     { fingerprint: FP2, role: "member" },
   ]);
   assert.deepEqual(member.memberCalls.at(-1)?.member, true);
@@ -245,7 +246,10 @@ test("a roster push reads the members from the table, and a removed server leave
   await pushClusterRosters(clusterIds);
   const roster = relay.calls.filter((c) => c.method === "relay.roster").at(-1)!;
   const body = JSON.parse(new TextDecoder().decode(roster.payload));
-  assert.deepEqual(body.parties, [{ fingerprint: FP1, role: "leader" }]);
+  assert.deepEqual(body.parties, [
+    { fingerprint: FP1, role: "leader" },
+    { fingerprint: FP1, role: "member" },
+  ]);
   assert.equal((await db.select().from(clusterMembers)).length, 0);
 });
 

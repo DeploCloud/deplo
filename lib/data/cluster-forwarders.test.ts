@@ -17,7 +17,10 @@ import { seedDatabase } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
-import { workloadPlacements } from "../db/schema/control-plane/clusters";
+import {
+  clusterNetworkLinks,
+  workloadPlacements,
+} from "../db/schema/control-plane/clusters";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import {
   environments as environmentsTable,
@@ -67,7 +70,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table clusters, activities, registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
+    truncate table clusters, cluster_network_links, cluster_network_peers, activities, registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -451,6 +454,33 @@ test("the database page says when Apps reach it through the relay, and only to i
     "web reaches this database through Deplo's relay. It is faster on the same server.",
   );
   assert.equal(await asTeamB(() => databaseRelayNotice("shop")), null);
+
+  // Over the cluster's private network a direct path is no detour, and a relayed one still is (ADR-0047).
+  const link = (path: string) =>
+    db
+      .insert(clusterNetworkLinks)
+      .values({
+        clusterId: c.id,
+        serverId: "srv_3",
+        peerServerId: "srv_2",
+        path,
+        checkedAt: T0,
+      })
+      .onConflictDoUpdate({
+        target: [
+          clusterNetworkLinks.clusterId,
+          clusterNetworkLinks.serverId,
+          clusterNetworkLinks.peerServerId,
+        ],
+        set: { path },
+      });
+  await link("direct");
+  assert.equal(await asAdmin(() => databaseRelayNotice("shop")), null);
+  await link("relay");
+  assert.match(
+    (await asAdmin(() => databaseRelayNotice("shop"))) ?? "",
+    /^web reaches/,
+  );
 
   await recordPlacement({
     clusterId: c.id,
