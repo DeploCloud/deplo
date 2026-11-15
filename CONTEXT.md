@@ -895,8 +895,8 @@ _Avoid_: VPN, mesh, overlay, tunnel (that is Cloudflare's), WireGuard (in copy).
 **Name forwarder**:
 The small forwarder on an Environment's network that holds a workload's name on every **cluster**
 member and carries each connection to the member running it, over the **cluster network**, so
-Apps reach each other by name across members
-([ADR-0028](docs/adr/0028-an-environment-owns-a-network.md)).
+Apps reach each other by name across members: a database, a single-image App, or any service of a
+compose stack, on any TCP port ([ADR-0028](docs/adr/0028-an-environment-owns-a-network.md)).
 _Avoid_: stand-in (that is an overlap deploy's next release), proxy (that is Traefik), tunnel, mesh.
 
 **Failover**:

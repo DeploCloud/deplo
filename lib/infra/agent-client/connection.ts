@@ -99,6 +99,8 @@ export interface ClusterForwarderTable {
     workloadId: string;
     name: string;
     port: number;
+    /** A compose service's name; empty for a whole App or a database. */
+    service: string;
   }[];
   /** The workloads placed here that other members of their Environment may reach. */
   serve: {
@@ -107,6 +109,7 @@ export interface ClusterForwarderTable {
     workloadId: string;
     port: number;
     sourceFingerprints: string[];
+    service: string;
   }[];
 }
 

@@ -120,3 +120,39 @@ export function composeNamesOnNetwork(compose: string): string[] {
   }
   return [...out];
 }
+
+// A compose service's name another member can hold: what the server agent accepts for one (ADR-0047).
+const FORWARDABLE_NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+
+/**
+ * Each service of a stack that other servers of its cluster reach by name: the names it answers to on the
+ * Environment's network, and the port its forwarder listens on. Every other port of the name reaches it too.
+ */
+export function composeForwardedServices(
+  compose: string,
+): { service: string; names: string[]; port: number }[] {
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+  } catch {
+    return [];
+  }
+  const services = doc.services;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return [];
+  const internal = internalNetworkKeys(doc);
+  const out: { service: string; names: string[]; port: number }[] = [];
+  for (const [name, raw] of Object.entries(services)) {
+    const svc = raw as App | undefined;
+    if (!svc || typeof svc !== "object") continue;
+    if (serviceReservedClaim(name, svc) || svc.network_mode != null) continue;
+    const joined = declaredNetworkKeys(svc) ?? ["default"];
+    if (joined.length > 0 && joined.every((k) => internal.has(k))) continue;
+    const names = [
+      ...new Set(serviceClaimedNames(name, svc).map((n) => n.toLowerCase())),
+    ].filter((n) => FORWARDABLE_NAME.test(n));
+    if (names.length === 0) continue;
+    out.push({ service: name, names, port: declaredPort(svc) ?? 80 });
+  }
+  return out.sort((a, b) => (a.service < b.service ? -1 : 1));
+}

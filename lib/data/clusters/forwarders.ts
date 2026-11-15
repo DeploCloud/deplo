@@ -9,6 +9,7 @@ import {
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { composeForwardedServices } from "../../deploy/compose-stack/compose-read";
 import { stackName } from "../../deploy/deploy-key";
 import {
   isForwardedApp,
@@ -91,8 +92,12 @@ async function workloadsOf(clusterId: string): Promise<ForwardedWorkload[]> {
       kind: "app",
       id: a.id,
       network: appNetwork(a),
-      // A compose stack reaches its Environment's names from its one member and offers none.
       name: forwarded ? stackName(a.slug) : null,
+      // A compose stack offers each of its services by its own name, as on one server (ADR-0047).
+      services:
+        !forwarded && a.compose
+          ? composeForwardedServices(a.compose)
+          : undefined,
       port: portFor({ build: a }),
       members: membersOf(appPlacements.get(a.id), a.serverId),
     });

@@ -3144,10 +3144,12 @@ export interface ClusterHeldName {
   kind: string;
   /** The workload's id, which is also the deplo.project label of its containers. */
   workloadId: string;
-  /** The public name (db-<slug>, or the App's name). */
+  /** The public name (db-<slug>, the App's name, or a compose service's name or hostname). */
   name: string;
-  /** The port the workload answers on. */
+  /** The port the forwarder listens on; the name answers on every other port too. */
   port: number;
+  /** The compose service the name belongs to; empty for a single-image App or a database. */
+  service: string;
 }
 
 /** A workload placed on THIS member that other members of its Environment may reach over the relay. */
@@ -3158,6 +3160,8 @@ export interface ClusterServedName {
   port: number;
   /** Certificate fingerprints of the other members of the same Environment, and no one else. */
   sourceFingerprints: string[];
+  /** The compose service, as in ClusterHeldName. */
+  service: string;
 }
 
 export interface SetClusterForwardersRequest {
@@ -23495,7 +23499,7 @@ export const ClusterForwarderMember: MessageFns<ClusterForwarderMember> = {
 };
 
 function createBaseClusterHeldName(): ClusterHeldName {
-  return { network: "", kind: "", workloadId: "", name: "", port: 0 };
+  return { network: "", kind: "", workloadId: "", name: "", port: 0, service: "" };
 }
 
 export const ClusterHeldName: MessageFns<ClusterHeldName> = {
@@ -23514,6 +23518,9 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
     }
     if (message.port !== 0) {
       writer.uint32(40).uint32(message.port);
+    }
+    if (message.service !== "") {
+      writer.uint32(50).string(message.service);
     }
     return writer;
   },
@@ -23571,6 +23578,14 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
             message.port = reader.uint32();
             continue;
           }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.service = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -23594,6 +23609,7 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
         : "",
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
     };
   },
 
@@ -23614,6 +23630,9 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
     if (message.port !== 0) {
       obj.port = Math.round(message.port);
     }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
     return obj;
   },
 
@@ -23627,12 +23646,13 @@ export const ClusterHeldName: MessageFns<ClusterHeldName> = {
     message.workloadId = object.workloadId ?? "";
     message.name = object.name ?? "";
     message.port = object.port ?? 0;
+    message.service = object.service ?? "";
     return message;
   },
 };
 
 function createBaseClusterServedName(): ClusterServedName {
-  return { network: "", kind: "", workloadId: "", port: 0, sourceFingerprints: [] };
+  return { network: "", kind: "", workloadId: "", port: 0, sourceFingerprints: [], service: "" };
 }
 
 export const ClusterServedName: MessageFns<ClusterServedName> = {
@@ -23651,6 +23671,9 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
     }
     for (const v of message.sourceFingerprints) {
       writer.uint32(42).string(v!);
+    }
+    if (message.service !== "") {
+      writer.uint32(50).string(message.service);
     }
     return writer;
   },
@@ -23708,6 +23731,14 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
             message.sourceFingerprints.push(reader.string());
             continue;
           }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.service = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -23735,6 +23766,7 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
         : globalThis.Array.isArray(object?.source_fingerprints)
         ? object.source_fingerprints.map((e: any) => globalThis.String(e))
         : [],
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
     };
   },
 
@@ -23755,6 +23787,9 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
     if (message.sourceFingerprints?.length) {
       obj.sourceFingerprints = message.sourceFingerprints;
     }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
     return obj;
   },
 
@@ -23768,6 +23803,7 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
     message.workloadId = object.workloadId ?? "";
     message.port = object.port ?? 0;
     message.sourceFingerprints = object.sourceFingerprints?.map((e) => e) || [];
+    message.service = object.service ?? "";
     return message;
   },
 };

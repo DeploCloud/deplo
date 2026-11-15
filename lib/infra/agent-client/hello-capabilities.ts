@@ -115,6 +115,9 @@ export const CLUSTER_STANDBY_CAPABILITY = "cluster.standby";
 
 // The agent holds workloads' names on its Environments' networks and relays them to the member that runs them (#200).
 export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";
+// A compose stack's services by their own names, and every port of a name (ADR-0047).
+export const CLUSTER_FORWARDERS_SERVICES_CAPABILITY =
+  "cluster.forwarders.services";
 // The cluster's private network (ADR-0047): a WireGuard tunnel between its servers, run inside each agent.
 export const CLUSTER_NETWORK_CAPABILITY = "cluster.network";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.

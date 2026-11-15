@@ -52,6 +52,7 @@ import {
   useServerHealth,
   type ServerHealthState,
 } from "./server-health-provider";
+import { DocsLink } from "@/components/ui/docs-link";
 
 export type ServerCardData = ServerFilterFields & {
   id: string;
@@ -144,7 +145,17 @@ function ServerBadges({
         </Badge>
       )}
       {m?.network && (
-        <SimpleTooltip content={m.network}>
+        <SimpleTooltip
+          content={
+            <>
+              {m.network}
+              <DocsLink
+                topic="clusters.privateNetworkPaths"
+                className="mt-1.5 block w-fit"
+              />
+            </>
+          }
+        >
           <Badge variant={m.networkDown ? "warning" : "muted"}>
             {m.networkDown ? "Can't reach a server" : "Relayed"}
           </Badge>

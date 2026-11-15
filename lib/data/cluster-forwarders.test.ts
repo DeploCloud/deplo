@@ -43,6 +43,7 @@ import {
   syncNameForwarders,
 } from "./clusters/forwarders";
 import { databaseRelayNotice } from "./clusters/relay-notice";
+import { CLUSTER_FORWARDERS_SERVICES_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { invalidateFrozen } from "./deplo-move/freeze";
 
 let db: TestDb;
@@ -245,7 +246,7 @@ test("each member is handed its Environments' names that run elsewhere, and neve
   );
 });
 
-test("a compose stack on another member is handed its Environment's names and offers none", async () => {
+test("to an agent from before services, a compose stack is handed its Environment's names and offers none", async () => {
   const c = await cluster();
   await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
   await place(c.id, "stack", "environ_a1", "srv_3", TEAM_A, {
@@ -390,6 +391,43 @@ test("a server outside the cluster is never handed a table, whatever a placement
   assert.deepEqual([...plan.keys()].sort(), ["srv_2", "srv_3", "srv_4"]);
   await syncNameForwarders(c.id);
   assert.deepEqual(hosts.srv_1!.forwarders, []);
+});
+
+test("a compose stack's services are held by name on the other server of its Environment, and served from its own", async () => {
+  for (const h of Object.values(hosts))
+    h.capabilities = [
+      ...h.capabilities,
+      CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
+    ];
+  const c = await cluster();
+  await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
+  await place(c.id, "stack", "environ_a1", "srv_3", TEAM_A, {
+    source: "compose",
+    repo: null,
+    compose:
+      'services:\n  web:\n    image: nginx\n  api:\n    image: api\n    hostname: backend\n    expose: ["9000"]\n',
+  });
+
+  await syncNameForwarders(c.id);
+
+  assert.deepEqual(
+    last("srv_2").hold.map((h) => [h.name, h.service, h.port]),
+    [
+      ["api", "api", 9000],
+      ["backend", "api", 9000],
+      ["web", "web", 80],
+    ],
+  );
+  const served = last("srv_3").serve.filter((s) => s.workloadId === "stack");
+  assert.deepEqual(
+    served.map((s) => [s.service, s.sourceFingerprints]),
+    [
+      ["api", [fp(2)]],
+      ["web", [fp(2)]],
+    ],
+  );
+  // The stack's own member holds none of its names: its containers have them.
+  assert.ok(!last("srv_3").hold.some((h) => h.workloadId === "stack"));
 });
 
 test("an agent too old to run forwarders is named in the log for a member with work and skipped for one without", async () => {

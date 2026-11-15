@@ -2,9 +2,10 @@ import { isReservedSharedName } from "./compose-lint/networks";
 import { usesComposeStack } from "../utils";
 
 // ADR-0028 amendment (#200): on a cluster, a member holds the names of its Environment's workloads that run
-// on another member, and a NAME FORWARDER carries each connection there over the relay.
+// on another member, and a NAME FORWARDER carries each connection there over the cluster's network (ADR-0047),
+// on whatever port its caller dialed.
 
-/** A single-image App on a cluster: its name is forwarded. A compose stack stays on one member and keeps its own names. */
+/** A single-image App on a cluster: its name is forwarded. A compose stack's services carry their own names instead. */
 export function isForwardedApp(
   app: Parameters<typeof usesComposeStack>[0] & { clusterId?: string | null },
   preview = false,
@@ -14,13 +15,22 @@ export function isForwardedApp(
 
 export type ForwardedKind = "app" | "database";
 
+/** A compose service another member reaches by name: what it answers to, and where its forwarder listens. */
+export interface ForwardedService {
+  service: string;
+  names: string[];
+  port: number;
+}
+
 export interface ForwardedWorkload {
   kind: ForwardedKind;
   id: string;
   /** The Environment's network (`deplo-env-<id>`), from the one network seam. */
   network: string;
-  /** The public name: `db-<slug>`, or the App's name. Null for a compose stack, which reaches names and offers none. */
+  /** The public name: `db-<slug>`, or the App's name. Null for a compose stack, whose services carry the names. */
   name: string | null;
+  /** A compose stack's services on the Environment's network; their names are held instead of `name`. */
+  services?: ForwardedService[];
   /** The port the workload answers on (`portFor`, or the engine's). */
   port: number;
   /** Where each replica runs now, in placement order; the leader's mirror. */
@@ -34,7 +44,10 @@ export interface HeldName {
   kind: ForwardedKind;
   workloadId: string;
   name: string;
+  /** Where the forwarder listens; every other port of the name reaches the workload too. */
   port: number;
+  /** The compose service the name belongs to; empty for a whole App or a database. */
+  service: string;
 }
 
 export interface ServedName {
@@ -42,6 +55,7 @@ export interface ServedName {
   kind: ForwardedKind;
   workloadId: string;
   port: number;
+  service: string;
   /** Fingerprints of the OTHER members running a workload of the same Environment. */
   sourceFingerprints: string[];
 }
@@ -88,7 +102,10 @@ export function planNameForwarding(input: {
     return m;
   };
   const cluster = [...input.fingerprints.keys()];
-  for (const [network, group] of networks) {
+  // One name on one network goes to one workload: of two stacks that both call a service "redis", the first by id.
+  const taken = new Map<string, Set<string>>();
+  for (const [network, unsorted] of networks) {
+    const group = [...unsorted].sort(byKey((w) => w.id));
     // The members running a workload of this Environment: the only ones that hold its names or dial for them.
     const running = [
       ...new Set(group.flatMap((w) => [...w.members, ...(w.standbys ?? [])])),
@@ -102,22 +119,45 @@ export function planNameForwarding(input: {
         .filter((f): f is string => Boolean(f))
         .sort();
       for (const w of group) {
-        // A name the proxy resolves on every network is never held, whatever a workload is called.
-        if (w.name === null || isReservedSharedName(w.name)) continue;
-        const base = { network, kind: w.kind, workloadId: w.id, port: w.port };
-        // Served by every member ahead of time: wherever the leader starts it next, the others reach it before
-        // Deplo has said a word. The server agent answers only while its lease places the workload on it.
-        m.serve.push({ ...base, sourceFingerprints: sources });
-        // Where it runs, its own container already answers to the name.
-        if (running.includes(serverId) && !w.members.includes(serverId))
-          m.hold.push({ ...base, name: w.name });
+        const entries: ForwardedService[] =
+          w.services ??
+          (w.name === null
+            ? []
+            : [{ service: "", names: [w.name], port: w.port }]);
+        for (const e of entries) {
+          // A name the proxy resolves on every network is never held, whatever a workload is called.
+          const names = e.names.filter((n) => !isReservedSharedName(n));
+          if (names.length === 0) continue;
+          const base = {
+            network,
+            kind: w.kind,
+            workloadId: w.id,
+            port: e.port,
+            service: e.service,
+          };
+          // Served by every member ahead of time: wherever the leader starts it next, the others reach it before
+          // Deplo has said a word. The server agent answers only while its lease places the workload on it.
+          m.serve.push({ ...base, sourceFingerprints: sources });
+          // Where it runs, its own containers already answer to the names.
+          if (!running.includes(serverId) || w.members.includes(serverId))
+            continue;
+          const held = taken.get(serverId) ?? new Set<string>();
+          taken.set(serverId, held);
+          for (const name of names) {
+            if (held.has(`${network}|${name}`)) continue;
+            held.add(`${network}|${name}`);
+            m.hold.push({ ...base, name });
+          }
+        }
       }
     }
   }
   const runs = new Map(input.workloads.map((w) => [w.id, w] as const));
   for (const m of out.values()) {
     m.hold.sort(byKey((h) => `${h.network}|${h.name}`));
-    m.serve.sort(byKey((s) => `${s.network}|${s.kind}|${s.workloadId}`));
+    m.serve.sort(
+      byKey((s) => `${s.network}|${s.kind}|${s.workloadId}|${s.service}`),
+    );
     // ponytail: the server agent refuses a table over 512 entries, so past that only what a member runs or
     // stands by for is served ahead of time; raise both ends together when a cluster grows that large.
     const room = MAX_TABLE_ENTRIES - m.hold.length - input.fingerprints.size;
@@ -131,7 +171,9 @@ export function planNameForwarding(input: {
     const ahead = m.serve.filter((s) => !here(s));
     const mine = m.serve.filter(here);
     m.serve = [...mine, ...ahead.slice(0, Math.max(room - mine.length, 0))];
-    m.serve.sort(byKey((s) => `${s.network}|${s.kind}|${s.workloadId}`));
+    m.serve.sort(
+      byKey((s) => `${s.network}|${s.kind}|${s.workloadId}|${s.service}`),
+    );
   }
   return out;
 }

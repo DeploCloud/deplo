@@ -36,6 +36,7 @@ import {
   CLUSTER_FAILOVER_CAPABILITY,
   CLUSTER_FAILOVER_RESTORE_CAPABILITY,
   CLUSTER_FORWARDERS_CAPABILITY,
+  CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
   CLUSTER_NETWORK_CAPABILITY,
@@ -361,7 +362,19 @@ export async function setClusterForwarders(
       throw new AgentClusterForwardersUnsupportedError(
         CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
       );
-    return await conn.setClusterForwarders(table);
+    // An older agent refuses a whole table with a service's name in it: it gets the rest, as before.
+    const services = hello.capabilities.includes(
+      CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
+    );
+    return await conn.setClusterForwarders(
+      services
+        ? table
+        : {
+            ...table,
+            hold: table.hold.filter((h) => !h.service),
+            serve: table.serve.filter((s) => !s.service),
+          },
+    );
   } catch (e) {
     if (
       !(e instanceof AgentClusterForwardersUnsupportedError) &&

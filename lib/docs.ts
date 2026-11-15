@@ -192,6 +192,9 @@ export const DOCS = {
   "clusters.appData": "operations/clusters/apps-with-stored-data",
   "clusters.standby": "operations/clusters/standby-copy",
   "clusters.addresses": "operations/clusters/addresses",
+  "clusters.privateNetwork": "operations/clusters/private-network",
+  "clusters.privateNetworkPaths":
+    "operations/clusters/private-network#direct-or-relayed",
   "clusters.replicas":
     "operations/clusters/replicas-and-architectures#replicas-across-servers",
   "clusters.updates": "operations/clusters/leader#updates",

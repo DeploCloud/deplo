@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import yaml from "../yaml";
 import { renderCompose } from "./build/compose-render";
+import { composeForwardedServices } from "./compose-stack/compose-read";
 import { generateDatabaseCompose } from "./database-compose";
 import {
   MAX_TABLE_ENTRIES,
@@ -76,6 +77,7 @@ describe("which names go on which member", () => {
         kind: "app",
         workloadId: "web",
         port: 3000,
+        service: "",
         sourceFingerprints: [FP.m1],
       },
     );
@@ -259,5 +261,116 @@ describe("what a workload on a cluster renders", () => {
       }),
       false,
     );
+  });
+});
+
+describe("a compose stack's services, reached by name from the other servers (ADR-0047)", () => {
+  const stack = (id: string, members: string[], network = ENV_A) =>
+    ({
+      kind: "app",
+      id,
+      network,
+      name: null,
+      services: [
+        { service: "api", names: ["api", "api-internal"], port: 8080 },
+        { service: "worker", names: ["worker"], port: 80 },
+      ],
+      port: 3000,
+      members,
+    }) satisfies ForwardedWorkload;
+  const plan = planNameForwarding({
+    fingerprints,
+    workloads: [stack("shop", ["m2"]), db("pg", ["m1"])],
+  });
+
+  test("the other server of its Environment holds every name of every service", () => {
+    assert.deepEqual(
+      plan.get("m1")!.hold.map((h) => [h.name, h.service, h.port]),
+      [
+        ["api", "api", 8080],
+        ["api-internal", "api", 8080],
+        ["worker", "worker", 80],
+      ],
+    );
+    assert.ok(!plan.get("m2")!.hold.some((h) => h.workloadId === "shop"));
+  });
+
+  test("each service is served on its own, to the Environment's other members only", () => {
+    assert.deepEqual(
+      plan
+        .get("m2")!
+        .serve.filter((s) => s.workloadId === "shop")
+        .map((s) => [s.service, s.sourceFingerprints]),
+      [
+        ["api", [FP.m1]],
+        ["worker", [FP.m1]],
+      ],
+    );
+  });
+
+  test("two stacks calling a service by one name hand it to one of them, never twice", () => {
+    const p = planNameForwarding({
+      fingerprints,
+      workloads: [
+        stack("b-stack", ["m2"]),
+        stack("a-stack", ["m3"]),
+        db("pg", ["m1"]),
+      ],
+    });
+    const api = p.get("m1")!.hold.filter((h) => h.name === "api");
+    assert.equal(api.length, 1);
+    assert.equal(api[0]!.workloadId, "a-stack");
+  });
+
+  test("a name the proxy resolves on every network is never held", () => {
+    const p = planNameForwarding({
+      fingerprints,
+      workloads: [
+        {
+          ...stack("shop", ["m2"]),
+          services: [{ service: "deplo", names: ["deplo"], port: 80 }],
+        },
+        db("pg", ["m1"]),
+      ],
+    });
+    assert.deepEqual(p.get("m1")!.hold, []);
+  });
+});
+
+describe("which services of a compose stack other servers reach", () => {
+  test("every service on the Environment's network, by its name and hostname, on its declared port or 80", () => {
+    assert.deepEqual(
+      composeForwardedServices(`
+services:
+  web:
+    image: nginx
+    ports: ["8080:80"]
+  api:
+    image: api
+    hostname: backend
+    expose: ["9000"]
+  sealed:
+    image: x
+    networks: [private]
+  host:
+    image: x
+    network_mode: host
+  proxy:
+    image: x
+    hostname: Traefik
+networks:
+  private:
+    internal: true
+`),
+      [
+        { service: "api", names: ["api", "backend"], port: 9000 },
+        { service: "web", names: ["web"], port: 80 },
+      ],
+    );
+  });
+
+  test("a stack that does not read is offered nothing", () => {
+    assert.deepEqual(composeForwardedServices("services: ["), []);
+    assert.deepEqual(composeForwardedServices(""), []);
   });
 });

@@ -240,6 +240,9 @@ through the tunnel opens with `FROM <party>` and then the same mutual TLS as a r
 packets over a relay, stream port 7000 inside the tunnel). An agent without the Hello capability
 `cluster.network` is left off the network and its streams take the relay, and a leader whose agent has
 no door dials the relays only, so the agent and the binary may ship in either order; ship the agent first.
+Name forwarders ride it too: a `FWD` stream between agents adds the port the caller dialed and a compose
+service only when it has them (`FWD <network> <kind>:<id>[ <port>[ <service>]]`), and a forwarder opens its
+agent socket with `PORT <n>`. A compose service's names go only to agents with `cluster.forwarders.services`.
 
 ## 8. Rollback is forward-only
 
