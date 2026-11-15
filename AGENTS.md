@@ -232,6 +232,11 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   exactly half while Deplo named its epoch in the last 20 s (`beatClusterLeaders`, every 5 s, to
   `leaderHost` only). A takeover waits `TAKEOVER_AFTER_MS`, longer than a leader trusts a beat
   (`DeploFor` in `deplo-cluster`): change the two together, or two leaders each hold half a cluster.
+- **Replication streams member to member** (ADR-0046, `lib/data/clusters/replication.ts`): Deplo hands
+  every member's server agent the cluster's replicated Apps (`SetClusterReplicas`, `cluster.replicas`)
+  and reads back how each copy stands; the agent that runs an App sends every change over the relay and
+  the others keep a copy apart from live data, which a restore marked `fromReplica` puts in place. It is
+  the only way such an App fails over, it gives every database a standby copy, and load balancing needs it.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
   where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) - a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and

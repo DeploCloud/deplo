@@ -202,6 +202,7 @@ export default async function ServersPage(
       teamIds: clusterTeamIds.get(cluster.id) ?? [],
       servers: members.length,
       failoverEnabled: cluster.failoverEnabled,
+      replicationEnabled: cluster.replicationEnabled,
       provisioning: members.filter((m) => m.provisioning).length,
       joinOptions,
       warnings: warningsOf.get(cluster.id)!,
@@ -278,6 +279,9 @@ export default async function ServersPage(
                     allTeams: open.cluster.allTeams,
                     teamIds: clusterTeamIds.get(open.cluster.id) ?? [],
                     failoverEnabled: open.cluster.failoverEnabled,
+                    replicationEnabled: open.cluster.replicationEnabled,
+                    loadBalancingEnabled: open.cluster.loadBalancingEnabled,
+                    loadBalancingMode: open.cluster.loadBalancingMode,
                   }}
                   teams={teams}
                 />

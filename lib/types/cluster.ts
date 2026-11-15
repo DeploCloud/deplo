@@ -14,7 +14,28 @@ export interface Cluster {
   eventSeq: number;
   /** Off: the cluster moves nothing to another server when one stops. */
   failoverEnabled: boolean;
+  /** On: the stored data of its Apps is copied to its other servers, so failover moves those Apps too. */
+  replicationEnabled: boolean;
+  /** On (only with replication): Apps that keep no data run on every server and visitors are spread over them. */
+  loadBalancingEnabled: boolean;
+  loadBalancingMode: LoadBalancingMode;
   createdAt: string;
+}
+
+/** Where a load-balanced App's visitors go: the server nearest them, or the one with the most room. */
+export type LoadBalancingMode = "nearest" | "most_available";
+
+export const LOAD_BALANCING_MODES: readonly LoadBalancingMode[] = [
+  "nearest",
+  "most_available",
+];
+
+export function cleanLoadBalancingMode(mode: string): LoadBalancingMode {
+  if ((LOAD_BALANCING_MODES as readonly string[]).includes(mode))
+    return mode as LoadBalancingMode;
+  throw new Error(
+    "Load balancing sends visitors to the nearest server or to the most available one",
+  );
 }
 
 export type ClusterLeaderState =

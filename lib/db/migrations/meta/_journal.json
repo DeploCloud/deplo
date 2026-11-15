@@ -1723,6 +1723,13 @@
       "when": 1795975300000,
       "tag": "0256_cluster_warning_token_fix",
       "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1796061600000,
+      "tag": "0257_cluster_replication",
+      "breakpoints": true
     }
   ]
 }

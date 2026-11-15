@@ -84,6 +84,10 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   workload_placements: COPY,
   // Which member holds which release image of a cluster App.
   cluster_image_copies: { kind: "copy", needsServer: ["server_id"] },
+  // Read back from the server agents every pass: the copies themselves stay on those members.
+  cluster_app_replicas: { kind: "skip", clear: true },
+  // Chosen again within a minute by whichever Deplo watches the cluster.
+  cluster_entrances: { kind: "skip", clear: true },
   // Re-keyed with the rest; the new machine's leader has its own key, so every bundle is sealed to it again.
   failover_bundle_pushes: { kind: "copy", rekey: { bundle_enc: SECRET } },
   // Updates of this Deplo's own leaders against its own pin.

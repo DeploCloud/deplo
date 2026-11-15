@@ -5,7 +5,6 @@ import { createElement, type ReactElement } from "react";
 import { renderServerView } from "@/components/servers/server-test-helpers";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DatabaseStandbyForm } from "@/components/storage/database-standby-form";
-import { FailoverFromBackupForm } from "./failover-from-backup-form";
 import { StickySessionsForm } from "./sticky-sessions-form";
 
 // The switches and the badge spec #176 names word for word, as the page renders them.
@@ -19,15 +18,6 @@ test("the sticky switch reads Keep each visitor on the same replica", () => {
   );
 });
 
-test("an App with a Volume is offered Fail over automatically from the latest backup", () => {
-  assert.match(
-    text(
-      createElement(FailoverFromBackupForm, { appId: "prj_1", enabled: false }),
-    ),
-    /Fail over automatically from the latest backup/,
-  );
-});
-
 test("a database is offered Keep a standby copy, with what it costs", () => {
   const cost =
     "Uses 512 MB on a second server and a second copy of its data (1 GB).";
@@ -36,6 +26,7 @@ test("a database is offered Keep a standby copy, with what it costs", () => {
       databaseId: "db_1",
       standby: {
         enabled: false,
+        byCluster: null,
         unavailable: null,
         cost,
         serverName: null,
@@ -51,5 +42,25 @@ test("an App whose restarts paused reads Not answering · restarts paused", () =
   assert.match(
     text(createElement(StatusBadge, { status: "unresponsive" })),
     /Not answering · restarts paused/,
+  );
+});
+
+test("a database on a cluster that replicates reads that the cluster keeps its copy", () => {
+  const row = text(
+    createElement(DatabaseStandbyForm, {
+      databaseId: "db_1",
+      standby: {
+        enabled: true,
+        byCluster: "eu",
+        unavailable: null,
+        cost: "",
+        serverName: "server-b",
+        note: "The copy runs on server-b. A failover promotes it.",
+      },
+    }),
+  );
+  assert.match(
+    row,
+    /Cluster eu replicates its databases, so it keeps this copy\./,
   );
 });

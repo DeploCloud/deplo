@@ -10,11 +10,17 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { newId, nowIso } from "../../ids";
-import type { Cluster } from "../../types/cluster";
+import {
+  type Cluster,
+  type LoadBalancingMode,
+  cleanLoadBalancingMode,
+} from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { inBackground, reconcileClusterBundles } from "./bundles";
 import { reconcileClusterDatabaseBundles } from "./database-bundles";
 import { ensureClusterLeader } from "./leader";
+import { balanceEntrancesSoon, openEntrancesSoon } from "./load-balancing";
+import { refreshVolumeAppBundles, replicateClusterSoon } from "./replication";
 import { getClusterById, requireClusterAdmin } from "./roster";
 
 export interface ClusterSharingInput {
@@ -208,5 +214,84 @@ export async function setClusterFailover(
       await reconcileClusterDatabaseBundles(id);
     });
   }
+  return (await getClusterById(id))!;
+}
+
+export const LOAD_BALANCING_NEEDS_REPLICATION =
+  "Turn on replication first: load balancing needs it.";
+
+const modeWords: Record<LoadBalancingMode, string> = {
+  nearest: "the nearest server",
+  most_available: "the most available server",
+};
+
+/**
+ * Turns replication on or off. On, the stored data of the cluster's Apps is copied to its other servers, the only
+ * way such an App fails over; off, those Apps wait for their server, their copies go, and load balancing with them.
+ */
+export async function setClusterReplication(
+  id: string,
+  enabled: boolean,
+): Promise<Cluster> {
+  const { teamId, user } = await requireClusterAdmin();
+  const cluster = await getClusterById(id);
+  if (!cluster) throw new Error("Cluster not found");
+  if (cluster.replicationEnabled === enabled) return cluster;
+  const balancing = !enabled && cluster.loadBalancingEnabled;
+  await getDb()
+    .update(clustersTable)
+    .set({
+      replicationEnabled: enabled,
+      ...(balancing ? { loadBalancingEnabled: false } : {}),
+    })
+    .where(eq(clustersTable.id, id));
+  await recordActivity(
+    "server",
+    `Turned replication ${enabled ? "on" : "off"} for cluster ${cluster.name}` +
+      (balancing ? ", and load balancing with it" : ""),
+    user.name,
+    null,
+    teamId,
+  );
+  if (balancing) openEntrancesSoon(id);
+  // On, each App's first whole copy hands its leader the bundle that moves it; off, the leader learns at once,
+  // and every member drops its copies with the table that no longer names them.
+  if (!enabled) inBackground(id, () => refreshVolumeAppBundles(id));
+  replicateClusterSoon(id);
+  return (await getClusterById(id))!;
+}
+
+/**
+ * Turns load balancing on or off, or changes where it sends visitors. Refused while replication is off. It reaches
+ * the Apps on a Cloudflare domain that keep no data: from their next deploy they run on every server.
+ */
+export async function setClusterLoadBalancing(
+  id: string,
+  enabled: boolean,
+  mode?: string | null,
+): Promise<Cluster> {
+  const { teamId, user } = await requireClusterAdmin();
+  const cluster = await getClusterById(id);
+  if (!cluster) throw new Error("Cluster not found");
+  const next = mode ? cleanLoadBalancingMode(mode) : cluster.loadBalancingMode;
+  if (enabled && !cluster.replicationEnabled)
+    throw new Error(LOAD_BALANCING_NEEDS_REPLICATION);
+  if (
+    cluster.loadBalancingEnabled === enabled &&
+    cluster.loadBalancingMode === next
+  )
+    return cluster;
+  await getDb()
+    .update(clustersTable)
+    .set({ loadBalancingEnabled: enabled, loadBalancingMode: next })
+    .where(eq(clustersTable.id, id));
+  const message = !enabled
+    ? `Turned load balancing off for cluster ${cluster.name}`
+    : cluster.loadBalancingEnabled
+      ? `Load balancing for cluster ${cluster.name} now sends visitors to ${modeWords[next]}`
+      : `Turned load balancing on for cluster ${cluster.name}: visitors go to ${modeWords[next]}`;
+  await recordActivity("server", message, user.name, null, teamId);
+  if (enabled && next === "most_available") balanceEntrancesSoon(id);
+  else openEntrancesSoon(id);
   return (await getClusterById(id))!;
 }

@@ -3,6 +3,8 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import {
+  Copy,
+  CopyX,
   Folder,
   FolderOpen,
   MoreHorizontal,
@@ -27,7 +29,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { ListView } from "@/components/shared/view-toggle";
 import { cn } from "@/lib/utils";
 import { ClusterActions } from "./cluster-actions";
-import { useFailoverSwitch } from "./cluster-bar";
+import { useFailoverSwitch, useReplicationSwitch } from "./cluster-bar";
 import { DeleteClusterButton } from "./cluster-delete";
 import { serversHref, type ClusterJoinOption } from "./cluster-join";
 import type { ClusterWarning } from "@/lib/clusters/warnings";
@@ -40,6 +42,7 @@ export type ClusterCardData = {
   teamIds: string[];
   servers: number;
   failoverEnabled: boolean;
+  replicationEnabled: boolean;
   /** How many of its servers are still joining. */
   provisioning: number;
   /** Every server that is not in a cluster, with what stops it joining this one. */
@@ -91,6 +94,7 @@ export function ClusterCard({
   const [manage, setManage] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const failover = useFailoverSwitch(cluster);
+  const replication = useReplicationSwitch(cluster);
   const href = serversHref({ cluster: cluster.id, view });
 
   const actions = (
@@ -135,6 +139,17 @@ export function ClusterCard({
                 <ShieldCheck className="size-4" />
               )}
               {failover.on ? "Turn failover off" : "Turn failover on"}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={replication.pending}
+              onSelect={() => replication.set(!replication.on)}
+            >
+              {replication.on ? (
+                <CopyX className="size-4" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+              {replication.on ? "Turn replication off" : "Turn replication on"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

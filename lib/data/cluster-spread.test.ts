@@ -21,6 +21,7 @@ import { seedServerRow } from "./infra-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   clusterMembers,
+  clusters as clustersTable,
   imageArchitectures,
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
@@ -43,7 +44,10 @@ import {
   fakeClusterHosts,
   type FakeClusterHost,
 } from "../infra/agent-client/cluster-test-helpers";
-import { SPREAD_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  SPREAD_CAPABILITY,
+  STOP_SERVICES_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
 import { runDeploymentGuarded } from "../deploy/build/deploy-run";
 import { deployOtherMembers } from "../deploy/build/spread-deploy";
 import { __resetQueueForTest } from "../deploy/deploy-queue";
@@ -55,6 +59,11 @@ import { loadAppGraph } from "./app-graph-load";
 import { deleteApp } from "./apps/delete";
 import { startApp, stopApp } from "./apps/lifecycle";
 import { flushFailoverBundles, type FailoverBundle } from "./clusters/bundles";
+import {
+  appEntrance,
+  balanceClusterEntrances,
+  openClusterEntrances,
+} from "./clusters/load-balancing";
 import { createCluster } from "./clusters/manage";
 import { removeClusterMember } from "./clusters/dissolve";
 import { runEmptyingPass } from "./clusters/empty";
@@ -779,4 +788,75 @@ test("emptying a server moves only the replicas it runs, with a deploy that leav
   // The leader was told which server is being removed from cluster eu, and asked where its replica goes.
   assert.deepEqual(leader.asked.at(-1)?.current, ["srv_2", "srv_3", "srv_4"]);
   assert.equal((await app()).serverId, "srv_2");
+});
+
+/** The cluster replicates and balances its visitors, in the mode given. */
+const balancing = (mode: "nearest" | "most_available" = "nearest") =>
+  db
+    .update(clustersTable)
+    .set({
+      replicationEnabled: true,
+      loadBalancingEnabled: true,
+      loadBalancingMode: mode,
+    })
+    .where(eq(clustersTable.id, clusterId));
+
+test("load balancing runs an App of one replica on every server, each beside its connector", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await withCloudflareDomain();
+  await balancing();
+  assert.equal(
+    await replicaSpreadNote(await app()),
+    "Load balancing runs it on 3 servers: visitors are shared between them",
+  );
+
+  await runDeploymentGuarded("dpl_1");
+
+  assert.deepEqual(
+    leader.asked.map((a) => a.replicas),
+    [3],
+  );
+  assert.deepEqual(await placement(), ["srv_2", "srv_3", "srv_4"]);
+  for (const id of MEMBERS) {
+    const services = stackOf(hosts[id].deploys[0]!).services;
+    assert.deepEqual(Object.keys(services).sort(), [CONNECTOR, "deplo-web"]);
+    assert.equal(services["deplo-web"]!.deploy?.replicas, 1);
+  }
+});
+
+test("load balancing leaves an App without a Cloudflare domain where its address points", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await balancing();
+  await runDeploymentGuarded("dpl_1");
+  assert.deepEqual(leader.asked, []);
+  assert.equal(hosts.srv_3.deploys.length + hosts.srv_4.deploys.length, 0);
+});
+
+test("the most available server alone keeps its connector, and back to the nearest every server takes visitors again", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await withCloudflareDomain();
+  await balancing("most_available");
+  await runDeploymentGuarded("dpl_1");
+  for (const id of MEMBERS) {
+    hosts[id].capabilities.push(STOP_SERVICES_CAPABILITY);
+    hosts[id].stack = [];
+  }
+  // srv_3 has the most memory free; no live metrics, so what is placed decides.
+  for (const id of MEMBERS)
+    await db
+      .update(serversTable)
+      .set({ memoryMb: id === "srv_3" ? 8192 : 2048 })
+      .where(eq(serversTable.id, id));
+
+  await balanceClusterEntrances(clusterId);
+
+  assert.deepEqual(hosts.srv_3.stack, ["start:web"]);
+  assert.deepEqual(hosts.srv_2.stack, ["stop:web"]);
+  assert.deepEqual(hosts.srv_4.stack, ["stop:web"]);
+  assert.equal(await appEntrance(APP), "srv_3");
+
+  for (const id of MEMBERS) hosts[id].stack = [];
+  await openClusterEntrances(clusterId);
+  for (const id of MEMBERS) assert.deepEqual(hosts[id].stack, ["start:web"]);
+  assert.equal(await appEntrance(APP), null);
 });

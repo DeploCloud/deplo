@@ -115,6 +115,8 @@ export const CLUSTER_STANDBY_CAPABILITY = "cluster.standby";
 
 // The agent holds workloads' names on its Environments' networks and relays them to the member that runs them (#200).
 export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";
+// Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
+export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
 
 // The agent holds a marked service back until the App is ready: a tunnel's connector must not send visitors to an App that is not up.
 export const START_AFTER_READY_CAPABILITY = "deploy.start-after-ready";

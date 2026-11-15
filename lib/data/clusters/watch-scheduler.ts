@@ -12,6 +12,8 @@ import { shipChangeLogs } from "./change-log";
 import { runClusterRollout } from "./binary-rollout";
 import { runEmptyingPass } from "./empty";
 import { reconcileClusterImages } from "./images";
+import { runLoadBalancingPass } from "./load-balancing";
+import { runReplicationPass } from "./replication";
 import { leaderHost } from "./host";
 import { BEAT_EVERY_MS, beatClusterLeaders } from "./leader-beat";
 import { superviseClusterLeader } from "./leader-standby";
@@ -30,6 +32,7 @@ const CHANGE_LOG_EVERY_MS = 60_000;
 const ROLLOUT_EVERY_MS = 60_000;
 const IMAGES_EVERY_MS = 2 * 60_000;
 const WARNINGS_EVERY_MS = 30_000;
+const BALANCE_EVERY_MS = 30_000;
 // Renewed every tick: a Deplo that died without letting go must not leave failover off for the usual 2h.
 export const CLUSTER_WATCH_STALE_MS = 5 * 60_000;
 
@@ -50,6 +53,8 @@ interface State {
   /** When the clusters' warnings were last worked out, and whether a pass still runs. */
   warningsAt?: number;
   warning?: boolean;
+  /** When the most available server of each load-balanced App was last chosen. */
+  balancedAt?: number;
   /** Whether this Deplo held the watch lease at its last tick: only that one names the leaders. */
   holds?: boolean;
   beatTimer?: ReturnType<typeof setInterval> | null;
@@ -137,6 +142,16 @@ export async function runClusterWatchTick(): Promise<void> {
         console.error("[deplo] collecting a change log failed:", e),
       );
     }
+    // Each replicated App says itself when its next copy is due; a pass still running is not doubled.
+    void runReplicationPass().catch((e) =>
+      console.error("[replication] pass failed:", e),
+    );
+    if (Date.now() - (state.balancedAt ?? 0) >= BALANCE_EVERY_MS) {
+      state.balancedAt = Date.now();
+      void runLoadBalancingPass(ids).catch((e) =>
+        console.error("[load-balancing] pass failed:", e),
+      );
+    }
     // A copy that failed while a member was away retries within minutes, not at the 12-hour sweep.
     if (Date.now() - (state.imagesAt ?? 0) >= IMAGES_EVERY_MS) {
       state.imagesAt = Date.now();
@@ -208,6 +223,7 @@ export function __resetClusterWatchForTest(): void {
   state.imagesAt = 0;
   state.warningsAt = 0;
   state.warning = false;
+  state.balancedAt = 0;
   state.holds = false;
   if (state.timer) clearInterval(state.timer);
   state.timer = null;

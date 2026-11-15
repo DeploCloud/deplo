@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DocsLink } from "@/components/ui/docs-link";
 import { FailoverPromises } from "@/components/storage/database-failover";
-import { BACKUP_PAUSE_NOTE } from "@/lib/apps/failover-copy";
-import { FAILOVER_PROMISES } from "@/lib/databases/failover-copy";
+import { TimeAgo } from "@/components/shared/time-ago";
+import { REPLICATION_PROMISES } from "@/lib/apps/failover-copy";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppFailover } from "@/lib/data/apps/failover";
 
@@ -86,15 +86,28 @@ export function AppFailoverCard({
           <div>
             <p className="text-sm font-medium">Failover</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {failover.sentence} <DocsLink topic="clusters.appData" />
+              {failover.sentence}{" "}
+              <DocsLink
+                topic={
+                  failover.automatic
+                    ? "clusters.replication"
+                    : "clusters.appData"
+                }
+              />
             </p>
           </div>
-          {failover.disk === "volume" && (
+          {failover.disk === "volume" && failover.automatic && (
             <>
-              <FailoverPromises promises={FAILOVER_PROMISES} />
-              <p className="text-xs text-muted-foreground">
-                {BACKUP_PAUSE_NOTE}
-              </p>
+              <FailoverPromises promises={REPLICATION_PROMISES} />
+              {failover.upToDateAt && (
+                <p className="text-xs text-muted-foreground">
+                  Replicated to{" "}
+                  {failover.replicatedTo === 1
+                    ? "1 server"
+                    : `${failover.replicatedTo} servers`}
+                  , up to date <TimeAgo at={failover.upToDateAt} live />.
+                </p>
+              )}
             </>
           )}
         </div>

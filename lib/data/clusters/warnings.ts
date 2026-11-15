@@ -20,6 +20,7 @@ import { messageOf } from "../../utils";
 import { listClusterImageProgress } from "./images";
 import { readClusterLeader } from "./leader";
 import { listClusterWaiting } from "./placement";
+import { listClusterReplication } from "./replica-state";
 import { getClusterById } from "./roster";
 
 // A leader that hangs is a warning, not a stuck pass.
@@ -128,10 +129,13 @@ export async function loadClusterWarnings(
   servers: number,
   stored: ClusterWarning[],
 ): Promise<ClusterWarning[]> {
-  const [waiting, copies] = await Promise.all([
+  const [waiting, copies, replication] = await Promise.all([
     listClusterWaiting(cluster.id).catch(() => []),
     cluster.failoverEnabled
       ? listClusterImageProgress(cluster.id).catch(() => [])
+      : [],
+    cluster.failoverEnabled && cluster.replicationEnabled
+      ? listClusterReplication(cluster.id).catch(() => [])
       : [],
   ]);
   return composeClusterWarnings({
@@ -140,5 +144,6 @@ export async function loadClusterWarnings(
     leader: stored,
     waiting,
     copies,
+    replication,
   });
 }

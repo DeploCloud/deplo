@@ -133,7 +133,6 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     restartsPausedAt: null,
     replicas: 1,
     stickySessions: false,
-    failoverFromBackup: false,
     consoleEnabled: false,
     autoDeploy: true,
     deployHookEnabled: true,

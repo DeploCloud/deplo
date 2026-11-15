@@ -6,8 +6,14 @@ import {
   createCluster,
   renameCluster,
   setClusterFailover,
+  setClusterLoadBalancing,
+  setClusterReplication,
   setClusterTeams,
 } from "@/lib/data/clusters/manage";
+import {
+  type AppReplicationState,
+  listClusterReplication,
+} from "@/lib/data/clusters/replica-state";
 import {
   ensureClusterLeader,
   getClusterLeader,
@@ -144,6 +150,43 @@ const ClusterLeaderChoiceRef = builder
 const ClusterLeaseStateEnum = builder.enumType("ClusterLeaseState", {
   values: ["ok", "not_responding", "fenced"] as const,
 });
+
+const LoadBalancingModeEnum = builder.enumType("ClusterLoadBalancingMode", {
+  description:
+    "Where load balancing sends each visitor: `nearest`, the server closest to them, or `most_available`, the one with the most room.",
+  values: ["nearest", "most_available"] as const,
+});
+
+const ClusterReplicationProgressRef = builder
+  .objectRef<AppReplicationState>("ClusterReplicationProgress")
+  .implement({
+    description:
+      "An App with stored data on a cluster that replicates: how many of the other servers keep a copy that follows it.",
+    fields: (t) => ({
+      appId: t.exposeID("appId"),
+      appName: t.exposeString("appName"),
+      following: t.exposeInt("following", {
+        description: "Other servers whose copy is whole and up to date now.",
+      }),
+      held: t.exposeInt("held", {
+        description:
+          "Other servers that hold a whole copy, up to date or not: a failover can start it on any of them.",
+      }),
+      total: t.exposeInt("total", {
+        description: "Other servers of the cluster, which all keep a copy.",
+      }),
+      upToDateAt: t.string({
+        nullable: true,
+        description:
+          "When the newest change reached a copy that follows; null while none does.",
+        resolve: (r) => r.upToDateAt,
+      }),
+      error: t.exposeString("error", {
+        description:
+          "Why a copy does not follow, as its server says; empty when every one does.",
+      }),
+    }),
+  });
 
 const ClusterImageProgressRef = builder
   .objectRef<ClusterImageProgress>("ClusterImageProgress")
@@ -356,7 +399,27 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
     }),
     failoverEnabled: t.exposeBoolean("failoverEnabled", {
       description:
-        "True (the default) when the cluster moves work off a server that stops. False keeps everything where it is.",
+        "True (the default) when the cluster moves work off a server that stops. False keeps everything where it is. Apps with stored data move only while `replicationEnabled`.",
+    }),
+    replicationEnabled: t.exposeBoolean("replicationEnabled", {
+      description:
+        "True when the stored data of the cluster's Apps (Volumes and Files) is copied to its other servers about every minute, so failover moves those Apps too. Off (the default), they wait for their server.",
+    }),
+    loadBalancingEnabled: t.exposeBoolean("loadBalancingEnabled", {
+      description:
+        "True when the cluster's Apps on a Cloudflare domain that keep no data run on every server and visitors are spread over them. Only with `replicationEnabled`.",
+    }),
+    loadBalancingMode: t.field({
+      type: LoadBalancingModeEnum,
+      description: "Where load balancing sends each visitor.",
+      resolve: (c) => c.loadBalancingMode,
+    }),
+    replication: t.field({
+      type: [ClusterReplicationProgressRef],
+      authScopes: { loggedIn: true },
+      description:
+        "The active team's Apps with stored data on this cluster and how far their copies are. Empty while replication is off.",
+      resolve: (c) => listClusterReplication(c.id),
     }),
     leaderEpoch: t.exposeInt("leaderEpoch", {
       description:
@@ -381,7 +444,7 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
       type: [ClusterImageProgressRef],
       authScopes: { loggedIn: true },
       description:
-        "The active team's Apps on this cluster whose newest release has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere.",
+        "Version copies: the active team's Apps on this cluster whose newest version has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere. Not replication, which copies stored data.",
       resolve: (c) => listClusterImageProgress(c.id),
     }),
     waiting: t.stringList({
@@ -519,6 +582,31 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { id, enabled }) =>
       thenRefresh(id, setClusterFailover(id, enabled)),
+  }),
+  setClusterReplication: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Turn a cluster's replication on or off. On, the stored data of its Apps is copied to its other servers about every minute, the only way an App with stored data fails over. Off, those Apps wait for their server, their copies are removed, and load balancing goes off too.",
+    args: {
+      id: t.arg.string({ required: true }),
+      enabled: t.arg.boolean({ required: true }),
+    },
+    resolve: (_r, { id, enabled }) =>
+      thenRefresh(id, setClusterReplication(id, enabled)),
+  }),
+  setClusterLoadBalancing: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Turn a cluster's load balancing on or off, or change its mode. Refused while replication is off. It reaches Apps on a Cloudflare domain that keep no data: from their next deploy they run on every server. `nearest` sends each visitor to the closest server; `most_available` to the one with the most room. Omit `mode` to keep it.",
+    args: {
+      id: t.arg.string({ required: true }),
+      enabled: t.arg.boolean({ required: true }),
+      mode: t.arg({ type: LoadBalancingModeEnum, required: false }),
+    },
+    resolve: (_r, { id, enabled, mode }) =>
+      thenRefresh(id, setClusterLoadBalancing(id, enabled, mode)),
   }),
   setClusterTeams: t.field({
     type: ClusterRef,

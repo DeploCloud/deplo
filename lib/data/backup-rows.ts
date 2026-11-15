@@ -69,6 +69,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     restoreBytesPerSec: d.restoreBytesPerSec ?? null,
     walArchivedAt: d.walArchivedAt ?? null,
     standby: d.standby ?? false,
+    standbyFromCluster: d.standbyFromCluster ?? false,
     standbySeed: d.standbySeed ?? null,
     createdAt: d.createdAt,
   } satisfies Record<
@@ -112,6 +113,7 @@ export function assembleDatabase(
     restoreBytesPerSec: row.restoreBytesPerSec ?? null,
     walArchivedAt: row.walArchivedAt ?? null,
     standby: row.standby ?? false,
+    standbyFromCluster: row.standbyFromCluster ?? false,
     standbySeed: row.standbySeed ?? null,
     createdAt: row.createdAt,
   };

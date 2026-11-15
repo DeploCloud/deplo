@@ -16,6 +16,8 @@ import type {
   AgentConnection,
   ClusterForwarderTable,
   ClusterHostStatus,
+  ClusterReplicaReport,
+  ClusterReplicaTable,
 } from "./connection";
 import { __forgetMemberProbes } from "./cluster-host";
 import {
@@ -61,6 +63,9 @@ export interface FakeClusterHost {
   imageExpects: { imageRef: string; sourceFingerprint: string; keep: number }[];
   /** Every name-forwarder table this host's agent was handed, in order (#200). */
   forwarders: ClusterForwarderTable[];
+  /** Every replication table this host's agent was handed, in order, and what it says of its copies (ADR-0046). */
+  replicaTables: ClusterReplicaTable[];
+  replicaReports: ClusterReplicaReport[];
   /** Every deploy request this host's agent was handed, answered ready. */
   deploys: DeployRequest[];
   /** Every backup this host's agent was asked for, answered with an artifact of `backupBytes` (0: nothing to write). */
@@ -366,6 +371,12 @@ export function fakeClusterHosts(): {
           h.forwarders.push(table);
           return { held: table.hold.length, served: table.serve.length };
         }),
+      setClusterReplicas: (table) =>
+        guard(() => {
+          h.replicaTables.push(table);
+          return { entries: table.entries.length };
+        }),
+      clusterReplicaStatus: () => guard(() => [...h.replicaReports]),
       close: () => void h.closed++,
     };
     return { ...conn, ...h.extra } as AgentConnection;
@@ -399,6 +410,8 @@ export function fakeClusterHosts(): {
         imageCopies: [],
         imageExpects: [],
         forwarders: [],
+        replicaTables: [],
+        replicaReports: [],
         deploys: [],
         backups: [],
         backupBytes: 2048,

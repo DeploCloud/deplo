@@ -232,11 +232,6 @@ type App {
   failover: AppFailover
 
   """
-  On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.
-  """
-  failoverFromBackup: Boolean
-
-  """
   On a cluster of ARM and x86 servers, which ones this app can fail over to; null when every server can take it or it runs on one server.
   """
   failoverReach: FailoverReach
@@ -368,11 +363,11 @@ input AppEnvInput {
 }
 
 """
-How an app that keeps data on a cluster member fails over: a Volume waits for its server or comes back from a backup, a Bind never moves.
+How an app that keeps data on a cluster member fails over: a Volume moves with its newest copy while its cluster replicates it and waits for its server otherwise, a Bind never moves.
 """
 type AppFailover {
   """
-  Whether it moves on its own from its latest backup (failoverFromBackup).
+  Whether it moves on its own: its cluster replicates its data (Cluster.replicationEnabled).
   """
   automatic: Boolean
 
@@ -385,11 +380,24 @@ type AppFailover {
   """`volume` or `bind`: what ties it to that server."""
   disk: String
 
+  """
+  How many other servers hold a whole copy, following now or not: a failover can start it on any of them.
+  """
+  heldBy: Int
+
+  """How many other servers of its cluster keep a copy that follows it now."""
+  replicatedTo: Int
+
   """What its page says about how it fails over."""
   sentence: String
 
   """The member it runs on now."""
   serverName: String
+
+  """
+  When its newest change reached a copy that follows; null while none does.
+  """
+  upToDateAt: String
 
   """Its server stopped answering and it waits for it."""
   waiting: Boolean
@@ -1145,7 +1153,7 @@ type Cluster {
   createdAt: String
 
   """
-  True (the default) when the cluster moves work off a server that stops. False keeps everything where it is.
+  True (the default) when the cluster moves work off a server that stops. False keeps everything where it is. Apps with stored data move only while `replicationEnabled`.
   """
   failoverEnabled: Boolean
 
@@ -1156,7 +1164,7 @@ type Cluster {
   id: ID
 
   """
-  The active team's Apps on this cluster whose newest release has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere.
+  Version copies: the active team's Apps on this cluster whose newest version has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere. Not replication, which copies stored data.
   """
   imageCopies: [ClusterImageProgress!]
 
@@ -1179,10 +1187,28 @@ type Cluster {
   leaderEpoch: Int
 
   """
+  True when the cluster's Apps on a Cloudflare domain that keep no data run on every server and visitors are spread over them. Only with `replicationEnabled`.
+  """
+  loadBalancingEnabled: Boolean
+
+  """Where load balancing sends each visitor."""
+  loadBalancingMode: ClusterLoadBalancingMode
+
+  """
   The servers in this cluster, in the order they joined. Anyone the cluster is shared with sees them.
   """
   members: [ClusterMember!]
   name: String
+
+  """
+  The active team's Apps with stored data on this cluster and how far their copies are. Empty while replication is off.
+  """
+  replication: [ClusterReplicationProgress!]
+
+  """
+  True when the stored data of the cluster's Apps (Volumes and Files) is copied to its other servers about every minute, so failover moves those Apps too. Off (the default), they wait for their server.
+  """
+  replicationEnabled: Boolean
 
   """
   Teams granted access when `allTeams` is false. Only an instance admin sees every team; anyone else sees the active team at most.
@@ -1367,6 +1393,14 @@ enum ClusterLeaseState {
 }
 
 """
+Where load balancing sends each visitor: `nearest`, the server closest to them, or `most_available`, the one with the most room.
+"""
+enum ClusterLoadBalancingMode {
+  most_available
+  nearest
+}
+
+"""
 A server in a cluster. The cluster decides where its Apps and databases run, unless one is moved onto a server of it by hand.
 """
 type ClusterMember {
@@ -1420,6 +1454,35 @@ type ClusterReleasedWorkload {
   It found no room after a server stopped, so it is not running now and stays stopped.
   """
   waiting: Boolean
+}
+
+"""
+An App with stored data on a cluster that replicates: how many of the other servers keep a copy that follows it.
+"""
+type ClusterReplicationProgress {
+  appId: ID
+  appName: String
+
+  """
+  Why a copy does not follow, as its server says; empty when every one does.
+  """
+  error: String
+
+  """Other servers whose copy is whole and up to date now."""
+  following: Int
+
+  """
+  Other servers that hold a whole copy, up to date or not: a failover can start it on any of them.
+  """
+  held: Int
+
+  """Other servers of the cluster, which all keep a copy."""
+  total: Int
+
+  """
+  When the newest change reached a copy that follows; null while none does.
+  """
+  upToDateAt: String
 }
 
 """
@@ -5154,11 +5217,6 @@ type Mutation {
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
 
   """
-  Fail over automatically from the latest backup: on, a cluster app with a Volume moves to another server on its own when its server stops, restored from its latest backup; off (the default) it waits for its server. Refused for an app with a Bind.
-  """
-  setAppFailoverFromBackup(id: String!, value: Boolean!): App
-
-  """
   Correct the framework Deplo recognised in this app's source (a catalog id such as "vite"), or pass null to go back to trusting detection. The correction survives every later deploy's re-detection.
   """
   setAppFramework(framework: String, id: String!): App
@@ -5239,6 +5297,16 @@ type Mutation {
   Turn a cluster's failover on or off. Off, its leader holds nothing to restart elsewhere, so a server that stops keeps its Apps and databases until it comes back.
   """
   setClusterFailover(enabled: Boolean!, id: String!): Cluster
+
+  """
+  Turn a cluster's load balancing on or off, or change its mode. Refused while replication is off. It reaches Apps on a Cloudflare domain that keep no data: from their next deploy they run on every server. `nearest` sends each visitor to the closest server; `most_available` to the one with the most room. Omit `mode` to keep it.
+  """
+  setClusterLoadBalancing(enabled: Boolean!, id: String!, mode: ClusterLoadBalancingMode): Cluster
+
+  """
+  Turn a cluster's replication on or off. On, the stored data of its Apps is copied to its other servers about every minute, the only way an App with stored data fails over. Off, those Apps wait for their server, their copies are removed, and load balancing goes off too.
+  """
+  setClusterReplication(enabled: Boolean!, id: String!): Cluster
 
   """Change which teams may use a cluster, with the same rules as a server."""
   setClusterTeams(id: String!, sharing: ClusterSharingInput!): Cluster

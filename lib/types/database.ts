@@ -42,6 +42,8 @@ export interface Database {
   walArchivedAt?: string | null;
   /** On a cluster: a copy on another member follows it, and a failover promotes that copy. */
   standby?: boolean;
+  /** The copy is there because its cluster replicates; turning replication off removes it. */
+  standbyFromCluster?: boolean;
   /** Marks the copy made last, so a member never starts one over data it did not seed. */
   standbySeed?: string | null;
   createdAt: string;

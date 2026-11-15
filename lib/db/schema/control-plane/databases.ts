@@ -70,6 +70,10 @@ export const databases = pgTable(
     walArchivedAt: isoTimestamptz("wal_archived_at"),
     // On a cluster: keep a copy that follows it on another member. The seed marks the copy made last.
     standby: boolean("standby").notNull().default(false),
+    // The copy is there because its cluster replicates: turning replication off takes it away again.
+    standbyFromCluster: boolean("standby_from_cluster")
+      .notNull()
+      .default(false),
     standbySeed: text("standby_seed"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },

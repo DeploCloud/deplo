@@ -9,6 +9,7 @@ import {
 } from "../../db/schema/control-plane/backups";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { moveRefusal } from "../../apps/failover-copy";
+import { isReplicaId } from "./replica-state";
 import { encryptSecret } from "../../crypto";
 import {
   promotedSentence,
@@ -233,17 +234,19 @@ export async function applyFailedOver(
   const replica = on.length > 1;
   await recordActivity(
     "app",
-    restored
-      ? restoredSentence(
-          app.name,
-          to,
-          run?.startedAt ??
-            (typeof d.backupAt === "string" ? d.backupAt : null),
-          run?.timezone ?? "UTC",
-        )
-      : replica
-        ? `Started a replica of ${app.name} on ${to}: ${from} ${why}`
-        : `Moved ${app.name} to ${to}: ${from} ${why}`,
+    isReplicaId(d.backupId)
+      ? `Moved ${app.name} to ${to} with its data replicated there: ${from} ${why}`
+      : restored
+        ? restoredSentence(
+            app.name,
+            to,
+            run?.startedAt ??
+              (typeof d.backupAt === "string" ? d.backupAt : null),
+            run?.timezone ?? "UTC",
+          )
+        : replica
+          ? `Started a replica of ${app.name} on ${to}: ${from} ${why}`
+          : `Moved ${app.name} to ${to}: ${from} ${why}`,
     ACTOR,
     app.id,
     app.teamId,

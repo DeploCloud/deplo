@@ -141,6 +141,7 @@ export const apps = pgTable(
     recoveryAlertOwed: boolean("recovery_alert_owed").notNull().default(false),
     replicas: integer("replicas").notNull().default(1),
     stickySessions: boolean("sticky_sessions").notNull().default(false),
+    // Unused: dropped one release later, so an installer rollback to 0.8.2-canary.22 still reads it.
     failoverFromBackup: boolean("failover_from_backup")
       .notNull()
       .default(false),

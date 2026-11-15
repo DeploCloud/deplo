@@ -895,9 +895,38 @@ member, so its domains answer again. The automatic twin of a **server move**: no
 anything, and the move is recorded in **Activity** like any other. An App on a server outside a
 cluster never fails over. On a cluster that mixes ARM and x86 servers a failover stays among the
 servers the App's image runs on. It is on by default and an admin can turn it off per cluster;
-off, everything waits for its own server to come back.
+off, everything waits for its own server to come back. An App that keeps a Volume or Files moves only while
+the cluster has **replication** on; without it, it waits for its server.
 _Avoid_: automatic server move, migration (that is moving off another platform), restart (the
 App stays on a server that is still up).
+
+**Replication**:
+A **cluster** keeping a copy of everything it stores on its other members, as it changes: each
+App's Volumes and Files stream from the member that runs it to every other one, member to member
+over the **cluster relay** (with Deplo down too), and each database keeps a **standby copy**. A
+**failover** then moves an App that keeps data by putting the copy already on the member that
+takes it in place, losing what had not reached it yet, usually under a second. Off by default and
+turned on per cluster by an admin, like failover; it is the only way an App with stored data fails
+over. A member never receives for an App whose stack it still holds, so one that comes back never
+overwrites the live data. A Bind is never copied: that folder belongs to one machine.
+_Avoid_: sync, mirror, backup (a backup is a point to go back to; a copy only serves failover),
+replica (those are copies of an App that answer), **version copies** (those copy what an App runs,
+not what it stores).
+
+**Version copies**:
+Every member of a **cluster** keeping the latest version of each App, copied after each deploy, so
+it can start that App at once when a failover sends it there. Deplo does it on its own; the cluster
+says "Failover is not ready" while one is still on its way.
+_Avoid_: replication (that copies stored data), image sync, pre-pull.
+
+**Load balancing**:
+A **cluster** with **replication** on running each App that keeps no data on every member, beside
+its Cloudflare connector, and sharing its visitors between them: each goes to the **nearest server**,
+or every one to the **most available server** (the one with the most free memory and processor,
+changed only when another has clearly more). Only for an App on a Cloudflare domain; an App with
+stored data stays on one server, since its data has one writer. Off by default, turned on per
+cluster by an admin.
+_Avoid_: traffic steering, round robin, geo routing, load balancer (Deplo runs none of its own).
 
 **Standby copy**:
 A second copy of a database on a **cluster**, kept on another member than the database and

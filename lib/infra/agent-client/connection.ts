@@ -42,6 +42,31 @@ export type {
 } from "../../agent/gen/agent";
 import type { AttachHandle } from "../../attach/types";
 
+/** The cluster's replicated Apps, as one member is handed them (ADR-0046). */
+export interface ClusterReplicaTable {
+  clusterId: string;
+  members: { serverId: string; fingerprint: string }[];
+  entries: {
+    appId: string;
+    slug: string;
+    volumeNames: string[];
+    includeFiles: boolean;
+  }[];
+}
+
+/** How one App's replication stands on one member, as its agent reads it. */
+export interface ClusterReplicaReport {
+  appId: string;
+  role: "sending" | "receiving" | "idle";
+  connected: boolean;
+  streams: number;
+  synced: boolean;
+  appliedAt: string;
+  bytes: number;
+  error: string;
+  fromServerId: string;
+}
+
 /** What one cluster member is handed to run its name forwarders (#200). */
 export interface ClusterForwarderTable {
   clusterId: string;
@@ -300,6 +325,9 @@ export interface AgentConnection {
   setClusterForwarders(
     table: ClusterForwarderTable,
   ): Promise<{ held: number; served: number }>;
+  // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.
+  setClusterReplicas(table: ClusterReplicaTable): Promise<{ entries: number }>;
+  clusterReplicaStatus(): Promise<ClusterReplicaReport[]>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */

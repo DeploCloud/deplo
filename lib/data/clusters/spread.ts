@@ -15,6 +15,7 @@ import {
   recordPlacement,
 } from "./placement";
 import { clusterMemberFacts } from "./facts";
+import { appLoadBalanced, balancedReplicas } from "./load-balancing";
 import { getClusterById } from "./roster";
 
 // Replicas across the members of a cluster (spec #176): an App with a Cloudflare domain spreads them, because
@@ -25,13 +26,18 @@ import { getClusterById } from "./roster";
 
 export type ReplicaSpread =
   | { kind: "single" }
-  | { kind: "spread"; servers: number }
+  // `replicas`: how many to place in all, more than the App's own count when load balancing runs it everywhere.
+  | { kind: "spread"; servers: number; replicas: number; balanced: boolean }
   | { kind: "together"; why: "no_cloudflare" | "agent" };
 
 export const SPREAD_NO_CLOUDFLARE =
   "Its replicas stay on one server: without a Cloudflare domain, visitors reach only that one.";
 export const SPREAD_AGENT =
   "Its replicas stay on one server until every server agent in the cluster is up to date. Deplo updates them on its own.";
+
+export function balancedSentence(servers: number): string {
+  return `Load balancing runs it on ${servers} servers: visitors are shared between them`;
+}
 
 export function spreadSentence(servers: number): string {
   return `Spread across ${servers} servers: if one stops, the others keep answering`;
@@ -48,8 +54,9 @@ const distinct = (members: (string | null)[]) => [
 
 /** Whether an App's replicas spread over its cluster's members, and why not when they stay together. */
 export async function replicaSpread(app: App): Promise<ReplicaSpread> {
-  if (!app.clusterId || app.replicas < 2 || usesComposeStack(app))
-    return { kind: "single" };
+  if (!app.clusterId || usesComposeStack(app)) return { kind: "single" };
+  const balanced = await appLoadBalanced(app);
+  if (app.replicas < 2 && !balanced) return { kind: "single" };
   const members = await clusterMemberFacts(app.clusterId);
   if (members.length < 2) return { kind: "single" };
   if (!(await appHasTunnel(app.id)))
@@ -58,9 +65,7 @@ export async function replicaSpread(app: App): Promise<ReplicaSpread> {
     members.map((m) => serverSupports(m.id, SPREAD_CAPABILITY)),
   );
   if (able.includes(false)) return { kind: "together", why: "agent" };
-  const on = distinct(await placed(app.id)).length;
-  if (on > 1) return { kind: "spread", servers: on };
-  // Before the first placement: only the servers the leader could pick, never one being emptied or of another kind.
+  // Only the servers the leader could pick, never one being emptied or of another kind.
   const archs = await imageArchs(
     app.source === "docker-image" ? (app.dockerImage ?? "") : "",
     app.serverId,
@@ -69,13 +74,25 @@ export async function replicaSpread(app: App): Promise<ReplicaSpread> {
   const fit = members.filter(
     (m) => !m.emptying && (archs.length === 0 || archs.includes(m.arch)),
   ).length;
-  return { kind: "spread", servers: Math.min(app.replicas, fit) };
+  const replicas = balanced
+    ? balancedReplicas(app.replicas, fit)
+    : app.replicas;
+  const on = distinct(await placed(app.id)).length;
+  if (on > 1) return { kind: "spread", servers: on, replicas, balanced };
+  return {
+    kind: "spread",
+    servers: Math.min(replicas, fit),
+    replicas,
+    balanced,
+  };
 }
 
 /** The sentence the Replicas setting shows about a cluster App, or null when there is nothing to say. */
 export async function replicaSpreadNote(app: App): Promise<string | null> {
   const s = await replicaSpread(app);
   // One server to pick from is no spread to announce yet.
+  if (s.kind === "spread" && s.balanced)
+    return s.servers > 1 ? balancedSentence(s.servers) : null;
   if (s.kind === "spread")
     return s.servers > 1 ? spreadSentence(s.servers) : null;
   if (s.kind === "together")
@@ -112,8 +129,8 @@ export async function planAppReplicas(
   if (state.kind === "spread") {
     const emptying = new Set(facts.filter((f) => f.emptying).map((f) => f.id));
     const settled =
-      current.length === app.replicas &&
-      distinct(current).length >= Math.min(app.replicas, facts.length) &&
+      current.length === state.replicas &&
+      distinct(current).length >= Math.min(state.replicas, facts.length) &&
       !current.some((m) => m && emptying.has(m));
     next = current;
     if (!settled)
@@ -132,7 +149,7 @@ export async function planAppReplicas(
               app.serverId,
             ),
           },
-          app.replicas,
+          state.replicas,
           current,
         );
       } catch (e) {
@@ -140,7 +157,7 @@ export async function planAppReplicas(
           e instanceof PlacementRefusedError ||
           e instanceof PlacementUnavailableError;
         // What already runs keeps running where it is; only a change in how many needs the leader's word.
-        if (!known || current.length !== app.replicas) throw e;
+        if (!known || current.length !== state.replicas) throw e;
       }
   } else {
     const first = distinct(current)[0] ?? app.serverId;

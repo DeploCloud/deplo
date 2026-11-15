@@ -11,8 +11,11 @@ const failover = (over: Partial<AppFailover> = {}): AppFailover => ({
   serverName: "server-a",
   disk: "volume",
   automatic: false,
+  replicatedTo: 0,
+  upToDateAt: null,
+  heldBy: 0,
   sentence:
-    "web waits for server-a if it stops, so it never starts on old files. You can bring it back on another server from its latest backup.",
+    "web waits for server-a if it stops: cluster eu does not copy its data. You can bring it back on another server from its latest backup.",
   waiting: false,
   bringBack: null,
   why: null,
@@ -25,17 +28,27 @@ const text = (f: AppFailover) =>
     " ",
   );
 
-test("an App with a Volume reads the two promises in the spec's words", () => {
-  const card = text(failover());
+test("a replicated App with a Volume reads the two promises and how far its copies follow", () => {
+  const card = text(
+    failover({
+      automatic: true,
+      replicatedTo: 2,
+      heldBy: 2,
+      upToDateAt: new Date(Date.now() - 1_000).toISOString(),
+    }),
+  );
   assert.match(card, /Never two writers/);
   assert.match(
     card,
-    /A failover restores the latest backup, and says how old it was/,
+    /A failover starts it from its copy on the new server, as up to date as the copy was/,
   );
-  assert.match(
-    card,
-    /Each backup pauses it for as long as its files take to copy\./,
-  );
+  assert.match(card, /Replicated to\s+2 servers\s*, up to date/);
+});
+
+test("an App with a Volume on a cluster that does not replicate is promised no failover", () => {
+  const card = text(failover());
+  assert.match(card, /cluster eu does not copy its data/);
+  assert.doesNotMatch(card, /Never two writers|Replicated to/);
 });
 
 test("an App with a Bind never fails over, so it is promised nothing about one", () => {

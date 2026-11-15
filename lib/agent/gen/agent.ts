@@ -1902,6 +1902,11 @@ export interface RestoreRequest {
    * (BackupRequest.archive LOG) to replay after the base backup, in name order.
    */
   logPrefix: string;
+  /**
+   * PROJECT only: put the copy replication keeps on this member in place of the App's Volumes and
+   * Files, instead of reading an artifact. Needs `cluster.replicas`; s3 and store are ignored.
+   */
+  fromReplica: boolean;
 }
 
 export interface RestoreEvent {
@@ -3165,6 +3170,52 @@ export interface SetClusterForwardersRequest {
 export interface SetClusterForwardersResponse {
   held: number;
   served: number;
+}
+
+export interface SetClusterReplicasRequest {
+  clusterId: string;
+  /** Every member of the cluster, by the server id the leader's placement names it with. */
+  members: ClusterForwarderMember[];
+  entries: ClusterReplicaEntry[];
+}
+
+/** One replicated App: what it keeps, under the names its stack uses. */
+export interface ClusterReplicaEntry {
+  appId: string;
+  slug: string;
+  /** Its Docker volumes, as the stack names them (deplo-<slug>-<name>, or a compose stack's own). */
+  volumeNames: string[];
+  /** Whether its Files (<stack-dir>/files/<slug>) are part of it. */
+  includeFiles: boolean;
+}
+
+export interface SetClusterReplicasResponse {
+  entries: number;
+}
+
+export interface ClusterReplicaStatusRequest {
+}
+
+export interface ClusterReplicaStatusResponse {
+  replicas: ClusterReplicaState[];
+}
+
+export interface ClusterReplicaState {
+  appId: string;
+  /** "sending": the App runs here. "receiving": this member keeps a copy. "idle": neither, see error. */
+  role: string;
+  /** A stream to or from another member is open now; for a sender, how many. */
+  connected: boolean;
+  streams: number;
+  /** This member's copy once held all of the App's data: a failover may put it in place. */
+  synced: boolean;
+  /** RFC 3339, when the last change or beat arrived; empty before one did. */
+  appliedAt: string;
+  /** Bytes of file data this copy received since the agent started; a range it already held is not counted. */
+  bytes: number;
+  error: string;
+  /** The member it receives from. */
+  fromServerId: string;
 }
 
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
@@ -11637,6 +11688,7 @@ function createBaseRestoreRequest(): RestoreRequest {
     ageIdentity: "",
     expectedSha256: "",
     logPrefix: "",
+    fromReplica: false,
   };
 }
 
@@ -11665,6 +11717,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     }
     if (message.logPrefix !== "") {
       writer.uint32(66).string(message.logPrefix);
+    }
+    if (message.fromReplica !== false) {
+      writer.uint32(72).bool(message.fromReplica);
     }
     return writer;
   },
@@ -11746,6 +11801,14 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
             message.logPrefix = reader.string();
             continue;
           }
+          case 9: {
+            if (tag !== 72) {
+              break;
+            }
+
+            message.fromReplica = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -11780,6 +11843,11 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
         : isSet(object.log_prefix)
         ? globalThis.String(object.log_prefix)
         : "",
+      fromReplica: isSet(object.fromReplica)
+        ? globalThis.Boolean(object.fromReplica)
+        : isSet(object.from_replica)
+        ? globalThis.Boolean(object.from_replica)
+        : false,
     };
   },
 
@@ -11809,6 +11877,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     if (message.logPrefix !== "") {
       obj.logPrefix = message.logPrefix;
     }
+    if (message.fromReplica !== false) {
+      obj.fromReplica = message.fromReplica;
+    }
     return obj;
   },
 
@@ -11831,6 +11902,7 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     message.ageIdentity = object.ageIdentity ?? "";
     message.expectedSha256 = object.expectedSha256 ?? "";
     message.logPrefix = object.logPrefix ?? "";
+    message.fromReplica = object.fromReplica ?? false;
     return message;
   },
 };
@@ -23873,6 +23945,653 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
   },
 };
 
+function createBaseSetClusterReplicasRequest(): SetClusterReplicasRequest {
+  return { clusterId: "", members: [], entries: [] };
+}
+
+export const SetClusterReplicasRequest: MessageFns<SetClusterReplicasRequest> = {
+  encode(message: SetClusterReplicasRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.clusterId !== "") {
+      writer.uint32(10).string(message.clusterId);
+    }
+    for (const v of message.members) {
+      ClusterForwarderMember.encode(v!, writer.uint32(18).fork()).join();
+    }
+    for (const v of message.entries) {
+      ClusterReplicaEntry.encode(v!, writer.uint32(26).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterReplicasRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterReplicasRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.members.push(ClusterForwarderMember.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.entries.push(ClusterReplicaEntry.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterReplicasRequest {
+    return {
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      members: globalThis.Array.isArray(object?.members)
+        ? object.members.map((e: any) => ClusterForwarderMember.fromJSON(e))
+        : [],
+      entries: globalThis.Array.isArray(object?.entries)
+        ? object.entries.map((e: any) => ClusterReplicaEntry.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: SetClusterReplicasRequest): unknown {
+    const obj: any = {};
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.members?.length) {
+      obj.members = message.members.map((e) => ClusterForwarderMember.toJSON(e));
+    }
+    if (message.entries?.length) {
+      obj.entries = message.entries.map((e) => ClusterReplicaEntry.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterReplicasRequest>, I>>(base?: I): SetClusterReplicasRequest {
+    return SetClusterReplicasRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterReplicasRequest>, I>>(object: I): SetClusterReplicasRequest {
+    const message = createBaseSetClusterReplicasRequest();
+    message.clusterId = object.clusterId ?? "";
+    message.members = object.members?.map((e) => ClusterForwarderMember.fromPartial(e)) || [];
+    message.entries = object.entries?.map((e) => ClusterReplicaEntry.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseClusterReplicaEntry(): ClusterReplicaEntry {
+  return { appId: "", slug: "", volumeNames: [], includeFiles: false };
+}
+
+export const ClusterReplicaEntry: MessageFns<ClusterReplicaEntry> = {
+  encode(message: ClusterReplicaEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.appId !== "") {
+      writer.uint32(10).string(message.appId);
+    }
+    if (message.slug !== "") {
+      writer.uint32(18).string(message.slug);
+    }
+    for (const v of message.volumeNames) {
+      writer.uint32(26).string(v!);
+    }
+    if (message.includeFiles !== false) {
+      writer.uint32(32).bool(message.includeFiles);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterReplicaEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterReplicaEntry();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.appId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.slug = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.volumeNames.push(reader.string());
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.includeFiles = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterReplicaEntry {
+    return {
+      appId: isSet(object.appId)
+        ? globalThis.String(object.appId)
+        : isSet(object.app_id)
+        ? globalThis.String(object.app_id)
+        : "",
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      volumeNames: globalThis.Array.isArray(object?.volumeNames)
+        ? object.volumeNames.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.volume_names)
+        ? object.volume_names.map((e: any) => globalThis.String(e))
+        : [],
+      includeFiles: isSet(object.includeFiles)
+        ? globalThis.Boolean(object.includeFiles)
+        : isSet(object.include_files)
+        ? globalThis.Boolean(object.include_files)
+        : false,
+    };
+  },
+
+  toJSON(message: ClusterReplicaEntry): unknown {
+    const obj: any = {};
+    if (message.appId !== "") {
+      obj.appId = message.appId;
+    }
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.volumeNames?.length) {
+      obj.volumeNames = message.volumeNames;
+    }
+    if (message.includeFiles !== false) {
+      obj.includeFiles = message.includeFiles;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterReplicaEntry>, I>>(base?: I): ClusterReplicaEntry {
+    return ClusterReplicaEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterReplicaEntry>, I>>(object: I): ClusterReplicaEntry {
+    const message = createBaseClusterReplicaEntry();
+    message.appId = object.appId ?? "";
+    message.slug = object.slug ?? "";
+    message.volumeNames = object.volumeNames?.map((e) => e) || [];
+    message.includeFiles = object.includeFiles ?? false;
+    return message;
+  },
+};
+
+function createBaseSetClusterReplicasResponse(): SetClusterReplicasResponse {
+  return { entries: 0 };
+}
+
+export const SetClusterReplicasResponse: MessageFns<SetClusterReplicasResponse> = {
+  encode(message: SetClusterReplicasResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.entries !== 0) {
+      writer.uint32(8).int32(message.entries);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterReplicasResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterReplicasResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.entries = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterReplicasResponse {
+    return { entries: isSet(object.entries) ? globalThis.Number(object.entries) : 0 };
+  },
+
+  toJSON(message: SetClusterReplicasResponse): unknown {
+    const obj: any = {};
+    if (message.entries !== 0) {
+      obj.entries = Math.round(message.entries);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterReplicasResponse>, I>>(base?: I): SetClusterReplicasResponse {
+    return SetClusterReplicasResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterReplicasResponse>, I>>(object: I): SetClusterReplicasResponse {
+    const message = createBaseSetClusterReplicasResponse();
+    message.entries = object.entries ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterReplicaStatusRequest(): ClusterReplicaStatusRequest {
+  return {};
+}
+
+export const ClusterReplicaStatusRequest: MessageFns<ClusterReplicaStatusRequest> = {
+  encode(_: ClusterReplicaStatusRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterReplicaStatusRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterReplicaStatusRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ClusterReplicaStatusRequest {
+    return {};
+  },
+
+  toJSON(_: ClusterReplicaStatusRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterReplicaStatusRequest>, I>>(base?: I): ClusterReplicaStatusRequest {
+    return ClusterReplicaStatusRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterReplicaStatusRequest>, I>>(_: I): ClusterReplicaStatusRequest {
+    const message = createBaseClusterReplicaStatusRequest();
+    return message;
+  },
+};
+
+function createBaseClusterReplicaStatusResponse(): ClusterReplicaStatusResponse {
+  return { replicas: [] };
+}
+
+export const ClusterReplicaStatusResponse: MessageFns<ClusterReplicaStatusResponse> = {
+  encode(message: ClusterReplicaStatusResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.replicas) {
+      ClusterReplicaState.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterReplicaStatusResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterReplicaStatusResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.replicas.push(ClusterReplicaState.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterReplicaStatusResponse {
+    return {
+      replicas: globalThis.Array.isArray(object?.replicas)
+        ? object.replicas.map((e: any) => ClusterReplicaState.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ClusterReplicaStatusResponse): unknown {
+    const obj: any = {};
+    if (message.replicas?.length) {
+      obj.replicas = message.replicas.map((e) => ClusterReplicaState.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterReplicaStatusResponse>, I>>(base?: I): ClusterReplicaStatusResponse {
+    return ClusterReplicaStatusResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterReplicaStatusResponse>, I>>(object: I): ClusterReplicaStatusResponse {
+    const message = createBaseClusterReplicaStatusResponse();
+    message.replicas = object.replicas?.map((e) => ClusterReplicaState.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseClusterReplicaState(): ClusterReplicaState {
+  return {
+    appId: "",
+    role: "",
+    connected: false,
+    streams: 0,
+    synced: false,
+    appliedAt: "",
+    bytes: 0,
+    error: "",
+    fromServerId: "",
+  };
+}
+
+export const ClusterReplicaState: MessageFns<ClusterReplicaState> = {
+  encode(message: ClusterReplicaState, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.appId !== "") {
+      writer.uint32(10).string(message.appId);
+    }
+    if (message.role !== "") {
+      writer.uint32(18).string(message.role);
+    }
+    if (message.connected !== false) {
+      writer.uint32(24).bool(message.connected);
+    }
+    if (message.streams !== 0) {
+      writer.uint32(32).int32(message.streams);
+    }
+    if (message.synced !== false) {
+      writer.uint32(40).bool(message.synced);
+    }
+    if (message.appliedAt !== "") {
+      writer.uint32(50).string(message.appliedAt);
+    }
+    if (message.bytes !== 0) {
+      writer.uint32(56).int64(message.bytes);
+    }
+    if (message.error !== "") {
+      writer.uint32(66).string(message.error);
+    }
+    if (message.fromServerId !== "") {
+      writer.uint32(74).string(message.fromServerId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterReplicaState {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterReplicaState();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.appId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.role = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.connected = reader.bool();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.streams = reader.int32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.synced = reader.bool();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.appliedAt = reader.string();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.bytes = longToNumber(reader.int64());
+            continue;
+          }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.error = reader.string();
+            continue;
+          }
+          case 9: {
+            if (tag !== 74) {
+              break;
+            }
+
+            message.fromServerId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterReplicaState {
+    return {
+      appId: isSet(object.appId)
+        ? globalThis.String(object.appId)
+        : isSet(object.app_id)
+        ? globalThis.String(object.app_id)
+        : "",
+      role: isSet(object.role) ? globalThis.String(object.role) : "",
+      connected: isSet(object.connected) ? globalThis.Boolean(object.connected) : false,
+      streams: isSet(object.streams) ? globalThis.Number(object.streams) : 0,
+      synced: isSet(object.synced) ? globalThis.Boolean(object.synced) : false,
+      appliedAt: isSet(object.appliedAt)
+        ? globalThis.String(object.appliedAt)
+        : isSet(object.applied_at)
+        ? globalThis.String(object.applied_at)
+        : "",
+      bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      fromServerId: isSet(object.fromServerId)
+        ? globalThis.String(object.fromServerId)
+        : isSet(object.from_server_id)
+        ? globalThis.String(object.from_server_id)
+        : "",
+    };
+  },
+
+  toJSON(message: ClusterReplicaState): unknown {
+    const obj: any = {};
+    if (message.appId !== "") {
+      obj.appId = message.appId;
+    }
+    if (message.role !== "") {
+      obj.role = message.role;
+    }
+    if (message.connected !== false) {
+      obj.connected = message.connected;
+    }
+    if (message.streams !== 0) {
+      obj.streams = Math.round(message.streams);
+    }
+    if (message.synced !== false) {
+      obj.synced = message.synced;
+    }
+    if (message.appliedAt !== "") {
+      obj.appliedAt = message.appliedAt;
+    }
+    if (message.bytes !== 0) {
+      obj.bytes = Math.round(message.bytes);
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.fromServerId !== "") {
+      obj.fromServerId = message.fromServerId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterReplicaState>, I>>(base?: I): ClusterReplicaState {
+    return ClusterReplicaState.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterReplicaState>, I>>(object: I): ClusterReplicaState {
+    const message = createBaseClusterReplicaState();
+    message.appId = object.appId ?? "";
+    message.role = object.role ?? "";
+    message.connected = object.connected ?? false;
+    message.streams = object.streams ?? 0;
+    message.synced = object.synced ?? false;
+    message.appliedAt = object.appliedAt ?? "";
+    message.bytes = object.bytes ?? 0;
+    message.error = object.error ?? "";
+    message.fromServerId = object.fromServerId ?? "";
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -24355,6 +25074,35 @@ export const AgentService = {
     responseSerialize: (value: SetClusterForwardersResponse): Buffer =>
       Buffer.from(SetClusterForwardersResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): SetClusterForwardersResponse => SetClusterForwardersResponse.decode(value),
+  },
+  /**
+   * Hand this member the cluster's replicated Apps. The member that runs one sends its Volumes and
+   * Files to every other member as they change; each other member keeps a copy of its own, which a
+   * failover restore marked from_replica puts in place. The full set each time; one not listed
+   * loses its copy here.
+   */
+  setClusterReplicas: {
+    path: "/deplo.agent.v1.Agent/SetClusterReplicas" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterReplicasRequest): Buffer =>
+      Buffer.from(SetClusterReplicasRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterReplicasRequest => SetClusterReplicasRequest.decode(value),
+    responseSerialize: (value: SetClusterReplicasResponse): Buffer =>
+      Buffer.from(SetClusterReplicasResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterReplicasResponse => SetClusterReplicasResponse.decode(value),
+  },
+  /** How each copy on this member stands. */
+  clusterReplicaStatus: {
+    path: "/deplo.agent.v1.Agent/ClusterReplicaStatus" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ClusterReplicaStatusRequest): Buffer =>
+      Buffer.from(ClusterReplicaStatusRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClusterReplicaStatusRequest => ClusterReplicaStatusRequest.decode(value),
+    responseSerialize: (value: ClusterReplicaStatusResponse): Buffer =>
+      Buffer.from(ClusterReplicaStatusResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClusterReplicaStatusResponse => ClusterReplicaStatusResponse.decode(value),
   },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
@@ -25104,6 +25852,15 @@ export interface AgentServer extends UntypedServiceImplementation {
    * member that is not in a cluster.
    */
   setClusterForwarders: handleUnaryCall<SetClusterForwardersRequest, SetClusterForwardersResponse>;
+  /**
+   * Hand this member the cluster's replicated Apps. The member that runs one sends its Volumes and
+   * Files to every other member as they change; each other member keeps a copy of its own, which a
+   * failover restore marked from_replica puts in place. The full set each time; one not listed
+   * loses its copy here.
+   */
+  setClusterReplicas: handleUnaryCall<SetClusterReplicasRequest, SetClusterReplicasResponse>;
+  /** How each copy on this member stands. */
+  clusterReplicaStatus: handleUnaryCall<ClusterReplicaStatusRequest, ClusterReplicaStatusResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -25879,6 +26636,43 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Hand this member the cluster's replicated Apps. The member that runs one sends its Volumes and
+   * Files to every other member as they change; each other member keeps a copy of its own, which a
+   * failover restore marked from_replica puts in place. The full set each time; one not listed
+   * loses its copy here.
+   */
+  setClusterReplicas(
+    request: SetClusterReplicasRequest,
+    callback: (error: ServiceError | null, response: SetClusterReplicasResponse) => void,
+  ): ClientUnaryCall;
+  setClusterReplicas(
+    request: SetClusterReplicasRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterReplicasResponse) => void,
+  ): ClientUnaryCall;
+  setClusterReplicas(
+    request: SetClusterReplicasRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterReplicasResponse) => void,
+  ): ClientUnaryCall;
+  /** How each copy on this member stands. */
+  clusterReplicaStatus(
+    request: ClusterReplicaStatusRequest,
+    callback: (error: ServiceError | null, response: ClusterReplicaStatusResponse) => void,
+  ): ClientUnaryCall;
+  clusterReplicaStatus(
+    request: ClusterReplicaStatusRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ClusterReplicaStatusResponse) => void,
+  ): ClientUnaryCall;
+  clusterReplicaStatus(
+    request: ClusterReplicaStatusRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ClusterReplicaStatusResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

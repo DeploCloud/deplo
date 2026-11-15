@@ -158,7 +158,6 @@ export const APPS_READ: McpToolDef[] = [
           stickySessions
           restartWhenUnresponsive
           restartsPausedAt
-          failoverFromBackup
           dockerImage
           compose
           composeUpArgs

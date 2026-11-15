@@ -24,6 +24,8 @@ export function clusterRpc(
   | "copyClusterImage"
   | "expectClusterImage"
   | "setClusterForwarders"
+  | "setClusterReplicas"
+  | "clusterReplicaStatus"
 > {
   const { client } = channel;
   return {
@@ -106,6 +108,32 @@ export function clusterRpc(
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return { held: r.held, served: r.served };
+    },
+    async setClusterReplicas(table) {
+      const r = await unary(
+        client.setClusterReplicas.bind(client),
+        table,
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return { entries: r.entries };
+    },
+    async clusterReplicaStatus() {
+      const r = await unary(
+        client.clusterReplicaStatus.bind(client),
+        {},
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return r.replicas.map((s) => ({
+        appId: s.appId,
+        role: s.role === "sending" || s.role === "receiving" ? s.role : "idle",
+        connected: s.connected,
+        streams: s.streams,
+        synced: s.synced,
+        appliedAt: s.appliedAt,
+        bytes: Number(s.bytes ?? 0),
+        error: s.error,
+        fromServerId: s.fromServerId,
+      }));
     },
     async clusterCall(method, payload, timeoutMs = CLUSTER_CALL_TIMEOUT_MS) {
       const r = await unary(

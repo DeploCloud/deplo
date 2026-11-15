@@ -10,20 +10,20 @@ import { appVolumes, apps as appsTable } from "../db/schema/control-plane/apps";
 import { backups as backupsTable } from "../db/schema/control-plane/backups";
 import {
   clusterMembers,
+  clusters as clustersTable,
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
 import { membershipCapabilities } from "../db/schema/control-plane/access-control";
 import { seedApp, seedDeployment } from "./app-graph-test-helpers";
-import {
-  bringAppBack,
-  getAppFailover,
-  setAppFailoverFromBackup,
-} from "./apps/failover";
+import { bringAppBack, getAppFailover } from "./apps/failover";
 import { seedDestination, seedRun } from "./backup-test-helpers";
+import { pushAppBundle } from "./clusters/app-restore";
 import {
-  pushAppBundle,
-  scheduleAppBundleRefresh,
-} from "./clusters/app-restore";
+  LOAD_BALANCING_NEEDS_REPLICATION,
+  setClusterLoadBalancing,
+  setClusterReplication,
+} from "./clusters/manage";
+import { clusterAppReplicas } from "../db/schema/control-plane/clusters";
 import {
   type FailoverStack,
   flushFailoverBundles,
@@ -213,66 +213,116 @@ test("a Volume row with no type and a stack's own volume are single-writer too; 
   });
 });
 
-test("with the opt-in on, the bundle carries the latest backup another server can read, and each new backup reaches the leader", async () => {
+/** srv_3 holds a whole copy of "web" that follows it, as its server agent says. */
+async function copied() {
+  await db.insert(clusterAppReplicas).values({
+    appId: "prj_web",
+    serverId: "srv_3",
+    role: "receiving",
+    connected: true,
+    synced: true,
+    appliedAt: new Date().toISOString(),
+    bytes: 1024,
+    error: "",
+    checkedAt: new Date().toISOString(),
+  });
+}
+
+const replicating = (clusterId: string, on = true) =>
+  db
+    .update(clustersTable)
+    .set({ replicationEnabled: on })
+    .where(eq(clustersTable.id, clusterId));
+
+test("with replication on, the bundle puts the copy in place on whichever server takes the App; off, it waits again", async () => {
   const cluster = await eu();
   await deployed(cluster.id);
   await backedUp();
+  await replicating(cluster.id);
+  await copied();
 
-  await asAdmin(() => setAppFailoverFromBackup("prj_web", true));
-
-  let b = await open("app/prj_web");
-  assert.equal(b.restore?.backupId, "brun_a1");
-  assert.equal(b.restore?.takenAt, TODAY_1415);
-  assert.equal(b.restore?.storeMember, undefined, "a bucket");
+  await pushAppBundle({
+    appId: "prj_web",
+    deploymentId: "dpl_1",
+    stack: STACK,
+  });
+  const b = await open("app/prj_web");
+  assert.equal(b.restore?.backupId, "replica");
+  // Any server with a whole copy can take it: one without refuses, and the leader tries the next.
+  assert.equal(b.restore?.storeMember, undefined);
   const req = RestoreRequest.fromJSON(b.restore?.request);
-  assert.equal(
-    (b.restore?.request as { kind?: string }).kind,
-    "BACKUP_KIND_PROJECT",
-  );
-  assert.equal(req.project?.slug, "web");
+  assert.equal(req.fromReplica, true);
+  assert.equal(req.store, undefined);
   assert.deepEqual(req.project?.volumeNames, ["deplo-web-uploads"]);
-  assert.equal(req.s3?.objectKey, "deplo/team/app/prj_web/brun_a1.tar.gz.age");
-  assert.equal(req.expectedSha256, "abc123");
-  // The stack comes from the bundle, never from the backup.
   assert.equal(req.project?.composeYaml, "");
+  // Never the team's backup: replication is the only way it fails over.
+  assert.equal(req.s3, undefined);
   assert.equal(b.stack.env.TOKEN, "s3cret");
-  assert.deepEqual(await said(USER_1), [
-    "Turned on failing web over automatically from its latest backup",
-  ]);
 
-  await backedUp("brun_a2", "2026-03-01T14:30:00.000Z");
-  scheduleAppBundleRefresh("prj_web");
+  await asAdmin(() => setClusterReplication(cluster.id, false));
   await flushFailoverBundles();
-  b = await open("app/prj_web");
-  assert.equal(b.restore?.backupId, "brun_a2");
-
-  await asAdmin(() => setAppFailoverFromBackup("prj_web", false));
   assert.equal((await open("app/prj_web")).restore, undefined);
+  assert.ok(
+    (await db.select().from(activitiesTable)).some(
+      (a) => a.message === "Turned replication off for cluster eu",
+    ),
+  );
 });
 
-test("the opt-in is refused for another team's App, for a Bind and for an App that keeps nothing", async () => {
+test("with replication on and nothing copied yet, the bundle names no backup and its page says it waits for the copy", async () => {
   const cluster = await eu();
+  await replicating(cluster.id);
   await deployed(cluster.id);
+  await backedUp();
 
-  await assert.rejects(
-    asTeamB(() => setAppFailoverFromBackup("prj_web", true)),
-    /App not found/,
+  assert.equal((await open("app/prj_web")).restore, undefined);
+  // Not a failure: the first copy is being made, and Activity only hears of one that fails.
+  assert.deepEqual(await cannot(), []);
+  const page = await asAdmin(() => getAppFailover("prj_web"));
+  assert.equal(page?.automatic, true);
+  assert.equal(page?.heldBy, 0);
+  assert.equal(
+    page?.sentence,
+    "web fails over once a whole copy of its data is on another server. Deplo is making it now.",
   );
-  const [row] = await db
-    .select()
-    .from(appsTable)
-    .where(eq(appsTable.id, "prj_web"));
-  assert.equal(row.failoverFromBackup, false);
 
-  await db.update(appVolumes).set({ type: "host", hostPath: "/srv/media" });
+  await copied();
+  const after = await asAdmin(() => getAppFailover("prj_web"));
+  assert.equal(after?.heldBy, 1);
+  assert.equal(after?.replicatedTo, 1);
+  assert.ok(after?.upToDateAt);
+  assert.match(after?.sentence ?? "", /moves to another server on its own/);
+});
+
+test("load balancing is refused while replication is off, and turning replication off takes it along", async () => {
+  const cluster = await eu();
   await assert.rejects(
-    asAdmin(() => setAppFailoverFromBackup("prj_web", true)),
-    /never fails over: it uses a folder that lives on server-2, and only on that machine\./,
+    asAdmin(() => setClusterLoadBalancing(cluster.id, true, "nearest")),
+    new RegExp(LOAD_BALANCING_NEEDS_REPLICATION),
   );
-  await db.delete(appVolumes);
+  await asAdmin(() => setClusterReplication(cluster.id, true));
+  const on = await asAdmin(() =>
+    setClusterLoadBalancing(cluster.id, true, "most_available"),
+  );
+  assert.equal(on.loadBalancingEnabled, true);
+  assert.equal(on.loadBalancingMode, "most_available");
   await assert.rejects(
-    asAdmin(() => setAppFailoverFromBackup("prj_web", true)),
-    /keeps no Volume/,
+    asAdmin(() => setClusterLoadBalancing(cluster.id, true, "fastest")),
+    /nearest server or to the most available one/,
+  );
+  const off = await asAdmin(() => setClusterReplication(cluster.id, false));
+  assert.equal(off.replicationEnabled, false);
+  assert.equal(off.loadBalancingEnabled, false);
+  assert.ok(
+    (await db.select().from(activitiesTable)).some(
+      (a) =>
+        a.message ===
+        "Turned replication off for cluster eu, and load balancing with it",
+    ),
+  );
+  await assert.rejects(
+    asTeamB(() => setClusterReplication(cluster.id, true)),
+    /instance admin|permission/i,
   );
 });
 
@@ -413,7 +463,7 @@ test("the page of a Volume App says it waits, and offers the click naming the ba
   assert.equal(page?.bringBack, null);
   assert.equal(
     page?.sentence,
-    "web waits for server-2 if it stops, so it never starts on old files. You can bring it back on another server from its latest backup.",
+    "web waits for server-2 if it stops: cluster eu does not copy its data. You can bring it back on another server from its latest backup.",
   );
 
   await fenced();
@@ -434,4 +484,31 @@ test("the page of a Volume App says it waits, and offers the click naming the ba
   assert.equal(page?.why, null);
 
   assert.equal(await asTeamB(() => getAppFailover("prj_web")), null);
+});
+
+test("a failover from a replicated copy says the App moved with its data", async () => {
+  const cluster = await eu();
+  await deployed(cluster.id);
+  await apply(
+    cluster.id,
+    event(cluster.id, "placement", {
+      kind: "app",
+      workloadId: "prj_web",
+      members: ["srv_3"],
+      epoch: 1,
+    }),
+    event(cluster.id, "failed_over", {
+      kind: "app",
+      workloadId: "prj_web",
+      from: "srv_2",
+      to: "srv_3",
+      reason: "stopped_answering",
+      backupId: "replica",
+    }),
+  );
+  assert.ok(
+    (await deploSaid(TEAM_A)).includes(
+      "Moved web to server-3 with its data replicated there: server-2 stopped answering",
+    ),
+  );
 });

@@ -239,78 +239,147 @@ export async function setDatabaseStandby(
     const db = await requireDatabase(id, membership.teamId);
     if (Boolean(db.standby) === on) return;
     const cluster = db.clusterId ? await getClusterById(db.clusterId) : null;
-    if (!on) {
-      await getDb()
-        .update(databasesTable)
-        .set({ standby: false, standbySeed: null })
-        .where(
-          and(
-            eq(databasesTable.id, id),
-            eq(databasesTable.teamId, membership.teamId),
-          ),
-        );
-      const off = { ...db, standby: false };
-      const at = await standbyMemberOf(id);
-      if (at) await removeCopy(off, at);
-      const engine = STANDBY_ENGINES[db.type];
-      if (engine && db.status === "running")
-        await run(db, db.serverId, db.host, engine.retire(argsOf(db))).catch(
-          quietly(db.host),
-        );
-      await applySettings(db, engine).catch(quietly(db.host));
-      if (cluster) await tellCluster(off, cluster);
-      publishDatabaseChanged(id);
-      await say(db, `Turned off the standby copy of ${db.name}`, user.name);
-      return;
-    }
-    const engine = STANDBY_ENGINES[db.type];
-    const unsupported = standbySupport(db);
-    if (!engine || unsupported) throw new Error(unsupported ?? "Not found");
-    if (!cluster)
-      throw new Error(
-        `Place ${db.name} on a cluster first: its standby copy runs on another server of the cluster.`,
-      );
-    if (db.status !== "running")
-      throw new Error(`Start ${db.name} before turning on its standby copy.`);
-    // A refusal throws here, before anything is written.
-    const member = await placeCopy(db, engine, cluster);
+    if (!on && cluster?.replicationEnabled)
+      throw new Error(replicatedRefusal(cluster.name));
+    await applyStandby(db, on, cluster, user.name);
+  });
+}
+
+export const replicatedRefusal = (cluster: string) =>
+  `Cluster ${cluster} replicates its databases, so this copy stays while its replication is on.`;
+
+/** The switch's work, for a person or for Deplo; the caller holds the database's standby lock. */
+async function applyStandby(
+  db: Database,
+  on: boolean,
+  cluster: Cluster | null,
+  actor: string,
+  fromCluster = false,
+): Promise<void> {
+  const id = db.id;
+  const mine = and(
+    eq(databasesTable.id, id),
+    eq(databasesTable.teamId, db.teamId),
+  );
+  if (!on) {
     await getDb()
       .update(databasesTable)
-      .set({ standby: true })
-      .where(
-        and(
-          eq(databasesTable.id, id),
-          eq(databasesTable.teamId, membership.teamId),
-        ),
+      .set({ standby: false, standbyFromCluster: false, standbySeed: null })
+      .where(mine);
+    const off = { ...db, standby: false };
+    const at = await standbyMemberOf(id);
+    if (at) await removeCopy(off, at);
+    const engine = STANDBY_ENGINES[db.type];
+    if (engine && db.status === "running")
+      await run(db, db.serverId, db.host, engine.retire(argsOf(db))).catch(
+        quietly(db.host),
       );
-    const kept = { ...db, standby: true };
-    try {
-      await applySettings(db, engine);
-      await seedCopy(kept, engine, cluster, member);
-    } catch (e) {
-      await removeCopy(kept, member).catch(quietly(db.host));
-      await getDb()
-        .update(databasesTable)
-        .set({ standby: false, standbySeed: null })
-        .where(
-          and(
-            eq(databasesTable.id, id),
-            eq(databasesTable.teamId, membership.teamId),
-          ),
-        );
-      await applySettings(db, engine).catch(quietly(db.host));
-      await tellCluster({ ...db, standby: false }, cluster);
-      throw new Error(
-        `The standby copy of ${db.name} could not be made: ${messageOf(e)}`,
-      );
-    }
+    await applySettings(db, engine).catch(quietly(db.host));
+    if (cluster) await tellCluster(off, cluster);
     publishDatabaseChanged(id);
-    await say(
-      db,
-      `Turned on the standby copy of ${db.name}, on ${await nameOf(member)}`,
-      user.name,
+    await say(db, `Turned off the standby copy of ${db.name}`, actor);
+    return;
+  }
+  const engine = STANDBY_ENGINES[db.type];
+  const unsupported = standbySupport(db);
+  if (!engine || unsupported) throw new Error(unsupported ?? "Not found");
+  if (!cluster)
+    throw new Error(
+      `Place ${db.name} on a cluster first: its standby copy runs on another server of the cluster.`,
     );
-  });
+  if (db.status !== "running")
+    throw new Error(`Start ${db.name} before turning on its standby copy.`);
+  // A refusal throws here, before anything is written.
+  const member = await placeCopy(db, engine, cluster);
+  await getDb()
+    .update(databasesTable)
+    .set({ standby: true, standbyFromCluster: fromCluster })
+    .where(mine);
+  const kept = { ...db, standby: true };
+  try {
+    await applySettings(db, engine);
+    await seedCopy(kept, engine, cluster, member);
+  } catch (e) {
+    await removeCopy(kept, member).catch(quietly(db.host));
+    await getDb()
+      .update(databasesTable)
+      .set({ standby: false, standbyFromCluster: false, standbySeed: null })
+      .where(mine);
+    await applySettings(db, engine).catch(quietly(db.host));
+    await tellCluster({ ...db, standby: false }, cluster);
+    throw new Error(
+      `The standby copy of ${db.name} could not be made: ${messageOf(e)}`,
+    );
+  }
+  publishDatabaseChanged(id);
+  await say(
+    db,
+    fromCluster
+      ? `Keeps a standby copy of ${db.name} on ${await nameOf(member)}: cluster ${cluster.name} replicates its databases`
+      : `Turned on the standby copy of ${db.name}, on ${await nameOf(member)}`,
+    actor,
+  );
+}
+
+// A copy the cluster could not make is tried again this much later, not at every pass.
+const CLUSTER_RETRY_MS = 10 * 60_000;
+const clusterTried = new Map<string, number>();
+
+/**
+ * Replication's half for databases (ADR-0046): on, every database of the cluster that can keep a standby copy
+ * streams to one, as Deplo; off, the copies replication made go, and the ones a person asked for stay.
+ */
+export async function standbyForCluster(
+  clusterId: string,
+  now = Date.now(),
+): Promise<void> {
+  if (await instanceFrozen()) return;
+  const cluster = await getClusterById(clusterId);
+  if (!cluster) return;
+  const rows = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(eq(databasesTable.clusterId, clusterId));
+  for (const r of rows) {
+    if (
+      cluster.replicationEnabled &&
+      now - (clusterTried.get(r.id) ?? 0) < CLUSTER_RETRY_MS
+    )
+      continue;
+    await withKeyedLock(`standby:${r.id}`, async () => {
+      const db = await loadForDeplo(r.id);
+      if (!db || db.status === "provisioning" || db.migrationRunId) return;
+      if (!cluster.replicationEnabled) {
+        if (db.standby && db.standbyFromCluster)
+          await applyStandby(db, false, cluster, ACTOR);
+        return;
+      }
+      const engine = STANDBY_ENGINES[db.type];
+      if (
+        db.standby ||
+        !engine ||
+        standbySupport(db) ||
+        db.status !== "running"
+      )
+        return;
+      clusterTried.set(r.id, now);
+      try {
+        await applyStandby(db, true, cluster, ACTOR, true);
+        clusterTried.delete(r.id);
+      } catch (e) {
+        await recordOnce(
+          db,
+          `${db.name} has no standby copy right now. ${messageOf(e)}`,
+          "database",
+        );
+      }
+    }).catch(quietly(r.id));
+  }
+}
+
+/** Test seam: forget when each database was last tried. */
+export function __forgetClusterStandbyTries(): void {
+  clusterTried.clear();
 }
 
 // Deplo acting for itself has no session, which the team-scoped loader requires.
@@ -474,6 +543,8 @@ export async function reconcileStandbys(): Promise<void> {
 
 export interface DatabaseStandby {
   enabled: boolean;
+  /** The cluster that keeps the copy because it replicates; the switch is its own then. Null otherwise. */
+  byCluster: string | null;
   /** Why the switch cannot be turned on as the database is now; null when it can. */
   unavailable: string | null;
   /** What it costs, as the switch states it. */
@@ -499,6 +570,7 @@ export async function getDatabaseStandby(
   const small = engine && cluster ? await tooSmall(db, engine, cluster) : null;
   return {
     enabled: Boolean(db.standby),
+    byCluster: cluster?.replicationEnabled ? cluster.name : null,
     unavailable:
       standbySupport(db) ??
       (cluster

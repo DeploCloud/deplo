@@ -32,6 +32,14 @@ export const clusters = pgTable("clusters", {
   eventSeq: bigint("event_seq", { mode: "number" }).notNull().default(0),
   // Off: the leader holds no failover bundle, so it moves nothing (ADR-0045).
   failoverEnabled: boolean("failover_enabled").notNull().default(true),
+  // On: the stored data of its Apps is copied to every other member, the only way such an App fails over.
+  replicationEnabled: boolean("replication_enabled").notNull().default(false),
+  // On (only with replication): Apps that keep no data run on every member and visitors are spread over them.
+  loadBalancingEnabled: boolean("load_balancing_enabled")
+    .notNull()
+    .default(false),
+  // "nearest" | "most_available"
+  loadBalancingMode: text("load_balancing_mode").notNull().default("nearest"),
   createdAt: isoTimestamptz("created_at").notNull(),
 });
 
@@ -204,4 +212,41 @@ export const clusterBinaryUpdates = pgTable("cluster_binary_updates", {
   nextRetryAt: isoTimestamptz("next_retry_at").notNull(),
   lastError: text("last_error").notNull().default(""),
   updatedAt: isoTimestamptz("updated_at").notNull(),
+});
+
+// How replication of one App stands on one member, as its server agent last said (ADR-0046). Read back every pass.
+export const clusterAppReplicas = pgTable(
+  "cluster_app_replicas",
+  {
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    // "sending" | "receiving" | "idle"
+    role: text("role").notNull(),
+    connected: boolean("connected").notNull().default(false),
+    // The member's copy once held all of the App's data: a failover may put it in place.
+    synced: boolean("synced").notNull().default(false),
+    appliedAt: isoTimestamptz("applied_at"),
+    bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+    error: text("error").notNull().default(""),
+    checkedAt: isoTimestamptz("checked_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.appId, t.serverId] }),
+    index("cluster_app_replicas_server_idx").on(t.serverId),
+  ],
+);
+
+// Load balancing to the most available member: the one member whose connector takes an App's visitors.
+export const clusterEntrances = pgTable("cluster_entrances", {
+  appId: text("app_id")
+    .primaryKey()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  serverId: text("server_id")
+    .notNull()
+    .references(() => servers.id, { onDelete: "cascade" }),
+  chosenAt: isoTimestamptz("chosen_at").notNull(),
 });

@@ -69,6 +69,8 @@ const CONTROL_PLANE = [
   "cluster_members",
   "cluster_leader_keys",
   "workload_placements",
+  "cluster_app_replicas",
+  "cluster_entrances",
   "cluster_image_copies",
   "image_architectures",
   "failover_bundle_pushes",

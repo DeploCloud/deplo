@@ -61,6 +61,8 @@ export interface FailoverStack {
   restartRule?: unknown;
   mounts?: { path: string; content: string }[];
   filesBindSources?: string[];
+  /** The App's variables as this stack carries them, so a change can be put in its place. Deplo's only: the leader ignores it. */
+  vars?: Record<string, string>;
 }
 
 /** The backup a member restores before a moved workload counts as started; a workload that keeps data moves only with one. */
@@ -100,7 +102,10 @@ export async function sealBundle(
   const age = await import("age-encryption");
   const e = new age.Encrypter();
   e.addRecipient(publicKey);
-  return e.encrypt(JSON.stringify(bundle));
+  // The record of the variables is Deplo's own (ADR-0045): the leader gets what a member's deploy received.
+  const stack = { ...bundle.stack };
+  delete stack.vars;
+  return e.encrypt(JSON.stringify({ ...bundle, stack }));
 }
 
 export type KeyRow = typeof clusterLeaderKeys.$inferSelect;

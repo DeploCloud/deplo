@@ -79,7 +79,7 @@ const PublishedPortRef = builder
 
 const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
   description:
-    "How an app that keeps data on a cluster member fails over: a Volume waits for its server or comes back from a backup, a Bind never moves.",
+    "How an app that keeps data on a cluster member fails over: a Volume moves with its newest copy while its cluster replicates it and waits for its server otherwise, a Bind never moves.",
   fields: (t) => ({
     cluster: t.exposeString("cluster"),
     serverName: t.exposeString("serverName", {
@@ -90,7 +90,21 @@ const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
     }),
     automatic: t.exposeBoolean("automatic", {
       description:
-        "Whether it moves on its own from its latest backup (failoverFromBackup).",
+        "Whether it moves on its own: its cluster replicates its data (Cluster.replicationEnabled).",
+    }),
+    replicatedTo: t.exposeInt("replicatedTo", {
+      description:
+        "How many other servers of its cluster keep a copy that follows it now.",
+    }),
+    heldBy: t.exposeInt("heldBy", {
+      description:
+        "How many other servers hold a whole copy, following now or not: a failover can start it on any of them.",
+    }),
+    upToDateAt: t.string({
+      nullable: true,
+      description:
+        "When its newest change reached a copy that follows; null while none does.",
+      resolve: (f) => f.upToDateAt,
     }),
     sentence: t.exposeString("sentence", {
       description: "What its page says about how it fails over.",
@@ -269,10 +283,6 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     stickySessions: t.exposeBoolean("stickySessions", {
       description:
         "Whether a cookie keeps each visitor on the same replica. Only applies with more than one.",
-    }),
-    failoverFromBackup: t.exposeBoolean("failoverFromBackup", {
-      description:
-        "On a cluster, with a Volume: whether it moves to another server on its own from its latest backup, instead of waiting for its server. Off by default.",
     }),
     failover: t.field({
       type: AppFailoverRef,

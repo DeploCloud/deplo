@@ -4,24 +4,23 @@ import { and, eq } from "drizzle-orm";
 
 import {
   type AppDisk,
-  automaticSentence,
   appDisk,
   backupName,
   bindSentence,
   bringBackLabel,
+  copyPendingSentence,
   moveRefusal,
+  replicatedSentence,
   waitsSentence,
 } from "../../apps/failover-copy";
 import { getCurrentUser } from "../../auth/current-user";
 import { getDb } from "../../db/client";
-import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { clusterMembers } from "../../db/schema/control-plane/clusters";
-import { nowIso } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
 import type { App } from "../../types/app";
 import { recordActivity } from "../activity";
 import { loadTeamApp } from "../app-graph-load";
-import { appRestoreSource, refreshAppBundle } from "../clusters/app-restore";
+import { appRestoreSource } from "../clusters/app-restore";
 import { askLeaderToMove } from "../clusters/bundle-calls";
 import {
   type FailoverRestore,
@@ -33,13 +32,13 @@ import {
 } from "../clusters/bundles";
 import { backupClock } from "../clusters/failover";
 import { leaderHost } from "../clusters/host";
-import { getClusterById } from "../clusters/roster";
+import { replicaRows, replicationStates } from "../clusters/replica-state";
+import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { requireFolderCapabilityForApp } from "../folder-access";
 import { requireAppCapability } from "../node-access";
 import { getServerById } from "../servers/roster";
-import { messageOf } from "../../utils";
 
-// How a cluster App that keeps data on its server fails over, and the two things a person can do about it (#204).
+// How a cluster App that keeps data on its server fails over: with its cluster's replication, or not at all.
 // https://deplo.build/docs/operations/clusters/apps-with-stored-data
 
 const NOT_DEPLOYED =
@@ -80,8 +79,13 @@ export interface AppFailover {
   /** The member it runs on now. */
   serverName: string;
   disk: NonNullable<AppDisk>;
-  /** The opt-in: it moves on its own from its latest backup. */
+  /** Its cluster copies its data, so it moves on its own. */
   automatic: boolean;
+  /** How many other servers keep a copy that follows it now, and when the newest change reached one. */
+  replicatedTo: number;
+  upToDateAt: string | null;
+  /** Other servers that hold a whole copy, following now or not: a failover can use any of them. */
+  heldBy: number;
   /** What its page says about how it fails over. */
   sentence: string;
   /** Its server stopped answering, and it waits for it. */
@@ -100,7 +104,15 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
   const cluster = await getClusterById(app.clusterId);
   if (!cluster) return null;
   const serverName = (await getServerById(app.serverId))?.name ?? "its server";
-  const base = { cluster: cluster.name, serverName, disk, waiting: false };
+  const base = {
+    cluster: cluster.name,
+    serverName,
+    disk,
+    waiting: false,
+    replicatedTo: 0,
+    upToDateAt: null,
+    heldBy: 0,
+  };
   if (disk === "bind")
     return {
       ...base,
@@ -122,53 +134,36 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
   // Fenced: its server has stopped it by now, so a second copy cannot write beside it.
   const waiting = member?.state === "fenced";
   const way = waiting ? await wayBack(app) : null;
+  const replicated = cluster.replicationEnabled;
+  const [copy] = replicated
+    ? await replicationStates(
+        [
+          {
+            id: app.id,
+            name: app.name,
+            serverId: app.serverId,
+            clusterId: cluster.id,
+          },
+        ],
+        new Map([[cluster.id, await clusterMemberServerIds(cluster.id)]]),
+        await replicaRows([app.id]),
+      )
+    : [];
   return {
     ...base,
     waiting,
-    automatic: app.failoverFromBackup,
-    sentence: app.failoverFromBackup
-      ? automaticSentence(app.name)
-      : waitsSentence(app.name, serverName),
+    automatic: replicated,
+    replicatedTo: copy?.following ?? 0,
+    upToDateAt: copy?.upToDateAt ?? null,
+    heldBy: copy?.held ?? 0,
+    sentence: !replicated
+      ? waitsSentence(app.name, serverName, cluster.name)
+      : copy?.held
+        ? replicatedSentence(app.name)
+        : copyPendingSentence(app.name),
     bringBack: way?.label ?? null,
     why: way?.why ? `${app.name} cannot be brought back: ${way.why}` : null,
   };
-}
-
-/** The opt-in: an App with a Volume moves on its own from its latest backup instead of waiting for its server. */
-export async function setAppFailoverFromBackup(
-  id: string,
-  enabled: boolean,
-): Promise<void> {
-  const { membership } = await requireAppCapability(id, "configure_apps");
-  const user = (await getCurrentUser())!;
-  const app = await loadTeamApp(id, membership.teamId);
-  if (!app) throw new Error("App not found");
-  const disk = appDisk(app);
-  if (enabled && disk === "bind")
-    throw new Error(
-      bindSentence(
-        app.name,
-        (await getServerById(app.serverId))?.name ?? "its server",
-      ),
-    );
-  if (enabled && disk !== "volume")
-    throw new Error(
-      `${app.name} keeps no Volume, so a cluster already moves it on its own.`,
-    );
-  await getDb()
-    .update(appsTable)
-    .set({ failoverFromBackup: enabled, updatedAt: nowIso() })
-    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
-  await recordActivity(
-    "app",
-    `${enabled ? "Turned on" : "Turned off"} failing ${app.name} over automatically from its latest backup`,
-    user.name,
-    id,
-  );
-  // The leader holds the backup only while this is on; the sweep sends it again if this does not arrive.
-  await refreshAppBundle(id).catch((e) =>
-    console.warn(`[failover-bundle] ${id}: ${messageOf(e)}`),
-  );
 }
 
 /**

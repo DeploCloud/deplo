@@ -42,28 +42,30 @@ export function appHasBind(app: Stored): boolean {
   );
 }
 
-/** What ties an App to one server: a Bind never leaves it, a Volume comes back from a backup, nothing moves freely. */
+/** What ties an App to one server: a Bind never leaves it, a Volume moves only with replication, nothing moves freely. */
 export type AppDisk = "bind" | "volume" | null;
 
 export function appDisk(app: Stored): AppDisk {
   return appHasBind(app) ? "bind" : appKeepsVolume(app) ? "volume" : null;
 }
 
-/** Shown with the two promises: a backup of files is taken with the App paused, so it is whole. */
-export const BACKUP_PAUSE_NOTE =
-  "Each backup pauses it for as long as its files take to copy.";
-
-export const AUTO_FAILOVER_LABEL =
-  "Fail over automatically from the latest backup";
+/** What a replicated App's failover keeps to, as its card lists them. */
+export const REPLICATION_PROMISES = [
+  "Never two writers",
+  "A failover starts it from its copy on the new server, as up to date as the copy was",
+];
 
 export const bindSentence = (name: string, server: string) =>
   `${name} never fails over: it uses a folder that lives on ${server}, and only on that machine.`;
 
-export const waitsSentence = (name: string, server: string) =>
-  `${name} waits for ${server} if it stops, so it never starts on old files. You can bring it back on another server from its latest backup.`;
+export const waitsSentence = (name: string, server: string, cluster: string) =>
+  `${name} waits for ${server} if it stops: cluster ${cluster} does not copy its data. You can bring it back on another server from its latest backup.`;
 
-export const automaticSentence = (name: string) =>
-  `${name} moves to another server on its own if its server stops, restored from its latest backup. Anything written after that backup is lost.`;
+export const replicatedSentence = (name: string) =>
+  `${name} moves to another server on its own if its server stops, with its data replicated there as it changes.`;
+
+export const copyPendingSentence = (name: string) =>
+  `${name} fails over once a whole copy of its data is on another server. Deplo is making it now.`;
 
 /** "the backup of 14:15", in the schedule's timezone; "its latest backup" when the time is unknown. */
 export function backupName(
@@ -85,7 +87,7 @@ export function moveRefusal(reason: string, name: string): string {
     case "still_answering":
       return `${name}'s server may still be running it. Deplo never starts a second copy next to one that could be writing: try again in a minute.`;
     case "no_backup":
-      return `${name} has no backup another server can read.`;
+      return `${name} has no backup or copy another server can read.`;
     case "no_room":
       return `No other server of the cluster has room for ${name}.`;
     case "no_member_online":

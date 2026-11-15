@@ -321,6 +321,7 @@ export function restoreRequestFor(
     store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
     ageIdentity: creds.ageIdentity,
     expectedSha256,
+    fromReplica: false,
   };
 }
 

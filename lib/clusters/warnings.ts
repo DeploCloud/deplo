@@ -63,6 +63,44 @@ export function leaderWarnings(leader: ClusterLeader | null): ClusterWarning[] {
   return out;
 }
 
+/** How replication stands for one App with stored data, as the banners read it. */
+export interface ReplicationProgress {
+  appName: string;
+  following: number;
+  held: number;
+  total: number;
+  error: string;
+}
+
+/** Replication's own banners: what no other server holds a whole copy of yet, and copies that stopped following. */
+export function replicationWarnings(
+  apps: ReplicationProgress[],
+): ClusterWarning[] {
+  const out: ClusterWarning[] = [];
+  const none = apps.filter((a) => a.held === 0);
+  if (none.length > 0)
+    out.push({
+      key: "replication",
+      title: `Replication is not ready for ${plural(none.length, "App")} yet`,
+      body: `A whole copy of their data is not on another server yet: ${none
+        .map((a) => a.appName)
+        .join(", ")}. Until it is, they wait for their own server.`,
+    });
+  const behind = apps.filter((a) => a.held > 0 && a.following < a.total);
+  if (behind.length > 0)
+    out.push({
+      key: "replication-behind",
+      title: `Replication is behind for ${plural(behind.length, "App")}`,
+      body: behind
+        .map(
+          (a) =>
+            `${a.appName}: ${a.error || `${a.following} of ${a.total} servers follow it`}`,
+        )
+        .join(" · "),
+    });
+  return out;
+}
+
 /**
  * Every banner, in order: Apps left waiting always, failover's trouble only while it is on. `leader` is
  * what the background check stored, so nothing here asks a server.
@@ -73,6 +111,7 @@ export function composeClusterWarnings(input: {
   leader: ClusterWarning[];
   waiting: string[];
   copies: ClusterImageProgress[];
+  replication?: ReplicationProgress[];
 }): ClusterWarning[] {
   const out: ClusterWarning[] = [];
   if (input.waiting.length > 0)
@@ -99,6 +138,7 @@ export function composeClusterWarnings(input: {
         .map((c) => `${c.appName} on ${c.held} of ${c.total} servers`)
         .join(", ")}.`,
     });
+  out.push(...replicationWarnings(input.replication ?? []));
   return out;
 }
 
@@ -110,6 +150,7 @@ export function clusterWarnings(input: {
   leader: ClusterLeader | null;
   waiting: string[];
   copies: ClusterImageProgress[];
+  replication?: ReplicationProgress[];
 }): ClusterWarning[] {
   return composeClusterWarnings({
     ...input,

@@ -77,6 +77,7 @@ const CLUSTER: ClusterCardData = {
   teamIds: [],
   servers: 2,
   failoverEnabled: true,
+  replicationEnabled: false,
   provisioning: 1,
   joinOptions: [
     {

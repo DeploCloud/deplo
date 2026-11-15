@@ -38,10 +38,7 @@ import {
   setAppRestartWhenUnresponsive,
   setAppScreenshots,
 } from "@/lib/data/apps/settings";
-import {
-  bringAppBack,
-  setAppFailoverFromBackup,
-} from "@/lib/data/apps/failover";
+import { bringAppBack } from "@/lib/data/apps/failover";
 import {
   moveAppToCluster,
   moveAppToServer,
@@ -378,22 +375,6 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAppRestartWhenUnresponsive(id, value);
-      return reloadApp(id);
-    },
-  }),
-  setAppFailoverFromBackup: t.field({
-    type: AppRef,
-    authScopes: { capability: "configure_apps" },
-    description:
-      "Fail over automatically from the latest backup: on, a cluster app with a Volume moves to " +
-      "another server on its own when its server stops, restored from its latest backup; off " +
-      "(the default) it waits for its server. Refused for an app with a Bind.",
-    args: {
-      id: t.arg.string({ required: true }),
-      value: t.arg.boolean({ required: true }),
-    },
-    resolve: async (_r, { id, value }) => {
-      await setAppFailoverFromBackup(id, value);
       return reloadApp(id);
     },
   }),

@@ -57,18 +57,25 @@ export function DatabaseStandbyForm({
       info="A second server runs a copy that follows every change. When this one stops, the copy takes over and about a second of writes is lost."
       docs="clusters.standby"
       description={
-        !enabled && standby.unavailable
-          ? standby.unavailable
-          : standby.note
-            ? `${standby.note} ${standby.cost}`
-            : standby.cost
+        standby.byCluster && !standby.unavailable
+          ? `Cluster ${standby.byCluster} replicates its databases, so it keeps this copy. ${standby.note ?? ""}`.trim()
+          : !enabled && standby.unavailable
+            ? standby.unavailable
+            : standby.note
+              ? `${standby.note} ${standby.cost}`
+              : standby.cost
       }
       control={
         <Switch
-          checked={enabled}
+          checked={
+            enabled || (standby.byCluster != null && !standby.unavailable)
+          }
           onCheckedChange={apply}
           disabled={
-            pending || disabled || (!enabled && standby.unavailable != null)
+            pending ||
+            disabled ||
+            standby.byCluster != null ||
+            (!enabled && standby.unavailable != null)
           }
           aria-label="Keep a standby copy"
         />

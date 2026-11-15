@@ -18,10 +18,19 @@ import {
   requireInstanceAdmin,
   requireTeamWide,
 } from "../../membership";
-import type { Cluster } from "../../types/cluster";
+import {
+  type Cluster,
+  type LoadBalancingMode,
+  LOAD_BALANCING_MODES,
+} from "../../types/cluster";
 import type { Team } from "../../types/team";
 
 type Row = typeof clustersTable.$inferSelect;
+
+const cleanModeOrNearest = (m: string): LoadBalancingMode =>
+  (LOAD_BALANCING_MODES as readonly string[]).includes(m)
+    ? (m as LoadBalancingMode)
+    : "nearest";
 
 function assemble(r: Row): Cluster {
   return {
@@ -33,6 +42,9 @@ function assemble(r: Row): Cluster {
     leaderTakeoverAt: r.leaderTakeoverAt,
     eventSeq: r.eventSeq,
     failoverEnabled: r.failoverEnabled,
+    replicationEnabled: r.replicationEnabled,
+    loadBalancingEnabled: r.loadBalancingEnabled,
+    loadBalancingMode: cleanModeOrNearest(r.loadBalancingMode),
     createdAt: r.createdAt,
   };
 }

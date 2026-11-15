@@ -188,6 +188,7 @@ test("the page and the place-on-cluster dialog state about a second of loss whil
   const sw = await asAdmin(() => getDatabaseStandby("db_main"));
   assert.deepEqual(sw, {
     enabled: true,
+    byCluster: null,
     unavailable: null,
     cost: "Uses as much memory as the database on a second server and a second copy of its data. Its own server keeps up to 1 GiB more.",
     serverName: "server-3",
