@@ -71,6 +71,8 @@ const CONTROL_PLANE = [
   "workload_placements",
   "cluster_app_replicas",
   "cluster_entrances",
+  "cluster_network_peers",
+  "cluster_network_links",
   "cluster_image_copies",
   "image_architectures",
   "failover_bundle_pushes",
