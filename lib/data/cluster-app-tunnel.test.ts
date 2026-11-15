@@ -51,6 +51,7 @@ import { ADDRESS_CHANGES_NOTE } from "../clusters/address-note";
 import { clusterAddressNote, reconcileAppTunnels } from "./clusters/app-tunnel";
 import { flushFailoverBundles, type FailoverBundle } from "./clusters/bundles";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import { __resetDeploymentLogBuffers } from "./deployment-logs";
 import { createApp } from "./apps/create";
 import { deleteApp } from "./apps/delete";
 import { moveAppToCluster, moveAppToServer } from "./apps/source";
@@ -204,6 +205,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await flushFailoverBundles();
+  // A build line still buffered for dpl_1 would land in the next file's dpl_1.
+  __resetDeploymentLogBuffers();
   fleet.restore();
   __setClusterPinForTest(null);
   __resetReleaseCacheForTests();
