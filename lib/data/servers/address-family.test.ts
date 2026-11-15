@@ -23,6 +23,7 @@ import {
   __setAgentAddressesForTest,
 } from "./addresses";
 import { setServerAddressFamily } from "./address-family";
+import { updateServerAddress } from "./agent-maintenance";
 import { getServerById } from "./roster";
 
 const MEMBER = "usr_member";
@@ -146,5 +147,22 @@ test("only an instance admin may switch it", async () => {
   await runWithIdentity({ userId: MEMBER, teamId: TEAM_A }, async () => {
     await assert.rejects(() => setServerAddressFamily(SERVER_1, "ipv6"));
   });
+  assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
+});
+
+test("a new address moves every generated name on the server with it, and nothing else", async () => {
+  const MOVED = "198.51.100.7";
+  await asOwner(() => updateServerAddress({ id: SERVER_1, address: MOVED }));
+  const auto = `web-calm-fox-${ipToHex(MOVED)}.deplo.site`;
+  assert.deepEqual(await names(), [auto, "web.example.com"]);
+  const [app] = await db
+    .select({ url: appsTable.productionUrl })
+    .from(appsTable)
+    .where(eq(appsTable.id, "app_web"));
+  assert.equal(app.url, `http://${auto}`);
+});
+
+test("a new address of the other kind leaves names on the kind they carry", async () => {
+  await asOwner(() => updateServerAddress({ id: SERVER_1, address: V6 }));
   assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
 });

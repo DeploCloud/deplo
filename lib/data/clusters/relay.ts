@@ -201,6 +201,21 @@ export async function pushMembership(clusterIds: string[]): Promise<void> {
   }
 }
 
+/** A server's address changed: the relay route on its proxy and every roster dialing it follow now. Logged, never thrown. */
+export async function followServerAddress(serverId: string): Promise<void> {
+  try {
+    const leads = await getDb()
+      .select({ id: clustersTable.id })
+      .from(clustersTable)
+      .where(eq(clustersTable.leaderServerId, serverId));
+    const server = leads.length ? await getServerById(serverId) : null;
+    if (server) await syncLeaderRelayRoute(server, true);
+  } catch (e) {
+    console.warn(`[cluster-relay] ${serverId}: ${messageOf(e)}`);
+  }
+  await pushRostersForServer(serverId);
+}
+
 /** A server's certificate changed (renewed, re-enrolled): the clusters it is a party of name the new one, and the old one is cut off. */
 export async function pushRostersForServer(serverId: string): Promise<void> {
   try {

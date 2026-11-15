@@ -16,6 +16,7 @@ import {
   reconcileRetiredLeaders,
 } from "./clusters/leader-move";
 import { getClusterById } from "./clusters/roster";
+import { updateServerAddress } from "./servers/agent-maintenance";
 import { keyFingerprint } from "./clusters/bundles";
 import {
   leaderLab,
@@ -114,6 +115,27 @@ test("a server that answers on 443 runs a relay beside the leader, and every mem
     assert.deepEqual(hosts[id].memberCalls.at(-1), {
       member: true,
       relays: ["https://10.0.0.4"],
+    });
+});
+
+test("a new address for the leader's server moves the relay's door, and every member dials it there", async () => {
+  const cluster = await eu();
+  hosts.srv_4.proxy.yaml = TRAEFIK;
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+
+  await asAdmin(() =>
+    updateServerAddress({ id: "srv_4", address: "10.0.0.44" }),
+  );
+
+  assert.match(
+    hosts.srv_4.proxy.yaml,
+    /Host\(`10\.0\.0\.44`\) && Path\(`\/api\/cluster\/relay`\)/,
+  );
+  assert.doesNotMatch(hosts.srv_4.proxy.yaml, /Host\(`10\.0\.0\.4`\)/);
+  for (const id of ["srv_2", "srv_3"])
+    assert.deepEqual(hosts[id].memberCalls.at(-1), {
+      member: true,
+      relays: ["https://10.0.0.44"],
     });
 });
 

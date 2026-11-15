@@ -15,6 +15,9 @@ import {
   reportedAgentVersion,
 } from "../../version";
 import { attemptAgentUpdate } from "./agent-rollout";
+import { serverWildcardIp } from "./addresses";
+import { rehostServerDomains } from "./address-family";
+import { followServerAddress } from "../clusters/relay";
 import {
   type AgentUpdateDTO,
   claimAgentUpdate,
@@ -45,12 +48,20 @@ export async function updateServerAddress(
   if (address === server.host && address === server.ip) return;
   await assertAddressFree(address, server.id);
 
+  const moved = { ...(input.keepHost ? {} : { host: address }), ip: address };
+  const fromIp = await serverWildcardIp(server);
   const updated = await getDb()
     .update(serversTable)
-    .set({ ...(input.keepHost ? {} : { host: address }), ip: address })
+    .set(moved)
     .where(eq(serversTable.id, input.id))
     .returning({ id: serversTable.id });
   if (updated.length === 0) throw new Error("Server not found");
+  // Generated names embed the address, so they move with it or answer from the old machine.
+  const toIp = await serverWildcardIp({ ...server, ...moved });
+  if (fromIp && toIp && fromIp !== toIp)
+    await rehostServerDomains(server.id, fromIp, toIp);
+  // A relay beside a leader here is dialed at this address; its clusters hear the new one now.
+  if (address !== server.ip) await followServerAddress(server.id);
   await recordActivity(
     "server",
     `Changed server ${server.name} address to ${address}`,

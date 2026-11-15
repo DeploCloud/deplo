@@ -130,7 +130,7 @@ export function ChangeAddressForm({
       <div className="grid gap-2">
         <FieldLabel
           htmlFor="server-address"
-          info="IP or DNS name. App URLs follow it immediately; custom domains keep pointing at the old address until you update their DNS records."
+          info="IP or DNS name. App URLs move with it and answer after each app's next deploy; custom domains keep the old address until you update their DNS."
           docs="servers.address"
         >
           Address

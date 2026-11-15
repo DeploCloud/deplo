@@ -19,7 +19,7 @@ export const ADDRESS_FAMILIES: readonly AddressFamily[] = ["ipv4", "ipv6"];
 const LABEL: Record<AddressFamily, string> = { ipv4: "IPv4", ipv6: "IPv6" };
 
 // Every generated name an app on this server holds moves with the address, or it would answer from the old one.
-async function rehostServerDomains(
+export async function rehostServerDomains(
   serverId: string,
   fromIp: string,
   toIp: string,
