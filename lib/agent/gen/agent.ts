@@ -3169,6 +3169,25 @@ export interface SetClusterForwardersRequest {
   members: ClusterForwarderMember[];
   hold: ClusterHeldName[];
   serve: ClusterServedName[];
+  /** The Apps whose domains answer on every server (ADR-0048), on this one through its one entrance forwarder. */
+  entrances: ClusterEntrance[];
+  /** The Apps whose passed-on domains this member answers, while it runs them. */
+  serveEntrances: string[];
+  /** The port of the proxy's internal entrypoint, on its own loopback, which reads the PROXY protocol header. */
+  entrancePort: number;
+}
+
+/** An App whose domains answer on every server, and how this member's proxy passes them on. */
+export interface ClusterEntrance {
+  appId: string;
+  /**
+   * The proxy's routers and services for its domains: Traefik dynamic configuration as JSON, Deplo's rendering,
+   * which the agent checks and writes to the proxy's entrances file.
+   */
+  routes: string;
+  /** The entrance forwarder's ports its TLS and its certificate checks arrive on. */
+  tlsPort: number;
+  webPort: number;
 }
 
 export interface SetClusterForwardersResponse {
@@ -23809,7 +23828,7 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
 };
 
 function createBaseSetClusterForwardersRequest(): SetClusterForwardersRequest {
-  return { clusterId: "", members: [], hold: [], serve: [] };
+  return { clusterId: "", members: [], hold: [], serve: [], entrances: [], serveEntrances: [], entrancePort: 0 };
 }
 
 export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest> = {
@@ -23825,6 +23844,15 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     }
     for (const v of message.serve) {
       ClusterServedName.encode(v!, writer.uint32(34).fork()).join();
+    }
+    for (const v of message.entrances) {
+      ClusterEntrance.encode(v!, writer.uint32(42).fork()).join();
+    }
+    for (const v of message.serveEntrances) {
+      writer.uint32(50).string(v!);
+    }
+    if (message.entrancePort !== 0) {
+      writer.uint32(56).uint32(message.entrancePort);
     }
     return writer;
   },
@@ -23874,6 +23902,30 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
             message.serve.push(ClusterServedName.decode(reader, reader.uint32()));
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.entrances.push(ClusterEntrance.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.serveEntrances.push(reader.string());
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.entrancePort = reader.uint32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -23898,6 +23950,19 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
         : [],
       hold: globalThis.Array.isArray(object?.hold) ? object.hold.map((e: any) => ClusterHeldName.fromJSON(e)) : [],
       serve: globalThis.Array.isArray(object?.serve) ? object.serve.map((e: any) => ClusterServedName.fromJSON(e)) : [],
+      entrances: globalThis.Array.isArray(object?.entrances)
+        ? object.entrances.map((e: any) => ClusterEntrance.fromJSON(e))
+        : [],
+      serveEntrances: globalThis.Array.isArray(object?.serveEntrances)
+        ? object.serveEntrances.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.serve_entrances)
+        ? object.serve_entrances.map((e: any) => globalThis.String(e))
+        : [],
+      entrancePort: isSet(object.entrancePort)
+        ? globalThis.Number(object.entrancePort)
+        : isSet(object.entrance_port)
+        ? globalThis.Number(object.entrance_port)
+        : 0,
     };
   },
 
@@ -23915,6 +23980,15 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     if (message.serve?.length) {
       obj.serve = message.serve.map((e) => ClusterServedName.toJSON(e));
     }
+    if (message.entrances?.length) {
+      obj.entrances = message.entrances.map((e) => ClusterEntrance.toJSON(e));
+    }
+    if (message.serveEntrances?.length) {
+      obj.serveEntrances = message.serveEntrances;
+    }
+    if (message.entrancePort !== 0) {
+      obj.entrancePort = Math.round(message.entrancePort);
+    }
     return obj;
   },
 
@@ -23927,6 +24001,138 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     message.members = object.members?.map((e) => ClusterForwarderMember.fromPartial(e)) || [];
     message.hold = object.hold?.map((e) => ClusterHeldName.fromPartial(e)) || [];
     message.serve = object.serve?.map((e) => ClusterServedName.fromPartial(e)) || [];
+    message.entrances = object.entrances?.map((e) => ClusterEntrance.fromPartial(e)) || [];
+    message.serveEntrances = object.serveEntrances?.map((e) => e) || [];
+    message.entrancePort = object.entrancePort ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterEntrance(): ClusterEntrance {
+  return { appId: "", routes: "", tlsPort: 0, webPort: 0 };
+}
+
+export const ClusterEntrance: MessageFns<ClusterEntrance> = {
+  encode(message: ClusterEntrance, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.appId !== "") {
+      writer.uint32(10).string(message.appId);
+    }
+    if (message.routes !== "") {
+      writer.uint32(18).string(message.routes);
+    }
+    if (message.tlsPort !== 0) {
+      writer.uint32(24).uint32(message.tlsPort);
+    }
+    if (message.webPort !== 0) {
+      writer.uint32(32).uint32(message.webPort);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterEntrance {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterEntrance();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.appId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.routes = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.tlsPort = reader.uint32();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.webPort = reader.uint32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterEntrance {
+    return {
+      appId: isSet(object.appId)
+        ? globalThis.String(object.appId)
+        : isSet(object.app_id)
+        ? globalThis.String(object.app_id)
+        : "",
+      routes: isSet(object.routes) ? globalThis.String(object.routes) : "",
+      tlsPort: isSet(object.tlsPort)
+        ? globalThis.Number(object.tlsPort)
+        : isSet(object.tls_port)
+        ? globalThis.Number(object.tls_port)
+        : 0,
+      webPort: isSet(object.webPort)
+        ? globalThis.Number(object.webPort)
+        : isSet(object.web_port)
+        ? globalThis.Number(object.web_port)
+        : 0,
+    };
+  },
+
+  toJSON(message: ClusterEntrance): unknown {
+    const obj: any = {};
+    if (message.appId !== "") {
+      obj.appId = message.appId;
+    }
+    if (message.routes !== "") {
+      obj.routes = message.routes;
+    }
+    if (message.tlsPort !== 0) {
+      obj.tlsPort = Math.round(message.tlsPort);
+    }
+    if (message.webPort !== 0) {
+      obj.webPort = Math.round(message.webPort);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterEntrance>, I>>(base?: I): ClusterEntrance {
+    return ClusterEntrance.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterEntrance>, I>>(object: I): ClusterEntrance {
+    const message = createBaseClusterEntrance();
+    message.appId = object.appId ?? "";
+    message.routes = object.routes ?? "";
+    message.tlsPort = object.tlsPort ?? 0;
+    message.webPort = object.webPort ?? 0;
     return message;
   },
 };

@@ -51,6 +51,7 @@ export function assembleDomain(
     ...(row.service != null ? { service: row.service } : {}),
     ...(row.proxied != null ? { proxied: row.proxied } : {}),
     ...(row.tunnel ? { tunnel: true } : {}),
+    ...(row.answersEverywhere ? { answersEverywhere: true } : {}),
     ...(row.importedFrom != null ? { importedFrom: row.importedFrom } : {}),
     createdAt: row.createdAt,
   };
@@ -74,6 +75,7 @@ export function domainToRow(d: Domain): DomainInsert {
     service: d.service ?? null,
     proxied: d.proxied ?? null,
     tunnel: d.tunnel ? true : null,
+    answersEverywhere: d.answersEverywhere === true,
     // Left out on a new row, so the column default (on) decides.
     securityHeaders: d.securityHeaders,
     importedFrom: d.importedFrom ?? null,

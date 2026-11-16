@@ -43,7 +43,17 @@ import {
   syncNameForwarders,
 } from "./clusters/forwarders";
 import { databaseRelayNotice } from "./clusters/relay-notice";
-import { CLUSTER_FORWARDERS_SERVICES_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_ENTRANCES_CAPABILITY,
+  CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import { __forgetEntranceProxies } from "./clusters/entrances";
+import { hasEntranceSupport } from "../deploy/traefik-stack";
+import {
+  INSTALLED_WITH_PANEL,
+  parse,
+} from "../deploy/traefik-stack-test-helpers";
 import { invalidateFrozen } from "./deplo-move/freeze";
 
 let db: TestDb;
@@ -553,4 +563,154 @@ test("a database with no Environment counts the team's Apps that have none eithe
 test("a database outside a cluster has no relay to mention", async () => {
   await seedDatabase(db, { id: "solo" });
   assert.equal(await asAdmin(() => databaseRelayNotice("solo")), null);
+});
+
+// ADR-0048: a domain that answers on every server of its cluster.
+async function domainOf(
+  appId: string,
+  name: string,
+  over: Partial<typeof domainsTable.$inferInsert> = {},
+) {
+  await db.insert(domainsTable).values({
+    id: `dom_${name}`,
+    appId,
+    name,
+    status: "valid",
+    isPrimary: false,
+    ssl: true,
+    certProvider: "letsencrypt",
+    answersEverywhere: true,
+    createdAt: T0,
+    ...over,
+  });
+}
+
+/** These members' agents carry entrances; every member has Deplo's proxy, so a change would show. */
+function proxies(...capable: string[]) {
+  __forgetEntranceProxies();
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    hosts[id]!.proxy.yaml = INSTALLED_WITH_PANEL;
+    if (capable.includes(id))
+      hosts[id]!.capabilities.push(CLUSTER_ENTRANCES_CAPABILITY);
+  }
+}
+
+test("a cluster with no domain that answers everywhere hands no entrance and changes no proxy", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com", { answersEverywhere: false });
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    assert.deepEqual(last(id).entrances, [], id);
+    assert.equal(hosts[id]!.proxy.applied, 0, id);
+    assert.equal(hosts[id]!.proxy.yaml, INSTALLED_WITH_PANEL, id);
+  }
+});
+
+test("a domain that answers everywhere is passed on by every member, and each proxy changes once", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    const t = last(id);
+    assert.deepEqual(
+      t.entrances?.map((e) => [e.appId, e.tlsPort, e.webPort]),
+      [["shop", 20000, 20001]],
+      id,
+    );
+    const routes = JSON.parse(t.entrances![0]!.routes);
+    assert.equal(
+      routes.tcp.routers["deplo-entrance-shop"].rule,
+      "HostSNI(`shop.example.com`)",
+    );
+    assert.deepEqual(t.serveEntrances, ["shop"]);
+    assert.equal(t.entrancePort, 8443);
+    assert.equal(hosts[id]!.proxy.applied, 1, id);
+    assert.ok(hasEntranceSupport(hosts[id]!.proxy.yaml), id);
+  }
+  // Read again, a proxy that has it is not restarted.
+  __forgetEntranceProxies();
+  await syncNameForwarders(c.id);
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.equal(hosts[id]!.proxy.applied, 1, id);
+});
+
+test("a member whose agent cannot carry it is handed no entrance, and its proxy is left alone", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+
+  await syncNameForwarders(c.id);
+
+  assert.deepEqual(last("srv_4").entrances, []);
+  assert.deepEqual(last("srv_4").serveEntrances, []);
+  assert.equal(hosts.srv_4!.proxy.applied, 0);
+  assert.equal(last("srv_2").entrances?.length, 1);
+});
+
+test("only an HTTPS domain off the App's tunnel is passed on", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "plain.example.com", { certProvider: "none" });
+  await domainOf("shop", "tunnel.example.com", { tunnel: true });
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    assert.deepEqual(last(id).entrances, [], id);
+    assert.equal(hosts[id]!.proxy.applied, 0, id);
+  }
+});
+
+test("an App keeps its ports when another one joins", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  // An App whose id sorts first comes later: the one already passed on keeps its ports.
+  await place(c.id, "aaa", "environ_a1", "srv_2");
+  await domainOf("aaa", "aaa.example.com");
+  await syncNameForwarders(c.id);
+
+  assert.deepEqual(
+    last("srv_4").entrances?.map((e) => [e.appId, e.tlsPort]),
+    [
+      ["shop", 20000],
+      ["aaa", 20002],
+    ],
+  );
+});
+
+test("turning the last one off takes the change out of every proxy, as it was", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: false })
+    .where(eq(domainsTable.appId, "shop"));
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    assert.deepEqual(last(id).entrances, [], id);
+    assert.equal(hosts[id]!.proxy.applied, 2, id);
+    assert.deepEqual(
+      parse(hosts[id]!.proxy.yaml),
+      parse(INSTALLED_WITH_PANEL),
+      id,
+    );
+  }
 });

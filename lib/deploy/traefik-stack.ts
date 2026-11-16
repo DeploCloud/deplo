@@ -16,6 +16,13 @@ import {
   throughHostGateway,
 } from "./cluster-relay";
 import { composeTruthy } from "./compose-lint/document";
+import {
+  ACME_PATH,
+  ACME_PRIORITY,
+  ENTRANCE_ENTRYPOINT,
+  ENTRANCE_PORT,
+  ENTRANCE_TRANSPORT,
+} from "./entrance";
 
 export const TRAEFIK_CONTAINER = "deplo-traefik";
 
@@ -98,11 +105,17 @@ const PANEL_FILE = "deplo-panel.yml";
 const DEFAULT_CERT_CONFIG = "deplo-default-cert";
 const RELAY_CONFIG = "deplo-cluster-relay";
 const RELAY_FILE = "deplo-cluster-relay.yml";
+const ENTRANCE_CONFIG = "deplo-entrance";
+const ENTRANCE_FILE = "deplo-entrance.yml";
+/** Beside the stack's compose file on the server; its agent rewrites it in place (ADR-0048). */
+export const ENTRANCE_ROUTES_FILE = "entrances.yml";
+const ENTRANCE_ROUTES_TARGET = "deplo-entrances.yml";
 const OUR_CONFIGS = [
   CERT_CONFIG,
   PANEL_CONFIG,
   DEFAULT_CERT_CONFIG,
   RELAY_CONFIG,
+  ENTRANCE_CONFIG,
 ];
 const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
 const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
@@ -787,4 +800,105 @@ function certResolver(command: string[]): string {
 
 function dump(doc: Stack): string {
   return doc.toString({ lineWidth: 0 });
+}
+
+const entranceFlags = (web: string) => [
+  `--entrypoints.${web}.allowacmebypass=true`,
+  `--entrypoints.${ENTRANCE_ENTRYPOINT}.address=127.0.0.1:${ENTRANCE_PORT}`,
+  `--entrypoints.${ENTRANCE_ENTRYPOINT}.proxyprotocol.trustedips=127.0.0.1/32`,
+];
+
+// The entrypoint the certificate checks arrive on: the installer's `web`, unless the proxy names its own.
+function challengeEntrypoint(command: string[]): string {
+  for (const flag of command) {
+    const m = flag.match(
+      /^--certificatesresolvers\.[^.]+\.acme\.httpchallenge\.entrypoint=(.+)$/,
+    );
+    if (m) return m[1];
+  }
+  return "web";
+}
+
+function isEntranceMount(entry: unknown): boolean {
+  const spec = isMap(entry) ? scalar(entry.get("target", true)) : scalar(entry);
+  return spec.includes(ENTRANCE_ROUTES_TARGET);
+}
+
+/** Whether this server's proxy passes cluster domains on (ADR-0048). */
+export function hasEntranceSupport(currentYaml: string): boolean {
+  try {
+    const doc = parseCompose(currentYaml);
+    return (
+      doc.getIn(["configs", ENTRANCE_CONFIG, "content"]) !== undefined &&
+      listOf(traefikService(doc).get("command", true)).some((c) =>
+        c.startsWith(`--entrypoints.${ENTRANCE_ENTRYPOINT}.address=`),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Puts in or takes out what a server's proxy needs to pass a cluster domain on (ADR-0048): the internal entrypoint
+ * on its own loopback, the check bypass on `web` with Deplo's own challenge router above every other router, the
+ * PROXY transport, and the routes file its agent writes. Taking it out leaves the stack as it was before.
+ */
+export function withEntranceSupport(currentYaml: string, on: boolean): string {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  const command = listOf(service.get("command", true));
+  const web = challengeEntrypoint(command);
+  const ours = new Set(entranceFlags(web).map(entryName));
+  setList(doc, service, "command", [
+    ...command.filter((c) => !ours.has(entryName(c))),
+    ...(on ? entranceFlags(web) : []),
+  ]);
+  const volumes = service.get("volumes", true);
+  if (isSeq(volumes)) {
+    volumes.items = volumes.items.filter((v) => !isEntranceMount(v));
+    if (volumes.items.length === 0) service.delete("volumes");
+  }
+  dropOurConfig(doc, service, ENTRANCE_CONFIG);
+  if (!on) {
+    dropFileProvider(doc, service, ENTRANCE_CONFIG);
+    return dump(doc);
+  }
+  const file = new Document({
+    http: {
+      routers: {
+        "deplo-acme": {
+          rule: `PathPrefix(\`${ACME_PATH}\`)`,
+          entryPoints: [web, ENTRANCE_ENTRYPOINT],
+          service: "acme-http@internal",
+          priority: ACME_PRIORITY,
+        },
+      },
+    },
+    tcp: {
+      serversTransports: {
+        [ENTRANCE_TRANSPORT]: { proxyProtocol: { version: 2 } },
+      },
+    },
+  });
+  mountDeploConfig(
+    doc,
+    service,
+    ENTRANCE_CONFIG,
+    ENTRANCE_FILE,
+    "the cluster's domains",
+    file.toString({ lineWidth: 0 }),
+  );
+  const dir =
+    fileProviderDir(
+      listOf(service.get("command", true)),
+      "the cluster's domains",
+    ) ?? DEPLO_DYNAMIC_DIR;
+  addTo(
+    doc,
+    service,
+    "volumes",
+    `./${ENTRANCE_ROUTES_FILE}:${dir}/${ENTRANCE_ROUTES_TARGET}:ro`,
+  );
+  return dump(doc);
 }

@@ -36,6 +36,7 @@ import {
   CLUSTER_FAILOVER_CAPABILITY,
   CLUSTER_FAILOVER_RESTORE_CAPABILITY,
   CLUSTER_FORWARDERS_CAPABILITY,
+  CLUSTER_ENTRANCES_CAPABILITY,
   CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
@@ -366,11 +367,16 @@ export async function setClusterForwarders(
     const services = hello.capabilities.includes(
       CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
     );
+    // An older agent would drop the entrances without a word: it is never sent them.
+    const entrances = hello.capabilities.includes(CLUSTER_ENTRANCES_CAPABILITY)
+      ? {}
+      : { entrances: [], serveEntrances: [], entrancePort: 0 };
     return await conn.setClusterForwarders(
       services
-        ? table
+        ? { ...table, ...entrances }
         : {
             ...table,
+            ...entrances,
             hold: table.hold.filter((h) => !h.service),
             serve: table.serve.filter((s) => !s.service),
           },

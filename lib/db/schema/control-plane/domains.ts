@@ -35,6 +35,8 @@ export const domains = pgTable(
     proxied: boolean("proxied"),
     // Served through a Cloudflare Tunnel: plain HTTP from the connector, Cloudflare holds the certificate.
     tunnel: boolean("tunnel"),
+    // Every server of the App's cluster answers it and passes it on to the App's server (ADR-0048).
+    answersEverywhere: boolean("answers_everywhere").notNull().default(false),
     securityHeaders: boolean("security_headers").notNull().default(true),
     importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),

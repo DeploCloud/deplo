@@ -105,7 +105,12 @@ export function clusterRpc(
     async setClusterForwarders(table) {
       const r = await unary(
         client.setClusterForwarders.bind(client),
-        table,
+        {
+          ...table,
+          entrances: table.entrances ?? [],
+          serveEntrances: table.serveEntrances ?? [],
+          entrancePort: table.entrancePort ?? 0,
+        },
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return { held: r.held, served: r.served };

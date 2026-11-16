@@ -28,6 +28,8 @@ export interface Domain {
   service?: string;
   proxied?: boolean;
   tunnel?: boolean;
+  /** Every server of the App's cluster answers it (ADR-0048). */
+  answersEverywhere?: boolean;
   createdAt: string;
 }
 
