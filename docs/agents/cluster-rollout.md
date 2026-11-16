@@ -98,7 +98,9 @@ in one release, raise the floor in the next, and neither happens.
 On SIGTERM a leader extends every member's lease by 5 minutes before it exits (`Leader.Drain`,
 `lease.ExtendFor`), keeps what it extended in its state directory, and holds every failover of a
 silent member until that time is up. So a restart of up to 5 minutes stops nothing on any member,
-and nothing moves when the leader is back. The agent ends **the leader before the relay** and gives
+and nothing moves when the leader is back. **It announces the extension first** (`Order.Announce`):
+every member must take the announcement before any lease is extended, and a cluster where one does
+not answer gets no extension at all. The agent ends **the leader before the relay** and gives
 it 20 s, because those last orders leave through the relay beside it.
 
 While Deplo restarts a leader, nobody stands in for it (`updatingClusterHost`): standing in would
@@ -108,23 +110,38 @@ cost two changes of hands for a few seconds of silence.
 
 Deplo's machine takes over after two missed checks and 25 s without a beat (below), and it cannot
 read what the old leader extended:
-that file is on the server that is gone. So the rule holds without it. **A leader presumes that a
-member it has never heard holds the longest lease any leader may grant** (60 s + `lease.ExtendFor`,
-5 minutes), counted from the moment it first knew the member: a takeover, a hand-back, a moved
-leader, a leader that restarted, a member that just joined (`member.presumed` in `internal/leader`).
+that file is on the server that is gone. **A leader presumes that a member it has never heard holds
+the longest lease any leader may grant** (60 s + `lease.ExtendFor`, 5 minutes), counted from the
+moment it first knew the member: a takeover, a hand-back, a moved leader, a leader that restarted, a
+member that just joined (`member.other` and `cluster.presumedAlive` in `internal/leader`), **until a
+member that answers vouches for less.**
 
+- **Every member keeps count** (`clusterLease.Announced` / `Unannounced` in `deplo-agent`) and says in
+  each reply how long an extension may still keep any lease of the cluster alive (`Reply.Unsure`).
+  Because an extension is only given once every member took its announcement, the one member that
+  answers the new leader knows of every extension the dead one may hold. A renewal from a leader that
+  announces nothing (an older one), and the first lease an agent ever counts, make it unsure for the
+  longest lease. With `Unsure` 0 the presumption drops to the plain lease.
+- **The plain lease is 5 s only for a member Deplo vouches for** (`Member.ShortFence`: its stored
+  agent version is `AGENT_SHORT_FENCE_VERSION` or newer, `lib/version.ts`), else 60 s.
 - **A member that answers** the new leader once holds a plain 5 s lease from it (60 s on an older agent), and the usual
   clock applies from then on: after 5 s of silence its Apps without a Volume move, and its databases and
   Apps with a Volume once the member's own fence is over (`stoppedWithin`, 24 s from the last renewal),
   or 81 s for an agent too old to say.
-- **A member that never answers** keeps its databases and Apps with a Volume for
-  60 s + 5 min + the 21 s margin = **6 min 21 s after the leader started leading**, then they move
-  (or are promoted, or wait for a backup) as in any failover. A person's "bring it back from a
-  backup" is refused for the same time (`still_answering`). Its Apps without a Volume still move
-  after 5 s: two copies of those harm nothing, and the member removes its own when it returns.
+- **A member that never answers** keeps its databases and Apps with a Volume for 5 s + the 21 s
+  margin when the members vouch and Deplo knows its agent, 60 s + 21 s when Deplo does not, and
+  60 s + 5 min + 21 s = 6 min 21 s when no member can vouch (older agents, or an extension really
+  announced). A person's "bring it back from a backup" is refused for the same time
+  (`still_answering`). Its Apps without a Volume still move after 5 s: two copies of those harm
+  nothing, and the member removes its own when it returns.
 - So a server that stops **together with the leader that ran on it** gets its Apps back after about
-  40 s (half a minute to notice, 5 s) and its databases after about 7 minutes. That is the honest
-  number for this case; the seconds everywhere else are for a leader that was already leading.
+  40 s and its databases after about 80 s (measured on the lab: 34 s to take over, 26 s, the restore).
+  A planned leader restart that never ends still costs the full 6 min 21 s, because that extension
+  was real.
+- What the members vouch for assumes every leader of the cluster announces its extensions: a leader
+  binary older than that renews without announcing, which keeps the members unsure for 6 minutes
+  after each of its renewals, but one cut off from every member that answers the next leader is not
+  seen. That is a version-skew window of the leader rollout, closed once every leader is updated.
 
 Why it is safe: an older epoch is refused by a member that heard the new one, and a leader that
 hears that refusal stops sending within one renewal, so the last extension an old leader can still

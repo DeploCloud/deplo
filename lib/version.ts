@@ -130,6 +130,9 @@ export function versionAtLeast(version: string, min: string): boolean {
 // The first agent release that links (ADR-0040): a fixed fact, never moved with `agentMin`.
 export const AGENT_LINK_VERSION = "0.5.1-canary.10";
 
+// The first agent release that keeps to the fence its cluster leader gives it: a fixed fact too.
+export const AGENT_SHORT_FENCE_VERSION = "0.5.3-canary.5";
+
 /** What a Deplo with floor `min` can do with a server's agent: use it, update it, wait for it to connect, or for a reinstall. */
 export type AgentReach = "usable" | "updatable" | "unlinked" | "reinstall";
 

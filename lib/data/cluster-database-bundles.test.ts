@@ -12,6 +12,7 @@ import {
   settleProvisioning,
 } from "./backup-test-helpers";
 import { backups as backupsTable } from "../db/schema/control-plane/backups";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import {
   clusters as clustersTable,
   failoverBundlePushes,
@@ -343,6 +344,28 @@ test("the leader is told which member's agent cannot restore a backup, and Activ
     (await deploSaid()).filter((m) => /too old/.test(m)),
     [
       "The server agent on server-3 is too old to restore a database when another server in cluster eu stops. Deplo updates it on its own.",
+    ],
+  );
+});
+
+test("the leader is told which member's agent stops its work on the short fence it is given", async () => {
+  const at = (id: string, agentVersion: string) =>
+    db
+      .update(serversTable)
+      .set({ agentVersion })
+      .where(eq(serversTable.id, id));
+  await at("srv_2", "0.5.3-canary.5");
+  await at("srv_3", "0.5.3-canary.4");
+  const cluster = await eu();
+  forgetLeaderRoster();
+  await pushLeaderRoster((await getClusterById(cluster.id))!);
+
+  const members = leader.rosters.at(-1)!.members;
+  assert.deepEqual(
+    members.map((m) => [m.id, m.shortFence ?? false]),
+    [
+      ["srv_2", true],
+      ["srv_3", false],
     ],
   );
 });

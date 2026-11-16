@@ -33,6 +33,12 @@ import { listStandbys } from "./placement";
 import { leaderHost } from "./host";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
+import { getServerById } from "../servers/roster";
+import {
+  AGENT_SHORT_FENCE_VERSION,
+  reportedAgentVersion,
+  versionAtLeast,
+} from "../../version";
 
 // What the control plane tells its cluster's leader, and what it reads back to reconcile (spec #176).
 // Internal: the callers hold the gates.
@@ -230,6 +236,7 @@ export async function pushLeaderRoster(
     // A member that has not enrolled has no certificate to be reached by yet.
     if (!fingerprint) continue;
     const f = facts.get(id);
+    const agent = reportedAgentVersion((await getServerById(id)) ?? {});
     const tooOld = !(await memberTakesOver(id));
     if (tooOld) await nameOldAgent(cluster, id);
     const noRestore = !tooOld && !(await memberRestores(id));
@@ -248,6 +255,10 @@ export async function pushLeaderRoster(
       ...(tooOld ? { noFailover: true } : {}),
       // Nor a database to an agent that would start it empty.
       ...(noRestore ? { noRestore: true } : {}),
+      // A leader that takes over waits less for a dead member whose agent stops its work on the short fence.
+      ...(agent && versionAtLeast(agent, AGENT_SHORT_FENCE_VERSION)
+        ? { shortFence: true }
+        : {}),
     });
   }
   const placement = await placementEntries(cluster.id);
