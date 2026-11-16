@@ -23,7 +23,7 @@ RUN bun install --frozen-lockfile
 # class of "bun crashed on our tree" from the release path. Keep the deps stage on
 # bun - bun.lock is the lockfile, and its node_modules layout is npm-compatible.
 # Same debian/glibc family as the bun image, so sharp's prebuild still resolves.
-FROM node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68 AS builder
+FROM node:26.13.1-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -51,7 +51,7 @@ RUN node scripts/third-party-notices.mjs && node node_modules/next/dist/bin/next
 RUN node scripts/build-recover.mjs
 
 # --- Runtime: minimal standalone server ---
-FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS runner
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 # A larger young generation halves scavenge GC on a busy panel (measured 4% of CPU).
