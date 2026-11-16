@@ -1,6 +1,7 @@
 import "server-only";
 
 import { domainTlsConfig, domainScheme } from "../../deploy/domains";
+import { ANSWER_ENTRYPOINT } from "../../deploy/answer";
 import { isRoutableDomain } from "../../deploy/cloudflare";
 import { loadDomainsForApp } from "../app-graph-load";
 import type {
@@ -56,10 +57,14 @@ export function toRoutableDomain(
   d: Domain,
   siblings: Domain[] = [],
 ): RoutableDomain {
+  const tls = domainTlsConfig(d);
+  // Passed on by every server of the cluster, it reaches the App's proxy on the internal entrypoint (ADR-0048).
+  if (d.answersEverywhere && tls.tls)
+    tls.entrypoint = `${tls.entrypoint},${ANSWER_ENTRYPOINT}`;
   return {
     name: d.name,
     port: d.port ?? null,
-    ...domainTlsConfig(d),
+    ...tls,
     middlewares: d.middlewares ?? [],
     securityHeaders: d.securityHeaders === true,
     corsOrigins: d.corsOrigins ?? [],

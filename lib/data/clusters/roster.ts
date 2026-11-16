@@ -45,6 +45,8 @@ function assemble(r: Row): Cluster {
     replicationEnabled: r.replicationEnabled,
     loadBalancingEnabled: r.loadBalancingEnabled,
     loadBalancingMode: cleanModeOrNearest(r.loadBalancingMode),
+    answerMaxConnections: r.answerMaxConnections,
+    answerMaxWaiting: r.answerMaxWaiting,
     createdAt: r.createdAt,
   };
 }

@@ -40,6 +40,13 @@ export const clusters = pgTable("clusters", {
     .default(false),
   // "nearest" | "most_available"
   loadBalancingMode: text("load_balancing_mode").notNull().default("nearest"),
+  // The next answer slot to hand out (ADR-0048): slots only grow, so a port never names two Apps in a row.
+  answerSlotNext: integer("answer_slot_next").notNull().default(0),
+  // Per server: the passed-on connections its agent carries at once (a quarter may wait), and how many wait per App.
+  answerMaxConnections: integer("answer_max_connections")
+    .notNull()
+    .default(2048),
+  answerMaxWaiting: integer("answer_max_waiting").notNull().default(128),
   createdAt: isoTimestamptz("created_at").notNull(),
 });
 

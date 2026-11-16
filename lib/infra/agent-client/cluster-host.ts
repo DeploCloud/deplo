@@ -10,6 +10,7 @@ import {
 } from "../../version";
 import { connectAgent } from "./connect";
 import type {
+  ClusterAnswerRefusal,
   AgentConnection,
   ClusterForwarderTable,
   ClusterHostStatus,
@@ -36,6 +37,7 @@ import {
   CLUSTER_FAILOVER_CAPABILITY,
   CLUSTER_FAILOVER_RESTORE_CAPABILITY,
   CLUSTER_FORWARDERS_CAPABILITY,
+  CLUSTER_ANSWERS_CAPABILITY,
   CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
@@ -354,7 +356,11 @@ export async function setClusterMember(
 export async function setClusterForwarders(
   serverId: string,
   table: ClusterForwarderTable,
-): Promise<{ held: number; served: number }> {
+): Promise<{
+  held: number;
+  served: number;
+  answerRefusals: ClusterAnswerRefusal[];
+}> {
   const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
@@ -366,11 +372,22 @@ export async function setClusterForwarders(
     const services = hello.capabilities.includes(
       CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
     );
+    // An older agent would drop the answers without a word: it is never sent them.
+    const answers = hello.capabilities.includes(CLUSTER_ANSWERS_CAPABILITY)
+      ? {}
+      : {
+          answers: [],
+          serveAnswers: [],
+          answerPort: 0,
+          answerMaxConns: 0,
+          answerMaxWaiting: 0,
+        };
     return await conn.setClusterForwarders(
       services
-        ? table
+        ? { ...table, ...answers }
         : {
             ...table,
+            ...answers,
             hold: table.hold.filter((h) => !h.service),
             serve: table.serve.filter((s) => !s.service),
           },

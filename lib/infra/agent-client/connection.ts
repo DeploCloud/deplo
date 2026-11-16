@@ -111,6 +111,29 @@ export interface ClusterForwarderTable {
     sourceFingerprints: string[];
     service: string;
   }[];
+  /** The Apps whose domains answer on every server, and how this member's proxy passes them on (ADR-0048). */
+  answers?: {
+    appId: string;
+    routes: string;
+    tlsPort: number;
+    webPort: number;
+  }[];
+  /** The Apps whose passed-on domains this member answers while it runs them. */
+  serveAnswers?: string[];
+  /** The proxy's internal entrypoint, on its own loopback. */
+  answerPort?: number;
+  /** Per server: passed-on connections carried at once (a quarter may wait), and how many wait for one App. */
+  answerMaxConns?: number;
+  answerMaxWaiting?: number;
+}
+
+/** Connections a member turned away since its last table: `appId` empty, past its own cap; set, past that App's. */
+export interface ClusterAnswerRefusal {
+  appId: string;
+  count: number;
+  firstUnixMs: number;
+  lastUnixMs: number;
+  cap: number;
 }
 
 export interface AgentProbeHttpRequest {
@@ -345,9 +368,11 @@ export interface AgentConnection {
     keep: number,
   ): Promise<{ alreadyPresent: boolean; bytes: number; pruned: string[] }>;
   // Needs `cluster.forwarders` (#200): the names this member holds and the streams it serves; the full set.
-  setClusterForwarders(
-    table: ClusterForwarderTable,
-  ): Promise<{ held: number; served: number }>;
+  setClusterForwarders(table: ClusterForwarderTable): Promise<{
+    held: number;
+    served: number;
+    answerRefusals: ClusterAnswerRefusal[];
+  }>;
   // Needs `cluster.network` (ADR-0047): this server's place on its cluster's network; no peers takes it off.
   setClusterNetwork(table: ClusterNetworkTable): Promise<ClusterNetworkReport>;
   // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.

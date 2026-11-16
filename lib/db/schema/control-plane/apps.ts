@@ -43,6 +43,8 @@ export const apps = pgTable(
     clusterId: text("cluster_id").references(() => clusters.id, {
       onDelete: "set null",
     }),
+    // The App's pair of ports on each server's answer forwarder, once a domain of it answers everywhere (ADR-0048).
+    answerSlot: integer("answer_slot"),
     migrateFromServerId: text("migrate_from_server_id").references(
       () => servers.id,
       { onDelete: "set null" },

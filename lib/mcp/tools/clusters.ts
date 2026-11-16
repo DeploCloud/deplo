@@ -9,6 +9,8 @@ const CLUSTER_FIELDS = /* GraphQL */ `
   replicationEnabled
   loadBalancingEnabled
   loadBalancingMode
+  answerMaxConnections
+  answerMaxWaiting
   leaderEpoch
   createdAt
 `;
@@ -104,6 +106,38 @@ export const CLUSTERS: McpToolDef[] = [
         $mode: ClusterLoadBalancingMode
       ) {
         setClusterLoadBalancing(id: $id, enabled: $enabled, mode: $mode) {
+          ${CLUSTER_FIELDS}
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_cluster_answer_limits",
+    title:
+      "Set a cluster's connection limits for domains that answer on every server",
+    description:
+      "Per server: visitor connections it carries at once for domains that answer on every server (64-65536, up to 64 KB of memory each, a quarter of the smallest server's at most), and how many wait per App.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({
+      id: z
+        .string()
+        .describe("The cluster's id, as returned by list_clusters."),
+      maxConnections: z.number().int().min(64).max(65536),
+      maxWaiting: z.number().int().min(1),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetClusterAnswerLimits(
+        $id: String!
+        $maxConnections: Int!
+        $maxWaiting: Int!
+      ) {
+        setClusterAnswerLimits(
+          id: $id
+          maxConnections: $maxConnections
+          maxWaiting: $maxWaiting
+        ) {
           ${CLUSTER_FIELDS}
         }
       }

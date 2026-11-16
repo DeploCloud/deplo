@@ -1150,6 +1150,16 @@ type Cluster {
   True (the default) when every team may use this cluster. False restricts it to `teams`.
   """
   allTeams: Boolean
+
+  """
+  Per server, how many visitor connections to the cluster's domains that answer on every server it carries at once, waiting or passed on; a quarter of them may wait. Past it a visitor is turned away and Activity says so.
+  """
+  answerMaxConnections: Int
+
+  """
+  Per server, how many visitors wait at once for one App that is not ready yet (a failover under way). Past it a visitor is turned away and Activity says so.
+  """
+  answerMaxWaiting: Int
   createdAt: String
 
   """
@@ -5306,6 +5316,11 @@ type Mutation {
   Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.
   """
   setCertificateEmail(email: String!): [CertificateAccount!]
+
+  """
+  Set how many visitor connections each server of the cluster carries at once for its domains that answer on every server (64 to 65536; a quarter of them may wait), and how many wait for one App (1 to a quarter of the connections). Each connection costs a server up to 64 KB of memory, so 65536 is up to 4 GB: no more than a quarter of the smallest server's memory is accepted. A busy site with long-lived connections needs more.
+  """
+  setClusterAnswerLimits(id: String!, maxConnections: Int!, maxWaiting: Int!): Cluster
 
   """
   Turn a cluster's failover on or off. Off, its leader holds nothing to restart elsewhere, so a server that stops keeps its Apps and databases until it comes back.

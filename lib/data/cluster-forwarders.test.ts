@@ -2,7 +2,7 @@ import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -43,7 +43,26 @@ import {
   syncNameForwarders,
 } from "./clusters/forwarders";
 import { databaseRelayNotice } from "./clusters/relay-notice";
-import { CLUSTER_FORWARDERS_SERVICES_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_ANSWERS_CAPABILITY,
+  CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import {
+  __forgetAnswerProxies,
+  answerAppsRefusal,
+  listClusterAnswers,
+} from "./clusters/answers";
+import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
+import { MAX_ANSWER_SLOT, answerPorts } from "../deploy/answer";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
+import { setClusterAnswerLimits } from "./clusters/manage";
+import { syncAnsweringClusters } from "./clusters/forwarders";
+import { hasAnswerSupport } from "../deploy/traefik-stack";
+import {
+  INSTALLED_WITH_PANEL,
+  parse,
+} from "../deploy/traefik-stack-test-helpers";
 import { invalidateFrozen } from "./deplo-move/freeze";
 
 let db: TestDb;
@@ -553,4 +572,369 @@ test("a database with no Environment counts the team's Apps that have none eithe
 test("a database outside a cluster has no relay to mention", async () => {
   await seedDatabase(db, { id: "solo" });
   assert.equal(await asAdmin(() => databaseRelayNotice("solo")), null);
+});
+
+// ADR-0048: a domain that answers on every server of its cluster.
+async function domainOf(
+  appId: string,
+  name: string,
+  over: Partial<typeof domainsTable.$inferInsert> = {},
+) {
+  await db.insert(domainsTable).values({
+    id: `dom_${name}`,
+    appId,
+    name,
+    status: "valid",
+    isPrimary: false,
+    ssl: true,
+    certProvider: "letsencrypt",
+    answersEverywhere: true,
+    createdAt: T0,
+    ...over,
+  });
+}
+
+/** These members' agents carry answers; every member has Deplo's proxy, so a change would show. */
+function proxies(...capable: string[]) {
+  __forgetAnswerProxies();
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    hosts[id]!.proxy.yaml = INSTALLED_WITH_PANEL;
+    if (capable.includes(id))
+      hosts[id]!.capabilities.push(CLUSTER_ANSWERS_CAPABILITY);
+  }
+}
+
+test("a cluster with no domain that answers everywhere hands no answer and changes no proxy", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com", { answersEverywhere: false });
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    assert.deepEqual(last(id).answers, [], id);
+    assert.equal(hosts[id]!.proxy.applied, 0, id);
+    assert.equal(hosts[id]!.proxy.yaml, INSTALLED_WITH_PANEL, id);
+  }
+});
+
+test("a domain that answers everywhere is passed on by every member, and each proxy changes once", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    const t = last(id);
+    assert.deepEqual(
+      t.answers?.map((e) => [e.appId, e.tlsPort, e.webPort]),
+      [["shop", 20000, 20001]],
+      id,
+    );
+    const routes = JSON.parse(t.answers![0]!.routes);
+    assert.equal(
+      routes.tcp.routers["deplo-answer-shop"].rule,
+      "HostSNI(`shop.example.com`)",
+    );
+    assert.deepEqual(t.serveAnswers, ["shop"]);
+    assert.equal(t.answerPort, 8443);
+    assert.equal(hosts[id]!.proxy.applied, 1, id);
+    assert.ok(hasAnswerSupport(hosts[id]!.proxy.yaml), id);
+  }
+  // Read again, a proxy that has it is not restarted.
+  __forgetAnswerProxies();
+  await syncNameForwarders(c.id);
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.equal(hosts[id]!.proxy.applied, 1, id);
+});
+
+test("a member whose agent cannot carry it is handed no answer, and its proxy is left alone", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+
+  await syncNameForwarders(c.id);
+
+  assert.deepEqual(last("srv_4").answers, []);
+  assert.deepEqual(last("srv_4").serveAnswers, []);
+  assert.equal(hosts.srv_4!.proxy.applied, 0);
+  assert.equal(last("srv_2").answers?.length, 1);
+});
+
+test("only an HTTPS domain off the App's tunnel is passed on", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "plain.example.com", { certProvider: "none" });
+  await domainOf("shop", "tunnel.example.com", { tunnel: true });
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    assert.deepEqual(last(id).answers, [], id);
+    assert.equal(hosts[id]!.proxy.applied, 0, id);
+  }
+});
+
+test("an App keeps its ports when another one joins", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  // An App whose id sorts first comes later: the one already passed on keeps its ports.
+  await place(c.id, "aaa", "environ_a1", "srv_2");
+  await domainOf("aaa", "aaa.example.com");
+  await syncNameForwarders(c.id);
+
+  assert.deepEqual(
+    last("srv_4").answers?.map((e) => [e.appId, e.tlsPort]),
+    [
+      ["shop", 20000],
+      ["aaa", 20002],
+    ],
+  );
+});
+
+test("turning the last one off takes the change out of every proxy, as it was", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: false })
+    .where(eq(domainsTable.appId, "shop"));
+
+  await syncNameForwarders(c.id);
+
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    assert.deepEqual(last(id).answers, [], id);
+    assert.equal(hosts[id]!.proxy.applied, 2, id);
+    assert.deepEqual(
+      parse(hosts[id]!.proxy.yaml),
+      parse(INSTALLED_WITH_PANEL),
+      id,
+    );
+  }
+});
+
+const tlsPorts = (id: string) =>
+  last(id).answers?.map((e) => [e.appId, e.tlsPort]);
+
+// A visitor of an App that just stopped answering everywhere must never reach the one that just started.
+test("a slot an App let go is never handed to the next one", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: false })
+    .where(eq(domainsTable.appId, "shop"));
+  await place(c.id, "blog", "environ_a1", "srv_2");
+  await domainOf("blog", "blog.example.com");
+  await syncNameForwarders(c.id);
+  assert.deepEqual(tlsPorts("srv_4"), [["blog", 20002]]);
+
+  // Nor the slot of an App that is gone.
+  await db.delete(appsTable).where(eq(appsTable.id, "blog"));
+  await place(c.id, "wiki", "environ_a1", "srv_2");
+  await domainOf("wiki", "wiki.example.com");
+  await syncNameForwarders(c.id);
+  assert.deepEqual(tlsPorts("srv_4"), [["wiki", 20004]]);
+
+  // An App turned on again gets its own slot back.
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: true })
+    .where(eq(domainsTable.appId, "shop"));
+  await syncNameForwarders(c.id);
+  assert.deepEqual(tlsPorts("srv_4"), [
+    ["shop", 20000],
+    ["wiki", 20004],
+  ]);
+});
+
+test("slots start again from the lowest free one only once they run out", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await db
+    .update(clustersTable)
+    .set({ answerSlotNext: MAX_ANSWER_SLOT })
+    .where(eq(clustersTable.id, c.id));
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  await place(c.id, "blog", "environ_a1", "srv_2");
+  await domainOf("blog", "blog.example.com");
+  await syncNameForwarders(c.id);
+
+  assert.deepEqual(tlsPorts("srv_4"), [
+    ["blog", 20000],
+    ["shop", answerPorts(MAX_ANSWER_SLOT).tls],
+  ]);
+});
+
+// A server agent refuses a whole table past its limit: the Apps past it wait, the others keep answering.
+test("past the limit one more App is refused, and the table never carries more", async () => {
+  const c = await cluster();
+  for (const [id, name] of [
+    ["shop", "shop.example.com"],
+    ["blog", "blog.example.com"],
+    ["wiki", "wiki.example.com"],
+  ] as const) {
+    await place(c.id, id, "environ_a1", "srv_3");
+    await domainOf(id, name, { answersEverywhere: id !== "wiki" });
+  }
+
+  assert.match(
+    (await answerAppsRefusal(c.id, "wiki", 2)) ?? "",
+    /already has 2 Apps that answer on every server/,
+  );
+  assert.equal(await answerAppsRefusal(c.id, "shop", 2), null);
+  assert.equal(await answerAppsRefusal(c.id, "wiki", 3), null);
+
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: true })
+    .where(eq(domainsTable.appId, "wiki"));
+  const first = await listClusterAnswers(c.id, 2);
+  assert.deepEqual(
+    first.map((a) => a.appId),
+    ["blog", "shop"],
+  );
+});
+
+test("each server is handed the cluster's connection limits, which only an admin sets, within range", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  assert.deepEqual(
+    [last("srv_2").answerMaxConns, last("srv_2").answerMaxWaiting],
+    [2048, 128],
+  );
+
+  await assert.rejects(
+    asAdmin(() => setClusterAnswerLimits(c.id, 32, 8)),
+    /between 64 and 65536 connections/,
+  );
+  await assert.rejects(
+    asAdmin(() => setClusterAnswerLimits(c.id, 4096, 2000)),
+    /Between 1 and 1024 visitors can wait/,
+  );
+  await assert.rejects(asTeamB(() => setClusterAnswerLimits(c.id, 8192, 256)));
+  const set = await asAdmin(() => setClusterAnswerLimits(c.id, 8192, 512));
+  assert.deepEqual(
+    [set.answerMaxConnections, set.answerMaxWaiting],
+    [8192, 512],
+  );
+  await syncNameForwarders(c.id);
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.deepEqual(
+      [last(id).answerMaxConns, last(id).answerMaxWaiting],
+      [8192, 512],
+      id,
+    );
+});
+
+test("what a server turned away reaches Activity: an App's wait to its team, the server's cap to the cluster's", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  const at = Date.parse("2026-11-16T14:02:00.000Z");
+  hosts.srv_2!.answerRefusals = [
+    {
+      appId: "",
+      count: 37,
+      firstUnixMs: at,
+      lastUnixMs: at + 180_000,
+      cap: 2048,
+    },
+    {
+      appId: "shop",
+      count: 12,
+      firstUnixMs: at,
+      lastUnixMs: at + 60_000,
+      cap: 128,
+    },
+  ];
+
+  await syncNameForwarders(c.id);
+
+  const rows = await db
+    .select({
+      message: activitiesTable.message,
+      teamId: activitiesTable.teamId,
+      appId: activitiesTable.appId,
+    })
+    .from(activitiesTable);
+  const server = rows.find((r) =>
+    r.message.includes("to domains that answer on every server"),
+  );
+  assert.match(
+    server?.message ?? "",
+    /turned away 37 visitor connections .* between 14:02 and 14:05 UTC: it carries at most 2048 at once/,
+  );
+  assert.equal(server?.teamId, TEAM_A);
+  const app = rows.find((r) => r.appId === "shop");
+  assert.match(
+    app?.message ?? "",
+    /turned away 12 visitor connections to shop .*at most 128 visitors wait for it at once/,
+  );
+  assert.equal(app?.teamId, TEAM_A);
+  // Reported once: the agent forgot them with that table.
+  await syncNameForwarders(c.id);
+  const again = await db
+    .select({ id: activitiesTable.id })
+    .from(activitiesTable);
+  assert.equal(again.length, rows.length);
+});
+
+test("every 2 minutes only the clusters that pass domains on are asked", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com", { answersEverywhere: false });
+  await syncAnsweringClusters();
+  assert.equal(hosts.srv_2!.forwarders.length, 0);
+
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: true })
+    .where(eq(domainsTable.appId, "shop"));
+  await syncAnsweringClusters();
+  assert.equal(hosts.srv_2!.forwarders.length, 1);
+});
+
+test("the smallest server's memory bounds the cap, and the cost is said in Activity", async () => {
+  const c = await cluster();
+  await db
+    .update(serversTable)
+    .set({ memoryMb: 512 })
+    .where(eq(serversTable.id, "srv_3"));
+  await assert.rejects(
+    asAdmin(() => setClusterAnswerLimits(c.id, 4096, 128)),
+    /has 512 MB of memory: at most 2048 connections fit in a quarter of it, at up to 64 KB each/,
+  );
+  await asAdmin(() => setClusterAnswerLimits(c.id, 2048, 256));
+  const [entry] = await db
+    .select({ message: activitiesTable.message })
+    .from(activitiesTable)
+    .where(
+      sql`${activitiesTable.message} like '%visitor connections at once%'`,
+    );
+  assert.match(
+    entry?.message ?? "",
+    /up to 2048 visitor connections at once .*\(up to 128 MB of its memory\)/,
+  );
 });
