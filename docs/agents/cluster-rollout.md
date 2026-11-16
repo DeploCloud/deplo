@@ -273,7 +273,7 @@ the internal entrypoint `answer` on `127.0.0.1:8443` trusting PROXY from `127.0.
 answer:<id>[ <port>]` (port 1 a probe that connects no one), the caps and what an agent turned away. **Both repos keep
 one reference file**, `lib/deploy/answer-routes.golden.json` here and `internal/server/testdata/answer-routes.golden.json`
 there: the panel's test renders it with the panel's code, the agent's parses it with the agent's checks, and each
-compares its copy with the other's when both checkouts sit side by side. Change a part and the file changes in both
+compares its copy with the other's when both checkouts sit side by side. **Each CI checks out the other repo**: the panel's `Answer contract` job requires its reference to be the agent's on `main` and to pass the agent release the panel pins (what its servers run); the agent's `panel-contract` job requires what the panel renders today to pass this agent's checks, and notes a difference while the panel catches up. Change a part and the file changes in both
 repos in the same step, the agent first. It is gated on `cluster.forwarders.answers`, so an agent without it gets no
 answers and its proxy is never changed.
 
