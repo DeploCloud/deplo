@@ -40,6 +40,7 @@ import {
 import { appServerAddresses, checkDomainDns } from "../domains/dns-check";
 import { certProviderForDnsWithinQuota } from "../domains/letsencrypt-quota";
 import { withKeyedLock } from "../keyed-mutex";
+import { getServerById } from "../servers/roster";
 import { messageOf } from "../../utils";
 
 const ACTOR = "Deplo";
@@ -641,4 +642,28 @@ export async function clusterAddressNote(app: {
   const viewer = await getCurrentUser();
   const covered = await coveredDomains(app, viewer?.id ?? "");
   return covered.length > 0 ? null : ADDRESS_CHANGES_NOTE;
+}
+
+/**
+ * A cluster App's own domains that stay pointed at its server through a failover, by id, with that server's name:
+ * no tunnel serves them, so they answer again only once it is back. The generated address follows on its own.
+ */
+export async function domainsLeftOnServer(app: {
+  id: string;
+  teamId: string;
+  clusterId?: string | null;
+  serverId?: string | null;
+}): Promise<Record<string, string>> {
+  if (!app.clusterId || !app.serverId) return {};
+  const viewer = await getCurrentUser();
+  const follows = new Set([
+    ...(await heldDomains(app.id)).map((d) => d.id),
+    ...(await coveredDomains(app, viewer?.id ?? "")).map((d) => d.id),
+  ]);
+  const server = (await getServerById(app.serverId))?.name ?? "its server";
+  const out: Record<string, string> = {};
+  for (const d of await loadDomainsForApp(app.id))
+    if (d.source !== "auto" && !d.tunnel && !follows.has(d.id))
+      out[d.id] = server;
+  return out;
 }

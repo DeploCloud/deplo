@@ -48,7 +48,11 @@ import { deleteCluster } from "./clusters/dissolve";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { ADDRESS_CHANGES_NOTE } from "../clusters/address-note";
-import { clusterAddressNote, reconcileAppTunnels } from "./clusters/app-tunnel";
+import {
+  clusterAddressNote,
+  domainsLeftOnServer,
+  reconcileAppTunnels,
+} from "./clusters/app-tunnel";
 import { flushFailoverBundles, type FailoverBundle } from "./clusters/bundles";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { __resetDeploymentLogBuffers } from "./deployment-logs";
@@ -675,6 +679,40 @@ test("the address warning shows until a Cloudflare domain covers the App, before
   await deployOn(app);
   await reconcileAppTunnels();
   assert.equal(await note(), null);
+});
+
+test("each domain of a cluster App that stays with its server says which one, until a Cloudflare zone covers it", async () => {
+  const cluster = await eu();
+  const app = await soloApp();
+  await withDomain(app.id, "web.acme.dev");
+  await withDomain(app.id);
+  const row = async () =>
+    (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0];
+  const left = async () => {
+    const a = await row();
+    const named = await asAdmin(() => domainsLeftOnServer(a));
+    const ids = new Map(
+      (await asAdmin(() => listDomains(app.id))).map((d) => [d.id, d.name]),
+    );
+    return Object.entries(named)
+      .map(([id, server]) => [ids.get(id), server])
+      .sort();
+  };
+  assert.deepEqual(await left(), [], "off a cluster nothing is said");
+
+  await asAdmin(() => moveAppToCluster(app.id, cluster.id));
+  await deployOn(app);
+  const [server] = await db
+    .select({ name: serversTable.name })
+    .from(serversTable)
+    .where(eq(serversTable.id, (await row()).serverId!));
+  assert.deepEqual(await left(), [
+    [HOST, server.name],
+    ["web.acme.dev", server.name],
+  ]);
+
+  await connectCloudflare();
+  assert.deepEqual(await left(), [["web.acme.dev", server.name]]);
 });
 
 test("a domain in another Cloudflare account stays on its address, and Activity says so", async () => {
