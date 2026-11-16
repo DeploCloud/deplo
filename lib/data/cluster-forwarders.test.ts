@@ -53,7 +53,10 @@ import {
   answerAppsRefusal,
   listClusterAnswers,
 } from "./clusters/answers";
-import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
+import {
+  clusterMembers as clusterMembersTable,
+  clusters as clustersTable,
+} from "../db/schema/control-plane/clusters";
 import { MAX_ANSWER_SLOT, answerPorts } from "../deploy/answer";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { setClusterAnswerLimits } from "./clusters/manage";
@@ -989,4 +992,76 @@ test("a server's own memory and its waiting cap are said as such", async () => {
       /2 visitor connections .*it holds at most 512 waiting at once/.test(m),
     ),
   );
+});
+
+// Decided from each proxy, not from what Deplo remembers: each way a cluster stops needing the change.
+async function answeringCluster() {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncAnsweringClusters();
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.ok(hasAnswerSupport(hosts[id]!.proxy.yaml), id);
+  return c;
+}
+
+const putBack = (...ids: string[]) => {
+  for (const id of ids) {
+    assert.ok(
+      !hasAnswerSupport(hosts[id]!.proxy.yaml),
+      `${id} kept the change`,
+    );
+    assert.deepEqual(
+      parse(hosts[id]!.proxy.yaml),
+      parse(INSTALLED_WITH_PANEL),
+      id,
+    );
+  }
+};
+
+test("the last domain gone, even across a restart of Deplo, every proxy loses the change", async () => {
+  await answeringCluster();
+  // A restart between two passes: Deplo remembers nothing of the proxies.
+  __forgetAnswerProxies();
+  await db.delete(domainsTable).where(eq(domainsTable.appId, "shop"));
+  await syncAnsweringClusters();
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.deepEqual(last(id).answers, [], id);
+  putBack("srv_2", "srv_3", "srv_4");
+  // Then it is left alone.
+  const tables = hosts.srv_2!.forwarders.length;
+  await syncAnsweringClusters();
+  assert.equal(hosts.srv_2!.forwarders.length, tables);
+});
+
+test("a cluster deleted while its servers kept the change: each server loses it alone", async () => {
+  const c = await answeringCluster();
+  __forgetAnswerProxies();
+  await db.delete(clustersTable).where(eq(clustersTable.id, c.id));
+  await syncAnsweringClusters();
+  putBack("srv_2", "srv_3", "srv_4");
+});
+
+test("a server taken out of the cluster loses the change, and the others keep it", async () => {
+  await answeringCluster();
+  await db
+    .delete(clusterMembersTable)
+    .where(eq(clusterMembersTable.serverId, "srv_2"));
+  await syncAnsweringClusters();
+  putBack("srv_2");
+  for (const id of ["srv_3", "srv_4"])
+    assert.ok(hasAnswerSupport(hosts[id]!.proxy.yaml), id);
+});
+
+test("an App moved out of the cluster takes the change off its servers with it", async () => {
+  await answeringCluster();
+  await db
+    .update(appsTable)
+    .set({ clusterId: null })
+    .where(eq(appsTable.id, "shop"));
+  await syncAnsweringClusters();
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.deepEqual(last(id).answers, [], id);
+  putBack("srv_2", "srv_3", "srv_4");
 });

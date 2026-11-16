@@ -241,6 +241,24 @@ export async function syncAnswerProxy(
 }
 
 /**
+ * Whether this server's proxy has the change now, read from its stack file (kept an hour, like what Deplo last set).
+ * A server that cannot be read says no, and is read again next time.
+ */
+export async function answerSupportOn(serverId: string): Promise<boolean> {
+  const seen = known().get(serverId);
+  if (seen && Date.now() - seen.at < KNOWN_FOR_MS) return seen.on;
+  const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
+  try {
+    const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
+    const on = Boolean(yaml) && hasAnswerSupport(yaml);
+    known().set(serverId, { on, at: Date.now() });
+    return on;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Every member's proxy has the change while the cluster has an App that answers everywhere, and only once that
  * member's agent can carry it; none has it otherwise. One server at a time, as each change restarts its proxy.
  */
