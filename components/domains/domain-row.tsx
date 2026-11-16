@@ -71,11 +71,16 @@ const ROW =
 export function DomainRows({
   domains,
   strays = {},
+  staysOn = {},
   siblings = domains,
   ...rest
-}: { domains: Row[]; strays?: Record<string, StrayRecord> } & Omit<
+}: {
+  domains: Row[];
+  strays?: Record<string, StrayRecord>;
+  staysOn?: Record<string, string>;
+} & Omit<
   React.ComponentProps<typeof DomainRow>,
-  "domain" | "stray"
+  "domain" | "stray" | "staysOn"
 >) {
   return (
     <OptimisticList>
@@ -85,6 +90,7 @@ export function DomainRows({
           domain={d}
           siblings={siblings}
           stray={strays[d.id] ?? null}
+          staysOn={staysOn[d.id] ?? null}
           {...rest}
         />
       ))}
@@ -112,9 +118,12 @@ export function DomainRow({
   serverIpv6,
   suggestedDomain,
   stray,
+  staysOn,
   siblings = [],
 }: {
   domain: Row;
+  /** The server a cluster App's domain stays pointed at through a failover; null when it follows the App. */
+  staysOn?: string | null;
   siblings?: { name: string; redirectTo?: string | null }[];
   compose?: string | null;
   isCompose: boolean;
@@ -510,6 +519,18 @@ export function DomainRow({
               )}
             </div>
           )}
+        {staysOn && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+            <span>
+              Answers only through{" "}
+              <span className="font-medium text-foreground">{staysOn}</span>: if
+              it stops, this domain stops answering until it is back, even when
+              the App moves.
+            </span>
+            <DocsLink topic="clusters.addresses" />
+          </div>
+        )}
       </TableCell>
       {showContainer && (
         <TableCell className="w-56 max-md:basis-full">
