@@ -22,11 +22,7 @@ import { portFor } from "../../deploy/ports";
 import { setClusterForwarders } from "../../infra/agent-client/cluster-host";
 import { AgentClusterForwardersUnsupportedError } from "../../infra/agent-client/errors";
 import { instanceFrozen } from "../deplo-move/freeze";
-import {
-  entranceTable,
-  listClusterEntrances,
-  syncEntranceProxies,
-} from "./entrances";
+import { answerTable, listClusterAnswers, syncAnswerProxies } from "./answers";
 import { listStandbys, listWorkloadPlacements } from "./placement";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
@@ -150,8 +146,8 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
   const members = await clusterMemberServerIds(clusterId);
   const plan = await planClusterForwarding(clusterId);
   // Every member answers for every App with a domain that answers everywhere (ADR-0048).
-  const entrances = await listClusterEntrances(clusterId);
-  const passOn = entranceTable(entrances);
+  const answers = await listClusterAnswers(clusterId);
+  const passOn = answerTable(answers);
   const roster: { serverId: string; fingerprint: string }[] = [];
   for (const serverId of members) {
     const fingerprint = await fingerprintOf(serverId);
@@ -172,7 +168,7 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
       // A member with nothing to run and an agent too old to take the table is not a problem.
       if (
         !mine?.involved &&
-        entrances.length === 0 &&
+        answers.length === 0 &&
         e instanceof AgentClusterForwardersUnsupportedError
       )
         continue;
@@ -182,7 +178,7 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
     }
   }
   // After the tables: a proxy that mounts the routes file finds it written.
-  await syncEntranceProxies(clusterId, entrances.length > 0);
+  await syncAnswerProxies(clusterId, answers.length > 0);
 }
 
 /** After a deploy or a placement change: off the caller's lane, and it never throws. */

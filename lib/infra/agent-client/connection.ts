@@ -112,16 +112,16 @@ export interface ClusterForwarderTable {
     service: string;
   }[];
   /** The Apps whose domains answer on every server, and how this member's proxy passes them on (ADR-0048). */
-  entrances?: {
+  answers?: {
     appId: string;
     routes: string;
     tlsPort: number;
     webPort: number;
   }[];
   /** The Apps whose passed-on domains this member answers while it runs them. */
-  serveEntrances?: string[];
+  serveAnswers?: string[];
   /** The proxy's internal entrypoint, on its own loopback. */
-  entrancePort?: number;
+  answerPort?: number;
 }
 
 export interface AgentProbeHttpRequest {

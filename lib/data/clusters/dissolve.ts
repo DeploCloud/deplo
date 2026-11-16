@@ -55,7 +55,7 @@ import {
   getClusterById,
   requireClusterAdmin,
 } from "./roster";
-import { syncEntranceProxy } from "./entrances";
+import { syncAnswerProxy } from "./answers";
 import { stopClusterWatch } from "./watch-scheduler";
 import { messageOf } from "../../utils";
 
@@ -372,7 +372,7 @@ async function leave(clusterId: string, serverIds: string[]): Promise<void> {
         .set({ clusterLeavePendingAt: null })
         .where(eq(serversTable.id, id));
       // Its proxy no longer passes the cluster's domains on (ADR-0048); one that never did is not touched.
-      await syncEntranceProxy(id, false).catch((e) =>
+      await syncAnswerProxy(id, false).catch((e) =>
         warn(
           clusterId,
           `${id}'s proxy kept the cluster's domains: ${message(e)}`,

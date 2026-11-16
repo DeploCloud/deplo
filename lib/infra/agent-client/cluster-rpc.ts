@@ -107,9 +107,9 @@ export function clusterRpc(
         client.setClusterForwarders.bind(client),
         {
           ...table,
-          entrances: table.entrances ?? [],
-          serveEntrances: table.serveEntrances ?? [],
-          entrancePort: table.entrancePort ?? 0,
+          answers: table.answers ?? [],
+          serveAnswers: table.serveAnswers ?? [],
+          answerPort: table.answerPort ?? 0,
         },
         CLUSTER_CALL_TIMEOUT_MS,
       );

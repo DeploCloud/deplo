@@ -40,6 +40,8 @@ export const clusters = pgTable("clusters", {
     .default(false),
   // "nearest" | "most_available"
   loadBalancingMode: text("load_balancing_mode").notNull().default("nearest"),
+  // The next answer slot to hand out (ADR-0048): slots only grow, so a port never names two Apps in a row.
+  answerSlotNext: integer("answer_slot_next").notNull().default(0),
   createdAt: isoTimestamptz("created_at").notNull(),
 });
 

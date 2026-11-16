@@ -38,13 +38,13 @@ test("a domain that does not answer everywhere keeps exactly the routers it had"
       "traefik.http.routers.deplo-shop.tls.certresolver=letsencrypt",
     ),
   );
-  assert.ok(!labels.some((l) => l.includes("entrance")));
+  assert.ok(!labels.some((l) => l.includes("answer")));
 });
 
 test("an HTTPS domain that answers everywhere is also routed on the internal entrypoint, with its certificate", () => {
   const labels = labelsOf(domain({ answersEverywhere: true }));
   const eps = labels.find((l) => /\.entrypoints=/.test(l));
-  assert.equal(eps?.split("=")[1], "websecure,entrance");
+  assert.equal(eps?.split("=")[1], "websecure,answer");
   assert.ok(labels.some((l) => l.endsWith(".tls.certresolver=letsencrypt")));
 });
 
@@ -52,5 +52,5 @@ test("a plain-HTTP domain is never routed on the internal entrypoint", () => {
   const labels = labelsOf(
     domain({ answersEverywhere: true, certProvider: "none" }),
   );
-  assert.ok(!labels.some((l) => l.includes("entrance")));
+  assert.ok(!labels.some((l) => l.includes("answer")));
 });

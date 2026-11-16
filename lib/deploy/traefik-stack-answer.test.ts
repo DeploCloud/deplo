@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import * as yaml from "js-yaml";
 
-import { hasEntranceSupport, withEntranceSupport } from "./traefik-stack";
+import { hasAnswerSupport, withAnswerSupport } from "./traefik-stack";
 import { INSTALLED_WITH_PANEL, parse } from "./traefik-stack-test-helpers";
 
 // What install-agent.sh writes on a server: no file provider, no configs.
@@ -45,7 +45,7 @@ type Proxy = {
 const proxyOf = (s: string) => parse(s).services.traefik as unknown as Proxy;
 const fileOf = (s: string) =>
   yaml.load(
-    (parse(s).configs as Record<string, { content: string }>)["deplo-entrance"]
+    (parse(s).configs as Record<string, { content: string }>)["deplo-answer"]
       .content,
   ) as {
     http: { routers: Record<string, Record<string, unknown>> };
@@ -53,12 +53,12 @@ const fileOf = (s: string) =>
   };
 
 test("the change adds the loopback entrypoint, the bypass on web, Deplo's file and the routes file", () => {
-  const on = withEntranceSupport(INSTALLED, true);
+  const on = withAnswerSupport(INSTALLED, true);
   const proxy = proxyOf(on);
   for (const flag of [
     "--entrypoints.web.allowacmebypass=true",
-    "--entrypoints.entrance.address=127.0.0.1:8443",
-    "--entrypoints.entrance.proxyprotocol.trustedips=127.0.0.1/32",
+    "--entrypoints.answer.address=127.0.0.1:8443",
+    "--entrypoints.answer.proxyprotocol.trustedips=127.0.0.1/32",
     "--providers.file.directory=/deplo-dynamic",
     "--providers.file.watch=true",
   ])
@@ -73,7 +73,7 @@ test("the change adds the loopback entrypoint, the bypass on web, Deplo's file a
   assert.ok(!proxy.command.some((c) => /http3/.test(c)));
   assert.ok(
     proxy.volumes?.includes(
-      "./entrances.yml:/deplo-dynamic/deplo-entrances.yml:ro",
+      "./answers.yml:/deplo-dynamic/deplo-answers.yml:ro",
     ),
   );
   assert.deepEqual(fileOf(on), {
@@ -81,7 +81,7 @@ test("the change adds the loopback entrypoint, the bypass on web, Deplo's file a
       routers: {
         "deplo-acme": {
           rule: "PathPrefix(`/.well-known/acme-challenge/`)",
-          entryPoints: ["web", "entrance"],
+          entryPoints: ["web", "answer"],
           service: "acme-http@internal",
           priority: 2000000000,
         },
@@ -89,33 +89,33 @@ test("the change adds the loopback entrypoint, the bypass on web, Deplo's file a
     },
     tcp: {
       serversTransports: {
-        "deplo-entrance": { proxyProtocol: { version: 2 } },
+        "deplo-answer": { proxyProtocol: { version: 2 } },
       },
     },
   });
-  assert.ok(hasEntranceSupport(on));
-  assert.equal(withEntranceSupport(on, true), on);
+  assert.ok(hasAnswerSupport(on));
+  assert.equal(withAnswerSupport(on, true), on);
 });
 
 // A server that stops using it is left exactly as it was, so it is as if it never had it.
 test("taking the change out gives back the stack as it was", () => {
   for (const stack of [INSTALLED, INSTALLED_WITH_PANEL]) {
-    assert.ok(!hasEntranceSupport(stack));
-    const back = withEntranceSupport(withEntranceSupport(stack, true), false);
+    assert.ok(!hasAnswerSupport(stack));
+    const back = withAnswerSupport(withAnswerSupport(stack, true), false);
     assert.deepEqual(parse(back), parse(stack));
-    assert.ok(!hasEntranceSupport(back));
+    assert.ok(!hasAnswerSupport(back));
   }
 });
 
 test("beside the panel's own file, the routes file joins the same directory and the panel's file stays", () => {
-  const on = withEntranceSupport(INSTALLED_WITH_PANEL, true);
+  const on = withAnswerSupport(INSTALLED_WITH_PANEL, true);
   const proxy = proxyOf(on);
   assert.ok(proxy.configs?.some((c) => c.source === "deplo-panel"));
   assert.ok(
     proxy.configs?.some(
       (c) =>
-        c.source === "deplo-entrance" &&
-        c.target === "/deplo-dynamic/deplo-entrance.yml",
+        c.source === "deplo-answer" &&
+        c.target === "/deplo-dynamic/deplo-answer.yml",
     ),
   );
   assert.equal(
@@ -130,7 +130,7 @@ test("a proxy whose checks arrive on another entrypoint gets the bypass there", 
     "httpchallenge.entrypoint=web",
     "httpchallenge.entrypoint=http",
   );
-  const on = withEntranceSupport(custom, true);
+  const on = withAnswerSupport(custom, true);
   assert.ok(
     proxyOf(on).command.includes("--entrypoints.http.allowacmebypass=true"),
   );
@@ -139,6 +139,6 @@ test("a proxy whose checks arrive on another entrypoint gets the bypass there", 
   );
   assert.deepEqual(fileOf(on).http.routers["deplo-acme"]!.entryPoints, [
     "http",
-    "entrance",
+    "answer",
   ]);
 });

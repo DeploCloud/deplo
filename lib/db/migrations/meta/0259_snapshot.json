@@ -1,5 +1,5 @@
 {
-  "id": "a268bef3-61bc-4ec2-be3a-6b83ac859823",
+  "id": "40fe582a-902f-474b-9b71-22998ce5f5d3",
   "prevId": "d41d5311-2caf-45d8-839d-bfeda6b52362",
   "version": "7",
   "dialect": "postgresql",
@@ -3941,8 +3941,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "entrance_slot": {
-          "name": "entrance_slot",
+        "answer_slot": {
+          "name": "answer_slot",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -6512,6 +6512,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'nearest'"
+        },
+        "answer_slot_next": {
+          "name": "answer_slot_next",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "created_at": {
           "name": "created_at",
