@@ -132,6 +132,8 @@ builder.mutationFields((t) => ({
   startGithubConnect: t.field({
     type: GithubConnectStartRef,
     authScopes: { capability: "manage_git" },
+    unauthorizedError: () =>
+      "You can’t connect GitHub with your current team role. Ask a team admin for the Manage Git connections capability.",
     description:
       "Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.",
     args: {
@@ -160,6 +162,8 @@ builder.mutationFields((t) => ({
   removeGithubApp: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_git" },
+    unauthorizedError: () =>
+      "You can’t disconnect a GitHub App with your current team role. Ask a team admin for the Manage Git connections capability.",
     description: "Disconnect a GitHub App and its installations. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

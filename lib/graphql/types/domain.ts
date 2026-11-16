@@ -199,6 +199,8 @@ builder.mutationFields((t) => ({
   dismissImportedDomains: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t dismiss these imported domains with your current team role. Ask a team admin for the Manage domains capability.",
     description:
       "Stop telling this app that its addresses changed when it was imported: " +
       "clears `importedFrom` on every one of its domains. Per app on purpose - " +
@@ -213,6 +215,8 @@ builder.mutationFields((t) => ({
   addDomain: t.field({
     type: DomainRef,
     authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t add a domain with your current team role. Ask a team admin for the Manage domains capability.",
     args: {
       appId: t.arg.string({ required: true }),
       name: t.arg.string({ required: true }),
@@ -241,6 +245,8 @@ builder.mutationFields((t) => ({
   updateDomain: t.field({
     type: DomainRef,
     authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t edit this domain with your current team role. Ask a team admin for the Manage domains capability.",
     description:
       "Apply a full edit to a domain and return the updated domain (reloaded).",
     args: {
@@ -271,6 +277,8 @@ builder.mutationFields((t) => ({
   verifyDomain: t.field({
     type: DomainRef,
     authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t verify this domain with your current team role. Ask a team admin for the Manage domains capability.",
     description:
       "Re-check the domain's DNS and (re)issue its certificate. A check that " +
       "finds the host proxied through Cloudflare moves a certificate-less domain " +
@@ -286,6 +294,8 @@ builder.mutationFields((t) => ({
   setPrimaryDomain: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t set the primary domain with your current team role. Ask a team admin for the Manage domains capability.",
     description:
       "Make this domain its app's primary (canonical) host. Returns true.",
     args: { id: t.arg.string({ required: true }) },
@@ -297,6 +307,8 @@ builder.mutationFields((t) => ({
   removeDomain: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t remove this domain with your current team role. Ask a team admin for the Manage domains capability.",
     description: "Remove the domain so it stops routing. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

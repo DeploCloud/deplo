@@ -46,6 +46,8 @@ builder.mutationFields((t) => ({
   addRegistry: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_registries" },
+    unauthorizedError: () =>
+      "You can’t add a registry with your current team role. Ask a team admin for the Manage container registries capability.",
     description: "Add a registry credential to the active team. Returns true.",
     args: { input: t.arg({ type: AddRegistryInputType, required: true }) },
     resolve: async (_r, { input }) => {
@@ -62,6 +64,8 @@ builder.mutationFields((t) => ({
   deleteRegistry: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_registries" },
+    unauthorizedError: () =>
+      "You can’t remove this registry with your current team role. Ask a team admin for the Manage container registries capability.",
     description: "Delete a registry credential. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

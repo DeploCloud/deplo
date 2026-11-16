@@ -405,6 +405,8 @@ builder.mutationFields((t) => ({
   addExistingMember: t.field({
     type: MemberRef,
     authScopes: { capability: "manage_members" },
+    unauthorizedError: () =>
+      "You can’t add a team member with your current team role. Ask a team admin for the Manage members capability.",
     description: "Add an already-registered user to the active team.",
     args: { input: t.arg({ type: AddMemberInputType, required: true }) },
     resolve: (_r, { input }) =>
@@ -418,6 +420,8 @@ builder.mutationFields((t) => ({
   updateMember: t.field({
     type: MemberRef,
     authScopes: { capability: "manage_members" },
+    unauthorizedError: () =>
+      "You can’t change this team member’s role with your current team role. Ask a team admin for the Manage members capability.",
     description: "Change a member's role and/or capabilities.",
     args: { input: t.arg({ type: UpdateMemberInputType, required: true }) },
     resolve: async (_r, { input }) => {
@@ -433,6 +437,8 @@ builder.mutationFields((t) => ({
   removeMember: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_members" },
+    unauthorizedError: () =>
+      "You can’t remove this team member with your current team role. Ask a team admin for the Manage members capability.",
     description: "Remove a member from the active team. Returns true.",
     args: { userId: t.arg.string({ required: true }) },
     resolve: async (_r, { userId }) => {

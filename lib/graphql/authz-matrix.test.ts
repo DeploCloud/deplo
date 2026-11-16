@@ -230,7 +230,7 @@ async function mintToken(
 }
 
 const REFUSED =
-  /not authorized|don't have permission|only an instance admin|not a member|no active team|requires two-factor|limited to specific projects/i;
+  /not authorized|don't have permission|with your current team role|only an instance admin|not a member|no active team|requires two-factor|limited to specific projects/i;
 
 const EXEC_TIMEOUT_MS = 20_000;
 

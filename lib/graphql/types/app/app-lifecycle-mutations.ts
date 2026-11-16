@@ -55,6 +55,8 @@ builder.mutationFields((t) => ({
       "container, even if nothing about the stack changed. Volumes, domains " +
       "and data are untouched.",
     authScopes: { capability: "deploy_apps" },
+    unauthorizedError: () =>
+      "You can’t rebuild this App with your current team role. Ask a team admin for the Deploy apps capability.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await rebuildApp(id);
@@ -90,6 +92,8 @@ builder.mutationFields((t) => ({
   deleteApp: t.field({
     type: "Boolean",
     authScopes: { capability: "delete_apps" },
+    unauthorizedError: () =>
+      "You can’t delete this App with your current team role. Ask a team admin for the Delete apps capability.",
     description:
       "Delete the app. Returns as soon as the deletion is RECORDED - from that " +
       "moment the app is refused by every gate and gone from the product, and " +
@@ -104,6 +108,8 @@ builder.mutationFields((t) => ({
   deleteApps: t.field({
     type: "Int",
     authScopes: { capability: "delete_apps" },
+    unauthorizedError: () =>
+      "You can’t delete these Apps with your current team role. Ask a team admin for the Delete apps capability.",
     description:
       "Bulk-delete several apps. Returns how many were recorded as deleted; the " +
       "bounded-concurrency teardown runs behind the response.",
@@ -132,6 +138,8 @@ builder.mutationFields((t) => ({
   bulkRedeployApps: t.field({
     type: BulkAppActionResultRef,
     authScopes: { capability: "deploy_apps" },
+    unauthorizedError: () =>
+      "You can’t redeploy these Apps with your current team role. Ask a team admin for the Deploy apps capability.",
     description:
       "Redeploy EVERY app in one folder (its whole subtree) or one project " +
       "(every environment): the bulk twin of `redeploy`. Give exactly one " +

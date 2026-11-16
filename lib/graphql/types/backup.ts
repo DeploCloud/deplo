@@ -191,6 +191,8 @@ builder.mutationFields((t) => ({
   createBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t schedule a backup with your current team role. Ask a team admin for the Manage backups capability.",
     description: "Create a backup schedule. Returns true.",
     args: { input: t.arg({ type: CreateBackupInputType, required: true }) },
     resolve: async (_r, { input }) => {
@@ -210,6 +212,8 @@ builder.mutationFields((t) => ({
   runBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t run this backup with your current team role. Ask a team admin for the Manage backups capability.",
     description: "Run a backup schedule manually now. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -220,6 +224,8 @@ builder.mutationFields((t) => ({
   runAppBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t back up this App with your current team role. Ask a team admin for the Manage backups capability.",
     description:
       "Run an ad-hoc backup of an app now (no owning schedule). Returns " +
       "true.",
@@ -235,6 +241,8 @@ builder.mutationFields((t) => ({
   runDatabaseBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t back up this database with your current team role. Ask a team admin for the Manage backups capability.",
     description:
       "Run an ad-hoc backup of a database now (no owning schedule). Returns " +
       "true.",
@@ -250,6 +258,8 @@ builder.mutationFields((t) => ({
   restoreBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "restore_backups" },
+    unauthorizedError: () =>
+      "You can’t restore this backup with your current team role. Ask a team admin for the Restore backups capability.",
     description:
       "Restore a backup run in place (overwrites the live target). Returns " +
       "true.",
@@ -262,6 +272,8 @@ builder.mutationFields((t) => ({
   toggleBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t enable or disable this backup schedule with your current team role. Ask a team admin for the Manage backups capability.",
     description: "Enable or disable a backup schedule. Returns true.",
     args: {
       id: t.arg.string({ required: true }),
@@ -275,6 +287,8 @@ builder.mutationFields((t) => ({
   updateBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t edit this backup schedule with your current team role. Ask a team admin for the Manage backups capability.",
     description:
       "Edit a backup schedule's name, destination, cron and retention. The " +
       "target it backs up is fixed at creation and cannot be changed. Returns " +
@@ -297,6 +311,8 @@ builder.mutationFields((t) => ({
   cancelBackupRun: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t cancel this backup run with your current team role. Ask a team admin for the Manage backups capability.",
     description:
       "Stop a backup that is running: the record settles as canceled and the " +
       "dump is aborted on the host it runs on. Returns false when it had " +
@@ -307,6 +323,8 @@ builder.mutationFields((t) => ({
   deleteBackupRun: t.field({
     type: "Boolean",
     authScopes: { capability: "delete_backups" },
+    unauthorizedError: () =>
+      "You can’t delete this backup run with your current team role. Ask a team admin for the Delete backups capability.",
     description:
       "Permanently delete ONE backup: the artifact at its destination and the " +
       "run record together. Not the schedule (see deleteBackup) and not the " +
@@ -320,6 +338,8 @@ builder.mutationFields((t) => ({
   deleteBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_backups" },
+    unauthorizedError: () =>
+      "You can’t delete this backup schedule with your current team role. Ask a team admin for the Manage backups capability.",
     description: "Delete a backup schedule. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

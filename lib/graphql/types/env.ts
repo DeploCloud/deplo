@@ -188,6 +188,8 @@ builder.mutationFields((t) => ({
   makeEnvSecret: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t mark this environment variable as secret with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       "Make a variable Secret without changing its stored value or scope.",
     args: { id: t.arg.string({ required: true }) },
@@ -199,6 +201,8 @@ builder.mutationFields((t) => ({
   upsertEnv: t.field({
     type: EnvVarRef,
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t save this environment variable with your current team role. Ask a team admin for the Manage environment variables capability.",
     description: "Create or update an env var, then return the stored entity.",
     args: { input: t.arg({ type: UpsertEnvInputType, required: true }) },
     resolve: async (_r, { input }) => {
@@ -215,6 +219,8 @@ builder.mutationFields((t) => ({
   renameEnv: t.field({
     type: EnvVarRef,
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t rename this environment variable with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       "Rename an env var's key in place, then return the stored entity.",
     args: {
@@ -229,6 +235,8 @@ builder.mutationFields((t) => ({
   dismissPendingChanges: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t dismiss pending environment changes with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       'Clear this app\'s "changes not deployed yet" notice without deploying - ' +
       "the change was undone, or it was never one a deploy has to carry. " +
@@ -242,6 +250,8 @@ builder.mutationFields((t) => ({
   unlinkEnv: t.field({
     type: EnvVarRef,
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t unlink this environment variable with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       "Stop a variable following its database. It keeps the value it resolves to now, and Deplo never connects it again on its own.",
     args: { id: t.arg.string({ required: true }) },
@@ -255,6 +265,8 @@ builder.mutationFields((t) => ({
   deleteEnv: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t delete this environment variable with your current team role. Ask a team admin for the Manage environment variables capability.",
     description: "Delete an env var. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -265,6 +277,8 @@ builder.mutationFields((t) => ({
   importEnv: t.field({
     type: EnvImportResultRef,
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t import environment variables with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       "Bulk-import a .env-style blob. Every line lands as plain, so a key that already exists as a secret is skipped rather than downgraded.",
     args: {
@@ -278,6 +292,8 @@ builder.mutationFields((t) => ({
   setAppEnv: t.field({
     type: "Int",
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t save this App’s environment variables with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       "Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; existing secrets are left untouched. Returns the resulting variable count.",
     args: {

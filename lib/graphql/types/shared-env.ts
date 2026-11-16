@@ -216,6 +216,8 @@ builder.mutationFields((t) => ({
   makeSharedVarSecret: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t mark this shared variable as secret with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       "Make a variable Secret without changing its stored value or scope.",
     args: { id: t.arg.string({ required: true }) },
@@ -227,6 +229,8 @@ builder.mutationFields((t) => ({
   saveSharedVar: t.field({
     type: SharedVarRef,
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t save this shared variable with your current team role. Ask a team admin for the Manage environment variables capability.",
     description:
       "Create or update a shared variable; returns the saved entity.",
     args: { input: t.arg({ type: SaveSharedVarInputType, required: true }) },
@@ -250,6 +254,8 @@ builder.mutationFields((t) => ({
   setSharedVarAppLink: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t change which Apps use this shared variable with your current team role. Ask a team admin for the Manage environment variables capability.",
     description: "Link or unlink a shared variable to one app. Returns true.",
     args: {
       varId: t.arg.string({ required: true }),
@@ -264,6 +270,8 @@ builder.mutationFields((t) => ({
   deleteSharedVar: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t delete this shared variable with your current team role. Ask a team admin for the Manage environment variables capability.",
     description: "Delete a shared variable. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
