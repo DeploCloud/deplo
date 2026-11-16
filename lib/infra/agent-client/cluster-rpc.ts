@@ -124,6 +124,8 @@ export function clusterRpc(
           firstUnixMs: Number(a.firstUnixMs),
           lastUnixMs: Number(a.lastUnixMs),
           cap: a.cap,
+          waiting: a.waiting,
+          memory: a.memory,
         })),
       };
     },

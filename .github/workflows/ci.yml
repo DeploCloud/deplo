@@ -111,3 +111,39 @@ jobs:
       - run: bunx tsc --noEmit
       # schema.graphql is generated, and the MCP tool test and the API docs both read it.
       - run: bun run gen:schema && git diff --exit-code schema.graphql
+
+  # The answers' routes are a contract with the server agent (docs/agents/cluster-rollout.md §7). The agent changes
+  # first, so this repo's reference must be the agent's, and what it renders must pass the agent release this panel
+  # pins, which is what its servers run.
+  answer-contract:
+    name: Answer contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DeploCloud/deplo-agent
+          path: deplo-agent
+          fetch-depth: 0
+      - name: The reference is the agent's
+        run: |
+          diff <(jq -S . lib/deploy/answer-routes.golden.json) <(jq -S . deplo-agent/internal/server/testdata/answer-routes.golden.json) || {
+            echo "::error::lib/deploy/answer-routes.golden.json differs from deplo-agent's internal/server/testdata/answer-routes.golden.json"
+            exit 1
+          }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: deplo-agent/go.mod
+          cache: false
+      - name: The pinned agent accepts it
+        run: |
+          pin=$(jq -r .deplo.agent package.json)
+          git -C deplo-agent checkout -q "v$pin"
+          if ! grep -q 'func TestAnswers_thePanelsRoutesPassAsTheyAre' deplo-agent/internal/server/*_test.go; then
+            echo "agent v$pin predates the answers' contract test: nothing to check against it"
+            exit 0
+          fi
+          cp lib/deploy/answer-routes.golden.json deplo-agent/internal/server/testdata/answer-routes.golden.json
+          cd deplo-agent && go test ./internal/server -run 'TestAnswers_thePanelsRoutesPassAsTheyAre' -count=1 -v
+        env:
+          CGO_ENABLED: "0"

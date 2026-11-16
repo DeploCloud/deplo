@@ -1,0 +1,60 @@
+{
+  "about": "ADR-0048: the routes the panel renders for one App and the forms the server agent accepts. Kept the same in DeploCloud/deplo (lib/deploy/answer-routes.golden.json) and DeploCloud/deplo-agent (internal/server/testdata/answer-routes.golden.json): change both in one step.",
+  "appId": "prj_contract",
+  "hosts": ["shop.example.com", "www.shop.example.com"],
+  "slot": 3,
+  "tlsPort": 20006,
+  "webPort": 20007,
+  "alias": "deplo-answer",
+  "transport": "deplo-answer@file",
+  "routesFile": "answers.yml",
+  "entrypoint": "answer",
+  "entrypointPort": 8443,
+  "routes": {
+    "tcp": {
+      "routers": {
+        "deplo-answer-prj_contract": {
+          "rule": "HostSNI(`shop.example.com`) || HostSNI(`www.shop.example.com`)",
+          "entryPoints": ["websecure"],
+          "service": "deplo-answer-prj_contract",
+          "tls": {
+            "passthrough": true
+          }
+        }
+      },
+      "services": {
+        "deplo-answer-prj_contract": {
+          "loadBalancer": {
+            "serversTransport": "deplo-answer@file",
+            "servers": [
+              {
+                "address": "deplo-answer:20006"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "http": {
+      "routers": {
+        "deplo-answer-prj_contract-acme": {
+          "rule": "(Host(`shop.example.com`) || Host(`www.shop.example.com`)) && PathPrefix(`/.well-known/acme-challenge/`)",
+          "entryPoints": ["web"],
+          "service": "deplo-answer-prj_contract-acme",
+          "priority": 2000000001
+        }
+      },
+      "services": {
+        "deplo-answer-prj_contract-acme": {
+          "loadBalancer": {
+            "servers": [
+              {
+                "url": "http://deplo-answer:20007"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

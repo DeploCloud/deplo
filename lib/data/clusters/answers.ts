@@ -321,10 +321,18 @@ export async function recordAnswerRefusals(
       );
       continue;
     }
-    const carried = cluster && r.cap === cluster.answerMaxConnections;
+    // An agent from before the flags says neither: a cap that is not the cluster's was then its waiting one.
+    const waiting =
+      r.waiting === true ||
+      (!r.memory && cluster != null && r.cap !== cluster.answerMaxConnections);
+    const why = waiting
+      ? `it holds at most ${r.cap} waiting at once`
+      : r.memory
+        ? `it carries at most ${r.cap} at once, what fits in a quarter of its memory`
+        : `it carries at most ${r.cap} at once`;
     await recordClusterActivity(
       clusterId,
-      `${server} turned away ${times(r.count)} to domains that answer on every server ${when}: it ${carried ? `carries at most ${r.cap} at once` : `holds at most ${r.cap} waiting at once`}. Raise the cluster's limit if this is your usual traffic.`,
+      `${server} turned away ${times(r.count)} to domains that answer on every server ${when}: ${why}. Raise the cluster's limit if this is your usual traffic.`,
     );
   }
 }

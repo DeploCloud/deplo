@@ -134,6 +134,10 @@ export interface ClusterAnswerRefusal {
   firstUnixMs: number;
   lastUnixMs: number;
   cap: number;
+  /** A server's waiting cap rather than its connection cap; absent from an agent before them. */
+  waiting?: boolean;
+  /** The connection cap was this server's memory, lower than the cluster's. */
+  memory?: boolean;
 }
 
 export interface AgentProbeHttpRequest {
