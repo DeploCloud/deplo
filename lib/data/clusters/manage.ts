@@ -1,21 +1,26 @@
 import "server-only";
 
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
+  clusterMembers as membersTable,
   clusterTeams as clusterTeamsTable,
   clusters as clustersTable,
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { newId, nowIso } from "../../ids";
 import {
   type Cluster,
   type LoadBalancingMode,
   cleanLoadBalancingMode,
 } from "../../types/cluster";
-import { answerLimitsRefusal } from "../../deploy/answer";
+import {
+  answerConnectionsCost,
+  answerLimitsRefusal,
+} from "../../deploy/answer";
 import { recordActivity } from "../activity";
 import { inBackground, reconcileClusterBundles } from "./bundles";
 import { reconcileClusterDatabaseBundles } from "./database-bundles";
@@ -309,7 +314,15 @@ export async function setClusterAnswerLimits(
   const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(id);
   if (!cluster) throw new Error("Cluster not found");
-  const refusal = answerLimitsRefusal(maxConnections, maxWaiting);
+  // Every server carries up to that many: the one with the least memory decides what fits.
+  const [smallest] = await getDb()
+    .select({ name: serversTable.name, memoryMb: serversTable.memoryMb })
+    .from(membersTable)
+    .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
+    .where(and(eq(membersTable.clusterId, id), gt(serversTable.memoryMb, 0)))
+    .orderBy(asc(serversTable.memoryMb))
+    .limit(1);
+  const refusal = answerLimitsRefusal(maxConnections, maxWaiting, smallest);
   if (refusal) throw new Error(refusal);
   if (
     cluster.answerMaxConnections === maxConnections &&
@@ -322,7 +335,7 @@ export async function setClusterAnswerLimits(
     .where(eq(clustersTable.id, id));
   await recordActivity(
     "server",
-    `Each server of cluster ${cluster.name} now carries up to ${maxConnections} visitor connections at once for domains that answer on every server, and holds up to ${maxWaiting} waiting for one App`,
+    `Each server of cluster ${cluster.name} now carries up to ${maxConnections} visitor connections at once for domains that answer on every server (up to ${answerConnectionsCost(maxConnections)} of its memory), and holds up to ${maxWaiting} waiting for one App`,
     user.name,
     null,
     teamId,

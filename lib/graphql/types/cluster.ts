@@ -642,7 +642,7 @@ builder.mutationFields((t) => ({
     type: ClusterRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Set how many visitor connections each server of the cluster carries at once for its domains that answer on every server (64 to 65536; a quarter of them may wait), and how many wait for one App (1 to a quarter of the connections). A busy site with long-lived connections needs more.",
+      "Set how many visitor connections each server of the cluster carries at once for its domains that answer on every server (64 to 65536; a quarter of them may wait), and how many wait for one App (1 to a quarter of the connections). Each connection costs a server up to 64 KB of memory, so 65536 is up to 4 GB: no more than a quarter of the smallest server's memory is accepted. A busy site with long-lived connections needs more.",
     args: {
       id: t.arg.string({ required: true }),
       maxConnections: t.arg.int({ required: true }),

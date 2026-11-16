@@ -29,14 +29,37 @@ export const MAX_ANSWER_APPS = 200;
 /** What a cluster may set its servers' connection caps to; a quarter of the connections may wait. */
 export const ANSWER_CONNECTIONS_RANGE = { min: 64, max: 65_536 } as const;
 
-/** Why these caps cannot be a cluster's, or null. */
+/** Each carried connection costs its server up to two 32 KB copy buffers (ADR-0048). */
+export const ANSWER_CONNECTION_KB = 64;
+
+/** The memory a server may spend on these connections: a quarter of it. */
+export function answerConnectionsFit(memoryMb: number): number {
+  return Math.floor((memoryMb * 1024) / 4 / ANSWER_CONNECTION_KB);
+}
+
+/** What that many connections cost a server at most, in words. */
+export function answerConnectionsCost(connections: number): string {
+  const mb = (connections * ANSWER_CONNECTION_KB) / 1024;
+  return mb >= 1024
+    ? `${Math.round(mb / 102.4) / 10} GB`
+    : `${Math.round(mb)} MB`;
+}
+
+/** Why these caps cannot be a cluster's, or null. The smallest server, when its memory is known, bounds them. */
 export function answerLimitsRefusal(
   connections: number,
   waiting: number,
+  smallest?: { name: string; memoryMb: number } | null,
 ): string | null {
   const { min, max } = ANSWER_CONNECTIONS_RANGE;
   if (!Number.isInteger(connections) || connections < min || connections > max)
     return `A server carries between ${min} and ${max} connections at once.`;
+  if (
+    smallest &&
+    smallest.memoryMb > 0 &&
+    connections > answerConnectionsFit(smallest.memoryMb)
+  )
+    return `${smallest.name} has ${smallest.memoryMb} MB of memory: at most ${answerConnectionsFit(smallest.memoryMb)} connections fit in a quarter of it, at up to ${ANSWER_CONNECTION_KB} KB each.`;
   const most = Math.floor(connections / 4);
   if (!Number.isInteger(waiting) || waiting < 1 || waiting > most)
     return `Between 1 and ${most} visitors can wait for one App: a quarter of the ${connections} connections may wait.`;

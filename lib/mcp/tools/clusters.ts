@@ -116,7 +116,7 @@ export const CLUSTERS: McpToolDef[] = [
     title:
       "Set a cluster's connection limits for domains that answer on every server",
     description:
-      "Per server, how many visitor connections to the domains that answer on every server it carries at once (64 to 65536, a quarter may wait), and how many wait for one App.",
+      "Per server: visitor connections it carries at once for domains that answer on every server (64-65536, up to 64 KB of memory each, a quarter of the smallest server's at most), and how many wait per App.",
     group: "Servers",
     requires: "instanceAdmin",
     idempotent: true,

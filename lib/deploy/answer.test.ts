@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  answerConnectionsCost,
+  answerConnectionsFit,
   ACME_PRIORITY,
   ANSWER_ACME_PRIORITY,
   MAX_ANSWER_SLOT,
@@ -92,4 +94,11 @@ test("Deplo's challenge router outranks every router Deplo writes, and an App's 
   for (const p of priorities) assert.ok(p < ACME_PRIORITY, String(p));
   assert.ok(ANSWER_ACME_PRIORITY > ACME_PRIORITY);
   assert.ok(ANSWER_ACME_PRIORITY <= 2 ** 31 - 1);
+});
+
+test("a connection cap is said in memory, and a quarter of a server's memory bounds it", () => {
+  assert.equal(answerConnectionsCost(2048), "128 MB");
+  assert.equal(answerConnectionsCost(65536), "4 GB");
+  assert.equal(answerConnectionsFit(512), 2048);
+  assert.equal(answerConnectionsFit(16384), 65536);
 });

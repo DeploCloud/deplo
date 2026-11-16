@@ -2,7 +2,7 @@ import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -914,4 +914,27 @@ test("every 2 minutes only the clusters that pass domains on are asked", async (
     .where(eq(domainsTable.appId, "shop"));
   await syncAnsweringClusters();
   assert.equal(hosts.srv_2!.forwarders.length, 1);
+});
+
+test("the smallest server's memory bounds the cap, and the cost is said in Activity", async () => {
+  const c = await cluster();
+  await db
+    .update(serversTable)
+    .set({ memoryMb: 512 })
+    .where(eq(serversTable.id, "srv_3"));
+  await assert.rejects(
+    asAdmin(() => setClusterAnswerLimits(c.id, 4096, 128)),
+    /has 512 MB of memory: at most 2048 connections fit in a quarter of it, at up to 64 KB each/,
+  );
+  await asAdmin(() => setClusterAnswerLimits(c.id, 2048, 256));
+  const [entry] = await db
+    .select({ message: activitiesTable.message })
+    .from(activitiesTable)
+    .where(
+      sql`${activitiesTable.message} like '%visitor connections at once%'`,
+    );
+  assert.match(
+    entry?.message ?? "",
+    /up to 2048 visitor connections at once .*\(up to 128 MB of its memory\)/,
+  );
 });
