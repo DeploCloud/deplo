@@ -2,6 +2,13 @@
 
 **Status**: proposed. Builds on [ADR-0047](0047-a-cluster-shares-a-private-network-over-wireguard.md) (the private network carries the traffic) and amends [ADR-0045](0045-a-cluster-leader-holds-sealed-failover-bundles.md) (the bundle carries the certificate). [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md) is the path that removes the hand-written records.
 
+**Steps** (Rollout below):
+
+- **1, the proxy change and the answer table: done**, hidden. Panel #227 (migrations 0259 and 0260), agent DeploCloud/deplo-agent#47, released in agent v0.5.3-canary.7.
+- **2, the certificate in the failover bundle: not done** (#231).
+- **3, the DNS record set: not done.**
+- **4, the switch shown: not done** (#230; it does not ship without the refusal past 200 Apps).
+
 A failover moves an App, and its address must follow it **without Cloudflare being required**. Today only a domain served by a Cloudflare tunnel follows; a generated name follows by being renamed (it is a server's IP); any other domain keeps pointing at the server that stopped. **A domain of a cluster App can be set to answer on every server of the cluster ("Answer on every server"): each server passes its encrypted traffic, untouched, over the private network to a server that runs the App, and DNS names every healthy server.** Cloudflare stays a supported way to follow, not the only one.
 
 The lab facts below come from Traefik 3.7.17 (the version Deplo installs) with Pebble standing in for Let's Encrypt, validating HTTP-01 for real through a DNS the test controlled.
