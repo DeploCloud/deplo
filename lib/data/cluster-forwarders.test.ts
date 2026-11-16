@@ -57,7 +57,10 @@ import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
 import { MAX_ANSWER_SLOT, answerPorts } from "../deploy/answer";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { setClusterAnswerLimits } from "./clusters/manage";
-import { syncAnsweringClusters } from "./clusters/forwarders";
+import {
+  __forgetAnsweringClusters,
+  syncAnsweringClusters,
+} from "./clusters/forwarders";
 import { hasAnswerSupport } from "../deploy/traefik-stack";
 import {
   INSTALLED_WITH_PANEL,
@@ -901,6 +904,7 @@ test("what a server turned away reaches Activity: an App's wait to its team, the
 });
 
 test("every 2 minutes only the clusters that pass domains on are asked", async () => {
+  __forgetAnsweringClusters();
   const c = await cluster();
   proxies("srv_2", "srv_3", "srv_4");
   await place(c.id, "shop", "environ_a1", "srv_3");
@@ -937,4 +941,26 @@ test("the smallest server's memory bounds the cap, and the cost is said in Activ
     entry?.message ?? "",
     /up to 2048 visitor connections at once .*\(up to 128 MB of its memory\)/,
   );
+});
+
+// On the lab the change stayed on both servers after the last such domain went: nothing synced the cluster again.
+test("a cluster whose last domain that answers everywhere went is synced once more, and its proxies lose the change", async () => {
+  __forgetAnsweringClusters();
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncAnsweringClusters();
+  assert.ok(hasAnswerSupport(hosts.srv_2!.proxy.yaml));
+
+  await db.delete(domainsTable).where(eq(domainsTable.appId, "shop"));
+  await syncAnsweringClusters();
+  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+    assert.deepEqual(last(id).answers, [], id);
+    assert.ok(!hasAnswerSupport(hosts[id]!.proxy.yaml), id);
+  }
+  // Then it is left alone.
+  const tables = hosts.srv_2!.forwarders.length;
+  await syncAnsweringClusters();
+  assert.equal(hosts.srv_2!.forwarders.length, tables);
 });

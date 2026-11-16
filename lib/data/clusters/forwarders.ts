@@ -228,13 +228,32 @@ export function syncNameForwardersAfterDeploy(depId: string): void {
   );
 }
 
-/** Every 2 minutes from the cluster watch: the clusters that pass domains on hear what their agents turned away. */
+const ANSWERING = Symbol.for("deplo.cluster.answering");
+const answering = globalThis as unknown as { [ANSWERING]?: Set<string> };
+
+/**
+ * Every 2 minutes from the cluster watch: the clusters that pass domains on hear what their agents turned away, and
+ * one whose last such domain went since the pass before is synced once more, so its servers lose the change too.
+ * After a restart the maintenance sweep, a minute in, syncs every cluster.
+ */
 export async function syncAnsweringClusters(): Promise<void> {
   const { clustersWithAnswers } = await import("./answers");
-  for (const id of await clustersWithAnswers()) {
+  const now = new Set(await clustersWithAnswers());
+  const before = answering[ANSWERING] ?? new Set<string>();
+  for (const id of new Set([...now, ...before])) {
     if (await instanceFrozen()) return;
-    await syncNameForwarders(id).catch((e) =>
-      console.warn(`[cluster-forwarders] ${id}: ${message(e)}`),
-    );
+    try {
+      await syncNameForwarders(id);
+    } catch (e) {
+      console.warn(`[cluster-forwarders] ${id}: ${message(e)}`);
+      // Not synced: still to be asked next time.
+      now.add(id);
+    }
   }
+  answering[ANSWERING] = now;
+}
+
+/** Test seam: forget which clusters passed domains on at the last pass. */
+export function __forgetAnsweringClusters(): void {
+  answering[ANSWERING] = new Set();
 }
