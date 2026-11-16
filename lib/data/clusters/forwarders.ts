@@ -6,9 +6,13 @@ import {
   appBuild,
   apps as appsTable,
 } from "../../db/schema/control-plane/apps";
-import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
+import {
+  clusterMembers as membersTable,
+  clusters as clustersTable,
+} from "../../db/schema/control-plane/clusters";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { composeForwardedServices } from "../../deploy/compose-stack/compose-read";
 import { stackName } from "../../deploy/deploy-key";
 import {
@@ -228,32 +232,41 @@ export function syncNameForwardersAfterDeploy(depId: string): void {
   );
 }
 
-const ANSWERING = Symbol.for("deplo.cluster.answering");
-const answering = globalThis as unknown as { [ANSWERING]?: Set<string> };
-
 /**
- * Every 2 minutes from the cluster watch: the clusters that pass domains on hear what their agents turned away, and
- * one whose last such domain went since the pass before is synced once more, so its servers lose the change too.
- * After a restart the maintenance sweep, a minute in, syncs every cluster.
+ * Every 2 minutes from the cluster watch. The clusters that pass domains on are synced, which hands each agent its
+ * table and hears what it turned away. Then every server's proxy that has the change without needing it is put back,
+ * decided from the proxy itself, not from what Deplo remembers: after a restart of Deplo, a deleted cluster, a server
+ * that left one or an App moved out, a cluster's servers are synced again and a server in no cluster loses it alone.
  */
 export async function syncAnsweringClusters(): Promise<void> {
-  const { clustersWithAnswers } = await import("./answers");
-  const now = new Set(await clustersWithAnswers());
-  const before = answering[ANSWERING] ?? new Set<string>();
-  for (const id of new Set([...now, ...before])) {
+  if (await instanceFrozen()) return;
+  const { answerSupportOn, clustersWithAnswers, syncAnswerProxy } =
+    await import("./answers");
+  const answering = new Set(await clustersWithAnswers());
+  for (const id of answering) {
     if (await instanceFrozen()) return;
-    try {
-      await syncNameForwarders(id);
-    } catch (e) {
-      console.warn(`[cluster-forwarders] ${id}: ${message(e)}`);
-      // Not synced: still to be asked next time.
-      now.add(id);
-    }
+    await syncNameForwarders(id).catch((e) =>
+      console.warn(`[cluster-forwarders] ${id}: ${message(e)}`),
+    );
   }
-  answering[ANSWERING] = now;
-}
-
-/** Test seam: forget which clusters passed domains on at the last pass. */
-export function __forgetAnsweringClusters(): void {
-  answering[ANSWERING] = new Set();
+  const servers = await getDb()
+    .select({ id: serversTable.id, clusterId: membersTable.clusterId })
+    .from(serversTable)
+    .leftJoin(membersTable, eq(membersTable.serverId, serversTable.id));
+  const stale = new Set<string>();
+  for (const s of servers) {
+    if (s.clusterId && answering.has(s.clusterId)) continue;
+    if (!(await answerSupportOn(s.id))) continue;
+    if (s.clusterId) stale.add(s.clusterId);
+    else
+      await syncAnswerProxy(s.id, false).catch((e) =>
+        console.warn(`[cluster-answers] ${s.id}: ${message(e)}`),
+      );
+  }
+  for (const id of stale) {
+    if (await instanceFrozen()) return;
+    await syncNameForwarders(id).catch((e) =>
+      console.warn(`[cluster-forwarders] ${id}: ${message(e)}`),
+    );
+  }
 }

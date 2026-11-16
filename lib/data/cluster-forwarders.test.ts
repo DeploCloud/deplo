@@ -53,14 +53,14 @@ import {
   answerAppsRefusal,
   listClusterAnswers,
 } from "./clusters/answers";
-import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
+import {
+  clusterMembers as clusterMembersTable,
+  clusters as clustersTable,
+} from "../db/schema/control-plane/clusters";
 import { MAX_ANSWER_SLOT, answerPorts } from "../deploy/answer";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { setClusterAnswerLimits } from "./clusters/manage";
-import {
-  __forgetAnsweringClusters,
-  syncAnsweringClusters,
-} from "./clusters/forwarders";
+import { syncAnsweringClusters } from "./clusters/forwarders";
 import { hasAnswerSupport } from "../deploy/traefik-stack";
 import {
   INSTALLED_WITH_PANEL,
@@ -904,7 +904,6 @@ test("what a server turned away reaches Activity: an App's wait to its team, the
 });
 
 test("every 2 minutes only the clusters that pass domains on are asked", async () => {
-  __forgetAnsweringClusters();
   const c = await cluster();
   proxies("srv_2", "srv_3", "srv_4");
   await place(c.id, "shop", "environ_a1", "srv_3");
@@ -943,24 +942,74 @@ test("the smallest server's memory bounds the cap, and the cost is said in Activ
   );
 });
 
-// On the lab the change stayed on both servers after the last such domain went: nothing synced the cluster again.
-test("a cluster whose last domain that answers everywhere went is synced once more, and its proxies lose the change", async () => {
-  __forgetAnsweringClusters();
+// Decided from each proxy, not from what Deplo remembers: each way a cluster stops needing the change.
+async function answeringCluster() {
   const c = await cluster();
   proxies("srv_2", "srv_3", "srv_4");
   await place(c.id, "shop", "environ_a1", "srv_3");
   await domainOf("shop", "shop.example.com");
   await syncAnsweringClusters();
-  assert.ok(hasAnswerSupport(hosts.srv_2!.proxy.yaml));
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.ok(hasAnswerSupport(hosts[id]!.proxy.yaml), id);
+  return c;
+}
 
+const putBack = (...ids: string[]) => {
+  for (const id of ids) {
+    assert.ok(
+      !hasAnswerSupport(hosts[id]!.proxy.yaml),
+      `${id} kept the change`,
+    );
+    assert.deepEqual(
+      parse(hosts[id]!.proxy.yaml),
+      parse(INSTALLED_WITH_PANEL),
+      id,
+    );
+  }
+};
+
+test("the last domain gone, even across a restart of Deplo, every proxy loses the change", async () => {
+  await answeringCluster();
+  // A restart between two passes: Deplo remembers nothing of the proxies.
+  __forgetAnswerProxies();
   await db.delete(domainsTable).where(eq(domainsTable.appId, "shop"));
   await syncAnsweringClusters();
-  for (const id of ["srv_2", "srv_3", "srv_4"]) {
+  for (const id of ["srv_2", "srv_3", "srv_4"])
     assert.deepEqual(last(id).answers, [], id);
-    assert.ok(!hasAnswerSupport(hosts[id]!.proxy.yaml), id);
-  }
+  putBack("srv_2", "srv_3", "srv_4");
   // Then it is left alone.
   const tables = hosts.srv_2!.forwarders.length;
   await syncAnsweringClusters();
   assert.equal(hosts.srv_2!.forwarders.length, tables);
+});
+
+test("a cluster deleted while its servers kept the change: each server loses it alone", async () => {
+  const c = await answeringCluster();
+  __forgetAnswerProxies();
+  await db.delete(clustersTable).where(eq(clustersTable.id, c.id));
+  await syncAnsweringClusters();
+  putBack("srv_2", "srv_3", "srv_4");
+});
+
+test("a server taken out of the cluster loses the change, and the others keep it", async () => {
+  await answeringCluster();
+  await db
+    .delete(clusterMembersTable)
+    .where(eq(clusterMembersTable.serverId, "srv_2"));
+  await syncAnsweringClusters();
+  putBack("srv_2");
+  for (const id of ["srv_3", "srv_4"])
+    assert.ok(hasAnswerSupport(hosts[id]!.proxy.yaml), id);
+});
+
+test("an App moved out of the cluster takes the change off its servers with it", async () => {
+  await answeringCluster();
+  await db
+    .update(appsTable)
+    .set({ clusterId: null })
+    .where(eq(appsTable.id, "shop"));
+  await syncAnsweringClusters();
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.deepEqual(last(id).answers, [], id);
+  putBack("srv_2", "srv_3", "srv_4");
 });
