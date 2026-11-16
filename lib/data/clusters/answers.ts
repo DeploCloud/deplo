@@ -22,8 +22,12 @@ import { serverSupports } from "../../infra/agent-client/preflight";
 import type { CertProvider, DomainEntrypoint } from "../../types/domain";
 import { messageOf } from "../../utils";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { recordActivity } from "../activity";
 import { withKeyedLock } from "../keyed-mutex";
-import { clusterMemberServerIds } from "./roster";
+import { getServerById } from "../servers/roster";
+import { recordClusterActivity } from "./cluster-activity";
+import type { ClusterAnswerRefusal } from "../../infra/agent-client/connection";
+import { clusterMemberServerIds, getClusterById } from "./roster";
 
 // A cluster domain that answers on every server (ADR-0048): which Apps, on which ports, and the proxies that
 // need the change. https://deplo.build/docs/operations/clusters/addresses
@@ -257,5 +261,52 @@ export async function syncAnswerProxies(
         `[cluster-answers] ${clusterId} -> ${serverId}: ${messageOf(e).replace(/\s+/g, " ").slice(0, 300)}`,
       );
     }
+  }
+}
+
+/** The clusters with at least one App that answers on every server. */
+export async function clustersWithAnswers(): Promise<string[]> {
+  const rows = await getDb()
+    .selectDistinct({ clusterId: appsTable.clusterId })
+    .from(domainsTable)
+    .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
+    .where(eq(domainsTable.answersEverywhere, true));
+  return rows.map((r) => r.clusterId).filter((id): id is string => Boolean(id));
+}
+
+const clock = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+const times = (n: number) =>
+  n === 1 ? "1 visitor connection" : `${n} visitor connections`;
+
+/** What a member turned away, said where it is read: an App's waiting cap to its team, the server's to the cluster's. */
+export async function recordAnswerRefusals(
+  clusterId: string,
+  serverId: string,
+  refusals: ClusterAnswerRefusal[],
+): Promise<void> {
+  const server = (await getServerById(serverId))?.name ?? "A server";
+  const cluster = await getClusterById(clusterId);
+  for (const r of refusals) {
+    const when = `between ${clock(r.firstUnixMs)} and ${clock(r.lastUnixMs)} UTC`;
+    if (r.appId) {
+      const [app] = await getDb()
+        .select({ name: appsTable.name })
+        .from(appsTable)
+        .where(eq(appsTable.id, r.appId))
+        .limit(1);
+      if (!app) continue;
+      await recordActivity(
+        "app",
+        `${server} turned away ${times(r.count)} to ${app.name} ${when}: at most ${r.cap} visitors wait for it at once while it is not ready. The cluster's limit is in its settings.`,
+        "Deplo",
+        r.appId,
+      );
+      continue;
+    }
+    const carried = cluster && r.cap === cluster.answerMaxConnections;
+    await recordClusterActivity(
+      clusterId,
+      `${server} turned away ${times(r.count)} to domains that answer on every server ${when}: it ${carried ? `carries at most ${r.cap} at once` : `holds at most ${r.cap} waiting at once`}. Raise the cluster's limit if this is your usual traffic.`,
+    );
   }
 }

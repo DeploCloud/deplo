@@ -110,10 +110,22 @@ export function clusterRpc(
           answers: table.answers ?? [],
           serveAnswers: table.serveAnswers ?? [],
           answerPort: table.answerPort ?? 0,
+          answerMaxConns: table.answerMaxConns ?? 0,
+          answerMaxWaiting: table.answerMaxWaiting ?? 0,
         },
         CLUSTER_CALL_TIMEOUT_MS,
       );
-      return { held: r.held, served: r.served };
+      return {
+        held: r.held,
+        served: r.served,
+        answerRefusals: (r.answerRefusals ?? []).map((a) => ({
+          appId: a.appId,
+          count: a.count,
+          firstUnixMs: Number(a.firstUnixMs),
+          lastUnixMs: Number(a.lastUnixMs),
+          cap: a.cap,
+        })),
+      };
     },
     async setClusterNetwork(table) {
       const r = await unary(

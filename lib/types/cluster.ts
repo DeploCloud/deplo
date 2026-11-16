@@ -19,6 +19,9 @@ export interface Cluster {
   /** On (only with replication): Apps that keep no data run on every server and visitors are spread over them. */
   loadBalancingEnabled: boolean;
   loadBalancingMode: LoadBalancingMode;
+  /** Per server, for its domains that answer on every server: connections carried at once, and waiting per App. */
+  answerMaxConnections: number;
+  answerMaxWaiting: number;
   createdAt: string;
 }
 

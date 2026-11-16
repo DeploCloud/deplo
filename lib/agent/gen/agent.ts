@@ -3175,6 +3175,12 @@ export interface SetClusterForwardersRequest {
   serveAnswers: string[];
   /** The port of the proxy's internal entrypoint, on its own loopback, which reads the PROXY protocol header. */
   answerPort: number;
+  /**
+   * How many passed-on connections this member carries at once, waiting or carried (0: 2048), a quarter of which may
+   * wait; and how many may wait for one App (0: 128). Past either a connection is closed at once, and reported.
+   */
+  answerMaxConns: number;
+  answerMaxWaiting: number;
 }
 
 /** An App whose domains answer on every server, and how this member's proxy passes them on. */
@@ -3190,7 +3196,19 @@ export interface ClusterAnswer {
   webPort: number;
 }
 
+/** Connections this member turned away: app_id empty, past its own cap; set, past that App's waiting cap. */
+export interface ClusterAnswerRefusal {
+  appId: string;
+  count: number;
+  firstUnixMs: number;
+  lastUnixMs: number;
+  /** The cap they ran into. */
+  cap: number;
+}
+
 export interface SetClusterForwardersResponse {
+  /** Connections turned away since the last table (ADR-0048): each is reported once, then forgotten. */
+  answerRefusals: ClusterAnswerRefusal[];
   held: number;
   served: number;
 }
@@ -23828,7 +23846,17 @@ export const ClusterServedName: MessageFns<ClusterServedName> = {
 };
 
 function createBaseSetClusterForwardersRequest(): SetClusterForwardersRequest {
-  return { clusterId: "", members: [], hold: [], serve: [], answers: [], serveAnswers: [], answerPort: 0 };
+  return {
+    clusterId: "",
+    members: [],
+    hold: [],
+    serve: [],
+    answers: [],
+    serveAnswers: [],
+    answerPort: 0,
+    answerMaxConns: 0,
+    answerMaxWaiting: 0,
+  };
 }
 
 export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest> = {
@@ -23853,6 +23881,12 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     }
     if (message.answerPort !== 0) {
       writer.uint32(56).uint32(message.answerPort);
+    }
+    if (message.answerMaxConns !== 0) {
+      writer.uint32(64).uint32(message.answerMaxConns);
+    }
+    if (message.answerMaxWaiting !== 0) {
+      writer.uint32(72).uint32(message.answerMaxWaiting);
     }
     return writer;
   },
@@ -23926,6 +23960,22 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
             message.answerPort = reader.uint32();
             continue;
           }
+          case 8: {
+            if (tag !== 64) {
+              break;
+            }
+
+            message.answerMaxConns = reader.uint32();
+            continue;
+          }
+          case 9: {
+            if (tag !== 72) {
+              break;
+            }
+
+            message.answerMaxWaiting = reader.uint32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -23963,6 +24013,16 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
         : isSet(object.answer_port)
         ? globalThis.Number(object.answer_port)
         : 0,
+      answerMaxConns: isSet(object.answerMaxConns)
+        ? globalThis.Number(object.answerMaxConns)
+        : isSet(object.answer_max_conns)
+        ? globalThis.Number(object.answer_max_conns)
+        : 0,
+      answerMaxWaiting: isSet(object.answerMaxWaiting)
+        ? globalThis.Number(object.answerMaxWaiting)
+        : isSet(object.answer_max_waiting)
+        ? globalThis.Number(object.answer_max_waiting)
+        : 0,
     };
   },
 
@@ -23989,6 +24049,12 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     if (message.answerPort !== 0) {
       obj.answerPort = Math.round(message.answerPort);
     }
+    if (message.answerMaxConns !== 0) {
+      obj.answerMaxConns = Math.round(message.answerMaxConns);
+    }
+    if (message.answerMaxWaiting !== 0) {
+      obj.answerMaxWaiting = Math.round(message.answerMaxWaiting);
+    }
     return obj;
   },
 
@@ -24004,6 +24070,8 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     message.answers = object.answers?.map((e) => ClusterAnswer.fromPartial(e)) || [];
     message.serveAnswers = object.serveAnswers?.map((e) => e) || [];
     message.answerPort = object.answerPort ?? 0;
+    message.answerMaxConns = object.answerMaxConns ?? 0;
+    message.answerMaxWaiting = object.answerMaxWaiting ?? 0;
     return message;
   },
 };
@@ -24137,12 +24205,160 @@ export const ClusterAnswer: MessageFns<ClusterAnswer> = {
   },
 };
 
+function createBaseClusterAnswerRefusal(): ClusterAnswerRefusal {
+  return { appId: "", count: 0, firstUnixMs: 0, lastUnixMs: 0, cap: 0 };
+}
+
+export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
+  encode(message: ClusterAnswerRefusal, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.appId !== "") {
+      writer.uint32(10).string(message.appId);
+    }
+    if (message.count !== 0) {
+      writer.uint32(16).uint32(message.count);
+    }
+    if (message.firstUnixMs !== 0) {
+      writer.uint32(24).int64(message.firstUnixMs);
+    }
+    if (message.lastUnixMs !== 0) {
+      writer.uint32(32).int64(message.lastUnixMs);
+    }
+    if (message.cap !== 0) {
+      writer.uint32(40).uint32(message.cap);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterAnswerRefusal {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterAnswerRefusal();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.appId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.count = reader.uint32();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.firstUnixMs = longToNumber(reader.int64());
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.lastUnixMs = longToNumber(reader.int64());
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.cap = reader.uint32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterAnswerRefusal {
+    return {
+      appId: isSet(object.appId)
+        ? globalThis.String(object.appId)
+        : isSet(object.app_id)
+        ? globalThis.String(object.app_id)
+        : "",
+      count: isSet(object.count) ? globalThis.Number(object.count) : 0,
+      firstUnixMs: isSet(object.firstUnixMs)
+        ? globalThis.Number(object.firstUnixMs)
+        : isSet(object.first_unix_ms)
+        ? globalThis.Number(object.first_unix_ms)
+        : 0,
+      lastUnixMs: isSet(object.lastUnixMs)
+        ? globalThis.Number(object.lastUnixMs)
+        : isSet(object.last_unix_ms)
+        ? globalThis.Number(object.last_unix_ms)
+        : 0,
+      cap: isSet(object.cap) ? globalThis.Number(object.cap) : 0,
+    };
+  },
+
+  toJSON(message: ClusterAnswerRefusal): unknown {
+    const obj: any = {};
+    if (message.appId !== "") {
+      obj.appId = message.appId;
+    }
+    if (message.count !== 0) {
+      obj.count = Math.round(message.count);
+    }
+    if (message.firstUnixMs !== 0) {
+      obj.firstUnixMs = Math.round(message.firstUnixMs);
+    }
+    if (message.lastUnixMs !== 0) {
+      obj.lastUnixMs = Math.round(message.lastUnixMs);
+    }
+    if (message.cap !== 0) {
+      obj.cap = Math.round(message.cap);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterAnswerRefusal>, I>>(base?: I): ClusterAnswerRefusal {
+    return ClusterAnswerRefusal.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterAnswerRefusal>, I>>(object: I): ClusterAnswerRefusal {
+    const message = createBaseClusterAnswerRefusal();
+    message.appId = object.appId ?? "";
+    message.count = object.count ?? 0;
+    message.firstUnixMs = object.firstUnixMs ?? 0;
+    message.lastUnixMs = object.lastUnixMs ?? 0;
+    message.cap = object.cap ?? 0;
+    return message;
+  },
+};
+
 function createBaseSetClusterForwardersResponse(): SetClusterForwardersResponse {
-  return { held: 0, served: 0 };
+  return { answerRefusals: [], held: 0, served: 0 };
 }
 
 export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersResponse> = {
   encode(message: SetClusterForwardersResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.answerRefusals) {
+      ClusterAnswerRefusal.encode(v!, writer.uint32(26).fork()).join();
+    }
     if (message.held !== 0) {
       writer.uint32(8).int32(message.held);
     }
@@ -24165,6 +24381,14 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.answerRefusals.push(ClusterAnswerRefusal.decode(reader, reader.uint32()));
+            continue;
+          }
           case 1: {
             if (tag !== 8) {
               break;
@@ -24195,6 +24419,11 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
 
   fromJSON(object: any): SetClusterForwardersResponse {
     return {
+      answerRefusals: globalThis.Array.isArray(object?.answerRefusals)
+        ? object.answerRefusals.map((e: any) => ClusterAnswerRefusal.fromJSON(e))
+        : globalThis.Array.isArray(object?.answer_refusals)
+        ? object.answer_refusals.map((e: any) => ClusterAnswerRefusal.fromJSON(e))
+        : [],
       held: isSet(object.held) ? globalThis.Number(object.held) : 0,
       served: isSet(object.served) ? globalThis.Number(object.served) : 0,
     };
@@ -24202,6 +24431,9 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
 
   toJSON(message: SetClusterForwardersResponse): unknown {
     const obj: any = {};
+    if (message.answerRefusals?.length) {
+      obj.answerRefusals = message.answerRefusals.map((e) => ClusterAnswerRefusal.toJSON(e));
+    }
     if (message.held !== 0) {
       obj.held = Math.round(message.held);
     }
@@ -24216,6 +24448,7 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
   },
   fromPartial<I extends Exact<DeepPartial<SetClusterForwardersResponse>, I>>(object: I): SetClusterForwardersResponse {
     const message = createBaseSetClusterForwardersResponse();
+    message.answerRefusals = object.answerRefusals?.map((e) => ClusterAnswerRefusal.fromPartial(e)) || [];
     message.held = object.held ?? 0;
     message.served = object.served ?? 0;
     return message;

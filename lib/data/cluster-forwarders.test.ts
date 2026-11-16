@@ -55,6 +55,9 @@ import {
 } from "./clusters/answers";
 import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
 import { MAX_ANSWER_SLOT, answerPorts } from "../deploy/answer";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
+import { setClusterAnswerLimits } from "./clusters/manage";
+import { syncAnsweringClusters } from "./clusters/forwarders";
 import { hasAnswerSupport } from "../deploy/traefik-stack";
 import {
   INSTALLED_WITH_PANEL,
@@ -807,4 +810,108 @@ test("past the limit one more App is refused, and the table never carries more",
     first.map((a) => a.appId),
     ["blog", "shop"],
   );
+});
+
+test("each server is handed the cluster's connection limits, which only an admin sets, within range", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await syncNameForwarders(c.id);
+  assert.deepEqual(
+    [last("srv_2").answerMaxConns, last("srv_2").answerMaxWaiting],
+    [2048, 128],
+  );
+
+  await assert.rejects(
+    asAdmin(() => setClusterAnswerLimits(c.id, 32, 8)),
+    /between 64 and 65536 connections/,
+  );
+  await assert.rejects(
+    asAdmin(() => setClusterAnswerLimits(c.id, 4096, 2000)),
+    /Between 1 and 1024 visitors can wait/,
+  );
+  await assert.rejects(asTeamB(() => setClusterAnswerLimits(c.id, 8192, 256)));
+  const set = await asAdmin(() => setClusterAnswerLimits(c.id, 8192, 512));
+  assert.deepEqual(
+    [set.answerMaxConnections, set.answerMaxWaiting],
+    [8192, 512],
+  );
+  await syncNameForwarders(c.id);
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.deepEqual(
+      [last(id).answerMaxConns, last(id).answerMaxWaiting],
+      [8192, 512],
+      id,
+    );
+});
+
+test("what a server turned away reaches Activity: an App's wait to its team, the server's cap to the cluster's", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  const at = Date.parse("2026-11-16T14:02:00.000Z");
+  hosts.srv_2!.answerRefusals = [
+    {
+      appId: "",
+      count: 37,
+      firstUnixMs: at,
+      lastUnixMs: at + 180_000,
+      cap: 2048,
+    },
+    {
+      appId: "shop",
+      count: 12,
+      firstUnixMs: at,
+      lastUnixMs: at + 60_000,
+      cap: 128,
+    },
+  ];
+
+  await syncNameForwarders(c.id);
+
+  const rows = await db
+    .select({
+      message: activitiesTable.message,
+      teamId: activitiesTable.teamId,
+      appId: activitiesTable.appId,
+    })
+    .from(activitiesTable);
+  const server = rows.find((r) =>
+    r.message.includes("to domains that answer on every server"),
+  );
+  assert.match(
+    server?.message ?? "",
+    /turned away 37 visitor connections .* between 14:02 and 14:05 UTC: it carries at most 2048 at once/,
+  );
+  assert.equal(server?.teamId, TEAM_A);
+  const app = rows.find((r) => r.appId === "shop");
+  assert.match(
+    app?.message ?? "",
+    /turned away 12 visitor connections to shop .*at most 128 visitors wait for it at once/,
+  );
+  assert.equal(app?.teamId, TEAM_A);
+  // Reported once: the agent forgot them with that table.
+  await syncNameForwarders(c.id);
+  const again = await db
+    .select({ id: activitiesTable.id })
+    .from(activitiesTable);
+  assert.equal(again.length, rows.length);
+});
+
+test("every 2 minutes only the clusters that pass domains on are asked", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com", { answersEverywhere: false });
+  await syncAnsweringClusters();
+  assert.equal(hosts.srv_2!.forwarders.length, 0);
+
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: true })
+    .where(eq(domainsTable.appId, "shop"));
+  await syncAnsweringClusters();
+  assert.equal(hosts.srv_2!.forwarders.length, 1);
 });

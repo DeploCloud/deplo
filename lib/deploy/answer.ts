@@ -26,6 +26,23 @@ export function answerPorts(slot: number): { tls: number; web: number } {
 /** The most Apps of one cluster that answer on every server: what a server agent's table takes. */
 export const MAX_ANSWER_APPS = 200;
 
+/** What a cluster may set its servers' connection caps to; a quarter of the connections may wait. */
+export const ANSWER_CONNECTIONS_RANGE = { min: 64, max: 65_536 } as const;
+
+/** Why these caps cannot be a cluster's, or null. */
+export function answerLimitsRefusal(
+  connections: number,
+  waiting: number,
+): string | null {
+  const { min, max } = ANSWER_CONNECTIONS_RANGE;
+  if (!Number.isInteger(connections) || connections < min || connections > max)
+    return `A server carries between ${min} and ${max} connections at once.`;
+  const most = Math.floor(connections / 4);
+  if (!Number.isInteger(waiting) || waiting < 1 || waiting > most)
+    return `Between 1 and ${most} visitors can wait for one App: a quarter of the ${connections} connections may wait.`;
+  return null;
+}
+
 /** The most slots the ports leave room for. */
 export const MAX_ANSWER_SLOT = Math.floor((65_535 - PORT_BASE - 1) / 2);
 

@@ -22,10 +22,15 @@ import { portFor } from "../../deploy/ports";
 import { setClusterForwarders } from "../../infra/agent-client/cluster-host";
 import { AgentClusterForwardersUnsupportedError } from "../../infra/agent-client/errors";
 import { instanceFrozen } from "../deplo-move/freeze";
-import { answerTable, listClusterAnswers, syncAnswerProxies } from "./answers";
+import {
+  answerTable,
+  listClusterAnswers,
+  recordAnswerRefusals,
+  syncAnswerProxies,
+} from "./answers";
 import { listStandbys, listWorkloadPlacements } from "./placement";
 import { fingerprintOf } from "./relay";
-import { clusterMemberServerIds } from "./roster";
+import { clusterMemberServerIds, getClusterById } from "./roster";
 import { messageOf } from "../../utils";
 
 // The control plane renders which names go on which member; each server agent only runs its own table (#200).
@@ -147,7 +152,12 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
   const plan = await planClusterForwarding(clusterId);
   // Every member answers for every App with a domain that answers everywhere (ADR-0048).
   const answers = await listClusterAnswers(clusterId);
-  const passOn = answerTable(answers);
+  const cluster = answers.length > 0 ? await getClusterById(clusterId) : null;
+  const passOn = {
+    ...answerTable(answers),
+    answerMaxConns: cluster?.answerMaxConnections ?? 0,
+    answerMaxWaiting: cluster?.answerMaxWaiting ?? 0,
+  };
   const roster: { serverId: string; fingerprint: string }[] = [];
   for (const serverId of members) {
     const fingerprint = await fingerprintOf(serverId);
@@ -157,13 +167,15 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
     if (await instanceFrozen()) return;
     const mine = plan.get(serverId);
     try {
-      await setClusterForwarders(serverId, {
+      const res = await setClusterForwarders(serverId, {
         clusterId,
         members: roster,
         hold: mine?.hold ?? [],
         serve: mine?.serve ?? [],
         ...passOn,
       });
+      if (res.answerRefusals.length > 0)
+        await recordAnswerRefusals(clusterId, serverId, res.answerRefusals);
     } catch (e) {
       // A member with nothing to run and an agent too old to take the table is not a problem.
       if (
@@ -214,4 +226,15 @@ export function syncNameForwardersAfterDeploy(depId: string): void {
   })().catch((e) =>
     console.warn(`[cluster-forwarders] ${depId}: ${message(e)}`),
   );
+}
+
+/** Every 2 minutes from the cluster watch: the clusters that pass domains on hear what their agents turned away. */
+export async function syncAnsweringClusters(): Promise<void> {
+  const { clustersWithAnswers } = await import("./answers");
+  for (const id of await clustersWithAnswers()) {
+    if (await instanceFrozen()) return;
+    await syncNameForwarders(id).catch((e) =>
+      console.warn(`[cluster-forwarders] ${id}: ${message(e)}`),
+    );
+  }
 }

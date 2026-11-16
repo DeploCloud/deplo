@@ -10,6 +10,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { rehomeFailoverBackups } from "../databases/failover";
 import { shipChangeLogs } from "./change-log";
 import { runClusterRollout } from "./binary-rollout";
+import { syncAnsweringClusters } from "./forwarders";
 import { reconcileClusterNetworks } from "./network";
 import { runEmptyingPass } from "./empty";
 import { reconcileClusterImages } from "./images";
@@ -35,6 +36,8 @@ const IMAGES_EVERY_MS = 2 * 60_000;
 const NETWORK_EVERY_MS = 2 * 60_000;
 const WARNINGS_EVERY_MS = 30_000;
 const BALANCE_EVERY_MS = 30_000;
+// How soon a server's turned-away visitors reach Activity (ADR-0048).
+const ANSWERS_EVERY_MS = 2 * 60_000;
 // Renewed every tick: a Deplo that died without letting go must not leave failover off for the usual 2h.
 export const CLUSTER_WATCH_STALE_MS = 5 * 60_000;
 
@@ -50,6 +53,8 @@ interface State {
   changeLogAt?: number;
   /** When the last rollout pass over the cluster binaries started. */
   rolledAt?: number;
+  /** When the clusters that pass domains on were last asked what they turned away. */
+  answersAt?: number;
   /** When failed or missing image copies were last retried. */
   imagesAt?: number;
   /** When every cluster's private network was last put right, and whether a pass still runs. */
@@ -185,6 +190,12 @@ export async function runClusterWatchTick(): Promise<void> {
       void refreshAllClusterWarnings()
         .catch((e) => console.error("[cluster-warnings] pass failed:", e))
         .finally(() => (state.warning = false));
+    }
+    if (Date.now() - (state.answersAt ?? 0) >= ANSWERS_EVERY_MS) {
+      state.answersAt = Date.now();
+      void syncAnsweringClusters().catch((e) =>
+        console.error("[cluster-forwarders] answering clusters failed:", e),
+      );
     }
     if (Date.now() - (state.rolledAt ?? 0) >= ROLLOUT_EVERY_MS) {
       state.rolledAt = Date.now();

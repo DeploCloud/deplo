@@ -19,6 +19,7 @@ import type {
   ClusterReplicaReport,
   ClusterReplicaTable,
   ClusterNetworkTable,
+  ClusterAnswerRefusal,
 } from "./connection";
 import { __forgetMemberProbes } from "./cluster-host";
 import {
@@ -64,6 +65,8 @@ export interface FakeClusterHost {
   imageExpects: { imageRef: string; sourceFingerprint: string; keep: number }[];
   /** Every name-forwarder table this host's agent was handed, in order (#200). */
   forwarders: ClusterForwarderTable[];
+  /** What this host's agent says it turned away, with the next table; handed once (ADR-0048). */
+  answerRefusals: ClusterAnswerRefusal[];
   /** Every network table this host's agent was handed, in order, and how it says it reaches a peer (ADR-0047). */
   networkTables: ClusterNetworkTable[];
   networkPath: (fingerprint: string) => "direct" | "relay" | "none";
@@ -373,7 +376,13 @@ export function fakeClusterHosts(): {
       setClusterForwarders: (table) =>
         guard(() => {
           h.forwarders.push(table);
-          return { held: table.hold.length, served: table.serve.length };
+          const answerRefusals = h.answerRefusals;
+          h.answerRefusals = [];
+          return {
+            held: table.hold.length,
+            served: table.serve.length,
+            answerRefusals,
+          };
         }),
       setClusterNetwork: (table) =>
         guard(() => {
@@ -422,6 +431,7 @@ export function fakeClusterHosts(): {
         calls: [],
         memberCalls: [],
         memberPins: [],
+        answerRefusals: [],
         proxy: { yaml: "", applied: 0, refuse: "" },
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],

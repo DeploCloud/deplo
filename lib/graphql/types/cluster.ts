@@ -3,6 +3,7 @@ import { builder } from "../builder";
 import { ServerStatusEnum } from "./server/server-ref";
 import { TeamRef } from "./team";
 import {
+  setClusterAnswerLimits,
   createCluster,
   renameCluster,
   setClusterFailover,
@@ -435,6 +436,14 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
       description: "Where load balancing sends each visitor.",
       resolve: (c) => c.loadBalancingMode,
     }),
+    answerMaxConnections: t.exposeInt("answerMaxConnections", {
+      description:
+        "Per server, how many visitor connections to the cluster's domains that answer on every server it carries at once, waiting or passed on; a quarter of them may wait. Past it a visitor is turned away and Activity says so.",
+    }),
+    answerMaxWaiting: t.exposeInt("answerMaxWaiting", {
+      description:
+        "Per server, how many visitors wait at once for one App that is not ready yet (a failover under way). Past it a visitor is turned away and Activity says so.",
+    }),
     replication: t.field({
       type: [ClusterReplicationProgressRef],
       authScopes: { loggedIn: true },
@@ -628,6 +637,19 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { id, enabled, mode }) =>
       thenRefresh(id, setClusterLoadBalancing(id, enabled, mode)),
+  }),
+  setClusterAnswerLimits: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Set how many visitor connections each server of the cluster carries at once for its domains that answer on every server (64 to 65536; a quarter of them may wait), and how many wait for one App (1 to a quarter of the connections). A busy site with long-lived connections needs more.",
+    args: {
+      id: t.arg.string({ required: true }),
+      maxConnections: t.arg.int({ required: true }),
+      maxWaiting: t.arg.int({ required: true }),
+    },
+    resolve: (_r, { id, maxConnections, maxWaiting }) =>
+      thenRefresh(id, setClusterAnswerLimits(id, maxConnections, maxWaiting)),
   }),
   setClusterTeams: t.field({
     type: ClusterRef,

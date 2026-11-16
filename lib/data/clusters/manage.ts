@@ -15,6 +15,7 @@ import {
   type LoadBalancingMode,
   cleanLoadBalancingMode,
 } from "../../types/cluster";
+import { answerLimitsRefusal } from "../../deploy/answer";
 import { recordActivity } from "../activity";
 import { inBackground, reconcileClusterBundles } from "./bundles";
 import { reconcileClusterDatabaseBundles } from "./database-bundles";
@@ -293,5 +294,40 @@ export async function setClusterLoadBalancing(
   await recordActivity("server", message, user.name, null, teamId);
   if (enabled && next === "most_available") balanceEntrancesSoon(id);
   else openEntrancesSoon(id);
+  return (await getClusterById(id))!;
+}
+
+/**
+ * How many passed-on connections each server of the cluster carries at once for its domains that answer on every
+ * server (a quarter of them may wait), and how many wait for one App. Past either a visitor is turned away (ADR-0048).
+ */
+export async function setClusterAnswerLimits(
+  id: string,
+  maxConnections: number,
+  maxWaiting: number,
+): Promise<Cluster> {
+  const { teamId, user } = await requireClusterAdmin();
+  const cluster = await getClusterById(id);
+  if (!cluster) throw new Error("Cluster not found");
+  const refusal = answerLimitsRefusal(maxConnections, maxWaiting);
+  if (refusal) throw new Error(refusal);
+  if (
+    cluster.answerMaxConnections === maxConnections &&
+    cluster.answerMaxWaiting === maxWaiting
+  )
+    return cluster;
+  await getDb()
+    .update(clustersTable)
+    .set({ answerMaxConnections: maxConnections, answerMaxWaiting: maxWaiting })
+    .where(eq(clustersTable.id, id));
+  await recordActivity(
+    "server",
+    `Each server of cluster ${cluster.name} now carries up to ${maxConnections} visitor connections at once for domains that answer on every server, and holds up to ${maxWaiting} waiting for one App`,
+    user.name,
+    null,
+    teamId,
+  );
+  const { syncNameForwardersSoon } = await import("./forwarders");
+  syncNameForwardersSoon(id);
   return (await getClusterById(id))!;
 }
