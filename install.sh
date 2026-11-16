@@ -1634,6 +1634,42 @@ live_acme_email() {
   [ -f "$TRAEFIK_COMPOSE" ] || return 0
   sed -n 's/.*--certificatesresolvers\.letsencrypt\.acme\.email=//p' "$TRAEFIK_COMPOSE" | head -1
 }
+live_panel_fallback() { # the host of the deplo-panel-fallback router, when the proxy routes one
+  [ -f "$TRAEFIK_COMPOSE" ] || return 0
+  awk '
+    /^[[:space:]]*deplo-panel-fallback:[[:space:]]*$/ { f = 1; next }
+    f && /Host\(`/ { h = $0; sub(/^.*Host\(`/, "", h); sub(/`\).*$/, "", h); print h; exit }
+    f && /^[[:space:]]*deplo-[a-z-]+:[[:space:]]*$/ { exit }
+  ' "$TRAEFIK_COMPOSE"
+}
+# Whether a generated host embeds one of this machine's addresses, its own or the one the internet sees.
+names_this_machine() {
+  local ip label
+  for ip in "$V4_LOCAL" "$PUBLIC_IP" "$HOST_V6"; do
+    [ -n "$ip" ] && label="$(ip_label "$ip")" || continue
+    case "$1" in "deplo-$label.deplo.site" | "deplo-$label.nip.io" | "deplo-$label.sslip.io") return 0 ;; esac
+  done
+  return 1
+}
+
+# An update keeps the backup address the proxy routes, and keeps it off when it was turned off (#234). It
+# is named again only by a run that moves to the other kind of address, or once it names this machine no more.
+FALLBACK_OFF=false
+adopt_live_fallback() {
+  [ "$MODE" = update ] || return 0
+  [ -z "$FAMILY_FLAG" ] || [ "$FAMILY_FLAG" = "$(grep '^DEPLO_IP_FAMILY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)" ] || return 0
+  local panel="" host
+  read -r panel _ <<<"$(live_panel_route)" || true
+  [ -n "$panel" ] || return 0
+  host="$(live_panel_fallback)"
+  if [ -z "$host" ]; then
+    # One router on the generated host: the panel is served on its backup address. Otherwise it was turned off.
+    is_generated_host "$panel" || { FALLBACK_OFF=true; return 0; }
+    host="$panel"
+  fi
+  [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] || names_this_machine "$host" || return 0
+  FALLBACK_HOST="$host"
+}
 
 # The domain, before Let's Encrypt is asked for anything -------------------------
 # A certificate ordered for a name that does not point here fails the HTTP-01
@@ -1656,6 +1692,7 @@ adopt_live_panel_route() {
   [ "$entry" != web ] || PANEL_HTTPS=false
 }
 adopt_live_panel_route
+adopt_live_fallback
 TRAEFIK_DNS_TUNNEL_SERVICES="$(live_dns_tunnel_services)"
 # The tunnel serves one name: it stays only while the panel stays on it.
 TRAEFIK_TUNNEL_SERVICE=""
@@ -1676,7 +1713,7 @@ if is_real_domain "${DEPLO_DOMAIN:-}"; then
     ok "$DEPLO_DOMAIN $G_ARROW Cloudflare Tunnel"
   elif [ -z "$DOMAIN_IPS" ]; then
     pf_warn "$DEPLO_DOMAIN does not resolve yet." \
-      "Point its $DNS_RECORD record at $TARGET_IP. The dashboard answers on https://$FALLBACK_HOST meanwhile."
+      "Point its $DNS_RECORD record at $TARGET_IP.$([ "$FALLBACK_OFF" = true ] || printf ' The dashboard answers on https://%s meanwhile.' "$FALLBACK_HOST")"
   elif printf '%s' " $DOMAIN_IPS " | grep -q " $TARGET_IP "; then
     ok "$DEPLO_DOMAIN $G_ARROW $TARGET_IP"
   else
@@ -2166,7 +2203,8 @@ render_traefik_panel_config() {
   TRAEFIK_PANEL_CONFIG="$(
     printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n'
     panel_router deplo-panel "$PANEL_HOST"
-    [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
+    [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || [ "${FALLBACK_OFF:-false}" = true ] \
+      || panel_router deplo-panel-fallback "$FALLBACK_HOST"
     offline_router
     printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true\n'
     printf '          deplo-link:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3001\n'
@@ -3501,7 +3539,7 @@ if [ -n "$TAKEOVER_DOOR" ]; then
 else
   card_kv "Dashboard" "$PUBLIC_URL"
 fi
-[ "$USE_DOMAIN" = true ] && card_kv "Backup address" "https://$FALLBACK_HOST"
+[ "$USE_DOMAIN" = true ] && [ "$FALLBACK_OFF" != true ] && card_kv "Backup address" "https://$FALLBACK_HOST"
 card_kv "Version" "$VERSION_LABEL"
 card_kv "Data dir" "$DEPLO_DIR"
 card_kv "Database" "Postgres, private network only"
@@ -3520,7 +3558,7 @@ card_close
 closing_notes() {
   if [ "$USE_DOMAIN" = true ]; then
     note "Point $DEPLO_DOMAIN at $TARGET_IP; the certificate issues on the first request."
-    note "$FALLBACK_HOST answers too, so the panel stays reachable while its DNS moves."
+    [ "$FALLBACK_OFF" = true ] || note "$FALLBACK_HOST answers too, so the panel stays reachable while its DNS moves."
   else
     note "$FALLBACK_HOST already resolves to this server, so there is no DNS to set up."
     # Only true while the panel is still on its interim ports: the challenge needs
