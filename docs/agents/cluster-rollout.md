@@ -261,6 +261,22 @@ Name forwarders ride it too: a `FWD` stream between agents adds the port the cal
 service only when it has them (`FWD <network> <kind>:<id>[ <port>[ <service>]]`), and a forwarder opens its
 agent socket with `PORT <n>`. A compose service's names go only to agents with `cluster.forwarders.services`.
 
+A domain that answers on every server ([ADR-0048](../adr/0048-a-cluster-domain-answers-on-every-server.md)) is a
+fifth, between the panel and `deplo-agent` only, and the strictest: the panel renders each App's routes
+(`lib/deploy/answer.ts`) and the agent takes nothing but fixed forms of them
+(`internal/server/cluster_answer_routes.go`), refusing the **whole table** on one it does not know, so every App of
+the cluster stops answering everywhere at once. Its parts: the forwarder's name `deplo-answer`, the PROXY transport
+`deplo-answer@file` (defined in Deplo's own `deplo-answer.yml`), router and service names `deplo-answer-<App
+id>[-<suffix>]`, `HostSNI` on `websecure` with passthrough and the check path on `web`, the ports `20000 + 2 × slot`
+and the one after it, the routes file `answers.yml` beside the proxy's compose file (mounted as `deplo-answers.yml`),
+the internal entrypoint `answer` on `127.0.0.1:8443` trusting PROXY from `127.0.0.1/32` only, the stream `FWD deplo
+answer:<id>[ <port>]` (port 1 a probe that connects no one), the caps and what an agent turned away. **Both repos keep
+one reference file**, `lib/deploy/answer-routes.golden.json` here and `internal/server/testdata/answer-routes.golden.json`
+there: the panel's test renders it with the panel's code, the agent's parses it with the agent's checks, and each
+compares its copy with the other's when both checkouts sit side by side. Change a part and the file changes in both
+repos in the same step, the agent first. It is gated on `cluster.forwarders.answers`, so an agent without it gets no
+answers and its proxy is never changed.
+
 ## 8. Rollback is forward-only
 
 Same as the fleet (`fleet-rollout.md` §10): nothing installs an older cluster binary than the one

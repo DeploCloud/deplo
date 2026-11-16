@@ -938,3 +938,55 @@ test("the smallest server's memory bounds the cap, and the cost is said in Activ
     /up to 2048 visitor connections at once .*\(up to 128 MB of its memory\)/,
   );
 });
+
+test("a server's own memory and its waiting cap are said as such", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  const at = Date.parse("2026-11-16T14:02:00.000Z");
+  hosts.srv_4!.answerRefusals = [
+    {
+      appId: "",
+      count: 5,
+      firstUnixMs: at,
+      lastUnixMs: at,
+      cap: 1024,
+      memory: true,
+    },
+    {
+      appId: "",
+      count: 3,
+      firstUnixMs: at,
+      lastUnixMs: at,
+      cap: 512,
+      waiting: true,
+    },
+    // An agent from before the flags: a cap not the cluster's was its waiting one.
+    { appId: "", count: 2, firstUnixMs: at, lastUnixMs: at, cap: 512 },
+  ];
+
+  await syncNameForwarders(c.id);
+
+  const said = (
+    await db.select({ message: activitiesTable.message }).from(activitiesTable)
+  ).map((r) => r.message);
+  assert.ok(
+    said.some((m) =>
+      /5 visitor connections .*it carries at most 1024 at once, what fits in a quarter of its memory/.test(
+        m,
+      ),
+    ),
+    said.join("\n"),
+  );
+  assert.ok(
+    said.some((m) =>
+      /3 visitor connections .*it holds at most 512 waiting at once/.test(m),
+    ),
+  );
+  assert.ok(
+    said.some((m) =>
+      /2 visitor connections .*it holds at most 512 waiting at once/.test(m),
+    ),
+  );
+});

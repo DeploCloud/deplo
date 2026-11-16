@@ -3202,8 +3202,13 @@ export interface ClusterAnswerRefusal {
   count: number;
   firstUnixMs: number;
   lastUnixMs: number;
-  /** The cap they ran into. */
+  /**
+   * The cap they ran into: a server's waiting cap rather than its connection cap, and a connection cap this
+   * server's memory set lower than the cluster's.
+   */
   cap: number;
+  waiting: boolean;
+  memory: boolean;
 }
 
 export interface SetClusterForwardersResponse {
@@ -24206,7 +24211,7 @@ export const ClusterAnswer: MessageFns<ClusterAnswer> = {
 };
 
 function createBaseClusterAnswerRefusal(): ClusterAnswerRefusal {
-  return { appId: "", count: 0, firstUnixMs: 0, lastUnixMs: 0, cap: 0 };
+  return { appId: "", count: 0, firstUnixMs: 0, lastUnixMs: 0, cap: 0, waiting: false, memory: false };
 }
 
 export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
@@ -24225,6 +24230,12 @@ export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
     }
     if (message.cap !== 0) {
       writer.uint32(40).uint32(message.cap);
+    }
+    if (message.waiting !== false) {
+      writer.uint32(48).bool(message.waiting);
+    }
+    if (message.memory !== false) {
+      writer.uint32(56).bool(message.memory);
     }
     return writer;
   },
@@ -24282,6 +24293,22 @@ export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
             message.cap = reader.uint32();
             continue;
           }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.waiting = reader.bool();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.memory = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -24313,6 +24340,8 @@ export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
         ? globalThis.Number(object.last_unix_ms)
         : 0,
       cap: isSet(object.cap) ? globalThis.Number(object.cap) : 0,
+      waiting: isSet(object.waiting) ? globalThis.Boolean(object.waiting) : false,
+      memory: isSet(object.memory) ? globalThis.Boolean(object.memory) : false,
     };
   },
 
@@ -24333,6 +24362,12 @@ export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
     if (message.cap !== 0) {
       obj.cap = Math.round(message.cap);
     }
+    if (message.waiting !== false) {
+      obj.waiting = message.waiting;
+    }
+    if (message.memory !== false) {
+      obj.memory = message.memory;
+    }
     return obj;
   },
 
@@ -24346,6 +24381,8 @@ export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
     message.firstUnixMs = object.firstUnixMs ?? 0;
     message.lastUnixMs = object.lastUnixMs ?? 0;
     message.cap = object.cap ?? 0;
+    message.waiting = object.waiting ?? false;
+    message.memory = object.memory ?? false;
     return message;
   },
 };
