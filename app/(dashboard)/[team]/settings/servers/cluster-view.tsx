@@ -51,7 +51,7 @@ import {
   ClusterSettings,
   type ClusterBarData,
 } from "@/components/servers/cluster-bar";
-import { clusterHealth } from "@/components/servers/cluster-card";
+import { HealthBadge } from "@/components/servers/cluster-card";
 import {
   serversHref,
   type ClusterJoinOption,
@@ -169,7 +169,6 @@ export function ClusterView({
       return next;
     });
 
-  const health = clusterHealth(cluster.members.map((m) => m.online));
   const leader = servers.find((s) => s.leader);
   const removing = servers.find((s) => s.id === removeId);
   const deploMachineOutside = !servers.some((s) => s.isDeploHost);
@@ -224,9 +223,7 @@ export function ClusterView({
                 <h1 className="truncate text-xl font-semibold tracking-tight">
                   {cluster.name}
                 </h1>
-                <Badge variant={health.variant} className="whitespace-nowrap">
-                  {health.label}
-                </Badge>
+                <HealthBadge online={cluster.members.map((m) => m.online)} />
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
             </div>

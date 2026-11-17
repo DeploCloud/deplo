@@ -163,7 +163,7 @@ test("the top level shows each cluster as one card and only the servers outside 
   });
   assert.match(
     html,
-    /eu Cluster · 1 provisioning 1 of 2 online 2 servers - cores - memory 0 apps 1 of 2 servers online/,
+    /eu Cluster · 1 provisioning 1\/2 2 servers - cores - memory 0 apps 1 of 2 servers online/,
   );
   const read = grid({
     servers: [],
@@ -218,21 +218,25 @@ test("a cluster card names what it is, and how many servers are still joining", 
   assert.equal(clusterSummary({ provisioning: 1 }), "Cluster · 1 provisioning");
 });
 
-test("a cluster card's health line says how many of its servers answer", () => {
+test("a cluster's health chip stays short and says it in full in its tooltip", () => {
   assert.deepEqual(clusterHealth([]), {
-    label: "No servers yet",
+    label: "Empty",
+    full: "No servers yet",
     variant: "muted",
   });
   assert.deepEqual(clusterHealth([true, true]), {
-    label: "All 2 online",
+    label: "2/2",
+    full: "2 of 2 servers online",
     variant: "success",
   });
   assert.deepEqual(clusterHealth([true, false, true]), {
-    label: "2 of 3 online",
+    label: "2/3",
+    full: "2 of 3 servers online",
     variant: "warning",
   });
   assert.deepEqual(clusterHealth([false]), {
-    label: "0 of 1 online",
+    label: "0/1",
+    full: "0 of 1 server online",
     variant: "destructive",
   });
 });

@@ -66,19 +66,37 @@ export function clusterSummary(c: { provisioning: number }): string {
     : "Cluster";
 }
 
-/** "2 of 3 online": the one line a card states about its servers' health. */
+/** A chip stays short ("2/3"); `full` says it in words, for the tooltip and screen readers. */
 export function clusterHealth(online: boolean[]): {
   label: string;
+  full: string;
   variant: "success" | "warning" | "destructive" | "muted";
 } {
   const up = online.filter(Boolean).length;
-  if (online.length === 0) return { label: "No servers yet", variant: "muted" };
-  if (up === online.length)
-    return { label: `All ${up} online`, variant: "success" };
+  const n = online.length;
+  if (n === 0)
+    return { label: "Empty", full: "No servers yet", variant: "muted" };
   return {
-    label: `${up} of ${online.length} online`,
-    variant: up === 0 ? "destructive" : "warning",
+    label: `${up}/${n}`,
+    full: `${up} of ${n} server${n === 1 ? "" : "s"} online`,
+    variant: up === n ? "success" : up === 0 ? "destructive" : "warning",
   };
+}
+
+export function HealthBadge({ online }: { online: boolean[] }) {
+  const health = clusterHealth(online);
+  return (
+    <SimpleTooltip content={health.full}>
+      <Badge
+        variant={health.variant}
+        aria-label={health.full}
+        className="whitespace-nowrap tabular-nums"
+      >
+        {health.variant === "warning" && <TriangleAlert className="size-3" />}
+        {health.label}
+      </Badge>
+    </SimpleTooltip>
+  );
 }
 
 function Warned({ warnings }: { warnings: Promise<ClusterWarning[]> }) {
@@ -113,13 +131,9 @@ export function ClusterCard({
   const replication = useReplicationSwitch(cluster);
   const href = serversHref({ cluster: cluster.id, view });
 
-  const health = clusterHealth(cluster.members.map((m) => m.online));
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1 self-center [&_button:hover]:bg-card-hover">
-      <Badge variant={health.variant} className="whitespace-nowrap">
-        {health.variant === "warning" && <TriangleAlert className="size-3" />}
-        {health.label}
-      </Badge>
+      <HealthBadge online={cluster.members.map((m) => m.online)} />
       <div
         data-card-actions
         onPointerDown={(e) => e.stopPropagation()}
