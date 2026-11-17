@@ -31,7 +31,7 @@ import { databaseDescriptor } from "../backups/target-descriptor";
 import { mountsFor } from "../databases/rows";
 import {
   databasePassword,
-  renderDatabaseStackYaml,
+  databaseStackYaml,
   rerouteRequest,
 } from "../databases/stack";
 import { instanceFrozen } from "../deplo-move/freeze";
@@ -200,7 +200,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
   if (keys.length === 0) return;
   const sent = rerouteRequest(
     db,
-    renderDatabaseStackYaml(db, databasePassword(db)),
+    await databaseStackYaml(db, databasePassword(db)),
   );
   const source = await latestRestorable({
     kind: KIND,

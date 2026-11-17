@@ -3,6 +3,7 @@ import "server-only";
 
 import { loadAppGraph, loadDomainsForApp } from "../../data/app-graph-load";
 import { basicAuthUsersValue } from "../../data/basic-auth";
+import { appStartsUnderLease } from "../../data/clusters/supervise";
 import {
   defaultRoute,
   routableRoutes,
@@ -59,6 +60,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       resources: project.resources,
       volumes: project.volumes,
       stickySessions: project.stickySessions,
+      underLease: await appStartsUnderLease(project),
     });
   }
 

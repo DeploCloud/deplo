@@ -3,6 +3,7 @@ import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { basicAuthUsersValue } from "../../data/basic-auth";
+import { appStartsUnderLease } from "../../data/clusters/supervise";
 import type { RoutableDomain } from "../../data/domains/routes";
 import { mountOptions } from "../../apps/volume-model";
 import type { App } from "../../types/app";
@@ -28,6 +29,7 @@ import { portProbeHealthCheck } from "../port-probe";
 import { deployNetwork } from "../network";
 import { defaultLogging, renderResourceLimitsYaml } from "../resources";
 import { traefikRouterLabels } from "../routing";
+import { RESTART_LABEL } from "../restart-under-lease";
 import { appEnv, type PreviewEnvContext } from "./deploy-env";
 
 export type RenderComposeOptions = Parameters<typeof renderCompose>[0];
@@ -81,6 +83,8 @@ export function renderCompose(opts: {
   // One member's share of an App spread over a cluster: no fixed container name even for one copy,
   // so the leader can start a lost replica beside it.
   scaled?: boolean;
+  // Data on a cluster whose agents start it under its lease: Docker never starts it at boot (deplo#237).
+  underLease?: boolean;
   name: string;
   image: string;
   port: number;
@@ -137,6 +141,7 @@ export function renderCompose(opts: {
     `deplo.project=${trackingId}`,
     `deplo.slug=${deployKey}`,
     ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
+    ...(opts.underLease ? [`${RESTART_LABEL}=unless-stopped`] : []),
     ...(opts.extraLabels ?? []),
   ];
   if (
@@ -197,10 +202,11 @@ export function renderCompose(opts: {
 
   const service = opts.serviceName ?? name;
   const replicas = opts.replicas ?? 1;
+  const restart = opts.underLease ? `"no"` : "unless-stopped";
   const identityYaml =
     replicas > 1 || opts.scaled
-      ? `    restart: unless-stopped\n    deploy:\n      replicas: ${replicas}\n`
-      : `    container_name: ${service}\n    restart: unless-stopped\n`;
+      ? `    restart: ${restart}\n    deploy:\n      replicas: ${replicas}\n`
+      : `    container_name: ${service}\n    restart: ${restart}\n`;
   const networksYaml = opts.aliases?.length
     ? "    networks:\n      deplo:\n        aliases:\n" +
       opts.aliases.map((a) => `          - ${a}`).join("\n") +
@@ -280,6 +286,7 @@ export async function renderDeployStack(opts: {
     replicas,
     scaled,
     stickySessions: project.stickySessions,
+    underLease: !preview && (await appStartsUnderLease(project)),
   };
   return {
     composeYaml: renderCompose(stackOpts),

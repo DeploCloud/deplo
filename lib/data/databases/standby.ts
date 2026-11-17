@@ -47,7 +47,7 @@ import { getServerById } from "../servers/roster";
 import { loadDatabase, mountsFor, requireDatabase } from "./rows";
 import {
   databasePassword,
-  renderDatabaseStackYaml,
+  databaseStackYaml,
   rerouteDatabase,
   rerouteRequest,
 } from "./stack";
@@ -161,7 +161,7 @@ async function tellCluster(db: Database, cluster: Cluster): Promise<void> {
 }
 
 const copyYaml = (db: Database, engine: StandbyEngine, seed: string) =>
-  renderDatabaseStackYaml(
+  databaseStackYaml(
     db,
     databasePassword(db),
     engine.start({ ...argsOf(db), primaryHost: db.host, seed }),
@@ -184,8 +184,9 @@ async function seedCopy(
   await pushLeaderRoster(cluster).catch(quietly(cluster.id));
   await syncNameForwarders(cluster.id).catch(quietly(cluster.id));
   await run(db, db.serverId, db.host, engine.prepare(argsOf(db)));
+  const yaml = await copyYaml(db, engine, seed);
   const res = await onServer(member, (conn) =>
-    conn.reroute(rerouteRequest(db, copyYaml(db, engine, seed))),
+    conn.reroute(rerouteRequest(db, yaml)),
   );
   if (!res.ok)
     throw new Error(
@@ -453,7 +454,7 @@ export async function syncStandby(id: string): Promise<void> {
             quietly(db.host),
           );
         // Same seed, so the data stays: only what changed on the database (memory, version, network) reaches the copy.
-        const yaml = copyYaml(db, engine, db.standbySeed);
+        const yaml = await copyYaml(db, engine, db.standbySeed);
         await onServer(at, async (conn) => {
           const cur = await conn.readStack(db.host);
           if (cur.exists && cur.yaml !== yaml)

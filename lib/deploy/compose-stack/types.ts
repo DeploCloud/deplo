@@ -40,6 +40,8 @@ export interface ComposeStackInput {
   takenNames?: readonly string[];
   /** The App's switch: a routed service with replicas keeps each visitor on one of them. */
   stickySessions?: boolean;
+  /** Data on a cluster whose agents start it under its lease: every service's restart policy is "no" (deplo#237). */
+  underLease?: boolean;
 }
 
 export type App = Record<string, unknown>;

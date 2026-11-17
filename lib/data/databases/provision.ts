@@ -40,7 +40,7 @@ import {
   sanitizeDbIdentifier,
 } from "./validate";
 import { databaseExists, toDTO, type DatabaseDTO } from "./rows";
-import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
+import { databaseStackYaml, rerouteRequest } from "./stack";
 import { imageArchs } from "../clusters/architectures";
 import { assertServerNotInCluster } from "../clusters/members";
 import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
@@ -270,7 +270,7 @@ async function provisionDatabase(
   db: Database,
   password: string,
 ): Promise<void> {
-  const yaml = renderDatabaseStackYaml(db, password);
+  const yaml = await databaseStackYaml(db, password);
   await withKeyedLock(db.id, async () => {
     if (!(await databaseExists(db.id))) return;
     const conn = await connectAgent(db.serverId);

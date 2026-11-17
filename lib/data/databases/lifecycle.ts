@@ -22,7 +22,7 @@ import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { assertNotProvisioning, databaseExists, requireDatabase } from "./rows";
 import {
   databasePassword,
-  renderDatabaseStackYaml,
+  databaseStackYaml,
   rerouteDatabase,
   rerouteRequest,
   teardownDatabaseStack,
@@ -128,7 +128,7 @@ export async function redeployDatabase(
     await assertNotPausedForMove("database", id);
     // Redis auth rides a --requirepass flag re-applied on every boot, so an empty password disables it.
     const password = databasePassword(cur);
-    const yaml = renderDatabaseStackYaml(cur, password);
+    const yaml = await databaseStackYaml(cur, password);
     const conn = await connectAgent(cur.serverId);
     try {
       // A HARD gate: an older agent ignores pull_images and would report an update it never made.
@@ -178,7 +178,7 @@ export async function rebuildDatabase(id: string): Promise<void> {
     assertNotProvisioning(cur, "rebuilding it");
     await assertNotPausedForMove("database", id);
     const password = databasePassword(cur);
-    const yaml = renderDatabaseStackYaml(cur, password);
+    const yaml = await databaseStackYaml(cur, password);
     const conn = await connectAgent(cur.serverId);
     try {
       const down = await conn.destroyStack(cur.host, true);
