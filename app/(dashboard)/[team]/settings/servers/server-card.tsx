@@ -53,6 +53,8 @@ import {
   type ServerHealthState,
 } from "./server-health-provider";
 import { DocsLink } from "@/components/ui/docs-link";
+import { UsageMeters } from "@/components/servers/server-usage";
+import type { ServerUsage } from "@/lib/types/server";
 
 export type ServerCardData = ServerFilterFields & {
   id: string;
@@ -67,6 +69,8 @@ export type ServerCardData = ServerFilterFields & {
   advice: string;
   uninstallPending: boolean;
   uninstallError: string | null;
+  /** Its newest reading; null while it has none. */
+  usage: ServerUsage | null;
   cluster: { id: string; name: string; servers: number } | null;
   member: ServerMemberState | null;
   /** The cluster's leader runs on this server. */
@@ -430,6 +434,16 @@ export function ServerCard({
           <div className="hidden items-center gap-1.5 lg:flex [&>*]:pointer-events-auto">
             <ServerBadges server={server} showCluster={showCluster} />
           </div>
+          {server.usage && (
+            <span className="ml-auto hidden text-xs whitespace-nowrap text-muted-foreground tabular-nums xl:inline">
+              {Math.round(server.usage.cpu)}% CPU ·{" "}
+              {Math.round(
+                (server.usage.memUsed / Math.max(server.usage.memTotal, 1)) *
+                  100,
+              )}
+              % memory
+            </span>
+          )}
         </div>
         {actions}
       </Card>
@@ -454,6 +468,7 @@ export function ServerCard({
               </p>
             ))}
           </div>
+          {server.usage && <UsageMeters usage={server.usage} />}
         </div>
       </Card>
     );
@@ -516,6 +531,13 @@ export function ServerCardSkeleton() {
               />
             </Bone>
           </div>
+        </div>
+        <div className="space-y-3">
+          {["CPU", "Memory", "Disk"].map((label) => (
+            <Bone key={label} box className="w-full">
+              <div className="h-[30px]" />
+            </Bone>
+          ))}
         </div>
       </div>
     </Card>

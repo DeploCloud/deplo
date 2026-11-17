@@ -35,6 +35,7 @@ const server = (
   id,
   name: id,
   ip: "203.0.113.10",
+  usage: null,
   search: id,
   use: "everything",
   teams: [],

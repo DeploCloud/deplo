@@ -54,6 +54,7 @@ import {
 } from "./server-health-provider";
 import { RefreshFleetButton } from "./check-status-button";
 import { experimentOn } from "@/lib/data/experiments";
+import { serverUsages } from "@/lib/data/monitoring";
 
 export const metadata = { title: "Servers" };
 
@@ -91,6 +92,7 @@ export default async function ServersPage(
     avatarUrl: t.avatarUrl,
   }));
 
+  const usages = await serverUsages(serversRaw.map((s) => s.id));
   const selfAddrs = deploHostSelfAddresses();
   const servers = [...serversRaw].sort(
     (a, b) =>
@@ -166,6 +168,7 @@ export default async function ServersPage(
       advice: advice.get(server.id)!,
       uninstallPending: Boolean(server.uninstallPending),
       uninstallError: server.uninstallError ?? null,
+      usage: usages.get(server.id) ?? null,
       cluster: held
         ? {
             id: held.cluster.id,

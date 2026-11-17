@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -201,4 +201,30 @@ export async function listServerWorkloads(
     (a, b) =>
       a.teamName.localeCompare(b.teamName) || a.name.localeCompare(b.name),
   );
+}
+
+/** How many Apps run on each server, and how many are placed on each cluster: one query for the whole page. */
+export async function appCounts(): Promise<{
+  byServer: Map<string, number>;
+  byCluster: Map<string, number>;
+}> {
+  await requireInstanceAdmin();
+  const rows = await getDb()
+    .select({
+      serverId: appsTable.serverId,
+      clusterId: appsTable.clusterId,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(appsTable)
+    .where(isNull(appsTable.deletingAt))
+    .groupBy(appsTable.serverId, appsTable.clusterId);
+  const byServer = new Map<string, number>();
+  const byCluster = new Map<string, number>();
+  for (const r of rows) {
+    if (r.serverId)
+      byServer.set(r.serverId, (byServer.get(r.serverId) ?? 0) + r.n);
+    if (r.clusterId)
+      byCluster.set(r.clusterId, (byCluster.get(r.clusterId) ?? 0) + r.n);
+  }
+  return { byServer, byCluster };
 }

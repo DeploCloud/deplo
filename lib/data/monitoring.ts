@@ -1,17 +1,25 @@
 import "server-only";
 
 import { getServer, listServers } from "./servers/roster";
-import { hasCapability, requireCapability } from "../membership";
+import {
+  hasCapability,
+  requireCapability,
+  requireInstanceAdmin,
+} from "../membership";
 import { connectAgent } from "../infra/agent-client/connect";
 import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
 import { healthFromHello, recordServerHealth } from "./server-health";
 import { reportedAgentVersion } from "../version";
 import { AGENT_VERSION } from "../version";
 import { nowIso } from "../ids";
-import { getMetricsHistory, recordMetricsSample } from "../monitoring/history";
+import {
+  getMetricsHistory,
+  HISTORY_WINDOW_MS,
+  recordMetricsSample,
+} from "../monitoring/history";
 import { downsample } from "../monitoring/chart-geometry";
 import { isMetricsSavingEnabled } from "./monitoring-settings";
-import type { Server } from "../types/server";
+import type { Server, ServerUsage } from "../types/server";
 
 export interface ServerMetrics {
   serverId: string;
@@ -251,4 +259,27 @@ export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
       }
     }),
   );
+}
+
+/** Each server's newest reading from the collector's buffer. Dials nothing, so a slow server never slows the page. */
+export async function serverUsages(
+  serverIds: string[],
+): Promise<Map<string, ServerUsage>> {
+  await requireInstanceAdmin();
+  const fresh = Date.now() - HISTORY_WINDOW_MS;
+  const out = new Map<string, ServerUsage>();
+  for (const id of serverIds) {
+    const history = getMetricsHistory(id);
+    const last = history[history.length - 1];
+    if (!last?.online || last.ts < fresh || last.cpuCores <= 0) continue;
+    out.set(id, {
+      cpu: last.cpu,
+      cores: last.cpuCores,
+      memUsed: last.memUsed,
+      memTotal: last.memTotal,
+      diskUsed: last.diskUsed,
+      diskTotal: last.diskTotal,
+    });
+  }
+  return out;
 }

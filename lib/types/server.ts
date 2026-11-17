@@ -17,6 +17,16 @@ export interface ServerBootstrap {
 
 export type AddressFamily = "ipv4" | "ipv6";
 
+/** A server's last reading, against the size it reported. */
+export interface ServerUsage {
+  cpu: number;
+  cores: number;
+  memUsed: number;
+  memTotal: number;
+  diskUsed: number;
+  diskTotal: number;
+}
+
 export interface Server {
   id: ID;
   name: string;
