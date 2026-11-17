@@ -274,9 +274,10 @@ function ClusterNumbers({
       String(cluster.members.length),
       cluster.members.length === 1 ? "server" : "servers",
     ],
-    [String(cluster.totals.cores), "cores"],
+    // No server has reported yet (a fresh restart): a dash, never a zero it does not have.
+    [cluster.totals.cores ? String(cluster.totals.cores) : "-", "cores"],
     [
-      cluster.totals.memTotal ? formatBytes(cluster.totals.memTotal) : "0",
+      cluster.totals.memTotal ? formatBytes(cluster.totals.memTotal) : "-",
       "memory",
     ],
     [String(cluster.apps), cluster.apps === 1 ? "app" : "apps"],

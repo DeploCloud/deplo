@@ -163,8 +163,18 @@ test("the top level shows each cluster as one card and only the servers outside 
   });
   assert.match(
     html,
-    /eu Cluster · 1 provisioning 1 of 2 online 2 servers .* 1 of 2 servers online/,
+    /eu Cluster · 1 provisioning 1 of 2 online 2 servers - cores - memory 0 apps 1 of 2 servers online/,
   );
+  const read = grid({
+    servers: [],
+    clusters: [
+      {
+        ...CLUSTER,
+        totals: { ...CLUSTER.totals, cores: 8, memTotal: 16 * 2 ** 30 },
+      },
+    ],
+  });
+  assert.match(read, /8 cores 16 GiB memory/);
   assert.doesNotMatch(html, /Failover on/);
   assert.match(html, /server-a/);
   assert.doesNotMatch(html, /server-b|server-c/);
