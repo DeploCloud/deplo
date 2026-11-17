@@ -184,7 +184,7 @@ export function DeploUpdatesTab({
     return () => clearInterval(timer);
   }, [active, waiting, updating, load]);
 
-  // The Advanced tab flips canary; the next visit here reads the versions it now offers.
+  // The Experiments tab flips canary; the next visit here reads the versions it now offers.
   React.useEffect(() => {
     loaded.current = false;
   }, [canary]);

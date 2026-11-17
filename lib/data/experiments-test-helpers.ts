@@ -1,14 +1,7 @@
 import { instanceSettings } from "../db/schema/control-plane/instance";
 import type { TestDb } from "../db/test-harness";
 import type { ExperimentKey } from "../experiments";
-
-const COLUMN = {
-  crons: "experimentCrons",
-  zeroDowntime: "experimentZeroDowntime",
-  pullRequests: "experimentPullRequests",
-  clusters: "experimentClusters",
-  tunnels: "experimentTunnels",
-} as const;
+import { EXPERIMENT_COLUMN as COLUMN } from "./experiments";
 
 // Seeds come after any truncate of instance_settings, which TRUNCATE_IDENTITY includes.
 export async function turnOnExperiments(

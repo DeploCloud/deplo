@@ -5,6 +5,7 @@ export const EXPERIMENTS = [
   "pullRequests",
   "clusters",
   "tunnels",
+  "canary",
 ] as const;
 
 export type ExperimentKey = (typeof EXPERIMENTS)[number];
@@ -35,6 +36,11 @@ export const EXPERIMENT_META: Record<
     label: "Tunnels",
     description: "Reach the panel and domains through a Cloudflare Tunnel.",
   },
+  canary: {
+    label: "Canary releases",
+    description:
+      "Every new version of Deplo shows up as an update, before it is marked stable.",
+  },
 };
 
 export const NO_EXPERIMENTS: ExperimentFlags = {
@@ -43,6 +49,7 @@ export const NO_EXPERIMENTS: ExperimentFlags = {
   pullRequests: false,
   clusters: false,
   tunnels: false,
+  canary: false,
 };
 
 export function experimentOffMessage(key: ExperimentKey): string {

@@ -31,8 +31,13 @@ import {
   getUpdateInfo,
   listDeploReleases,
   readUpdateInfo,
-  setCanaryReleases,
 } from "./updates";
+import { setExperiment } from "./experiments";
+
+const setCanaryReleases = async (on: boolean) => {
+  await setExperiment("canary", on);
+  return getUpdateInfo();
+};
 
 let db: TestDb;
 let pg: PGlite;

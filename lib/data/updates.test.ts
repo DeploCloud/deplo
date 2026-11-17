@@ -13,12 +13,13 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
-import {
-  applyDeploUpdate,
-  getUpdateInfo,
-  listDeploReleases,
-  setCanaryReleases,
-} from "./updates";
+import { applyDeploUpdate, getUpdateInfo, listDeploReleases } from "./updates";
+import { setExperiment } from "./experiments";
+
+const setCanaryReleases = async (on: boolean) => {
+  await setExperiment("canary", on);
+  return getUpdateInfo();
+};
 
 let db: TestDb;
 let pg: PGlite;

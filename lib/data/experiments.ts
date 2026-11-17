@@ -25,12 +25,13 @@ import {
 import { recordActivity } from "./activity";
 import { SETTINGS_ID } from "./instance-settings/settings-store";
 
-const COLUMN = {
+export const EXPERIMENT_COLUMN = {
   crons: "experimentCrons",
   zeroDowntime: "experimentZeroDowntime",
   pullRequests: "experimentPullRequests",
   clusters: "experimentClusters",
   tunnels: "experimentTunnels",
+  canary: "canaryReleases",
 } as const satisfies Record<
   ExperimentKey,
   keyof typeof instanceSettings.$inferSelect
@@ -44,6 +45,7 @@ async function readExperiments(): Promise<ExperimentFlags> {
       pullRequests: instanceSettings.experimentPullRequests,
       clusters: instanceSettings.experimentClusters,
       tunnels: instanceSettings.experimentTunnels,
+      canary: instanceSettings.canaryReleases,
     })
     .from(instanceSettings)
     .where(eq(instanceSettings.id, SETTINGS_ID))
@@ -145,6 +147,9 @@ async function usageOf(
             : `${rows.length} clusters are still there. Delete them to turn this off.`,
       };
     }
+    // Nothing uses a release channel: off only stops offering canary versions.
+    case "canary":
+      return { usage: null, lockedOn: null };
     case "tunnels": {
       const [[s], [d]] = await Promise.all([
         db
@@ -188,7 +193,7 @@ export async function setExperiment(
   if ((await readExperiments())[key] !== enabled) {
     if (!enabled && usage.lockedOn) throw new Error(usage.lockedOn);
     const now = nowIso();
-    const set = { [COLUMN[key]]: enabled, updatedAt: now };
+    const set = { [EXPERIMENT_COLUMN[key]]: enabled, updatedAt: now };
     await getDb()
       .insert(instanceSettings)
       .values({ id: SETTINGS_ID, ...set })

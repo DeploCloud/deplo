@@ -32,7 +32,6 @@ import {
 } from "@/components/settings/deplo-diagnostics-card";
 import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
 import { GravatarCard } from "@/components/settings/gravatar-card";
-import { CanaryReleasesCard } from "@/components/settings/canary-releases-card";
 import { UsageReportCard } from "@/components/settings/usage-report-card";
 import { SecurityUpdatesCard } from "@/components/settings/security-updates-card";
 import type { SecurityUpdatesStatus } from "@/lib/data/security-updates/settings";
@@ -72,14 +71,12 @@ export function DeploSettingsPanel({
   ownerCandidates,
   fleet,
   hosts,
-  canary: canarySeed,
   security,
   notices,
   experiments,
 }: {
   notices: Notice[];
   experiments: ExperimentState[];
-  canary: boolean;
   security: SecurityUpdatesStatus;
   settings: InstanceSettings;
   viewerIsOwner: boolean;
@@ -88,7 +85,7 @@ export function DeploSettingsPanel({
   fleet: FleetSummary;
   hosts: DiagnosticHost[];
 }) {
-  const [canary, setCanary] = React.useState(canarySeed);
+  const canary = experiments.some((e) => e.key === "canary" && e.enabled);
   const params = useSearchParams();
   const active = tabOf(params.get("tab"));
 
@@ -137,9 +134,6 @@ export function DeploSettingsPanel({
         />
       </TabsContent>
       <TabsContent value="advanced" className="space-y-8">
-        <SettingGroup icon={CircleFadingArrowUp} title="Updates">
-          <CanaryReleasesCard enabled={canary} onChange={setCanary} />
-        </SettingGroup>
         <SettingGroup icon={SlidersHorizontal} title="Instance">
           <LogsRetentionCard logMaxDays={settings.logMaxDays} />
           <GravatarCard enabled={settings.gravatarEnabled} />

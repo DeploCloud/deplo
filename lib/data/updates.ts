@@ -4,9 +4,6 @@ import { revalidateTag } from "next/cache";
 
 import { hostname } from "node:os";
 
-import { getDb } from "../db/client";
-import { instanceSettings } from "../db/schema/control-plane/instance";
-import { nowIso } from "../ids";
 import {
   bareVersion,
   DEPLO_VERSION,
@@ -21,10 +18,7 @@ import { canaryReleasesEnabled } from "./release-channel";
 export { canaryReleasesEnabled };
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { getCurrentUser } from "../auth/current-user";
-import {
-  deploHostServer,
-  SETTINGS_ID,
-} from "./instance-settings/settings-store";
+import { deploHostServer } from "./instance-settings/settings-store";
 import { recordActivity } from "./activity";
 import { readReleaseDeclaration } from "./update-stops/declaration";
 import {
@@ -267,33 +261,6 @@ export async function refreshUpdateInfo(): Promise<UpdateInfo> {
   await requireInstanceAdmin();
   revalidateTag(RELEASES_TAG, { expire: 0 });
   return fetchUpdateInfo({ cache: "no-store" });
-}
-
-/** Offer canary versions of Deplo as updates, or go back to stable ones. Installs nothing by itself. */
-export async function setCanaryReleases(enabled: boolean): Promise<UpdateInfo> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
-  if ((await canaryReleasesEnabled()) !== enabled) {
-    const now = nowIso();
-    await getDb()
-      .insert(instanceSettings)
-      .values({ id: SETTINGS_ID, canaryReleases: enabled, updatedAt: now })
-      .onConflictDoUpdate({
-        target: instanceSettings.id,
-        set: { canaryReleases: enabled, updatedAt: now },
-      });
-    await recordActivity(
-      "server",
-      enabled
-        ? "Switched Deplo to canary releases"
-        : "Switched Deplo back to stable releases",
-      user.name,
-      null,
-      teamId,
-    );
-  }
-  return getUpdateInfo();
 }
 
 export async function listDeploReleases(): Promise<{

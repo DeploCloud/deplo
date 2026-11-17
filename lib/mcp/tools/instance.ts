@@ -95,30 +95,10 @@ export const INSTANCE: McpToolDef[] = [
     `,
   }),
   tool({
-    name: "set_canary_releases",
-    title: "Turn canary releases on or off",
-    description:
-      "Offer pre-release versions of Deplo and of every server's agent as updates. Nothing is installed; off never downgrades.",
-    group: "Instance",
-    requires: "instanceAdmin",
-    idempotent: true,
-    input: z.object({ enabled: z.boolean() }),
-    query: /* GraphQL */ `
-      mutation McpSetCanaryReleases($enabled: Boolean!) {
-        setCanaryReleases(enabled: $enabled) {
-          canary
-          current
-          latest
-          updateAvailable
-        }
-      }
-    `,
-  }),
-  tool({
     name: "list_experiments",
     title: "List experiments",
     description:
-      "Which new features are turned on for this Deplo: cron jobs, zero-downtime deploys, pull requests, server clusters, tunnels. One that is off refuses its tools.",
+      "Which new features are turned on for this Deplo: cron jobs, zero-downtime deploys, pull requests, server clusters, tunnels, canary releases. One that is off refuses its tools.",
     group: "Instance",
     requires: null,
     readOnly: true,
@@ -138,7 +118,7 @@ export const INSTANCE: McpToolDef[] = [
     name: "set_experiment",
     title: "Turn an experiment on or off",
     description:
-      "Turn a new feature on or off for every team. Off pauses it and keeps each app's own setting; it is refused while a cluster or a tunnel still exists.",
+      "Turn a new feature on or off for every team. Off pauses it and keeps each app's own setting; refused while a cluster or tunnel exists. canary offers pre-releases as updates, installs nothing.",
     group: "Instance",
     requires: "instanceAdmin",
     idempotent: true,

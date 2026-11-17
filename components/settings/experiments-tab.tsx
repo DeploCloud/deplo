@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   ArrowLeftRight,
   Cable,
+  FlaskConical,
   GitPullRequest,
   Network,
   Timer,
@@ -31,6 +32,7 @@ const ICON: Record<
   pullRequests: GitPullRequest,
   clusters: Network,
   tunnels: Cable,
+  canary: FlaskConical,
 };
 
 const DOCS: Record<ExperimentKey, DocsTopic> = {
@@ -39,6 +41,7 @@ const DOCS: Record<ExperimentKey, DocsTopic> = {
   pullRequests: "previews.overview",
   clusters: "clusters.overview",
   tunnels: "panel.tunnel",
+  canary: "upgrade.releases",
 };
 
 // What a pause stops. Clusters and tunnels never get here: they refuse while in use.
@@ -48,6 +51,22 @@ const PAUSE: Partial<Record<ExperimentKey, string>> = {
     "Deploys replace the running version in place, with a short gap.",
   pullRequests:
     "New pull requests get no preview, and pushes no longer update the live ones.",
+};
+
+// Turning these on is the risky way, so they ask first.
+const TURN_ON: Partial<
+  Record<ExperimentKey, { description: React.ReactNode; consequence: string }>
+> = {
+  canary: {
+    description: (
+      <>
+        From now on, <strong>every new version of Deplo</strong> shows up as an
+        update, before it is marked stable.
+      </>
+    ),
+    consequence:
+      "Canary versions can be unstable and break the panel or a server's agent. Not recommended for production.",
+  },
 };
 
 export function ExperimentsTab({ states }: { states: ExperimentState[] }) {
@@ -70,8 +89,10 @@ function ExperimentRow({ initial }: { initial: ExperimentState }) {
   const router = useRouter();
   const [state, setState] = React.useState(initial);
   const [confirming, setConfirming] = React.useState(false);
+  const [confirmingOn, setConfirmingOn] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const { label, description } = EXPERIMENT_META[state.key];
+  const turnOn = TURN_ON[state.key];
   const id = `experiment-${state.key}`;
   const locked = state.enabled && state.lockedOn != null;
 
@@ -98,6 +119,7 @@ function ExperimentRow({ initial }: { initial: ExperimentState }) {
 
   function toggle(next: boolean) {
     if (!next && state.usage) return setConfirming(true);
+    if (next && turnOn) return setConfirmingOn(true);
     startTransition(async () => {
       const res = await save(next);
       if (res.ok) toast.success(`${label} turned ${next ? "on" : "off"}`);
@@ -108,7 +130,7 @@ function ExperimentRow({ initial }: { initial: ExperimentState }) {
   const control = (
     <div className="flex items-center gap-3">
       <span className="text-xs whitespace-nowrap text-muted-foreground">
-        {state.usage ?? "Not in use"}
+        {state.usage ?? (state.key === "canary" ? null : "Not in use")}
       </span>
       <Switch
         id={id}
@@ -151,6 +173,18 @@ function ExperimentRow({ initial }: { initial: ExperimentState }) {
         successMessage={`${label} turned off`}
         onConfirm={() => save(false)}
       />
+      {turnOn && (
+        <ConfirmAction
+          open={confirmingOn}
+          onOpenChange={setConfirmingOn}
+          title={`Turn on ${label}?`}
+          description={turnOn.description}
+          consequence={turnOn.consequence}
+          confirmLabel={`Turn on ${label}`}
+          successMessage={`${label} turned on`}
+          onConfirm={() => save(true)}
+        />
+      )}
     </SettingItem>
   );
 }

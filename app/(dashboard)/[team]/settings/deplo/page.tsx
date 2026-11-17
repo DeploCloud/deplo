@@ -15,7 +15,6 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { isInstanceAdmin } from "@/lib/membership";
 import { reportedAgentVersion } from "@/lib/version";
 import { fleetAgentStatus } from "@/lib/data/servers/agent-rollout";
-import { canaryReleasesEnabled } from "@/lib/data/updates";
 import { securityUpdatesStatus } from "@/lib/data/security-updates/settings";
 import { listExperimentStates } from "@/lib/data/experiments";
 
@@ -40,7 +39,6 @@ export default async function DeploSettingsPage() {
     servers,
     fleet,
     viewer,
-    canary,
     security,
     notices,
     experiments,
@@ -51,7 +49,6 @@ export default async function DeploSettingsPage() {
     listAllServers(),
     fleetAgentStatus(),
     getCurrentUser(),
-    canaryReleasesEnabled(),
     securityUpdatesStatus(),
     readNotices(),
     listExperimentStates(),
@@ -85,7 +82,6 @@ export default async function DeploSettingsPage() {
         ownerCandidates={ownerCandidates}
         fleet={fleet}
         hosts={hosts}
-        canary={canary}
         security={security}
         notices={notices}
         experiments={experiments}

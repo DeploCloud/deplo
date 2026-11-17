@@ -18,7 +18,6 @@ import {
   listDeploReleases,
   readUpdateInfo,
   refreshUpdateInfo,
-  setCanaryReleases,
   type DeploRelease,
   type DeploUpdateStarted,
   type UpdateInfo,
@@ -501,14 +500,6 @@ builder.mutationFields((t) => ({
       "Offer the admin's own timezone for a machine that reports UTC. Changes nothing once a timezone is set or the machine names one.",
     args: { timezone: t.arg.string({ required: true }) },
     resolve: (_r, { timezone }) => adoptAutoUpdateTimezone(timezone),
-  }),
-  setCanaryReleases: t.field({
-    type: UpdateInfoRef,
-    authScopes: { instanceAdmin: true },
-    description:
-      "Offer canary (pre-release) versions of Deplo as updates, or go back to stable ones. Server agents follow the agent version the installed Deplo is pinned to, never this switch. Installs nothing: a newer version shows up as an update, and turning it off never downgrades anything already on a canary.",
-    args: { enabled: t.arg.boolean({ required: true }) },
-    resolve: (_r, { enabled }) => setCanaryReleases(enabled),
   }),
   checkForUpdates: t.field({
     type: UpdateInfoRef,
