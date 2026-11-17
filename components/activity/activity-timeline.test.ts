@@ -151,3 +151,20 @@ test("the compact row rides its own smaller marker", () => {
   assert.match(compact, /min-h-6/, "the Overview card's marker is size-6");
   assert.doesNotMatch(compact, /min-h-8/);
 });
+
+test("the compact row keeps a long message to six lines, with the whole of it on hover", () => {
+  const message = `Docker cleanup on eu-main-1 failed: ${"sha256:ce25e092f752 ".repeat(40)}`;
+  const item = row({ id: "a", message, appId: null });
+  const compact = renderToStaticMarkup(
+    createElement(ActivityRow, { item, size: "md" }),
+  );
+  assert.match(compact, /line-clamp-6/);
+  assert.ok(
+    compact.includes(`title="${message}"`),
+    "the full text is on hover",
+  );
+  const full = renderToStaticMarkup(
+    createElement(ActivityRow, { item, size: "lg" }),
+  );
+  assert.doesNotMatch(full, /line-clamp/, "the Activity page shows it all");
+});

@@ -226,6 +226,9 @@ export function ActivityRow({
   const many = times.length > 1;
   const sentence = messageWithLink(item, appLinks, databaseLinks, showMark);
   const stampAtEnd = size === "lg";
+  // The compact card keeps a long message (a cleanup error) to six lines; the full text is on hover.
+  const clamp = size === "md" ? "line-clamp-6 break-words" : undefined;
+  const fullText = size === "md" ? item.message : undefined;
   const headerLine = cn(
     "flex flex-wrap content-center items-baseline gap-x-1.5 text-sm",
     size === "lg" ? "min-h-8" : "min-h-6",
@@ -289,7 +292,9 @@ export function ActivityRow({
                   key={`${t}-${i}`}
                   className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground"
                 >
-                  <span className="min-w-0">{sentence}</span>
+                  <span className={cn("min-w-0", clamp)} title={fullText}>
+                    {sentence}
+                  </span>
                   <span className="shrink-0 text-xs">{stamp(t)}</span>
                 </li>
               ))}
@@ -308,7 +313,10 @@ export function ActivityRow({
                 </span>
               </p>
             ) : (
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p
+                className={cn("mt-1 text-sm text-muted-foreground", clamp)}
+                title={fullText}
+              >
                 <Bone loading={loading}>{sentence}</Bone>
               </p>
             )}
