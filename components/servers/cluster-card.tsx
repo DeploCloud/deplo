@@ -3,11 +3,11 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import {
+  ArrowRight,
   Copy,
   CopyX,
-  Folder,
-  FolderOpen,
   MoreHorizontal,
+  Network,
   Settings2,
   ShieldCheck,
   ShieldOff,
@@ -15,6 +15,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -34,6 +35,8 @@ import { DeleteClusterButton } from "./cluster-delete";
 import { serversHref, type ClusterJoinOption } from "./cluster-join";
 import type { ClusterWarning } from "@/lib/clusters/warnings";
 import type { TeamOption } from "./server-team-access";
+import type { ServerUsage } from "@/lib/types/server";
+import { formatBytes } from "@/lib/utils";
 
 export type ClusterCardData = {
   id: string;
@@ -49,20 +52,33 @@ export type ClusterCardData = {
   joinOptions: ClusterJoinOption[];
   /** What the background check stored, plus the Apps waiting: the card never waits on a leader. */
   warnings?: Promise<ClusterWarning[]>;
+  /** Its servers in the order they joined, and whether each answers. */
+  members: { name: string; online: boolean }[];
+  /** The servers that answered, added up. */
+  totals: ServerUsage;
+  apps: number;
 };
 
-/** "2 servers · 1 provisioning": what a cluster card says under its name, as a folder counts its Apps. */
-export function clusterSummary(c: {
-  servers: number;
-  provisioning: number;
-}): string {
-  if (c.servers === 0) return "No servers yet";
-  return [
-    `${c.servers} server${c.servers === 1 ? "" : "s"}`,
-    c.provisioning > 0 ? `${c.provisioning} provisioning` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+/** What a cluster card says under its name: the count is in its numbers. */
+export function clusterSummary(c: { provisioning: number }): string {
+  return c.provisioning > 0
+    ? `Cluster · ${c.provisioning} provisioning`
+    : "Cluster";
+}
+
+/** "2 of 3 online": the one line a card states about its servers' health. */
+export function clusterHealth(online: boolean[]): {
+  label: string;
+  variant: "success" | "warning" | "destructive" | "muted";
+} {
+  const up = online.filter(Boolean).length;
+  if (online.length === 0) return { label: "No servers yet", variant: "muted" };
+  if (up === online.length)
+    return { label: `All ${up} online`, variant: "success" };
+  return {
+    label: `${up} of ${online.length} online`,
+    variant: up === 0 ? "destructive" : "warning",
+  };
 }
 
 function Warned({ warnings }: { warnings: Promise<ClusterWarning[]> }) {
@@ -97,8 +113,13 @@ export function ClusterCard({
   const replication = useReplicationSwitch(cluster);
   const href = serversHref({ cluster: cluster.id, view });
 
+  const health = clusterHealth(cluster.members.map((m) => m.online));
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1 self-center [&_button:hover]:bg-card-hover">
+      <Badge variant={health.variant} className="whitespace-nowrap">
+        {health.variant === "warning" && <TriangleAlert className="size-3" />}
+        {health.label}
+      </Badge>
       <div
         data-card-actions
         onPointerDown={(e) => e.stopPropagation()}
@@ -115,7 +136,7 @@ export function ClusterCard({
             <SimpleTooltip content="Open this cluster" side="left">
               <DropdownMenuItem asChild>
                 <Link href={href} className="cursor-pointer">
-                  <FolderOpen className="size-4" />
+                  <ArrowRight className="size-4" />
                   Open
                 </Link>
               </DropdownMenuItem>
@@ -168,7 +189,7 @@ export function ClusterCard({
   const identity = (
     <div className="flex min-w-0 items-center gap-3">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
-        <Folder className="size-4.5" />
+        <Network className="size-4.5" />
       </div>
       <div className="min-w-0">
         <span className="flex min-w-0 items-center gap-1.5">
@@ -214,8 +235,15 @@ export function ClusterCard({
           )}
         >
           {identity}
+          {view === "list" && <ClusterNumbers cluster={cluster} compact />}
           {actions}
         </div>
+        {view === "grid" && (
+          <div className="pointer-events-none relative z-[1] space-y-3.5 rounded-lg border border-border bg-surface p-3.5">
+            <ClusterNumbers cluster={cluster} />
+            <HealthStrip members={cluster.members} />
+          </div>
+        )}
       </Card>
       <ClusterActions
         cluster={cluster}
@@ -234,6 +262,73 @@ export function ClusterCard({
   );
 }
 
+function ClusterNumbers({
+  cluster,
+  compact = false,
+}: {
+  cluster: ClusterCardData;
+  compact?: boolean;
+}) {
+  const numbers = [
+    [
+      String(cluster.members.length),
+      cluster.members.length === 1 ? "server" : "servers",
+    ],
+    [String(cluster.totals.cores), "cores"],
+    [
+      cluster.totals.memTotal ? formatBytes(cluster.totals.memTotal) : "0",
+      "memory",
+    ],
+    [String(cluster.apps), cluster.apps === 1 ? "app" : "apps"],
+  ];
+  if (compact)
+    return (
+      <span className="ml-auto hidden text-xs whitespace-nowrap text-muted-foreground tabular-nums lg:inline">
+        {numbers.map(([v, l]) => `${v} ${l}`).join(" · ")}
+      </span>
+    );
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {numbers.map(([value, label]) => (
+        <div key={label} className="min-w-0">
+          <div className="truncate text-lg font-semibold tabular-nums">
+            {value}
+          </div>
+          <div className="text-xs text-muted-foreground">{label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One segment per server, in the order they joined: green while it answers. */
+function HealthStrip({ members }: { members: ClusterCardData["members"] }) {
+  if (members.length === 0) return null;
+  const up = members.filter((m) => m.online).length;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-1" aria-hidden>
+        {members.map((m) => (
+          <SimpleTooltip
+            key={m.name}
+            content={`${m.name}: ${m.online ? "online" : "not answering"}`}
+          >
+            <span
+              className={cn(
+                "pointer-events-auto h-2 flex-1 rounded-sm",
+                m.online ? "bg-success" : "bg-muted",
+              )}
+            />
+          </SimpleTooltip>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {up} of {members.length} servers online
+      </p>
+    </div>
+  );
+}
+
 /** One cluster card while the Servers page loads, on the card's own frame. */
 export function ClusterCardSkeleton() {
   return (
@@ -248,7 +343,7 @@ export function ClusterCardSkeleton() {
               <Bone>cluster-name</Bone>
             </span>
             <p className="mt-1 truncate text-xs text-muted-foreground">
-              <Bone>2 servers</Bone>
+              <Bone>Cluster</Bone>
             </p>
           </div>
         </div>
@@ -256,6 +351,9 @@ export function ClusterCardSkeleton() {
           <MoreHorizontal className="size-4" />
         </Button>
       </div>
+      <Bone box className="w-full">
+        <div className="h-[88px]" />
+      </Bone>
     </Card>
   );
 }

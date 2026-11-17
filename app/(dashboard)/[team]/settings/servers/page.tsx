@@ -55,6 +55,8 @@ import {
 import { RefreshFleetButton } from "./check-status-button";
 import { experimentOn } from "@/lib/data/experiments";
 import { serverUsages } from "@/lib/data/monitoring";
+import { appCounts } from "@/lib/data/servers/workloads";
+import { usageTotals } from "@/components/servers/server-usage";
 
 export const metadata = { title: "Servers" };
 
@@ -92,7 +94,10 @@ export default async function ServersPage(
     avatarUrl: t.avatarUrl,
   }));
 
-  const usages = await serverUsages(serversRaw.map((s) => s.id));
+  const [usages, counts] = await Promise.all([
+    serverUsages(serversRaw.map((s) => s.id)),
+    appCounts(),
+  ]);
   const selfAddrs = deploHostSelfAddresses();
   const servers = [...serversRaw].sort(
     (a, b) =>
@@ -210,6 +215,12 @@ export default async function ServersPage(
       provisioning: members.filter((m) => m.provisioning).length,
       joinOptions,
       warnings: warningsOf.get(cluster.id)!,
+      members: members.map((m) => ({
+        name: m.serverName,
+        online: m.status === "online" && !m.provisioning,
+      })),
+      totals: usageTotals(members.map((m) => usages.get(m.serverId) ?? null)),
+      apps: counts.byCluster.get(cluster.id) ?? 0,
     }),
   );
   // In the order they joined, as the cluster itself lists them.

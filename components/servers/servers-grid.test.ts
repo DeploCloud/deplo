@@ -10,7 +10,11 @@ import {
   listedServers,
 } from "@/app/(dashboard)/[team]/settings/servers/servers-grid";
 import type { ClusterMember } from "@/lib/types/cluster";
-import { clusterSummary, type ClusterCardData } from "./cluster-card";
+import {
+  clusterHealth,
+  clusterSummary,
+  type ClusterCardData,
+} from "./cluster-card";
 import { memberState } from "./cluster-join";
 import { renderServerView } from "./server-test-helpers";
 
@@ -81,6 +85,19 @@ const CLUSTER: ClusterCardData = {
   failoverEnabled: true,
   replicationEnabled: false,
   provisioning: 1,
+  members: [
+    { name: "server-b", online: false },
+    { name: "server-c", online: true },
+  ],
+  totals: {
+    cpu: 0,
+    cores: 0,
+    memUsed: 0,
+    memTotal: 0,
+    diskUsed: 0,
+    diskTotal: 0,
+  },
+  apps: 0,
   joinOptions: [
     {
       serverId: "server-a",
@@ -117,7 +134,10 @@ test("the top level shows each cluster as one card and only the servers outside 
     clusters: [CLUSTER],
     openCluster: null,
   });
-  assert.match(html, /eu 2 servers · 1 provisioning/);
+  assert.match(
+    html,
+    /eu Cluster · 1 provisioning 1 of 2 online 2 servers .* 1 of 2 servers online/,
+  );
   assert.doesNotMatch(html, /Failover on/);
   assert.match(html, /server-a/);
   assert.doesNotMatch(html, /server-b|server-c/);
@@ -168,12 +188,28 @@ test("a search lists the servers of every cluster together", () => {
   assert.equal(listedServers([JOINING, SETTLED], true, false).length, 2);
 });
 
-test("a cluster card counts its servers, as a folder counts its Apps", () => {
-  const says = (servers: number, provisioning = 0) =>
-    clusterSummary({ servers, provisioning });
-  assert.equal(says(0), "No servers yet");
-  assert.equal(says(1), "1 server");
-  assert.equal(says(3, 1), "3 servers · 1 provisioning");
+test("a cluster card names what it is, and how many servers are still joining", () => {
+  assert.equal(clusterSummary({ provisioning: 0 }), "Cluster");
+  assert.equal(clusterSummary({ provisioning: 1 }), "Cluster · 1 provisioning");
+});
+
+test("a cluster card's health line says how many of its servers answer", () => {
+  assert.deepEqual(clusterHealth([]), {
+    label: "No servers yet",
+    variant: "muted",
+  });
+  assert.deepEqual(clusterHealth([true, true]), {
+    label: "All 2 online",
+    variant: "success",
+  });
+  assert.deepEqual(clusterHealth([true, false, true]), {
+    label: "2 of 3 online",
+    variant: "warning",
+  });
+  assert.deepEqual(clusterHealth([false]), {
+    label: "0 of 1 online",
+    variant: "destructive",
+  });
 });
 
 test("a server being removed says how far it has got, and why it stopped", () => {
