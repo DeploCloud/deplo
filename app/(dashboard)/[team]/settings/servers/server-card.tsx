@@ -21,11 +21,15 @@ import type { LeaderOption } from "@/components/servers/cluster-actions";
 import type { ServerMemberState } from "@/components/servers/cluster-join";
 import { ServerUseBadge } from "@/components/servers/server-role-badge";
 import type { ServerFilterFields } from "@/components/servers/servers-toolbar";
-import { cn } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
+import { OneRow, type RowItem } from "@/components/shared/one-row";
 import { AGENT_VERSION, type AgentReach } from "@/lib/version";
-import { AgentVersionBadge } from "./agent-version-badge";
+import { AgentVersionBadge, agentBadge } from "./agent-version-badge";
 import { ServerHealthChip } from "./server-health-chip";
-import type { ServerHealthState } from "./server-health-provider";
+import {
+  useServerHealth,
+  type ServerHealthState,
+} from "./server-health-provider";
 import { DocsLink } from "@/components/ui/docs-link";
 import { UsageMeters } from "@/components/servers/server-usage";
 import type { ServerUsage } from "@/lib/types/server";
@@ -84,49 +88,35 @@ export function ServerStatus({ server }: { server: ServerCardData }) {
   );
 }
 
-function ServerBadges({
-  server,
-  showCluster,
-}: {
-  server: ServerCardData;
-  showCluster: boolean;
-}) {
+/** The card's badges, problems first: on one row, whatever does not fit folds into +N. */
+function serverBadgeItems(
+  server: ServerCardData,
+  showCluster: boolean,
+): RowItem[] {
   const m = server.member;
-  return (
-    <>
-      {server.isDeploHost && (
-        <Badge
-          className="shrink-0 gap-1"
-          title="This server also runs Deplo itself. Removing it takes Deplo down."
-        >
-          <DeploMark size={12} className="text-current" />
-          Deplo host
-        </Badge>
-      )}
-      {showCluster && server.cluster && (
-        <Badge variant="muted" className="shrink-0 gap-1" title="Its cluster">
-          <Network className="size-3" />
-          {server.cluster.name}
-        </Badge>
-      )}
-      <ServerUseBadge use={server.use} />
-      <Badge variant="muted" title="Which teams can deploy to this server">
-        {server.accessLabel}
-      </Badge>
-      <AgentVersionBadge
-        version={server.agentVersion}
-        expected={server.expected}
-        reach={server.reach}
-      />
-      {m && m.emptying !== "idle" && (
+  const agentUrgent =
+    server.agentVersion !== null &&
+    agentBadge(server.agentVersion, server.expected, server.reach).variant !==
+      "muted";
+  const items: (RowItem & { urgent?: boolean })[] = [];
+  if (m && m.emptying !== "idle")
+    items.push({
+      key: "emptying",
+      urgent: true,
+      node: (
         <Badge
           variant={EMPTYING_BADGE[m.emptying].variant}
           title={m.error || m.progress || undefined}
         >
           {EMPTYING_BADGE[m.emptying].label}
         </Badge>
-      )}
-      {m?.network && (
+      ),
+    });
+  if (m?.network)
+    items.push({
+      key: "network",
+      urgent: m.networkDown,
+      node: (
         <SimpleTooltip
           content={
             <>
@@ -142,8 +132,98 @@ function ServerBadges({
             {m.networkDown ? "Can't reach a server" : "Relayed"}
           </Badge>
         </SimpleTooltip>
-      )}
-    </>
+      ),
+    });
+  const agent = {
+    key: "agent",
+    node: (
+      <AgentVersionBadge
+        version={server.agentVersion}
+        expected={server.expected}
+        reach={server.reach}
+      />
+    ),
+  };
+  if (agentUrgent) items.push({ ...agent, urgent: true });
+  if (server.isDeploHost)
+    items.push({
+      key: "host",
+      node: (
+        <Badge
+          className="gap-1"
+          title="This server also runs Deplo itself. Removing it takes Deplo down."
+        >
+          <DeploMark size={12} className="text-current" />
+          Deplo host
+        </Badge>
+      ),
+    });
+  if (showCluster && server.cluster)
+    items.push({
+      key: "cluster",
+      node: (
+        <Badge variant="muted" className="gap-1" title="Its cluster">
+          <Network className="size-3" />
+          {server.cluster.name}
+        </Badge>
+      ),
+    });
+  items.push({ key: "use", node: <ServerUseBadge use={server.use} /> });
+  items.push({
+    key: "access",
+    node: (
+      <Badge variant="muted" title="Which teams can deploy to this server">
+        {server.accessLabel}
+      </Badge>
+    ),
+  });
+  if (!agentUrgent) items.push(agent);
+  return [...items.filter((i) => i.urgent), ...items.filter((i) => !i.urgent)];
+}
+
+interface Note {
+  text: string;
+  error: boolean;
+}
+
+/** One line under the badges: the most pressing note, else when the server was last heard from. */
+function StatusLine({
+  server,
+  notes,
+}: {
+  server: ServerCardData;
+  notes: Note[];
+}) {
+  const { health } = useServerHealth();
+  const h = health(server.id) ?? server.health;
+  const note = notes.find((n) => n.error) ?? notes[0];
+  if (note)
+    return (
+      <p
+        title={notes.map((n) => n.text).join("\n")}
+        className={cn(
+          "pointer-events-auto truncate text-xs",
+          note.error ? "text-destructive" : "text-[var(--warning)]",
+        )}
+      >
+        {note.text}
+      </p>
+    );
+  const line =
+    h.status === "provisioning"
+      ? "Not installed yet"
+      : h.status === "offline" && h.lastReachedAt
+        ? `Last answered ${timeAgo(h.lastReachedAt)}`
+        : h.checkedAt
+          ? `Checked ${timeAgo(h.checkedAt)}`
+          : "Not checked yet";
+  return (
+    <p
+      className="truncate text-xs text-muted-foreground"
+      suppressHydrationWarning
+    >
+      {line}
+    </p>
   );
 }
 
@@ -242,17 +322,27 @@ export function ServerCard({
     </div>
   );
 
-  const notes = [
-    server.joining &&
-      (server.joining.error
-        ? `Waiting to join ${server.joining.clusterName}: ${server.joining.error}`
-        : `Joins ${server.joining.clusterName} once it is installed.`),
-    server.uninstallPending && "Deplo is removing its agent from this machine.",
-    server.uninstallError &&
-      `Deplo could not remove its agent: ${server.uninstallError}`,
-    m?.progress,
-    m?.error,
-  ].filter((n): n is string => Boolean(n));
+  const notes = (
+    [
+      server.joining && {
+        text: server.joining.error
+          ? `Waiting to join ${server.joining.clusterName}: ${server.joining.error}`
+          : `Joins ${server.joining.clusterName} once it is installed.`,
+        error: Boolean(server.joining.error),
+      },
+      server.uninstallPending && {
+        text: "Deplo is removing its agent from this machine.",
+        error: false,
+      },
+      server.uninstallError && {
+        text: `Deplo could not remove its agent: ${server.uninstallError}`,
+        error: true,
+      },
+      m?.progress && { text: m.progress, error: false },
+      m?.error && { text: m.error, error: true },
+    ] as (Note | false | null | undefined | "")[]
+  ).filter((n): n is Note => Boolean(n));
+  const badges = serverBadgeItems(server, showCluster);
 
   const card =
     view === "list" ? (
@@ -261,9 +351,10 @@ export function ServerCard({
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
           {tile}
           {identity}
-          <div className="hidden items-center gap-1.5 lg:flex [&>*]:pointer-events-auto">
-            <ServerBadges server={server} showCluster={showCluster} />
-          </div>
+          <OneRow
+            items={badges}
+            className="hidden flex-1 lg:flex [&>*]:pointer-events-auto"
+          />
           {server.usage && (
             <span className="ml-auto hidden text-xs whitespace-nowrap text-muted-foreground tabular-nums xl:inline">
               {Math.round(server.usage.cpu)}% CPU ·{" "}
@@ -288,17 +379,11 @@ export function ServerCard({
             </div>
             {actions}
           </div>
-          <div className="rounded-lg border border-border bg-surface p-3">
-            <div className="flex flex-wrap items-center gap-1.5 [&>*]:pointer-events-auto">
-              <ServerBadges server={server} showCluster={showCluster} />
-            </div>
-            {notes.map((note) => (
-              <p key={note} className="mt-2 text-xs text-muted-foreground">
-                {note}
-              </p>
-            ))}
+          <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+            <OneRow items={badges} className="[&>*]:pointer-events-auto" />
+            <StatusLine server={server} notes={notes} />
           </div>
-          {server.usage && <UsageMeters usage={server.usage} />}
+          <UsageMeters usage={server.usage} />
         </div>
       </Card>
     );
@@ -345,8 +430,8 @@ export function ServerCardSkeleton() {
             </Button>
           </div>
         </div>
-        <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+          <div className="flex items-center gap-1.5">
             <Bone box>
               <ServerUseBadge use="everything" />
             </Bone>
@@ -361,6 +446,9 @@ export function ServerCardSkeleton() {
               />
             </Bone>
           </div>
+          <p className="text-xs">
+            <Bone>Checked 1 min ago</Bone>
+          </p>
         </div>
         <div className="space-y-3">
           {["CPU", "Memory", "Disk"].map((label) => (

@@ -47,7 +47,7 @@ export function UsageMeter({
         <span className="tabular-nums">{value}</span>
       </div>
       <Progress
-        value={Math.max(percent, 1)}
+        value={value === "-" ? 0 : Math.max(percent, 1)}
         aria-label={label}
         className="h-1.5"
       />
@@ -55,12 +55,12 @@ export function UsageMeter({
   );
 }
 
-/** CPU, memory and disk of one server, or of a cluster's totals. */
+/** CPU, memory and disk of one server, or of a cluster's totals; empty with "-" before any reading. */
 export function UsageMeters({
   usage,
   className,
 }: {
-  usage: ServerUsage;
+  usage: ServerUsage | null;
   className?: string;
 }) {
   return (
@@ -68,20 +68,28 @@ export function UsageMeters({
       <UsageMeter
         icon={Cpu}
         label="CPU"
-        value={`${round(usage.cpu)}% of ${usage.cores} cores`}
-        percent={usage.cpu}
+        value={usage ? `${round(usage.cpu)}% of ${usage.cores} cores` : "-"}
+        percent={usage?.cpu ?? 0}
       />
       <UsageMeter
         icon={MemoryStick}
         label="Memory"
-        value={`${formatBytes(usage.memUsed)} of ${formatBytes(usage.memTotal)}`}
-        percent={pct(usage.memUsed, usage.memTotal)}
+        value={
+          usage
+            ? `${formatBytes(usage.memUsed)} of ${formatBytes(usage.memTotal)}`
+            : "-"
+        }
+        percent={usage ? pct(usage.memUsed, usage.memTotal) : 0}
       />
       <UsageMeter
         icon={HardDrive}
         label="Disk"
-        value={`${formatBytes(usage.diskUsed)} of ${formatBytes(usage.diskTotal)}`}
-        percent={pct(usage.diskUsed, usage.diskTotal)}
+        value={
+          usage
+            ? `${formatBytes(usage.diskUsed)} of ${formatBytes(usage.diskTotal)}`
+            : "-"
+        }
+        percent={usage ? pct(usage.diskUsed, usage.diskTotal) : 0}
       />
     </div>
   );

@@ -300,3 +300,31 @@ test("a server of a cluster names the servers its private network does not reach
     "Cannot reach c now. Reaches a through Deplo's relay, with more delay",
   );
 });
+
+test("a server with no reading keeps the same three bars, empty, so every card has one height", () => {
+  const html = grid({ servers: [FREE], clusters: [] });
+  assert.match(html, /CPU - Memory - Disk -/);
+});
+
+test("a problem badge comes before the rest, so it is never the one folded into +N", () => {
+  const old = server("server-a", { agentVersion: "0.5.2", expected: "0.5.3" });
+  const html = grid({ servers: [old], clusters: [] });
+  assert.ok(
+    html.indexOf("agent v0.5.2") < html.indexOf("All teams"),
+    "the outdated agent leads the row",
+  );
+});
+
+test("the line under the badges shows the worst note, else when the server was last checked", () => {
+  const quiet = grid({ servers: [FREE], clusters: [] });
+  assert.match(quiet, /Not checked yet/);
+  const waiting = server("server-a", {
+    uninstallPending: true,
+    uninstallError: "the server did not answer",
+  });
+  const html = grid({ servers: [waiting], clusters: [] });
+  assert.match(
+    html,
+    /Deplo could not remove its agent: the server did not answer/,
+  );
+});
