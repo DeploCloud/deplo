@@ -18,6 +18,7 @@ import {
   seedPreviewApp,
   setupPreviews,
 } from "./previews-test-helpers";
+import { turnOffExperiments } from "../experiments-test-helpers";
 
 const h = setupPreviews();
 
@@ -85,4 +86,29 @@ test("moving the app itself stops its previews, unless they are pinned elsewhere
     }),
   );
   assert.equal((await rowOf(h.db, up.previewId!)).status, "evicted");
+});
+
+test("with the experiment off, nothing opens and nobody turns previews on", async () => {
+  await seedPreviewApp(h.db, "prj_1", { slug: "blog" });
+  await turnOffExperiments(h.db, "pullRequests");
+  const res = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    {
+      actor: "o",
+    },
+  );
+  assert.equal(res.previewId, null);
+  assert.equal(res.refusal?.kind, "experiment-off");
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+        setAppPreviewSettings("prj_1", { enabled: true }),
+      ),
+    /Pull requests are not turned on for this Deplo/,
+  );
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    setAppPreviewSettings("prj_1", { maxActive: 2 }),
+  );
+  assert.equal((await loadAppGraph("prj_1"))!.previewEnabled, true);
 });

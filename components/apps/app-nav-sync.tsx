@@ -10,6 +10,7 @@ export function AppNavSync({
   running: serverRunning,
   isGithubApp,
   previewsEnabled,
+  pullRequestsOffered,
   cronsEnabled,
   consoleEnabled,
   capabilities,
@@ -19,6 +20,7 @@ export function AppNavSync({
   running: boolean;
   isGithubApp: boolean;
   previewsEnabled: boolean;
+  pullRequestsOffered: boolean;
   cronsEnabled: boolean;
   consoleEnabled: boolean;
   capabilities: string[];
@@ -34,6 +36,7 @@ export function AppNavSync({
       capabilities: caps ? caps.split(",") : [],
       isGithubApp,
       previewsEnabled,
+      pullRequestsOffered,
       cronsEnabled,
       consoleEnabled,
     });
@@ -44,6 +47,7 @@ export function AppNavSync({
     caps,
     isGithubApp,
     previewsEnabled,
+    pullRequestsOffered,
     cronsEnabled,
     consoleEnabled,
   ]);

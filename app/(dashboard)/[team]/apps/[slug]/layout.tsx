@@ -104,7 +104,8 @@ export default async function AppLayout(
               running: project.status === "active",
               capabilities,
               isGithubApp: project.source === "github",
-              previewsEnabled: project.previewEnabled,
+              previewsEnabled: project.previewEnabled && flags.pullRequests,
+              pullRequestsOffered: flags.pullRequests,
               cronsEnabled: project.cronEnabled && flags.crons,
               consoleEnabled: project.consoleEnabled,
             },
@@ -178,7 +179,8 @@ export default async function AppLayout(
               running={project.status === "active"}
               capabilities={capabilities}
               isGithubApp={project.source === "github"}
-              previewsEnabled={project.previewEnabled}
+              previewsEnabled={project.previewEnabled && flags.pullRequests}
+              pullRequestsOffered={flags.pullRequests}
               cronsEnabled={project.cronEnabled && flags.crons}
               consoleEnabled={project.consoleEnabled}
             />

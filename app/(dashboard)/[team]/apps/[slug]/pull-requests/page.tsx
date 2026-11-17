@@ -20,6 +20,8 @@ import {
   PreviewsOff,
 } from "@/components/apps/previews/previews-unavailable";
 import { previewSecurityCounts } from "@/lib/data/security-updates/read";
+import { experimentOn } from "@/lib/data/experiments";
+import { ExperimentOff } from "@/components/shared/experiment-off";
 
 export const metadata = { title: "Pull requests" };
 
@@ -29,6 +31,8 @@ export default async function AppPullRequestsPage(
   const { slug } = await props.params;
   const app = await getAppBySlug(slug);
   if (!app) notFound();
+  if (!(await experimentOn("pullRequests")))
+    return <ExperimentOff experiment="pullRequests" />;
   const [view, canDeploy, canManageGit] = await Promise.all([
     listAppPreviews(app.id),
     hasCapability("manage_previews"),

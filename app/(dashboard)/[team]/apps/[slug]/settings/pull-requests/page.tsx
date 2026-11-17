@@ -11,6 +11,8 @@ import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { PreviewSettingsForm } from "@/components/apps/settings/preview-settings-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { experimentOn } from "@/lib/data/experiments";
+import { ExperimentOff } from "@/components/shared/experiment-off";
 
 export const metadata = { title: "Pull requests" };
 
@@ -20,6 +22,8 @@ export default async function AppPullRequestsSettingsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
+  if (!(await experimentOn("pullRequests")))
+    return <ExperimentOff experiment="pullRequests" />;
 
   const isGithubApp = project.source === "github";
   const canManage = await hasAppCapability(project.id, "manage_previews");

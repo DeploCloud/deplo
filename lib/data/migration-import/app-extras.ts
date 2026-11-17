@@ -22,6 +22,7 @@ import { landNativeOps } from "./app-ops";
 import { type AddressRules, rehostPairs } from "./app-address-vars";
 import { importCrons } from "./cron-import";
 import type { SourceService } from "./source-tree";
+import { experimentOn } from "../experiments";
 
 export const LOCK_USERNAME = "migration-lock";
 
@@ -69,6 +70,13 @@ export async function importBasicAuth(
   );
 }
 
+async function notePausedPreviews(notes: Note[]): Promise<void> {
+  if (!(await experimentOn("pullRequests")))
+    notes.push(
+      "Pull requests are not turned on for this Deplo, so its previews came across paused. An instance admin can turn them on in Settings > Deplo > Experiments.",
+    );
+}
+
 // The base domain goes on its own, so a refused one does not take the other settings with it.
 async function landNativePreview(
   appId: string,
@@ -76,7 +84,7 @@ async function landNativePreview(
   servers: Map<string, string | undefined>,
   notes: Note[],
 ): Promise<void> {
-  const { setAppPreviewSettings } = await import("../previews");
+  const { writeAppPreviewSettings } = await import("../previews");
   // A new app starts with previews off; saying so again would only log a "Disabled" Activity line.
   const { baseDomain, serverId, enabled, ...rest } = preview;
   const server = serverId ? servers.get(serverId) : undefined;
@@ -84,8 +92,9 @@ async function landNativePreview(
     notes.push(
       "Its previews ran on a server of their own on {panel}, which has no counterpart here, so they run on the app's server. Pick another under Previews.",
     );
+  if (enabled) await notePausedPreviews(notes);
   try {
-    await setAppPreviewSettings(appId, {
+    await writeAppPreviewSettings(appId, {
       ...rest,
       ...(enabled ? { enabled } : {}),
       ...(server ? { serverId: server } : {}),
@@ -97,7 +106,7 @@ async function landNativePreview(
   }
   if (!baseDomain) return;
   try {
-    await setAppPreviewSettings(appId, { baseDomain });
+    await writeAppPreviewSettings(appId, { baseDomain });
   } catch (e) {
     notes.push(
       `Its preview domain ${baseDomain} did not come across: ${errorMessage(e, "refused")}. Set one under Previews.`,
@@ -166,10 +175,11 @@ export async function landAppExtras(
     );
   if (!isCompose || app.nativePreview) {
     if (!app.nativePreview && app.isPreviewDeploymentsActive) {
+      await notePausedPreviews(notes);
       try {
-        const { setAppPreviewSettings } = await import("../previews");
+        const { writeAppPreviewSettings } = await import("../previews");
         const base = app.previewWildcard?.trim().replace(/^\*\./, "") || null;
-        await setAppPreviewSettings(created.id, {
+        await writeAppPreviewSettings(created.id, {
           enabled: true,
           port: app.previewPort ?? null,
           maxActive:

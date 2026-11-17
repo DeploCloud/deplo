@@ -29,6 +29,7 @@ import {
   TRUNCATE_IDENTITY,
   USER_1,
 } from "../identity-test-helpers";
+import { turnOnExperiments } from "../experiments-test-helpers";
 
 export type Harness = { db: TestDb; pg: PGlite };
 
@@ -93,6 +94,7 @@ export function setupPreviews(): Harness {
       ],
     });
     await seedServer(h.db);
+    await turnOnExperiments(h.db, "pullRequests");
   });
 
   return h;
@@ -127,6 +129,7 @@ export async function seedPreviewApp(
       previewForkPolicy: opts.forkPolicy ?? null,
     })
     .where(eq(appsTable.id, id));
+  await turnOnExperiments(db, "pullRequests");
   return id;
 }
 

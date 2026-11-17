@@ -16,6 +16,7 @@ import { refusalMessage } from "../deploy/preview-lifecycle/fork-guard";
 import { openOrSyncPreview } from "../deploy/preview-lifecycle/open-sync";
 import { syncPreviewComment } from "../deploy/preview-comment";
 import { parseRequiredLabels } from "../deploy/preview-lifecycle/settings";
+import { experimentOn } from "../data/experiments";
 
 export async function handlePullRequestDelivery(
   raw: string,
@@ -76,12 +77,14 @@ export async function handlePullRequestDelivery(
     return new Response("ok", { status: 200 });
   }
 
+  // The experiment off is a pause: a closed pull request still tears its preview down.
+  const experimentOnHere = await experimentOn("pullRequests");
   for (const app of candidates) {
     try {
       const intent = previewIntent(
         {
           branch: app.repoBranch || "main",
-          previewsEnabled: app.previewEnabled,
+          previewsEnabled: app.previewEnabled && experimentOnHere,
           autoDeploy: app.previewAutoDeploy,
           buildDrafts: app.previewBuildDrafts,
           requiredLabels: parseRequiredLabels(app.previewRequiredLabels),

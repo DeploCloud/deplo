@@ -71,6 +71,7 @@ import {
   redeployPreview,
   setAppPreviewSettings,
 } from "./previews";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -223,6 +224,7 @@ beforeEach(async () => {
       previewEnabled: true,
     })
     .where(eq(appsTable.id, APP));
+  await turnOnExperiments(db, "pullRequests");
   const cluster = await asAdmin(() =>
     createCluster("eu", { allTeams: false, teamIds: [TEAM_A] }),
   );

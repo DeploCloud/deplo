@@ -16,6 +16,7 @@ import { PendingChangesNotice } from "@/components/apps/pending-changes-notice";
 import { visiblePendingChanges } from "@/lib/apps/pending-changes";
 import { PreviewOverrides } from "@/components/env/preview-overrides";
 import { EmptyState } from "@/components/shared/empty-state";
+import { experimentOn } from "@/lib/data/experiments";
 
 export const metadata = { title: "Environment Variables" };
 
@@ -25,6 +26,8 @@ export default async function AppEnvPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
+  const previews =
+    project.previewEnabled && (await experimentOn("pullRequests"));
   const teamWideEnv =
     (await hasCapability("manage_env")) && (await reachesWholeTeam());
 
@@ -52,7 +55,7 @@ export default async function AppEnvPage(
     listEnv(project.id),
     listSharedVarsForApp(project.id),
     teamWideEnv ? listSharedVars() : Promise.resolve([]),
-    project.previewEnabled ? listPreviewEnvVars(project.id) : [],
+    previews ? listPreviewEnvVars(project.id) : [],
     teamWideEnv ? listProjects() : Promise.resolve([]),
     teamWideEnv ? listAllEnvironmentsForTeam() : Promise.resolve([]),
     teamWideEnv ? listSharedVarTeams() : Promise.resolve([]),
@@ -91,7 +94,7 @@ export default async function AppEnvPage(
         environments={environments}
         teams={shareableTeams}
       />
-      {project.previewEnabled && (
+      {previews && (
         <PreviewOverrides appId={project.id} overrides={previewOverrides} />
       )}
     </div>

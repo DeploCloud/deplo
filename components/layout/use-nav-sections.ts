@@ -47,6 +47,7 @@ export function useNavSections(
     sections = appSettingsNav(
       appSlug,
       service?.slug === appSlug ? service.isGithubApp : true,
+      service?.slug === appSlug ? service.pullRequestsOffered : true,
     );
   } else if (appSlug) {
     const matches = service?.slug === appSlug;

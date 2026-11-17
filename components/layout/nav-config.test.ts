@@ -202,3 +202,11 @@ test("Migrations is an instance page", () => {
   assert.equal(migrations?.requires, undefined);
   assert.equal(isNonTeamSettings("/settings/migrations"), true);
 });
+
+test("app settings leave Pull requests out while its experiment is off", () => {
+  const item = appSettingsNav("blog", true, false)
+    .flatMap((s) => s.items)
+    .find((i) => i.label === "Pull requests");
+  assert.equal(item, undefined);
+  assert.ok(settingsItem(true), "on, the entry is there as before");
+});

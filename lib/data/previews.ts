@@ -43,6 +43,7 @@ import { getCluster } from "./clusters/roster";
 import { canHostWorkloads, listServersForTeam } from "./servers/roster";
 import { requireAppCapability } from "./node-access";
 import { secretImmutable } from "../types/env";
+import { requireExperiment } from "./experiments";
 
 /** `offline`: its server, a member of the App's cluster, stopped or was emptied; the next push or a redeploy places it again. */
 export type PreviewState =
@@ -359,6 +360,15 @@ export interface AppPreviewSettingsInput {
 }
 
 export async function setAppPreviewSettings(
+  appId: string,
+  input: AppPreviewSettingsInput,
+): Promise<void> {
+  if (input.enabled) await requireExperiment("pullRequests");
+  await writeAppPreviewSettings(appId, input);
+}
+
+// A migration keeps its source's previews while the experiment is off: off is a pause, never a loss.
+export async function writeAppPreviewSettings(
   appId: string,
   input: AppPreviewSettingsInput,
 ): Promise<void> {

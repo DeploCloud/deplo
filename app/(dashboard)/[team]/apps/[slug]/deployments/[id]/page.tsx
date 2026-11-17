@@ -39,6 +39,7 @@ import {
   supportsFrameworkDetection,
 } from "@/lib/apps/framework-catalog";
 import { BUILD_METHOD_NAMES } from "@/lib/apps/build-method";
+import { experimentOn } from "@/lib/data/experiments";
 
 export const metadata = { title: "Deployment" };
 
@@ -113,7 +114,7 @@ export default async function DeploymentDetailPage(
           },
         ]
       : []),
-    ...(project.source === "github"
+    ...(project.source === "github" && (await experimentOn("pullRequests"))
       ? [
           {
             label: "Deploy pull requests",

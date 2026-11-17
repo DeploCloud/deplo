@@ -17,6 +17,7 @@ import { forkRefusal, type PreviewRefusal } from "./fork-guard";
 import { forkPolicyOf, previewSettings } from "./settings";
 import { evictToFit, hasStack } from "./slots";
 import { stopPreview } from "./stack-teardown";
+import { experimentOn } from "../../data/experiments";
 
 export interface PullRequestFacts {
   number: number;
@@ -54,6 +55,13 @@ export async function openOrSyncPreview(
     if (!app) return { previewId: null, deploymentId: null };
     const settings = await previewSettings(appId);
     if (!settings) return { previewId: null, deploymentId: null };
+    if (!(await experimentOn("pullRequests"))) {
+      return {
+        previewId: null,
+        deploymentId: null,
+        refusal: { kind: "experiment-off" },
+      };
+    }
     if (!settings.enabled) {
       return {
         previewId: null,

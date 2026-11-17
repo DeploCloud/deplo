@@ -76,7 +76,8 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         environmentId: s.environmentId ?? null,
         logo: s.logo ?? null,
         features: {
-          pullRequests: s.source === "github" && s.previewEnabled,
+          pullRequests:
+            s.source === "github" && s.previewEnabled && flags.pullRequests,
           cronJobs: s.cronEnabled && flags.crons,
           console: s.consoleEnabled,
         },

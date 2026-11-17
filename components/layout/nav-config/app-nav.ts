@@ -129,7 +129,11 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
   ];
 }
 
-export function appSettingsNav(slug: string, isGithubApp = true): NavSection[] {
+export function appSettingsNav(
+  slug: string,
+  isGithubApp = true,
+  pullRequestsOffered = true,
+): NavSection[] {
   const base = `/apps/${slug}/settings`;
   return [
     backSection("Back to app", `/apps/${slug}`, "Return to the app overview"),
@@ -149,7 +153,7 @@ export function appSettingsNav(slug: string, isGithubApp = true): NavSection[] {
           icon: Rocket,
           tooltip: "Deploy source, build & auto-deploy",
         },
-        {
+        ...itemIf(pullRequestsOffered, {
           label: "Pull requests",
           href: `${base}/pull-requests`,
           icon: GitPullRequest,
@@ -161,7 +165,7 @@ export function appSettingsNav(slug: string, isGithubApp = true): NavSection[] {
                 disabledReason:
                   "Pull request previews need an app that deploys from GitHub. Change the deploy source under Deployments.",
               }),
-        },
+        }),
         {
           label: "Storage",
           href: `${base}/storage`,

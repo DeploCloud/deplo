@@ -27,6 +27,7 @@ import { recordActivity } from "./activity";
 import type { GithubApp, GithubInstallation } from "../types/git";
 import type { ManifestConversion } from "../github/manifest";
 import type { AccessRequirement } from "../git/provider-access";
+import { experimentOn } from "./experiments";
 
 export interface GithubInstallationDTO {
   id: string;
@@ -207,6 +208,7 @@ export async function installationAccess(
 
 export async function teamUsesPreviews(): Promise<boolean> {
   const teamId = await requireActiveTeamId();
+  if (!(await experimentOn("pullRequests"))) return false;
   const rows = await getDb()
     .select({ id: appsTable.id })
     .from(appsTable)

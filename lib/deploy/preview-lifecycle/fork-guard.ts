@@ -9,8 +9,10 @@ import {
   apps as appsTable,
 } from "../../db/schema/control-plane/apps";
 import { composeHasInlineEnvValues } from "../compose-lint/document";
+import { experimentOffMessage } from "../../experiments";
 
 export type PreviewRefusal =
+  | { kind: "experiment-off" }
   | { kind: "previews-off" }
   | { kind: "not-github" }
   | { kind: "fork-denied" }
@@ -21,6 +23,8 @@ export type PreviewRefusal =
 
 export function refusalMessage(r: PreviewRefusal): string {
   switch (r.kind) {
+    case "experiment-off":
+      return experimentOffMessage("pullRequests");
     case "previews-off":
       return "Pull request previews are off for this app.";
     case "not-github":

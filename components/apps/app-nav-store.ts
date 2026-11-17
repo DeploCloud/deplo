@@ -9,6 +9,8 @@ export type AppNavState = {
   capabilities: string[];
   isGithubApp: boolean;
   previewsEnabled: boolean;
+  // The Pull requests experiment is on, so its settings page is offered.
+  pullRequestsOffered: boolean;
   cronsEnabled: boolean;
   consoleEnabled: boolean;
 };

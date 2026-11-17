@@ -47,6 +47,7 @@ import {
 import { allTeamIds } from "./server-teams";
 import type { GitProviderId } from "../types/git";
 import { instanceFrozen } from "../data/deplo-move/freeze";
+import { experimentOn } from "../data/experiments";
 
 const CERT_WARN_DAYS = 21;
 
@@ -250,13 +251,16 @@ async function checkGithubAppAccess(): Promise<void> {
     })
     .from(githubAppsTable);
   if (apps.length === 0) return;
+  // Previews paused by their experiment need no GitHub access nag.
   const previewTeams = new Set(
-    (
-      await db
-        .selectDistinct({ teamId: appsTable.teamId })
-        .from(appsTable)
-        .where(eq(appsTable.previewEnabled, true))
-    ).map((r) => r.teamId),
+    !(await experimentOn("pullRequests"))
+      ? []
+      : (
+          await db
+            .selectDistinct({ teamId: appsTable.teamId })
+            .from(appsTable)
+            .where(eq(appsTable.previewEnabled, true))
+        ).map((r) => r.teamId),
   );
   for (const app of apps) {
     const access = await readAppAccess(app.id);
