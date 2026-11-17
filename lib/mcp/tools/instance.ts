@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { serverId, tool, type McpToolDef } from "./tool-def";
+import { EXPERIMENTS } from "../../experiments";
 
 export const INSTANCE: McpToolDef[] = [
   tool({
@@ -109,6 +110,48 @@ export const INSTANCE: McpToolDef[] = [
           current
           latest
           updateAvailable
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "list_experiments",
+    title: "List experiments",
+    description:
+      "Which new features are turned on for this Deplo: cron jobs, zero-downtime deploys, pull requests, server clusters, tunnels. One that is off refuses its tools.",
+    group: "Instance",
+    requires: null,
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpExperiments {
+        experiments {
+          key
+          label
+          enabled
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_experiment",
+    title: "Turn an experiment on or off",
+    description:
+      "Turn a new feature on or off for every team. Off pauses it and keeps each app's own setting; it is refused while a cluster or a tunnel still exists.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({
+      key: z.enum(EXPERIMENTS),
+      enabled: z.boolean(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetExperiment($key: ExperimentKey!, $enabled: Boolean!) {
+        setExperiment(key: $key, enabled: $enabled) {
+          key
+          enabled
+          usage
         }
       }
     `,

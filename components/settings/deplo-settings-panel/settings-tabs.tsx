@@ -4,6 +4,7 @@ import * as React from "react";
 import { useSearchParams } from "@/lib/nav";
 import {
   CircleFadingArrowUp,
+  FlaskConical,
   Globe,
   Info,
   LifeBuoy,
@@ -51,9 +52,17 @@ import { PanelTunnelCard } from "./panel-tunnel-card";
 import { CertificatesCard } from "./certificates-card";
 import { SettingGroup } from "./setting-item";
 import { DeploAboutTab } from "@/components/settings/deplo-about-tab";
+import { ExperimentsTab } from "@/components/settings/experiments-tab";
+import type { ExperimentState } from "@/lib/data/experiments";
 import type { Notice } from "@/components/settings/licenses-panel";
 
-const TABS = ["general", "updates", "advanced", "about"] as const;
+const TABS = [
+  "general",
+  "updates",
+  "advanced",
+  "experiments",
+  "about",
+] as const;
 type TabId = (typeof TABS)[number];
 
 export function DeploSettingsPanel({
@@ -66,8 +75,10 @@ export function DeploSettingsPanel({
   canary: canarySeed,
   security,
   notices,
+  experiments,
 }: {
   notices: Notice[];
+  experiments: ExperimentState[];
   canary: boolean;
   security: SecurityUpdatesStatus;
   settings: InstanceSettings;
@@ -157,6 +168,9 @@ export function DeploSettingsPanel({
           />
         </SettingGroup>
       </TabsContent>
+      <TabsContent value="experiments">
+        <ExperimentsTab states={experiments} />
+      </TabsContent>
       <TabsContent value="about">
         <DeploAboutTab notices={notices} />
       </TabsContent>
@@ -184,6 +198,10 @@ function TabBar() {
       <UnderlineTabsTrigger value="advanced">
         <SlidersHorizontal className="size-4" />
         Advanced
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="experiments">
+        <FlaskConical className="size-4" />
+        Experiments
       </UnderlineTabsTrigger>
       <UnderlineTabsTrigger value="about">
         <Info className="size-4" />

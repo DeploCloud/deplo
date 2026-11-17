@@ -3238,6 +3238,38 @@ type ExecResult {
 }
 
 """
+A feature that is still new. An instance admin turns it on for every team in Settings > Deplo > Experiments.
+"""
+type Experiment {
+  enabled: Boolean
+  key: ExperimentKey
+  label: String
+}
+
+enum ExperimentKey {
+  clusters
+  crons
+  pullRequests
+  tunnels
+  zeroDowntime
+}
+
+"""An experiment as its switch shows it, with what uses it."""
+type ExperimentState {
+  enabled: Boolean
+  key: ExperimentKey
+  label: String
+
+  """
+  Why it cannot be turned off right now: a cluster or a tunnel still exists.
+  """
+  lockedOn: String
+
+  """What uses it right now, e.g. "2 apps, 5 jobs"."""
+  usage: String
+}
+
+"""
 An extra (non-primary) routed host: the compose service + port it targets, its hostname and the path it answers on. No hostname ⇒ one is generated. Registered as an auto Domain row at creation; the `domains` table is the sole routing source after.
 """
 input ExtraDomainInput {
@@ -5411,6 +5443,11 @@ type Mutation {
   setEnvironmentBranch(branch: String!, id: ID!): Boolean
 
   """
+  Turn an experiment on or off for every team. Off pauses it and keeps every app's own setting; a cluster or a tunnel that still exists refuses it.
+  """
+  setExperiment(enabled: Boolean!, key: ExperimentKey!): ExperimentState
+
+  """
   Set a folder's accent colour (hex, e.g. #3b82f6), or clear it back to the default when color is omitted/null.
   """
   setFolderColor(color: String, id: ID!): Boolean
@@ -6393,6 +6430,9 @@ type Query {
   """The environments of a Project container, in display order."""
   environments(projectId: ID!): [Environment!]
 
+  """Which experiments are turned on for this Deplo."""
+  experiments: [Experiment!]
+
   """
   The fleet's agent versions, and whether Deplo is still rolling an update out to them.
   """
@@ -6456,6 +6496,9 @@ type Query {
   Which of these host ports are already taken on a server - both by something listening right now and by a database that has reserved one. For a screen that has to say so before anything is created, such as the import review. `checked` is false when the server's agent could not answer (too old, or unreachable); the reason says which. Requires the publish-ports grant.
   """
   hostPortsInUse(ports: [Int!]!, serverId: ID!): HostPortCheck
+
+  """Every experiment with what uses it. Instance admins only."""
+  instanceExperiments: [ExperimentState!]
 
   """
   This instance's own settings. A plain database read: it never dials a server, so it answers even when the fleet is down.

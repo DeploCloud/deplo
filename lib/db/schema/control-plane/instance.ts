@@ -60,6 +60,16 @@ export const instanceSettings = pgTable("instance_settings", {
   securityCheckedAt: isoTimestamptz("security_checked_at"),
   securityFailingSince: isoTimestamptz("security_failing_since"),
   kevFetchedAt: isoTimestamptz("kev_fetched_at"),
+  // https://deplo.build/docs/operations/experiments
+  experimentCrons: boolean("experiment_crons").notNull().default(false),
+  experimentZeroDowntime: boolean("experiment_zero_downtime")
+    .notNull()
+    .default(false),
+  experimentPullRequests: boolean("experiment_pull_requests")
+    .notNull()
+    .default(false),
+  experimentClusters: boolean("experiment_clusters").notNull().default(false),
+  experimentTunnels: boolean("experiment_tunnels").notNull().default(false),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 

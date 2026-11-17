@@ -24,6 +24,7 @@ import "./types/domain";
 import "./types/enums";
 import "./types/env";
 import "./types/environment";
+import "./types/experiments";
 import "./types/folder";
 import "./types/git";
 import "./types/github";
