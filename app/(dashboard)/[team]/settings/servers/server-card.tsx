@@ -2,59 +2,34 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import { useRouter } from "@/lib/nav";
-import { toast } from "sonner";
 import {
-  ArrowRightFromLine,
   Crown,
   MoreHorizontal,
   Network,
-  Play,
-  Copy,
-  RefreshCw,
   Server as ServerIcon,
-  Settings2,
-  Undo2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Bone } from "@/components/ui/skeleton";
-import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DeploMark } from "@/components/logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import type { ListView } from "@/components/shared/view-toggle";
 import type { LeaderOption } from "@/components/servers/cluster-actions";
 import type { ServerMemberState } from "@/components/servers/cluster-join";
-import {
-  CANCEL_MEMBER_REMOVAL,
-  REMOVE_MEMBER,
-} from "@/components/servers/cluster-member-actions";
 import { ServerUseBadge } from "@/components/servers/server-role-badge";
 import type { ServerFilterFields } from "@/components/servers/servers-toolbar";
-import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { AGENT_VERSION, type AgentReach } from "@/lib/version";
 import { AgentVersionBadge } from "./agent-version-badge";
 import { ServerHealthChip } from "./server-health-chip";
-import {
-  useServerHealth,
-  type ServerHealthState,
-} from "./server-health-provider";
+import type { ServerHealthState } from "./server-health-provider";
 import { DocsLink } from "@/components/ui/docs-link";
 import { UsageMeters } from "@/components/servers/server-usage";
 import type { ServerUsage } from "@/lib/types/server";
+import { ServerMenu } from "./server-menu";
 
 export type ServerCardData = ServerFilterFields & {
   id: string;
@@ -85,7 +60,7 @@ const EMPTYING_BADGE = {
   stopped: { label: "Removal stopped", variant: "destructive" },
 } as const;
 
-function ServerStatus({ server }: { server: ServerCardData }) {
+export function ServerStatus({ server }: { server: ServerCardData }) {
   if (server.member?.provisioning && server.cluster)
     return (
       <SimpleTooltip
@@ -201,29 +176,8 @@ export function ServerCard({
   onRemove?: () => void;
   onMakeLeader?: (choice: LeaderOption) => void;
 }) {
-  const router = useRouter();
-  const { checkOne, isChecking } = useServerHealth();
-  const [pending, startTransition] = React.useTransition();
   const href = `/settings/servers/${server.id}`;
   const m = server.member;
-  const makeLeader = server.leader
-    ? undefined
-    : leaderChoices.find((c) => c.serverId === server.id && !c.current);
-  const leaderBack =
-    server.leader && deploMachineOutside
-      ? leaderChoices.find((c) => c.onDeploHost && !c.current)
-      : undefined;
-
-  const member = (query: string, extra: Record<string, unknown> = {}) =>
-    startTransition(async () => {
-      const res = await gqlAction(query, {
-        clusterId: server.cluster?.id,
-        serverId: server.id,
-        ...extra,
-      });
-      if (!res.ok) toast.error(res.error);
-      router.refresh();
-    });
 
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
@@ -241,146 +195,15 @@ export function ServerCard({
           {dragHandle}
         </span>
       )}
-      <div
-        data-card-actions
-        onPointerDown={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-      >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Server menu">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem
-              onSelect={() => checkOne(server.id)}
-              disabled={isChecking(server.id)}
-            >
-              <RefreshCw className="size-4" />
-              Check status
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href={href} className="cursor-pointer">
-                <Settings2 className="size-4" />
-                Manage
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() =>
-                void navigator.clipboard
-                  .writeText(server.ip)
-                  .then(() => toast.success("Copied"))
-              }
-            >
-              <Copy className="size-4" />
-              Copy address
-            </DropdownMenuItem>
-            {!server.cluster && moveTargets.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <MenuSubTooltip
-                  Sub={DropdownMenuSub}
-                  SubTrigger={DropdownMenuSubTrigger}
-                  SubContent={DropdownMenuSubContent}
-                  content="Make this server one of a cluster's servers"
-                  subContentClassName="max-h-72 overflow-y-auto"
-                  trigger={
-                    <>
-                      <Network className="size-4" />
-                      Move to cluster
-                    </>
-                  }
-                >
-                  {moveTargets.map((c) => (
-                    <SimpleTooltip
-                      key={c.id}
-                      content={c.blocked || `Move into ${c.name}`}
-                      side="left"
-                    >
-                      <DropdownMenuItem
-                        onSelect={() => onJoin?.(c.id)}
-                        disabled={Boolean(c.blocked)}
-                      >
-                        {c.name}
-                      </DropdownMenuItem>
-                    </SimpleTooltip>
-                  ))}
-                </MenuSubTooltip>
-              </>
-            )}
-            {m && server.cluster && (
-              <>
-                <DropdownMenuSeparator />
-                {makeLeader && (
-                  <SimpleTooltip
-                    content={
-                      makeLeader.blocked ||
-                      "Run the cluster's leader on this server"
-                    }
-                    side="left"
-                  >
-                    <DropdownMenuItem
-                      disabled={Boolean(makeLeader.blocked)}
-                      onSelect={() => onMakeLeader?.(makeLeader)}
-                    >
-                      <Crown className="size-4" />
-                      Make leader
-                    </DropdownMenuItem>
-                  </SimpleTooltip>
-                )}
-                {leaderBack && (
-                  <SimpleTooltip
-                    content={
-                      leaderBack.blocked ||
-                      "Run the cluster's leader on Deplo's own machine again"
-                    }
-                    side="left"
-                  >
-                    <DropdownMenuItem
-                      disabled={Boolean(leaderBack.blocked)}
-                      onSelect={() => onMakeLeader?.(leaderBack)}
-                    >
-                      <Crown className="size-4" />
-                      Move leader to Deplo&apos;s machine
-                    </DropdownMenuItem>
-                  </SimpleTooltip>
-                )}
-                {m.emptying === "stopped" && (
-                  <DropdownMenuItem
-                    disabled={pending}
-                    onSelect={() =>
-                      member(REMOVE_MEMBER, { keepWorkloads: false })
-                    }
-                  >
-                    <Play className="size-4" />
-                    Continue removal
-                  </DropdownMenuItem>
-                )}
-                {m.emptying !== "idle" && (
-                  <DropdownMenuItem
-                    disabled={pending}
-                    onSelect={() => member(CANCEL_MEMBER_REMOVAL)}
-                  >
-                    <Undo2 className="size-4" />
-                    Cancel removal
-                  </DropdownMenuItem>
-                )}
-                {m.emptying === "idle" && (
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => onRemove?.()}
-                  >
-                    <ArrowRightFromLine className="size-4" />
-                    Remove from cluster
-                  </DropdownMenuItem>
-                )}
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <ServerMenu
+        server={server}
+        moveTargets={moveTargets}
+        leaderChoices={leaderChoices}
+        deploMachineOutside={deploMachineOutside}
+        onJoin={onJoin}
+        onRemove={onRemove}
+        onMakeLeader={onMakeLeader}
+      />
     </div>
   );
 
