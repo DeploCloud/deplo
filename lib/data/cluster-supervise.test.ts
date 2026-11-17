@@ -38,6 +38,12 @@ test("a cluster supervises its writers only when every member's agent says so", 
     false,
     "no agent says so yet",
   );
+  for (const id of MEMBERS) hosts[id].capabilities.push("cluster.supervise");
+  assert.equal(
+    await asAdmin(() => clusterSupervisesWriters(cluster.id)),
+    false,
+    "agent 0.5.3-canary.10 says cluster.supervise and leaves a writer it cannot read down",
+  );
   supervising(MEMBERS[0], MEMBERS[1]);
   assert.equal(
     await asAdmin(() => clusterSupervisesWriters(cluster.id)),
