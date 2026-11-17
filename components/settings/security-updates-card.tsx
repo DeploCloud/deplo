@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ShieldAlert } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { gqlAction } from "@/lib/graphql-client";
 import type { SecurityUpdatesStatus } from "@/lib/data/security-updates/settings";
@@ -28,27 +29,30 @@ export function SecurityUpdatesCard({
 }) {
   const router = useRouter();
   const [on, setOn] = React.useState(status.enabled);
+  const [confirming, setConfirming] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
+  async function save(next: boolean) {
+    const res = await gqlAction(
+      `mutation($enabled: Boolean!) {
+         setSecurityUpdatesEnabled(enabled: $enabled) { enabled }
+       }`,
+      { enabled: next },
+    );
+    if (res.ok) {
+      setOn(next);
+      router.refresh();
+    }
+    return res;
+  }
+
+  // Off is the risky way: it asks first.
   function toggle(next: boolean) {
-    const previous = on;
-    setOn(next);
+    if (!next) return setConfirming(true);
     startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($enabled: Boolean!) {
-           setSecurityUpdatesEnabled(enabled: $enabled) { enabled }
-         }`,
-        { enabled: next },
-      );
-      if (res.ok) {
-        router.refresh();
-        toast.success(
-          next ? "Security updates are on" : "Security updates are off",
-        );
-      } else {
-        setOn(previous);
-        toast.error(res.error);
-      }
+      const res = await save(true);
+      if (res.ok) toast.success("Security updates are on");
+      else toast.error(res.error);
     });
   }
 
@@ -58,6 +62,7 @@ export function SecurityUpdatesCard({
       title="Security updates"
       htmlFor="security-updates-enabled"
       info="Deplo sends OSV.dev the name and version of each package your apps use, nothing that names your apps or this Deplo."
+      docs="security.updatesPrivacy"
       description={statusLine({ ...status, enabled: on })}
       control={
         <Switch
@@ -67,6 +72,17 @@ export function SecurityUpdatesCard({
           onCheckedChange={toggle}
         />
       }
-    />
+    >
+      <ConfirmAction
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Turn off security updates?"
+        description="Deplo stops checking your apps and databases for known vulnerabilities."
+        consequence="A package with a known flaw keeps running, and nobody is told about it. Nothing is sent to OSV.dev."
+        confirmLabel="Turn off"
+        successMessage="Security updates are off"
+        onConfirm={() => save(false)}
+      />
+    </SettingItem>
   );
 }
