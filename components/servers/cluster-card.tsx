@@ -269,6 +269,10 @@ function ClusterNumbers({
   cluster: ClusterCardData;
   compact?: boolean;
 }) {
+  // The unit rides in the label, so a quarter of a card still fits the number.
+  const [mem, unit] = cluster.totals.memTotal
+    ? formatBytes(cluster.totals.memTotal).split(" ")
+    : ["-", ""];
   const numbers = [
     [
       String(cluster.members.length),
@@ -276,10 +280,7 @@ function ClusterNumbers({
     ],
     // No server has reported yet (a fresh restart): a dash, never a zero it does not have.
     [cluster.totals.cores ? String(cluster.totals.cores) : "-", "cores"],
-    [
-      cluster.totals.memTotal ? formatBytes(cluster.totals.memTotal) : "-",
-      "memory",
-    ],
+    [mem, unit ? `${unit} memory` : "memory"],
     [String(cluster.apps), cluster.apps === 1 ? "app" : "apps"],
   ];
   if (compact)

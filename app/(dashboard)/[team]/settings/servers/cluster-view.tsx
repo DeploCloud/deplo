@@ -234,7 +234,9 @@ export function ClusterView({
           <div className="flex items-center gap-2">
             <AddServerMenu
               clusterName={cluster.name}
-              options={joinOptions}
+              options={joinOptions.filter(
+                (o) => !servers.some((m) => m.id === o.serverId),
+              )}
               onPick={requestJoin}
               onInstall={() => setInstallOpen(true)}
             />
@@ -539,7 +541,7 @@ function AddServerMenu({
         </DropdownMenuLabel>
         {options.length === 0 && (
           <DropdownMenuItem disabled>
-            Every server is in a cluster
+            Every server is already here
           </DropdownMenuItem>
         )}
         {options.map((o) => (
