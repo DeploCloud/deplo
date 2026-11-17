@@ -58,6 +58,8 @@ import { appCounts } from "@/lib/data/servers/workloads";
 import { usageTotals } from "@/components/servers/server-usage";
 import { ClusterView } from "./cluster-view";
 import { listClusterJoinRequests } from "@/lib/data/clusters/join-requests";
+import { displayPositions } from "@/lib/data/servers/display-order";
+import { inDisplayOrder } from "@/components/servers/display-order";
 
 export const metadata = { title: "Servers" };
 
@@ -95,16 +97,15 @@ export default async function ServersPage(
     avatarUrl: t.avatarUrl,
   }));
 
-  const [usages, counts, joinRequests] = await Promise.all([
+  const [usages, counts, joinRequests, positions] = await Promise.all([
     serverUsages(serversRaw.map((s) => s.id)),
     appCounts(),
     listClusterJoinRequests(),
+    displayPositions(),
   ]);
   const selfAddrs = deploHostSelfAddresses();
-  const servers = [...serversRaw].sort(
-    (a, b) =>
-      Number(isDeploHostServer(b, selfAddrs)) -
-      Number(isDeploHostServer(a, selfAddrs)),
+  const servers = inDisplayOrder(serversRaw, positions.servers, (s) =>
+    isDeploHostServer(s, selfAddrs),
   );
 
   const clusterRows = await Promise.all(
@@ -207,26 +208,27 @@ export default async function ServersPage(
       ),
     ]),
   );
-  const clusterCards: ClusterCardData[] = clusterRows.map(
-    ({ cluster, members, joinOptions }) => ({
-      id: cluster.id,
-      name: cluster.name,
-      allTeams: cluster.allTeams,
-      teamIds: clusterTeamIds.get(cluster.id) ?? [],
-      servers: members.length,
-      failoverEnabled: cluster.failoverEnabled,
-      replicationEnabled: cluster.replicationEnabled,
-      provisioning: members.filter((m) => m.provisioning).length,
-      joinOptions,
-      warnings: warningsOf.get(cluster.id)!,
-      members: members.map((m) => ({
-        name: m.serverName,
-        online: m.status === "online" && !m.provisioning,
-      })),
-      totals: usageTotals(members.map((m) => usages.get(m.serverId) ?? null)),
-      apps: counts.byCluster.get(cluster.id) ?? 0,
-    }),
-  );
+  const clusterCards: ClusterCardData[] = inDisplayOrder(
+    clusterRows.map((r) => ({ ...r, id: r.cluster.id })),
+    positions.clusters,
+  ).map(({ cluster, members, joinOptions }) => ({
+    id: cluster.id,
+    name: cluster.name,
+    allTeams: cluster.allTeams,
+    teamIds: clusterTeamIds.get(cluster.id) ?? [],
+    servers: members.length,
+    failoverEnabled: cluster.failoverEnabled,
+    replicationEnabled: cluster.replicationEnabled,
+    provisioning: members.filter((m) => m.provisioning).length,
+    joinOptions,
+    warnings: warningsOf.get(cluster.id)!,
+    members: members.map((m) => ({
+      name: m.serverName,
+      online: m.status === "online" && !m.provisioning,
+    })),
+    totals: usageTotals(members.map((m) => usages.get(m.serverId) ?? null)),
+    apps: counts.byCluster.get(cluster.id) ?? 0,
+  }));
   // In the order they joined, as the cluster itself lists them.
   const openServers = open
     ? cards

@@ -5063,6 +5063,11 @@ type Mutation {
   reorderApps(appIds: [ID!]!): Boolean
 
   """
+  Set the order of clusters on the Servers page, the same for every admin. Clusters left out keep their order after these.
+  """
+  reorderClusters(clusterIds: [String!]!): Boolean
+
+  """
   Persist the team-wide order of databases in the Storage grid. Ids are sanitised to the team's own databases; omitted ones are appended. Returns true.
   """
   reorderDatabases(databaseIds: [ID!]!): Boolean
@@ -5077,6 +5082,11 @@ type Mutation {
 
   """Set the team-wide display order of Project containers."""
   reorderProjects(projectIds: [ID!]!): Boolean
+
+  """
+  Set the order of servers on the Servers page, the same for every admin. Servers left out keep their order after these.
+  """
+  reorderServers(serverIds: [String!]!): Boolean
 
   """
   Give the panel's Cloudflare Tunnel a new API token, for when Cloudflare refuses the saved one. Kept only once Cloudflare accepts it for the tunnel's account and zone and the cluster relay's route goes in with it; otherwise the saved token stays. The old token is not deleted in Cloudflare: that is for the admin to do.

@@ -21,7 +21,9 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
 import { SortableItem } from "@/components/apps/apps-grid/sortable-item";
@@ -47,6 +49,9 @@ import {
   gridClass,
 } from "@/components/servers/servers-toolbar";
 import { cn } from "@/lib/utils";
+import { gqlAction } from "@/lib/graphql-client";
+import { reorderBlock } from "@/lib/reorder-block";
+import { byOrder } from "@/components/servers/display-order";
 import { useCardSelection } from "@/components/shared/use-card-selection";
 import {
   SelectionCanvas,
@@ -62,8 +67,23 @@ import {
 import { ServerCard, type ServerCardData } from "./server-card";
 import { useServerHealth } from "./server-health-provider";
 
-// Cards stay where they are while one is dragged: a server has no order to change, only a cluster to join.
+// While filtering, cards stay put: a partial list has no place to move into, only a cluster to join.
 const still = () => null;
+
+const REORDER_SERVERS = `mutation($ids: [String!]!) { reorderServers(serverIds: $ids) }`;
+const REORDER_CLUSTERS = `mutation($ids: [String!]!) { reorderClusters(clusterIds: $ids) }`;
+
+/** The page's order, until a drag moves it ahead of the next refresh. */
+function useLocalOrder(ids: string[]) {
+  const key = ids.join(" ");
+  const [state, setState] = React.useState({ key, order: ids });
+  if (state.key !== key) setState({ key, order: ids });
+  const set = React.useCallback(
+    (order: string[]) => setState({ key, order }),
+    [key],
+  );
+  return [state.key === key ? state.order : ids, set] as const;
+}
 
 /** The servers the grid lists: outside a search, the ones in a cluster are found inside it. */
 export function listedServers(
@@ -99,9 +119,15 @@ export function ServersGrid({
   const [removeId, setRemoveId] = React.useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = React.useState(false);
 
+  const [serverOrder, setServerOrder] = useLocalOrder(servers.map((s) => s.id));
+  const [clusterOrder, setClusterOrder] = useLocalOrder(
+    clusters.map((c) => c.id),
+  );
+
   const q = query.trim().toLowerCase();
   const faceted = picked.team.length > 0 || picked.use.length > 0;
-  const pool = listedServers(servers, q !== "" || faceted);
+  const canReorder = q === "" && !faceted;
+  const pool = listedServers(byOrder(servers, serverOrder), !canReorder);
   const shown = filterServers(pool, {
     query,
     teams: picked.team,
@@ -109,7 +135,9 @@ export function ServersGrid({
   });
   const shownClusters = faceted
     ? []
-    : clusters.filter((c) => !q || c.name.toLowerCase().includes(q));
+    : byOrder(clusters, clusterOrder).filter(
+        (c) => !q || c.name.toLowerCase().includes(q),
+      );
   const clusterIds = React.useMemo(
     () => new Set(clusters.map((c) => c.id)),
     [clusters],
@@ -144,7 +172,38 @@ export function ServersGrid({
 
   const dragging = activeId !== null;
   const active = activeId ? (byId.get(activeId) ?? null) : null;
-  const overCluster = overId !== null && clusterIds.has(overId);
+  const activeCluster = activeId
+    ? clusters.find((c) => c.id === activeId)
+    : undefined;
+  const overCluster =
+    active !== null && overId !== null && clusterIds.has(overId);
+  const strategy = !canReorder
+    ? still
+    : view === "list"
+      ? verticalListSortingStrategy
+      : rectSortingStrategy;
+
+  // Shown at once, saved behind; a refusal puts the old order back.
+  function reorder(
+    mutation: string,
+    order: string[],
+    setOrder: (order: string[]) => void,
+    a: string,
+    o: string,
+    block: string[],
+  ) {
+    const next = reorderBlock(order, a, o, block);
+    if (!next) return;
+    setOrder(next);
+    startMove(async () => {
+      const res = await gqlAction(mutation, { ids: next });
+      if (res.ok) router.refresh();
+      else {
+        toast.error(res.error);
+        setOrder(order);
+      }
+    });
+  }
 
   function optionFor(serverId: string, clusterId: string) {
     return clusters
@@ -199,19 +258,26 @@ export function ServersGrid({
     }),
   );
 
-  // A server lands on a cluster, never on another server.
+  // A cluster moves among clusters. A server dropped on a cluster joins it, and between servers takes a new place.
   const collisionDetection = React.useCallback<CollisionDetection>(
     (args) => {
-      const targets = args.droppableContainers.filter((c) =>
-        clusterIds.has(String(c.id)),
-      );
-      const scoped = { ...args, droppableContainers: targets };
+      const among = (keep: (id: string) => boolean) => ({
+        ...args,
+        droppableContainers: args.droppableContainers.filter((c) =>
+          keep(String(c.id)),
+        ),
+      });
+      const isCluster = (id: string) => clusterIds.has(id);
+      if (isCluster(String(args.active.id)))
+        return canReorder ? closestCenter(among(isCluster)) : [];
       // The keyboard has no pointer to be within anything.
-      return args.pointerCoordinates
-        ? pointerWithin(scoped)
-        : closestCenter(scoped);
+      if (!args.pointerCoordinates)
+        return closestCenter(canReorder ? args : among(isCluster));
+      const onCluster = pointerWithin(among(isCluster));
+      if (onCluster.length > 0 || !canReorder) return onCluster;
+      return closestCenter(among((id) => !isCluster(id)));
     },
-    [clusterIds],
+    [clusterIds, canReorder],
   );
 
   function onDragOver(event: DragOverEvent) {
@@ -225,9 +291,21 @@ export function ServersGrid({
     if (!event.over) return;
     const a = String(event.active.id);
     const o = String(event.over.id);
-    if (!clusterIds.has(o)) return;
-    if (selected.has(a) && selected.size > 1) requestBulkJoin(o, chosen);
-    else requestJoin(a, o);
+    if (a === o) return;
+    if (clusterIds.has(a)) {
+      if (canReorder && clusterIds.has(o))
+        reorder(REORDER_CLUSTERS, clusterOrder, setClusterOrder, a, o, []);
+      return;
+    }
+    if (clusterIds.has(o)) {
+      if (selected.has(a) && selected.size > 1) requestBulkJoin(o, chosen);
+      else requestJoin(a, o);
+      return;
+    }
+    if (canReorder)
+      reorder(REORDER_SERVERS, serverOrder, setServerOrder, a, o, [
+        ...selected,
+      ]);
   }
 
   function onView(next: ListView) {
@@ -290,7 +368,7 @@ export function ServersGrid({
           {shownClusters.length > 0 && (
             <SortableContext
               items={shownClusters.map((c) => c.id)}
-              strategy={still}
+              strategy={strategy}
             >
               <div className={gridClass(view)}>
                 {shownClusters.map((c) => (
@@ -298,16 +376,17 @@ export function ServersGrid({
                     key={c.id}
                     id={c.id}
                     dragging={dragging}
-                    dropOnly
+                    dropOnly={!canReorder}
                     dataKind="cluster"
                   >
-                    {({ dragActive, isOver }) => (
+                    {({ handle, dragActive, isOver }) => (
                       <ClusterCard
                         cluster={c}
                         teams={teams}
                         view={view}
+                        dragHandle={canReorder ? handle : undefined}
                         dragActive={dragActive}
-                        dropActive={isOver && dragging}
+                        dropActive={isOver && active !== null}
                       />
                     )}
                   </SortableItem>
@@ -316,7 +395,7 @@ export function ServersGrid({
             </SortableContext>
           )}
           {shown.length > 0 ? (
-            <SortableContext items={shown.map((s) => s.id)} strategy={still}>
+            <SortableContext items={shown.map((s) => s.id)} strategy={strategy}>
               <div className={gridClass(view)}>
                 {shown.map((s) => (
                   <SortableItem
@@ -368,6 +447,15 @@ export function ServersGrid({
               )}
             >
               <ServerCard server={active} view={view} dragActive />
+            </DragStack>
+          ) : activeCluster ? (
+            <DragStack count={1}>
+              <ClusterCard
+                cluster={activeCluster}
+                teams={teams}
+                view={view}
+                dragActive
+              />
             </DragStack>
           ) : null}
         </DragOverlay>

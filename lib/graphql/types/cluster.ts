@@ -57,6 +57,7 @@ import {
   type ClusterReleasedWorkload,
 } from "@/lib/types/cluster";
 import { cancelClusterJoin } from "@/lib/data/clusters/join-requests";
+import { reorderClusters } from "@/lib/data/servers/display-order";
 
 // What the actor just changed shows in the cluster's warnings now, not at the next background pass.
 async function thenRefresh<T>(clusterId: string, done: Promise<T>): Promise<T> {
@@ -690,6 +691,17 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { clusterId, serverId }) =>
       cancelClusterMemberRemoval(clusterId, serverId),
+  }),
+  reorderClusters: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Set the order of clusters on the Servers page, the same for every admin. Clusters left out keep their order after these.",
+    args: { clusterIds: t.arg.stringList({ required: true }) },
+    resolve: async (_r, { clusterIds }) => {
+      await reorderClusters(clusterIds);
+      return true;
+    },
   }),
   cancelClusterJoin: t.field({
     type: "Boolean",

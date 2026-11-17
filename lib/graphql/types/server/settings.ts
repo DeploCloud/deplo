@@ -9,6 +9,7 @@ import {
   setServerRole,
 } from "@/lib/data/servers/settings";
 import { setServerTeams } from "@/lib/data/servers/team-access";
+import { reorderServers } from "@/lib/data/servers/display-order";
 
 const SetServerTeamsInputType = builder.inputType("SetServerTeamsInput", {
   description:
@@ -21,6 +22,17 @@ const SetServerTeamsInputType = builder.inputType("SetServerTeamsInput", {
 });
 
 builder.mutationFields((t) => ({
+  reorderServers: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Set the order of servers on the Servers page, the same for every admin. Servers left out keep their order after these.",
+    args: { serverIds: t.arg.stringList({ required: true }) },
+    resolve: async (_r, { serverIds }) => {
+      await reorderServers(serverIds);
+      return true;
+    },
+  }),
   renameServer: t.field({
     type: ServerRef,
     authScopes: { instanceAdmin: true },

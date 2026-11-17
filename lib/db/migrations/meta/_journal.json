@@ -1772,6 +1772,13 @@
       "when": 1796062200000,
       "tag": "0263_cluster_join_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1796062300000,
+      "tag": "0264_display_order",
+      "breakpoints": true
     }
   ]
 }

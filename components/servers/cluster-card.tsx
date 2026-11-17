@@ -118,12 +118,14 @@ export function ClusterCard({
   view = "grid",
   dragActive = false,
   dropActive = false,
+  dragHandle,
 }: {
   cluster: ClusterCardData;
   teams: TeamOption[];
   view?: ListView;
   dragActive?: boolean;
   dropActive?: boolean;
+  dragHandle?: React.ReactNode;
 }) {
   const [manage, setManage] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
@@ -134,6 +136,11 @@ export function ClusterCard({
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1 self-center [&_button:hover]:bg-card-hover">
       <HealthBadge online={cluster.members.map((m) => m.online)} />
+      {dragHandle && (
+        <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
+          {dragHandle}
+        </span>
+      )}
       <div
         data-card-actions
         onPointerDown={(e) => e.stopPropagation()}

@@ -47,6 +47,8 @@ export const clusters = pgTable("clusters", {
     .notNull()
     .default(2048),
   answerMaxWaiting: integer("answer_max_waiting").notNull().default(128),
+  // Where an admin dragged it on the Servers page; null = never placed, after the placed ones.
+  position: integer("position"),
   createdAt: isoTimestamptz("created_at").notNull(),
 });
 

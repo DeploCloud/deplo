@@ -61,6 +61,8 @@ export const servers = pgTable(
     uninstallRunId: text("uninstall_run_id"),
     hostArch: text("host_arch").notNull().default(""),
     deployConcurrency: integer("deploy_concurrency").notNull().default(1),
+    // Where an admin dragged it on the Servers page; null = never placed, after the placed ones.
+    position: integer("position"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
