@@ -6,6 +6,7 @@ import {
   upsertEnv,
   renameEnv,
   importEnv,
+  addEnv,
   setAppEnv,
   deleteEnv,
   makeEnvSecret,
@@ -288,6 +289,21 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { appId, blob, targets }) =>
       importEnv(appId, blob, targets ?? undefined),
+  }),
+  addEnv: t.field({
+    type: EnvImportResultRef,
+    authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t add environment variables with your current team role. Ask a team admin for the Manage environment variables capability.",
+    description:
+      "Add or update several variables at once, leaving the others alone. Every entry lands as plain, so a key that already exists as a secret is skipped rather than downgraded.",
+    args: {
+      appId: t.arg.string({ required: true }),
+      entries: t.arg({ type: [EnvEntryInputType], required: true }),
+      targets: t.arg({ type: [EnvTargetEnum], required: false }),
+    },
+    resolve: (_r, { appId, entries, targets }) =>
+      addEnv(appId, entries, targets ?? undefined),
   }),
   setAppEnv: t.field({
     type: "Int",

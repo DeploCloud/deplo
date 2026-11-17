@@ -1,4 +1,4 @@
-const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
+import { KEY_RE, parseEnvFile } from "../../env-file";
 
 export interface EnvPair {
   key: string;
@@ -14,42 +14,7 @@ export function envEntriesOf(
 }
 
 export function parseEnvBlob(blob: string | null | undefined): EnvPair[] {
-  if (!blob) return [];
-  const out: { key: string; value: string }[] = [];
-  const seen = new Set<string>();
-  const lines = blob.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim().replace(/^export\s+/, "");
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    if (!KEY_RE.test(key)) continue;
-    let value = line.slice(eq + 1).trim();
-    const quote = value[0] === '"' || value[0] === "'" ? value[0] : "";
-    if (quote && value.length >= 2 && value.endsWith(quote)) {
-      value = value.slice(1, -1);
-    } else if (quote) {
-      const end = lines.findIndex(
-        (l, j) => j > i && l.trimEnd().endsWith(quote),
-      );
-      if (end !== -1) {
-        value = [
-          value.slice(1),
-          ...lines.slice(i + 1, end),
-          lines[end].trimEnd().slice(0, -1),
-        ].join("\n");
-        i = end;
-      }
-    }
-    if (seen.has(key))
-      out[out.findIndex((e) => e.key === key)] = { key, value };
-    else {
-      seen.add(key);
-      out.push({ key, value });
-    }
-  }
-  return out;
+  return parseEnvFile(blob).filter((e) => KEY_RE.test(e.key));
 }
 
 export function renameDatabaseHosts(

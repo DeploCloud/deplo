@@ -104,6 +104,17 @@ test("a multi-line value survives the blob it travels in", () => {
   ]);
 });
 
+test("a value holding a space and a hash is not read as a comment", () => {
+  const r = coolifyEnvBlob([
+    { key: "PASS", value: "abc #1" },
+    { key: "NEXT", value: "1" },
+  ]);
+  assert.deepEqual(parseEnvBlob(r.blob), [
+    { key: "PASS", value: "abc #1" },
+    { key: "NEXT", value: "1" },
+  ]);
+});
+
 test("a multi-line value the panel already quoted is not quoted twice", () => {
   const r = coolifyEnvBlob([
     { key: "QUOTED", value: "'-----BEGIN-----\nBODY\n-----END-----'" },

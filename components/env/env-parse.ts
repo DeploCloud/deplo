@@ -1,23 +1,3 @@
-export const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
-
-export function parseEnv(text: string): { key: string; value: string }[] {
-  const out: { key: string; value: string }[] = [];
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    const rest = line.slice(eq + 1);
-    // An unquoted `#` is a comment only after whitespace, so `COLOR=#fff` survives.
-    const quoted = rest.trim().match(/^(["'])(.*?)\1\s*(?:#.*)?$/);
-    const value = quoted ? quoted[2] : rest.replace(/\s+#.*$/, "").trim();
-    if (!key) continue;
-    out.push({ key, value });
-  }
-  return out;
-}
-
 export function clashingKeys(keys: string[], existing: string[]): string[] {
   const have = new Set(existing);
   return [...new Set(keys.map((k) => k.trim()))].filter((k) => have.has(k));

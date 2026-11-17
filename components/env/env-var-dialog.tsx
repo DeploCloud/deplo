@@ -38,7 +38,8 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { envNameLooksSensitive } from "@/lib/env-secret-name";
-import { clashingKeys, KEY_RE } from "@/components/env/env-parse";
+import { clashingKeys } from "@/components/env/env-parse";
+import { KEY_RE } from "@/lib/env-file";
 import { ReplaceExistingConfirm } from "@/components/env/replace-existing-confirm";
 import {
   EnvRowsEditor,
@@ -484,20 +485,22 @@ function StandaloneTab({
         router.refresh();
         return;
       }
-      const blob = filled.map((r) => `${r.key.trim()}=${r.value}`).join("\n");
-      type ImportResult = {
+      type AddResult = {
         added: number;
         skippedSecrets: number;
         autoLinked: AutoLinked[];
       };
-      const res = await gqlAction<{ importEnv: ImportResult }, ImportResult>(
-        `mutation($appId: String!, $blob: String!) {
-          importEnv(appId: $appId, blob: $blob) {
+      const res = await gqlAction<{ addEnv: AddResult }, AddResult>(
+        `mutation($appId: String!, $entries: [EnvEntryInput!]!) {
+          addEnv(appId: $appId, entries: $entries) {
             added skippedSecrets autoLinked { key database }
           }
         }`,
-        { appId, blob },
-        (d) => d.importEnv,
+        {
+          appId,
+          entries: filled.map((r) => ({ key: r.key.trim(), value: r.value })),
+        },
+        (d) => d.addEnv,
       );
       if (res.ok && res.data != null) {
         const { added, skippedSecrets, autoLinked } = res.data;

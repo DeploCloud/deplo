@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReplaceExistingConfirm } from "@/components/env/replace-existing-confirm";
-import { KEY_RE } from "@/components/env/env-parse";
+import { KEY_RE } from "@/lib/env-file";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 import {

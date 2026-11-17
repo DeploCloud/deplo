@@ -20,6 +20,7 @@ import {
   requireAppCapability,
 } from "./node-access";
 import { encryptSecret, decryptSecret } from "../crypto";
+import { KEY_RE, parseEnvFile } from "../env-file";
 import {
   insertEnvVars,
   loadEnvVar,
@@ -164,8 +165,6 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
   }));
 }
 
-const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
-
 export async function upsertEnv(input: {
   appId: string;
   key: string;
@@ -275,7 +274,21 @@ export async function importEnv(
   appId: string,
   blob: string,
   targets?: EnvTarget[],
-): Promise<{ added: number; skippedSecrets: number; autoLinked: AutoLink[] }> {
+): Promise<EnvAddResult> {
+  return addEnv(appId, parseEnvFile(blob), targets);
+}
+
+export interface EnvAddResult {
+  added: number;
+  skippedSecrets: number;
+  autoLinked: AutoLink[];
+}
+
+export async function addEnv(
+  appId: string,
+  entries: { key: string; value: string }[],
+  targets?: EnvTarget[],
+): Promise<EnvAddResult> {
   await requireAppCapability(appId, "manage_env");
   const secretKeys = new Set(
     (
@@ -290,26 +303,21 @@ export async function importEnv(
   let added = 0;
   let skippedSecrets = 0;
   const autoLinked: AutoLink[] = [];
-  const lines = blob.split("\n");
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const sep = line.indexOf("=");
-    if (sep === -1) continue;
-    const key = line.slice(0, sep).trim();
-    let value = line.slice(sep + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    )
-      value = value.slice(1, -1);
+  for (const entry of entries) {
+    const key = entry.key.trim();
     if (!KEY_RE.test(key)) continue;
     if (secretKeys.has(key)) {
       skippedSecrets++;
       continue;
     }
     autoLinked.push(
-      ...(await upsertEnv({ appId, key, value, targets, type: "plain" })),
+      ...(await upsertEnv({
+        appId,
+        key,
+        value: entry.value,
+        targets,
+        type: "plain",
+      })),
     );
     added++;
   }

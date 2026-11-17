@@ -21,6 +21,8 @@ import {
   listEnv,
   upsertEnv,
   renameEnv,
+  importEnv,
+  addEnv,
 } from "./env";
 
 let db: TestDb;
@@ -172,4 +174,41 @@ test("renaming to the same key is a harmless no-op", async () => {
   const rows = await asUser1(() => listEnv("app_web"));
   assert.equal(rows.length, 1);
   assert.equal(rows[0].key, "SAME");
+});
+
+test("importEnv keeps an inline comment out of the value", async () => {
+  const r = await asUser1(() =>
+    importEnv(
+      "app_web",
+      "# heading\nAPI_URL=https://acme.com # public\nPASS='a #b'",
+    ),
+  );
+  assert.equal(r.added, 2);
+  const rows = await asUser1(() => listEnv("app_web"));
+  assert.deepEqual(
+    rows.map((e) => [e.key, e.value]),
+    [
+      ["API_URL", "https://acme.com"],
+      ["PASS", "a #b"],
+    ],
+  );
+});
+
+test("addEnv stores typed values as they are, hash and quotes included", async () => {
+  const r = await asUser1(() =>
+    addEnv("app_web", [
+      { key: "PASS", value: "abc #1" },
+      { key: "QUOTED", value: '"kept"' },
+      { key: "1BAD", value: "x" },
+    ]),
+  );
+  assert.equal(r.added, 2);
+  const rows = await asUser1(() => listEnv("app_web"));
+  assert.deepEqual(
+    rows.map((e) => [e.key, e.value]),
+    [
+      ["PASS", "abc #1"],
+      ["QUOTED", '"kept"'],
+    ],
+  );
 });

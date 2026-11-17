@@ -14,8 +14,9 @@ export interface CoolifyEnvRead {
   secretKeys: string[];
 }
 
+// A space before `#` starts a comment in a .env, so such a value travels quoted too.
 function serializeValue(value: string): string {
-  if (!value.includes("\n")) return value;
+  if (!value.includes("\n") && !/\s#/.test(value)) return value;
   for (const q of ["'", '"'])
     if (value.startsWith(q) && value.endsWith(q)) return value;
   if (!value.includes("'")) return `'${value}'`;

@@ -4279,6 +4279,11 @@ type Mutation {
   addClusterMember(clusterId: String!, serverId: String!): ClusterJoin
   addDomain(appId: String!, config: DomainConfigInput, name: String!): Domain
 
+  """
+  Add or update several variables at once, leaving the others alone. Every entry lands as plain, so a key that already exists as a secret is skipped rather than downgraded.
+  """
+  addEnv(appId: String!, entries: [EnvEntryInput!]!, targets: [EnvTarget!]): EnvImportResult
+
   """Add an already-registered user to the active team."""
   addExistingMember(input: AddMemberInput!): Member
 

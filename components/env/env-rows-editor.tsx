@@ -6,7 +6,7 @@ import { Plus, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { KEY_RE, parseEnv } from "@/components/env/env-parse";
+import { KEY_RE, parseEnvFile } from "@/lib/env-file";
 
 export type EnvRow = { key: string; value: string };
 
@@ -49,7 +49,7 @@ export function EnvRowsEditor({
 
   function onPaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
-    const parsed = parseEnv(text);
+    const parsed = parseEnvFile(text);
     if (parsed.length === 0) return;
     e.preventDefault();
     const kept = rows.filter((r, idx) => idx !== i && r.key.trim() !== "");
