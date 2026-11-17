@@ -33,3 +33,15 @@ export function EnvValueUnderKey(props: { value: string; masked: boolean }) {
     </div>
   );
 }
+
+export function EnvNoteUnderKey({ note }: { note: string | null | undefined }) {
+  if (!note) return null;
+  return (
+    <p
+      title={note}
+      className="mt-1 max-w-64 truncate font-sans text-xs font-normal text-muted-foreground md:max-w-80"
+    >
+      {note}
+    </p>
+  );
+}

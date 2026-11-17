@@ -21,6 +21,7 @@ export const ENV: McpToolDef[] = [
           value
           type
           isMasked
+          note
           targets
           updatedAt
         }
@@ -45,6 +46,13 @@ export const ENV: McpToolDef[] = [
         .describe(
           "Store masked (default true). Only set false for public values.",
         ),
+      note: z
+        .string()
+        .max(280)
+        .optional()
+        .describe(
+          "What the variable is for. Readable by anyone who can see the variable, so never a secret.",
+        ),
     }),
     query: /* GraphQL */ `
       mutation McpUpsertEnv($input: UpsertEnvInput!) {
@@ -62,8 +70,35 @@ export const ENV: McpToolDef[] = [
         key: a.key,
         value: a.value,
         type: a.secret === false ? "plain" : "secret",
+        note: a.note,
       },
     }),
+  }),
+  tool({
+    name: "set_env_note",
+    title: "Set an environment variable's note",
+    description:
+      "Say what a variable is for, or remove the note. Works on secrets too, and changes nothing that is deployed.",
+    group: "Environment",
+    requires: "manage_env",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("The variable's id, from list_env."),
+      note: z
+        .string()
+        .max(280)
+        .optional()
+        .describe("Omit or leave empty to remove the note."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetEnvNote($id: String!, $note: String) {
+        setEnvNote(id: $id, note: $note) {
+          id
+          key
+          note
+        }
+      }
+    `,
   }),
   tool({
     name: "delete_env_var",
@@ -85,7 +120,7 @@ export const ENV: McpToolDef[] = [
     name: "import_env",
     title: "Import a .env file",
     description:
-      "Bulk-add variables from .env text. Every line lands as plain, so a key that already exists as a secret is skipped and counted, never overwritten.",
+      "Bulk-add variables from .env text. Every line lands as plain, so a key that already exists as a secret is skipped and counted, never overwritten. A comment above a line, or after its value, becomes that variable's note.",
     group: "Environment",
     requires: "manage_env",
     input: z.object({
@@ -121,6 +156,7 @@ export const SHARED_ENV: McpToolDef[] = [
           key
           type
           masked
+          note
           teamWide
           autoInject
           appIds
@@ -149,6 +185,7 @@ export const APP_SHARED_ENV: McpToolDef[] = [
           key
           type
           masked
+          note
           scope
           linked
           inScope
@@ -171,6 +208,13 @@ export const APP_SHARED_ENV: McpToolDef[] = [
       key: z.string(),
       value: z.string(),
       secret: z.boolean().optional().describe("Store it masked."),
+      note: z
+        .string()
+        .max(280)
+        .optional()
+        .describe(
+          "What the variable is for. Readable by anyone who can see it, so never a secret.",
+        ),
       teamIds: z.array(z.string()).optional(),
       projectIds: z.array(z.string()).optional(),
       environmentIds: z.array(z.string()).optional(),
@@ -191,6 +235,7 @@ export const APP_SHARED_ENV: McpToolDef[] = [
         environmentIds: a.environmentIds ?? [],
         appIds: a.appIds,
         targets: a.targets,
+        note: a.note,
       },
     }),
     query: /* GraphQL */ `
@@ -202,6 +247,28 @@ export const APP_SHARED_ENV: McpToolDef[] = [
           teamWide
           appIds
         }
+      }
+    `,
+  }),
+  tool({
+    name: "set_shared_var_note",
+    title: "Set a shared variable's note",
+    description:
+      "Say what a shared variable is for, or remove the note. Works on secrets too, and changes nothing that is deployed.",
+    group: "Environment",
+    requires: "manage_env",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("From list_shared_vars."),
+      note: z
+        .string()
+        .max(280)
+        .optional()
+        .describe("Omit or leave empty to remove the note."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetSharedVarNote($id: String!, $note: String) {
+        setSharedVarNote(id: $id, note: $note)
       }
     `,
   }),

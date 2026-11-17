@@ -37,6 +37,7 @@ import {
 } from "../name-clash";
 import { renameClashingServices } from "../../migration/map/compose-rename";
 import { renameHostTokens } from "../../migration/map/env";
+import { KEY_RE, noteInput } from "../../env-file";
 import { stackName } from "../../deploy/deploy-key";
 import { appSlugTaken, hostNameClaims } from "../host-name-claims";
 import {
@@ -103,8 +104,6 @@ function isUniqueViolation(err: unknown, constraint: string): boolean {
   return false;
 }
 
-const ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
-
 const APP_NAME_MAX = 60;
 
 export function cleanAppName(name: string): string {
@@ -153,6 +152,7 @@ export interface CreateAppInput {
     value: string;
     type?: EnvEntryType;
     targets?: EnvTarget[];
+    note?: string | null;
   }[];
   serverId?: string;
   /** Place the App on a cluster: the leader picks the member. Not together with `serverId`. */
@@ -478,8 +478,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     .filter((e) => e.key.trim())
     .map((e) => {
       const key = e.key.trim();
-      if (!ENV_KEY_RE.test(key))
-        throw new Error(`Invalid variable name: ${key}`);
+      if (!KEY_RE.test(key)) throw new Error(`Invalid variable name: ${key}`);
       return {
         id: newId("env"),
         appId: project.id,
@@ -489,6 +488,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
           ? e.targets
           : (["production", "preview"] as EnvTarget[]),
         type: e.type ?? ("plain" as const),
+        note: noteInput(e.note),
         databaseId: null,
         databaseUnlinked: false,
         createdByUserId: userId,

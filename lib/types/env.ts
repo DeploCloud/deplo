@@ -20,6 +20,8 @@ export interface EnvVar {
   valueEnc: string;
   targets: EnvTarget[];
   type: "plain" | "secret";
+  // Plain text, readable by anyone who can see the variable.
+  note: string | null;
   databaseId: ID | null;
   databaseUnlinked: boolean;
   createdByUserId: ID | null;
@@ -43,6 +45,7 @@ export interface EnvVarDTO {
   masked: boolean;
   targets: EnvTarget[];
   type: "plain" | "secret";
+  note: string | null;
   // The value comes from a connected database; `database` is null when the viewer cannot see databases.
   connected: boolean;
   database: EnvDatabaseRef | null;
@@ -60,6 +63,7 @@ export interface SharedVar {
   key: string;
   valueEnc: string;
   type: "plain" | "secret";
+  note: string | null;
   teamIds: ID[];
   autoInject: boolean;
   environmentIds: ID[];

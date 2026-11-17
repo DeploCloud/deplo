@@ -41,6 +41,7 @@ export interface AppSharedVarDTO {
   value: string;
   masked: boolean;
   type: "plain" | "secret";
+  note: string | null;
   targets: EnvTarget[];
   linked: boolean;
   inScope: boolean;
@@ -81,6 +82,7 @@ export async function listSharedVarsForApp(
         value: shownValue(v),
         masked: v.type === "secret",
         type: v.type,
+        note: v.note,
         targets: sanitizeTargets(v.targets),
         linked,
         inScope,
@@ -100,6 +102,7 @@ export interface AppliedSharedVarDTO {
   key: string;
   value: string;
   masked: boolean;
+  note: string | null;
   targets: EnvTarget[];
   updatedBy: VarAuthor | null;
   updatedAt: string;
@@ -141,6 +144,7 @@ export async function listAppliedSharedVarsByApp(): Promise<
         key: v.key,
         value: shown.get(v.id)!,
         masked: v.type === "secret",
+        note: v.note,
         targets: sanitizeTargets(v.targets),
         updatedBy: authorOf(v.updatedByUserId ?? v.createdByUserId, authors),
         updatedAt: v.updatedAt,

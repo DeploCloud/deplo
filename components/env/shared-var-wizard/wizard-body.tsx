@@ -185,6 +185,7 @@ export function SharedVarWizardBody({
                 key: r.key.trim(),
                 value: r.value,
                 type,
+                note: r.note?.trim() || undefined,
                 ...scoped,
               },
             },

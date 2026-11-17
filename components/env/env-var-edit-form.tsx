@@ -19,8 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
-import { KEY_RE } from "@/lib/env-file";
+import { cleanNote, KEY_RE } from "@/lib/env-file";
 import { SecretRow } from "@/components/env/secret-row";
+import { NoteField } from "@/components/env/note-field";
 import type { EnvVarDTO } from "@/lib/types/env";
 
 export function EnvVarEditForm({
@@ -37,12 +38,20 @@ export function EnvVarEditForm({
   const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
+  const [note, setNote] = React.useState(editing.note ?? "");
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
 
+  // A secret keeps its name and value: only its note can change.
+  const noteOnly = editing.type === "secret" && !editing.connected;
   const trimmedKey = key.trim();
   const keyValid = KEY_RE.test(trimmedKey);
   const renamed = trimmedKey !== editing.key;
+  const valueChanged =
+    !noteOnly &&
+    !editing.connected &&
+    (value !== editing.value || secret !== (editing.type === "secret"));
+  const noteChanged = cleanNote(note) !== (editing.note ?? null);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,8 +75,24 @@ export function EnvVarEditForm({
           return;
         }
       }
-      if (editing.connected) {
-        toast.success("Variable renamed");
+      // A note on its own goes through setEnvNote, which leaves "Updated by" and pending changes alone.
+      if (noteChanged && !valueChanged) {
+        const n = await gqlAction<{ setEnvNote: { id: string } }>(
+          `mutation($id: String!, $note: String) {
+            setEnvNote(id: $id, note: $note) { id }
+          }`,
+          { id: editing.id, note: cleanNote(note) },
+        );
+        if (!n.ok) {
+          onOpenChange(true);
+          toast.error(n.error);
+          router.refresh();
+          return;
+        }
+      }
+      if (!valueChanged) {
+        if (renamed || noteChanged)
+          toast.success(renamed ? "Variable renamed" : "Note saved");
         router.refresh();
         return;
       }
@@ -82,6 +107,7 @@ export function EnvVarEditForm({
             key: trimmedKey,
             value,
             type: secret ? "secret" : "plain",
+            ...(noteChanged && { note: cleanNote(note) ?? "" }),
           },
         },
       );
@@ -99,43 +125,56 @@ export function EnvVarEditForm({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {editing.connected ? "Rename variable" : "Edit variable"}
+            {noteOnly
+              ? "Edit note"
+              : editing.connected
+                ? "Rename variable"
+                : "Edit variable"}
           </DialogTitle>
           <DialogDescription>
-            {editing.connected
-              ? "Its value comes from the connected database."
-              : "Update this variable's name or value."}
+            {noteOnly ? (
+              <>
+                Say what <strong>{editing.key}</strong> is for. A secret&apos;s
+                value can&apos;t be changed.
+              </>
+            ) : editing.connected ? (
+              "Its value comes from the connected database."
+            ) : (
+              "Update this variable's name, value or note."
+            )}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <FieldLabel
-                info="The variable's name, exposed to your app during builds and at runtime. Renaming it takes effect on the next deploy."
-                docs="env.overview"
-              >
-                Key
-              </FieldLabel>
-              <Input
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                spellCheck={false}
-                aria-invalid={trimmedKey !== "" && !keyValid}
-                className={cn(
-                  "font-mono text-sm",
-                  trimmedKey !== "" &&
-                    !keyValid &&
-                    "border-destructive text-destructive focus-visible:ring-destructive",
+            {!noteOnly && (
+              <div className="space-y-2">
+                <FieldLabel
+                  info="The variable's name, exposed to your app during builds and at runtime. Renaming it takes effect on the next deploy."
+                  docs="env.overview"
+                >
+                  Key
+                </FieldLabel>
+                <Input
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  spellCheck={false}
+                  aria-invalid={trimmedKey !== "" && !keyValid}
+                  className={cn(
+                    "font-mono text-sm",
+                    trimmedKey !== "" &&
+                      !keyValid &&
+                      "border-destructive text-destructive focus-visible:ring-destructive",
+                  )}
+                />
+                {trimmedKey !== "" && !keyValid && (
+                  <p className="text-xs text-destructive">
+                    Names must start with a letter or underscore and contain
+                    only letters, digits and underscores.
+                  </p>
                 )}
-              />
-              {trimmedKey !== "" && !keyValid && (
-                <p className="text-xs text-destructive">
-                  Names must start with a letter or underscore and contain only
-                  letters, digits and underscores.
-                </p>
-              )}
-            </div>
-            {!editing.connected && (
+              </div>
+            )}
+            {!editing.connected && !noteOnly && (
               <>
                 <div className="space-y-2">
                   <Label>Value</Label>
@@ -150,6 +189,7 @@ export function EnvVarEditForm({
                 <SecretRow secret={secret} onChange={setSecret} />
               </>
             )}
+            <NoteField value={note} onChange={setNote} autoFocus={noteOnly} />
           </div>
           <DialogFooter>
             <Button

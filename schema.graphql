@@ -356,6 +356,11 @@ input AppEnvInput {
   key: String!
 
   """
+  What the variable is for, at most 280 characters. Anyone who can see the variable can read it.
+  """
+  note: String
+
+  """
   "plain" or "secret". Omitted is plain - nothing is typed secret on your behalf; a secret is write-only from the moment it lands.
   """
   type: String
@@ -572,6 +577,11 @@ type AppSharedVar {
   """The app opted in - the var injects on its next deploy."""
   linked: Boolean
   masked: Boolean
+
+  """
+  What the variable is for. Plain text, readable by anyone who can see the variable.
+  """
+  note: String
 
   """The team behind an auto-injected variable."""
   ownerTeamName: String
@@ -3130,6 +3140,11 @@ type EnvDatabaseRef {
 
 input EnvEntryInput {
   key: String!
+
+  """
+  At most 280 characters. Left out keeps the stored note; an empty string removes it.
+  """
+  note: String
   value: String!
 }
 
@@ -3172,6 +3187,11 @@ type EnvVar {
   id: ID
   isMasked: Boolean
   key: String
+
+  """
+  What the variable is for. Plain text, readable by anyone who can see the variable.
+  """
+  note: String
   targets: [EnvTarget!]
   type: EnvVarType
   updatedAt: String
@@ -5381,6 +5401,11 @@ type Mutation {
   setDefaultEnvironment(id: ID!): Boolean
 
   """
+  Set or remove (null or empty) a variable's note, secrets included. A note is not deployed, so the app has no pending changes after it.
+  """
+  setEnvNote(id: String!, note: String): EnvVar
+
+  """
   Set the git branch an environment builds from (empty ⇒ the app's default branch).
   """
   setEnvironmentBranch(branch: String!, id: ID!): Boolean
@@ -5509,6 +5534,11 @@ type Mutation {
 
   """Link or unlink a shared variable to one app. Returns true."""
   setSharedVarAppLink(appId: String!, linked: Boolean!, varId: String!): Boolean
+
+  """
+  Set or remove (null or empty) a shared variable's note, secrets included. A note is not deployed, so no app has pending changes after it.
+  """
+  setSharedVarNote(id: String!, note: String): Boolean
 
   """
   Turn the new-repository cards on the Overview on or off, for the caller in the active team only.
@@ -6945,6 +6975,11 @@ input SaveSharedVarInput {
   environmentIds: [ID!]!
   id: String
   key: String!
+
+  """
+  At most 280 characters. Left out keeps the stored note; an empty string removes it.
+  """
+  note: String
   projectIds: [ID!]!
   targets: [EnvTarget!]
 
@@ -7800,6 +7835,11 @@ type SharedVar {
   key: String
   masked: Boolean
 
+  """
+  What the variable is for. Plain text, readable by anyone who can see the variable.
+  """
+  note: String
+
   """The owning team; null when the instance owns it."""
   ownerTeam: SharedVarTeam
   projectIds: [ID!]
@@ -8272,6 +8312,11 @@ input UpdateUserAdminInput {
 input UpsertEnvInput {
   appId: String!
   key: String!
+
+  """
+  At most 280 characters. Left out keeps the stored note; an empty string removes it.
+  """
+  note: String
   targets: [EnvTarget!]
   type: EnvVarType!
   value: String!

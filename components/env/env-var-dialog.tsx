@@ -95,7 +95,6 @@ export function EnvVarDialog({
   environments?: TeamEnvironment[];
   teams?: TeamRef[];
 }) {
-  if (editing?.type === "secret" && !editing.connected) return null;
   if (editing) {
     return (
       <EnvVarEditForm
@@ -306,6 +305,7 @@ function StandaloneTab({
               key: filled[0].key.trim(),
               value: filled[0].value,
               type: secret ? "secret" : "plain",
+              note: filled[0].note?.trim() || undefined,
             },
           },
         );
@@ -327,7 +327,11 @@ function StandaloneTab({
         }`,
         {
           appId,
-          entries: filled.map((r) => ({ key: r.key.trim(), value: r.value })),
+          entries: filled.map((r) => ({
+            key: r.key.trim(),
+            value: r.value,
+            note: r.note?.trim() || undefined,
+          })),
         },
         (d) => d.addEnv,
       );
@@ -352,7 +356,7 @@ function StandaloneTab({
         <div
           className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
         >
-          <EnvRowsEditor rows={rows} onChange={setRows} />
+          <EnvRowsEditor rows={rows} onChange={setRows} notes />
 
           {looksSecret && (
             <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">

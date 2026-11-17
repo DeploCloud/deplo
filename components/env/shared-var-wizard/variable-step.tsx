@@ -28,6 +28,7 @@ export function VariableStep({
         singleRow={editing}
         keyDisabled={editing}
         valueReadOnly={frozen}
+        notes={!editing}
       />
       {frozen ? (
         <p className="text-xs text-muted-foreground">

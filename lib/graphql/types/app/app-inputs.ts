@@ -117,6 +117,10 @@ const AppEnvInput = builder.inputType("AppEnvInput", {
         '"plain" or "secret". Omitted is plain - nothing is typed secret on ' +
         "your behalf; a secret is write-only from the moment it lands.",
     }),
+    note: t.string({
+      required: false,
+      description: `What the variable is for, at most 280 characters. Anyone who can see the variable can read it.`,
+    }),
   }),
 });
 

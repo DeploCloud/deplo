@@ -82,6 +82,7 @@ export const DOCS = {
 
   "env.overview": "guides/config/environment-variables",
   "env.types": "guides/config/environment-variables#name-it-and-set-the-type",
+  "env.notes": "guides/config/environment-variables#add-a-note",
   "env.allApps": "guides/config/environment-variables#see-everything-at-once",
   "env.previewOverrides":
     "guides/config/environment-variables#preview-overrides",

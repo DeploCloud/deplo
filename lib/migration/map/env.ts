@@ -3,6 +3,7 @@ import { KEY_RE, parseEnvFile } from "../../env-file";
 export interface EnvPair {
   key: string;
   value: string;
+  note?: string;
 }
 
 // A source that hands variables over as pairs is taken as is; only `.env` text is parsed.

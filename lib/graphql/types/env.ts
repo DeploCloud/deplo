@@ -7,6 +7,7 @@ import {
   renameEnv,
   importEnv,
   addEnv,
+  setEnvNote,
   setAppEnv,
   deleteEnv,
   makeEnvSecret,
@@ -74,6 +75,11 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
       resolve: (e) => e.targets,
     }),
     type: t.field({ type: EnvVarTypeEnum, resolve: (e) => e.type }),
+    note: t.exposeString("note", {
+      nullable: true,
+      description:
+        "What the variable is for. Plain text, readable by anyone who can see the variable.",
+    }),
     connected: t.exposeBoolean("connected", {
       description:
         "The value comes from a managed database and is derived again at every deploy.",
@@ -159,6 +165,11 @@ const UpsertEnvInputType = builder.inputType("UpsertEnvInput", {
     value: t.string({ required: true }),
     targets: t.field({ type: [EnvTargetEnum], required: false }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
+    note: t.string({
+      required: false,
+      description:
+        "At most 280 characters. Left out keeps the stored note; an empty string removes it.",
+    }),
   }),
 });
 
@@ -166,6 +177,11 @@ const EnvEntryInputType = builder.inputType("EnvEntryInput", {
   fields: (t) => ({
     key: t.string({ required: true }),
     value: t.string({ required: true }),
+    note: t.string({
+      required: false,
+      description:
+        "At most 280 characters. Left out keeps the stored note; an empty string removes it.",
+    }),
   }),
 });
 
@@ -213,8 +229,27 @@ builder.mutationFields((t) => ({
         value: input.value,
         targets: input.targets ?? undefined,
         type: input.type,
+        note: input.note === null ? undefined : input.note,
       });
       return reloadEnv(input.appId, input.key);
+    },
+  }),
+  setEnvNote: t.field({
+    type: EnvVarRef,
+    authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t change this variable’s note with your current team role. Ask a team admin for the Manage environment variables capability.",
+    description:
+      "Set or remove (null or empty) a variable's note, secrets included. A note is not deployed, so the app has no pending changes after it.",
+    args: {
+      id: t.arg.string({ required: true }),
+      note: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { id, note }) => {
+      const appId = await setEnvNote(id, note ?? null);
+      const found = (await listEnv(appId)).find((e) => e.id === id);
+      if (!found) throw new Error("Env var not found");
+      return found;
     },
   }),
   renameEnv: t.field({
@@ -320,7 +355,7 @@ builder.mutationFields((t) => ({
     resolve: (_r, { appId, entries, defaultTargets }) =>
       setAppEnv(
         appId,
-        entries.map((e) => ({ key: e.key, value: e.value })),
+        entries.map((e) => ({ key: e.key, value: e.value, note: e.note })),
         defaultTargets ?? undefined,
       ),
   }),

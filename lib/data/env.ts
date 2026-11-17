@@ -20,7 +20,7 @@ import {
   requireAppCapability,
 } from "./node-access";
 import { encryptSecret, decryptSecret } from "../crypto";
-import { KEY_RE, parseEnvFile } from "../env-file";
+import { KEY_RE, noteInput, parseEnvFile } from "../env-file";
 import {
   insertEnvVars,
   loadEnvVar,
@@ -62,6 +62,7 @@ function toDTO(
     masked: isSecret,
     targets: e.targets,
     type: e.type,
+    note: e.note,
     connected: e.databaseId != null,
     database: ref(refs?.connected),
     detectedDatabase: ref(refs?.detected),
@@ -171,11 +172,14 @@ export async function upsertEnv(input: {
   value: string;
   targets?: EnvTarget[];
   type: "plain" | "secret";
+  // Left out keeps the stored note; null clears it.
+  note?: string | null;
 }): Promise<AutoLink[]> {
   const { userId } = await requireAppCapability(input.appId, "manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
+  const note = input.note === undefined ? undefined : noteInput(input.note);
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
   await getDb().transaction(async (tx) => {
@@ -194,6 +198,7 @@ export async function upsertEnv(input: {
         .set({
           valueEnc: encryptSecret(input.value),
           type: input.type,
+          ...(note !== undefined && { note }),
           databaseId: null,
           updatedByUserId: userId,
           updatedAt: nowIso(),
@@ -216,6 +221,7 @@ export async function upsertEnv(input: {
           valueEnc: encryptSecret(input.value),
           targets: targets ?? [...ALL_ENV_TARGETS],
           type: input.type,
+          note: note ?? null,
           databaseId: null,
           databaseUnlinked: false,
           createdByUserId: userId,
@@ -278,6 +284,13 @@ export async function importEnv(
   return addEnv(appId, parseEnvFile(blob), targets);
 }
 
+export interface EnvEntryInput {
+  key: string;
+  value: string;
+  // Left out (or null) keeps the stored note: a .env line without a comment never erases one.
+  note?: string | null;
+}
+
 export interface EnvAddResult {
   added: number;
   skippedSecrets: number;
@@ -286,7 +299,7 @@ export interface EnvAddResult {
 
 export async function addEnv(
   appId: string,
-  entries: { key: string; value: string }[],
+  entries: EnvEntryInput[],
   targets?: EnvTarget[],
 ): Promise<EnvAddResult> {
   await requireAppCapability(appId, "manage_env");
@@ -317,6 +330,7 @@ export async function addEnv(
         value: entry.value,
         targets,
         type: "plain",
+        note: entry.note ?? undefined,
       })),
     );
     added++;
@@ -326,7 +340,7 @@ export async function addEnv(
 
 export async function setAppEnv(
   appId: string,
-  entries: { key: string; value: string }[],
+  entries: EnvEntryInput[],
   defaultTargets?: EnvTarget[],
   opts?: { overwriteSecrets?: boolean },
 ): Promise<number> {
@@ -336,18 +350,22 @@ export async function setAppEnv(
     ? sanitizeTargets(defaultTargets)
     : [...ALL_ENV_TARGETS];
 
-  const wanted = new Map<string, string>();
+  const wanted = new Map<string, EnvEntryInput>();
   for (const e of entries) {
     const key = e.key.trim();
     if (!KEY_RE.test(key)) continue;
-    wanted.set(key, e.value);
+    wanted.set(key, {
+      key,
+      value: e.value,
+      note: e.note == null ? undefined : noteInput(e.note),
+    });
   }
 
   await getDb().transaction(async (tx) => {
     const existing = await loadEnvVarsForApp(appId, tx);
     const byKey = new Map(existing.map((e) => [e.key, e] as const));
     const created: EnvVar[] = [];
-    for (const [key, value] of wanted) {
+    for (const [key, { value, note }] of wanted) {
       const e = byKey.get(key);
       if (e) {
         if (e.type === "secret" && !opts?.overwriteSecrets) continue;
@@ -355,6 +373,7 @@ export async function setAppEnv(
           .update(envVarsTable)
           .set({
             valueEnc: encryptSecret(value),
+            ...(note !== undefined && { note }),
             databaseId: null,
             updatedByUserId: userId,
             updatedAt: nowIso(),
@@ -368,6 +387,7 @@ export async function setAppEnv(
           valueEnc: encryptSecret(value),
           targets,
           type: "plain",
+          note: note ?? null,
           databaseId: null,
           databaseUnlinked: false,
           createdByUserId: userId,
@@ -401,6 +421,34 @@ export async function deleteEnv(id: string): Promise<void> {
   await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
   await markPendingChanges([e.appId]);
   await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.appId);
+}
+
+// A note is not deployed: no pending changes, no "updated by". Activity still says who wrote it.
+export async function setEnvNote(
+  id: string,
+  raw: string | null,
+): Promise<string> {
+  const note = noteInput(raw);
+  const existing = await loadEnvVar(id);
+  if (!existing) throw new Error("Env var not found");
+  await requireAppCapability(existing.appId, "manage_env");
+  if (existing.note === note) return existing.appId;
+  await getDb()
+    .update(envVarsTable)
+    .set({ note })
+    .where(
+      and(eq(envVarsTable.id, id), eq(envVarsTable.appId, existing.appId)),
+    );
+  const user = (await getCurrentUser())!;
+  await recordActivity(
+    "env",
+    note
+      ? `Updated the note on ${existing.key}`
+      : `Removed the note from ${existing.key}`,
+    user.name,
+    existing.appId,
+  );
+  return existing.appId;
 }
 
 export async function makeEnvSecret(id: string): Promise<void> {

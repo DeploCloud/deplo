@@ -24,6 +24,7 @@ export interface SharedVarDTO {
   value: string;
   masked: boolean;
   type: "plain" | "secret";
+  note: string | null;
   targets: EnvTarget[];
   teamWide: boolean;
   teamIds: string[];
@@ -75,6 +76,7 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
         value: shownValue(v),
         masked: v.type === "secret",
         type: v.type,
+        note: v.note,
         targets: sanitizeTargets(v.targets),
         teamWide: v.teamIds.includes(teamId),
         teamIds,

@@ -323,6 +323,7 @@ export async function connectDatabase(input: {
           valueEnc,
           targets: LINK_TARGETS,
           type: "secret",
+          note: null,
           databaseId: db.id,
           databaseUnlinked: false,
           createdByUserId: userId,

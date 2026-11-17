@@ -10,6 +10,7 @@ import {
   saveSharedVar,
   deleteSharedVar,
   makeSharedVarSecret,
+  setSharedVarNote,
 } from "@/lib/data/shared-vars/authoring";
 import {
   listSharedVars,
@@ -67,6 +68,11 @@ const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
     value: t.exposeString("value"),
     masked: t.exposeBoolean("masked"),
     type: t.field({ type: EnvVarTypeEnum, resolve: (v) => v.type }),
+    note: t.exposeString("note", {
+      nullable: true,
+      description:
+        "What the variable is for. Plain text, readable by anyone who can see the variable.",
+    }),
     targets: t.field({
       type: [EnvTargetEnum],
       description: "Deploy runtimes this variable applies to.",
@@ -135,6 +141,11 @@ const AppSharedVarRef = builder
       }),
       masked: t.exposeBoolean("masked"),
       type: t.field({ type: EnvVarTypeEnum, resolve: (v) => v.type }),
+      note: t.exposeString("note", {
+        nullable: true,
+        description:
+          "What the variable is for. Plain text, readable by anyone who can see the variable.",
+      }),
       targets: t.field({ type: [EnvTargetEnum], resolve: (v) => v.targets }),
       linked: t.exposeBoolean("linked", {
         description: "The app opted in - the var injects on its next deploy.",
@@ -175,6 +186,11 @@ const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
     value: t.string({ required: true }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
     targets: t.field({ type: [EnvTargetEnum], required: false }),
+    note: t.string({
+      required: false,
+      description:
+        "At most 280 characters. Left out keeps the stored note; an empty string removes it.",
+    }),
     teamIds: t.idList({
       required: true,
       description:
@@ -245,10 +261,27 @@ builder.mutationFields((t) => ({
         environmentIds: input.environmentIds,
         projectIds: input.projectIds,
         appIds: input.appIds ?? undefined,
+        note: input.note === null ? undefined : input.note,
       });
       const saved = (await listSharedVars()).find((v) => v.id === id);
       if (!saved) throw new Error("Shared variable not found");
       return saved;
+    },
+  }),
+  setSharedVarNote: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t change this shared variable’s note with your current team role. Ask a team admin for the Manage environment variables capability.",
+    description:
+      "Set or remove (null or empty) a shared variable's note, secrets included. A note is not deployed, so no app has pending changes after it.",
+    args: {
+      id: t.arg.string({ required: true }),
+      note: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { id, note }) => {
+      await setSharedVarNote(id, note ?? null);
+      return true;
     },
   }),
   setSharedVarAppLink: t.field({

@@ -1,49 +1,100 @@
 export const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
+export const NOTE_MAX = 280;
+
 export interface EnvFileEntry {
   key: string;
   value: string;
+  // The comment above the line, or after its value.
+  note?: string;
+  noteCut?: true;
 }
 
-const SINGLE_QUOTED = /^(["'])(.*?)\1\s*(?:#.*)?$/;
+const SINGLE_QUOTED = /^(["'])(.*?)\1\s*(?:#(.*))?$/;
+const WORDY = /[\p{L}\p{N}]/u;
+
+export function cleanNote(raw: string | null | undefined): string | null {
+  const note = (raw ?? "").replace(/\s+/g, " ").trim();
+  return note || null;
+}
+
+// A typed note over the limit is refused, never cut: only a pasted comment is shortened.
+export function noteInput(raw: string | null | undefined): string | null {
+  const note = cleanNote(raw);
+  if (note && note.length > NOTE_MAX)
+    throw new Error(`A note can be at most ${NOTE_MAX} characters.`);
+  return note;
+}
+
+function commentText(raw: string | undefined): string {
+  const text = (raw ?? "").replace(/^#+/, "").trim();
+  return WORDY.test(text) ? text : "";
+}
+
+function noteOf(
+  inline: string | undefined,
+  above: string[],
+): Pick<EnvFileEntry, "note" | "noteCut"> {
+  const note = cleanNote(commentText(inline) || above.join(" "));
+  if (!note) return {};
+  return note.length > NOTE_MAX
+    ? { note: note.slice(0, NOTE_MAX).trimEnd(), noteCut: true }
+    : { note };
+}
 
 // The one .env reader: the paste box, importEnv and the migration importers all go through it.
+// see https://deplo.build/docs/guides/config/environment-variables#add-a-note
 export function parseEnvFile(text: string | null | undefined): EnvFileEntry[] {
   if (!text) return [];
   const out: EnvFileEntry[] = [];
   const at = new Map<string, number>();
   const lines = text.split("\n");
+  let above: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim().replace(/^export\s+/, "");
-    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("#")) {
+      const text = commentText(line);
+      if (text) above.push(text);
+      continue;
+    }
     const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    if (!key) continue;
+    const key = eq === -1 ? "" : line.slice(0, eq).trim();
+    if (!key) {
+      above = [];
+      continue;
+    }
     const raw = line.slice(eq + 1);
     const rest = raw.trim();
     const quote = rest[0] === '"' || rest[0] === "'" ? rest[0] : "";
     const single = quote ? rest.match(SINGLE_QUOTED) : null;
     // An unquoted `#` is a comment only after whitespace, so `COLOR=#fff` survives.
-    let value = single ? single[2] : raw.replace(/\s+#.*$/, "").trim();
+    const hash = single ? null : raw.match(/\s+#(.*)$/);
+    let value = single
+      ? single[2]
+      : (hash ? raw.slice(0, hash.index) : raw).trim();
+    let inline = single ? single[3] : hash?.[1];
     if (quote && !single) {
-      const close = new RegExp(`${quote}\\s*(?:#.*)?$`);
+      const close = new RegExp(`${quote}\\s*(?:#(.*))?$`);
       const end = lines.findIndex((l, j) => j > i && close.test(l.trimEnd()));
       if (end !== -1) {
         const last = lines[end].trimEnd();
+        const closing = last.match(close)!;
         value = [
           rest.slice(1),
           ...lines.slice(i + 1, end),
-          last.slice(0, last.search(close)),
+          last.slice(0, closing.index),
         ].join("\n");
+        inline = closing[1];
         i = end;
       }
     }
+    const entry = { key, value, ...noteOf(inline, above) };
+    above = [];
     const seen = at.get(key);
     if (seen === undefined) {
       at.set(key, out.length);
-      out.push({ key, value });
-    } else out[seen] = { key, value };
+      out.push(entry);
+    } else out[seen] = entry;
   }
   return out;
 }

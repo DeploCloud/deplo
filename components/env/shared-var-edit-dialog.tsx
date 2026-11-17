@@ -19,38 +19,40 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { SecretRow } from "@/components/env/secret-row";
 import { SharedWithChips } from "@/components/env/shared-with-chips";
+import { NoteField } from "@/components/env/note-field";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
+import { cleanNote, KEY_RE } from "@/lib/env-file";
 import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 
-const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
-
-export function SharedVarEditDialog(props: SharedVarEditDialogProps) {
-  if (props.editing.type === "secret") return null;
-  return <SharedVarEditForm {...props} />;
-}
-
-interface SharedVarEditDialogProps {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  editing: SharedVarDTO;
-  onChangeSharing?: () => void;
-}
-
-function SharedVarEditForm({
+export function SharedVarEditDialog({
   open,
   onOpenChange,
   editing,
   onChangeSharing,
-}: SharedVarEditDialogProps) {
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  editing: SharedVarDTO;
+  onChangeSharing?: () => void;
+}) {
   const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
+  const [note, setNote] = React.useState(editing.note ?? "");
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
 
+  // A secret keeps its name and value: only its note can change.
+  const noteOnly = editing.type === "secret";
   const trimmedKey = key.trim();
   const keyValid = KEY_RE.test(trimmedKey);
+  const varChanged =
+    !noteOnly &&
+    (trimmedKey !== editing.key ||
+      value !== editing.value ||
+      secret !== (editing.type === "secret"));
+  const noteChanged = cleanNote(note) !== (editing.note ?? null);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,23 +62,36 @@ function SharedVarEditForm({
   function submit() {
     onOpenChange(false);
     startTransition(async () => {
-      const res = await gqlAction<{ saveSharedVar: { id: string } }>(
-        `mutation($input: SaveSharedVarInput!) { saveSharedVar(input: $input) { id } }`,
-        {
-          input: {
-            id: editing.id,
-            key: trimmedKey,
-            value,
-            type: secret ? "secret" : "plain",
-            teamIds: editing.teamIds,
-            environmentIds: editing.environmentIds,
-            projectIds: editing.projectIds,
-            // `appIds` is deliberately absent: an edit must never widen who the variable reaches.
-          },
-        },
-      );
+      // A note on its own goes through setSharedVarNote, which leaves "Updated by" and pending changes alone.
+      const res = varChanged
+        ? await gqlAction<{ saveSharedVar: { id: string } }>(
+            `mutation($input: SaveSharedVarInput!) { saveSharedVar(input: $input) { id } }`,
+            {
+              input: {
+                id: editing.id,
+                key: trimmedKey,
+                value,
+                type: secret ? "secret" : "plain",
+                teamIds: editing.teamIds,
+                environmentIds: editing.environmentIds,
+                projectIds: editing.projectIds,
+                // `appIds` is deliberately absent: an edit must never widen who the variable reaches.
+                ...(noteChanged && { note: cleanNote(note) ?? "" }),
+              },
+            },
+          )
+        : noteChanged
+          ? await gqlAction(
+              `mutation($id: String!, $note: String) { setSharedVarNote(id: $id, note: $note) }`,
+              { id: editing.id, note: cleanNote(note) },
+            )
+          : null;
+      if (!res) {
+        router.refresh();
+        return;
+      }
       if (res.ok) {
-        toast.success("Shared variable updated");
+        toast.success(varChanged ? "Shared variable updated" : "Note saved");
       } else {
         onOpenChange(true);
         toast.error(res.error);
@@ -89,61 +104,77 @@ function SharedVarEditForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit shared variable</DialogTitle>
+          <DialogTitle>
+            {noteOnly ? "Edit note" : "Edit shared variable"}
+          </DialogTitle>
           <DialogDescription>
-            Update this variable&apos;s name or value. Who receives it
-            doesn&apos;t change.
+            {noteOnly ? (
+              <>
+                Say what <strong>{editing.key}</strong> is for. A secret&apos;s
+                value can&apos;t be changed.
+              </>
+            ) : (
+              <>
+                Update this variable&apos;s name, value or note. Who receives it
+                doesn&apos;t change.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <AnimatedHeight className="grid gap-4" scroll={false}>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <FieldLabel
-                  info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy."
-                  docs="env.shared"
-                >
-                  Key
-                </FieldLabel>
-                <Input
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  spellCheck={false}
-                  aria-invalid={trimmedKey !== "" && !keyValid}
-                  className={cn(
-                    "font-mono text-sm",
-                    trimmedKey !== "" &&
-                      !keyValid &&
-                      "border-destructive text-destructive focus-visible:ring-destructive",
-                  )}
-                />
-                {trimmedKey !== "" && !keyValid && (
-                  <p className="text-xs text-destructive">
-                    Names must start with a letter or underscore and contain
-                    only letters, digits and underscores.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <FieldLabel
-                  info={
-                    editing.masked
-                      ? "This value is a secret, so it is only ever shown masked. Leave the mask as it is to keep the stored value; type over it to replace it."
-                      : "The value every app this variable reaches receives during builds and at runtime."
-                  }
-                  docs="env.types"
-                >
-                  Value
-                </FieldLabel>
-                <Textarea
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder="Enter a new value"
-                  rows={3}
-                  autoFocus
-                />
-              </div>
-              <SecretRow secret={secret} onChange={setSecret} />
+              {!noteOnly && (
+                <>
+                  <div className="space-y-2">
+                    <FieldLabel
+                      info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy."
+                      docs="env.shared"
+                    >
+                      Key
+                    </FieldLabel>
+                    <Input
+                      value={key}
+                      onChange={(e) => setKey(e.target.value)}
+                      spellCheck={false}
+                      aria-invalid={trimmedKey !== "" && !keyValid}
+                      className={cn(
+                        "font-mono text-sm",
+                        trimmedKey !== "" &&
+                          !keyValid &&
+                          "border-destructive text-destructive focus-visible:ring-destructive",
+                      )}
+                    />
+                    {trimmedKey !== "" && !keyValid && (
+                      <p className="text-xs text-destructive">
+                        Names must start with a letter or underscore and contain
+                        only letters, digits and underscores.
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <FieldLabel
+                      info={
+                        editing.masked
+                          ? "This value is a secret, so it is only ever shown masked. Leave the mask as it is to keep the stored value; type over it to replace it."
+                          : "The value every app this variable reaches receives during builds and at runtime."
+                      }
+                      docs="env.types"
+                    >
+                      Value
+                    </FieldLabel>
+                    <Textarea
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder="Enter a new value"
+                      rows={3}
+                      autoFocus
+                    />
+                  </div>
+                  <SecretRow secret={secret} onChange={setSecret} />
+                </>
+              )}
+              <NoteField value={note} onChange={setNote} autoFocus={noteOnly} />
 
               <div className="space-y-2 rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between gap-2">

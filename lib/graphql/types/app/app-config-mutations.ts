@@ -98,6 +98,7 @@ builder.mutationFields((t) => ({
           key: e.key,
           value: e.value,
           type: e.type === "secret" || e.type === "plain" ? e.type : undefined,
+          note: e.note,
         })),
         composeService: input.composeService ?? null,
         composePort: input.composePort ?? null,

@@ -91,6 +91,7 @@ beforeEach(async () => {
       type: "secret",
       databaseId: "db_shop",
       databaseUnlinked: false,
+      note: null,
       createdByUserId: null,
       updatedByUserId: null,
       createdAt: "2026-10-28T00:00:00.000Z",

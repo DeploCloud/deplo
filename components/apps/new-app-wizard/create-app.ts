@@ -193,6 +193,7 @@ export function buildCreateAppInput({
           key: e.key.trim(),
           value: e.value,
           type: e.secret ? "secret" : undefined,
+          note: e.note,
         }))
       : undefined,
     sharedVarIds: sharedIds.length ? sharedIds : null,

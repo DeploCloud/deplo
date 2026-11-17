@@ -61,7 +61,7 @@ export async function importSharedVars(
 
   const already = await visibleSharedVarsByKey(opts.teamId);
 
-  for (const { key, value } of entries) {
+  for (const { key, value, note } of entries) {
     const at = `${opts.level}.${key}`;
     if (index.has(at)) continue;
     // One this run created at another level is not "already in this team".
@@ -107,6 +107,7 @@ export async function importSharedVars(
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
         appIds: undefined,
+        note,
       });
       index.set(at, { varId, value, created: true });
       opts.created.add(varId);

@@ -7,6 +7,7 @@ export interface BulkEnvItem {
   value?: string;
   masked?: boolean;
   type?: string;
+  note?: string | null;
   remove?: () => Promise<ActionResult<unknown>>;
   makeSecret?: () => Promise<ActionResult<unknown>>;
   secretId?: string;
@@ -18,17 +19,22 @@ export function readableEnvItems(items: BulkEnvItem[]) {
   );
 }
 
+const oneLine = (s: string) => s.replace(/[\r\n]+/g, " ");
+
+// A scope is a heading with a blank line under it, so pasting the copy back reads only notes as notes.
 export function copyEnvItems(items: BulkEnvItem[]): string {
-  return readableEnvItems(items)
-    .map((item) =>
-      [
-        item.scope ? `# ${item.scope.replace(/[\r\n]/g, " ")}` : null,
-        `${item.key}=${JSON.stringify(item.value)}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    )
-    .join("\n");
+  const out: string[] = [];
+  let scope: string | undefined;
+  for (const item of readableEnvItems(items)) {
+    if (item.scope && item.scope !== scope) {
+      if (out.length) out.push("");
+      out.push(`# ${oneLine(item.scope)}`, "");
+    }
+    scope = item.scope ?? scope;
+    if (item.note) out.push(`# ${oneLine(item.note)}`);
+    out.push(`${item.key}=${JSON.stringify(item.value)}`);
+  }
+  return out.join("\n");
 }
 
 export function retainEnvSelection(

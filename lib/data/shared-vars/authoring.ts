@@ -29,6 +29,7 @@ import { recordActivity } from "../activity";
 import { markPendingChangesForSharedVar } from "../pending-changes";
 import { requireAppCapability } from "../node-access";
 import { encryptSecret } from "../../crypto";
+import { KEY_RE, noteInput } from "../../env-file";
 import {
   ALL_ENV_TARGETS,
   sanitizeTargets,
@@ -46,8 +47,6 @@ import {
   replaceTeams,
 } from "./junctions";
 
-const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
-
 function ownedBy(teamId: string, admin: boolean) {
   return admin
     ? or(eq(varsTable.teamId, teamId), isNull(varsTable.teamId))
@@ -64,6 +63,8 @@ export async function saveSharedVar(input: {
   environmentIds: string[];
   projectIds: string[];
   appIds?: string[];
+  // Left out keeps the stored note; null clears it.
+  note?: string | null;
 }): Promise<string> {
   await requireTeamWide("shared variables");
   const { teamId, userId } = await requireCapability("manage_env");
@@ -79,6 +80,7 @@ export async function saveSharedVar(input: {
   const adminHere = await isInstanceAdmin();
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
+  const note = input.note === undefined ? undefined : noteInput(input.note);
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
   const environmentIds = await filterTeamEnvironments(
@@ -175,6 +177,7 @@ export async function saveSharedVar(input: {
           key,
           ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
+          ...(note !== undefined && { note }),
           // ADR-0027 §4: the stored column, never the count - a reach row lost to a cascade must not disarm it on the next save.
           autoInject:
             teamIds.length > 1 ||
@@ -215,6 +218,7 @@ export async function saveSharedVar(input: {
         key,
         valueEnc: encryptSecret(input.value),
         type: input.type,
+        note: note ?? null,
         autoInject,
         createdByUserId: userId,
         updatedByUserId: userId,
@@ -241,6 +245,38 @@ export async function saveSharedVar(input: {
     );
   await markPendingChangesForSharedVar(savedId);
   return savedId;
+}
+
+// A note is not deployed: no pending changes, no "updated by". Activity still says who wrote it.
+export async function setSharedVarNote(
+  id: string,
+  raw: string | null,
+): Promise<void> {
+  await requireTeamWide("shared variables");
+  const { teamId } = await requireCapability("manage_env");
+  const note = noteInput(raw);
+  const owned = ownedBy(teamId, await isInstanceAdmin());
+  const [existing] = await getDb()
+    .select({ key: varsTable.key, note: varsTable.note })
+    .from(varsTable)
+    .where(and(eq(varsTable.id, id), owned))
+    .limit(1);
+  if (!existing) throw new Error("Not found");
+  if (existing.note === note) return;
+  await getDb()
+    .update(varsTable)
+    .set({ note })
+    .where(and(eq(varsTable.id, id), owned));
+  const user = (await getCurrentUser())!;
+  await recordActivity(
+    "env",
+    note
+      ? `Updated the note on shared variable ${existing.key}`
+      : `Removed the note from shared variable ${existing.key}`,
+    user.name,
+    null,
+    teamId,
+  );
 }
 
 export async function makeSharedVarSecret(id: string): Promise<void> {

@@ -9,6 +9,7 @@ import {
   runEnvBulk,
   type BulkEnvItem,
 } from "./env-bulk";
+import { parseEnvFile } from "./env-file";
 
 test("copy includes only readable Plain values and keeps scopes and special characters", () => {
   const items: BulkEnvItem[] = [
@@ -25,8 +26,40 @@ test("copy includes only readable Plain values and keeps scopes and special char
   );
   assert.equal(
     copyEnvItems(items),
-    '# API\nPORT="3000"\nEMPTY=""\nTEXT=' + JSON.stringify(items[5].value),
+    '# API\n\nPORT="3000"\nEMPTY=""\nTEXT=' + JSON.stringify(items[5].value),
   );
+});
+
+test("a copy pasted back keeps each note and no scope becomes one", () => {
+  const items: BulkEnvItem[] = [
+    {
+      id: "a",
+      key: "API_URL",
+      type: "plain",
+      value: "x",
+      scope: "web",
+      note: "Public base",
+    },
+    { id: "b", key: "DEBUG", type: "plain", value: "false", scope: "web" },
+    {
+      id: "c",
+      key: "PORT",
+      type: "plain",
+      value: "3000",
+      scope: "api",
+      note: "two\nlines",
+    },
+  ];
+  const copied = copyEnvItems(items);
+  assert.equal(
+    copied,
+    '# web\n\n# Public base\nAPI_URL="x"\nDEBUG="false"\n\n# api\n\n# two lines\nPORT="3000"',
+  );
+  assert.deepEqual(parseEnvFile(copied), [
+    { key: "API_URL", value: "x", note: "Public base" },
+    { key: "DEBUG", value: "false" },
+    { key: "PORT", value: "3000", note: "two lines" },
+  ]);
 });
 
 test("filtering and collapsing discard hidden selections without restoring them later", () => {

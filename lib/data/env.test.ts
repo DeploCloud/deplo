@@ -23,6 +23,7 @@ import {
   renameEnv,
   importEnv,
   addEnv,
+  setEnvNote,
 } from "./env";
 
 let db: TestDb;
@@ -211,4 +212,64 @@ test("addEnv stores typed values as they are, hash and quotes included", async (
       ["QUOTED", '"kept"'],
     ],
   );
+});
+
+test("a note travels with the variable and a line without one keeps it", async () => {
+  await asUser1(() =>
+    upsertEnv({
+      appId: "app_web",
+      key: "API_URL",
+      value: "a",
+      type: "plain",
+      note: "Public base URL",
+    }),
+  );
+  await asUser1(() => addEnv("app_web", [{ key: "API_URL", value: "b" }]));
+  let [row] = await asUser1(() => listEnv("app_web"));
+  assert.deepEqual([row.value, row.note], ["b", "Public base URL"]);
+  await asUser1(() =>
+    importEnv("app_web", "# Where the API lives\nAPI_URL=c\nOTHER=1 # second"),
+  );
+  const rows = await asUser1(() => listEnv("app_web"));
+  assert.deepEqual(
+    rows.map((e) => [e.key, e.note]),
+    [
+      ["API_URL", "Where the API lives"],
+      ["OTHER", "second"],
+    ],
+  );
+  [row] = rows;
+  await assert.rejects(
+    () => asUser1(() => setEnvNote(row.id, "x".repeat(281))),
+    /at most 280/,
+  );
+});
+
+test("a secret's note changes without touching its value, author or pending changes", async () => {
+  await asUser1(() =>
+    upsertEnv({
+      appId: "app_web",
+      key: "TOKEN",
+      value: "s3cret",
+      type: "secret",
+    }),
+  );
+  await db
+    .update(appsTable)
+    .set({ pendingChangesAt: null })
+    .where(eq(appsTable.id, "app_web"));
+  const [before] = await asUser1(() => listEnv("app_web"));
+  await asUser1(() => setEnvNote(before.id, "Issued by the payment provider"));
+  const [after] = await asUser1(() => listEnv("app_web"));
+  assert.equal(after.note, "Issued by the payment provider");
+  assert.equal(after.updatedAt, before.updatedAt);
+  assert.equal(after.type, "secret");
+  const [app] = await db
+    .select({ pending: appsTable.pendingChangesAt })
+    .from(appsTable)
+    .where(eq(appsTable.id, "app_web"));
+  assert.equal(app.pending, null);
+  await asUser1(() => setEnvNote(before.id, ""));
+  const [cleared] = await asUser1(() => listEnv("app_web"));
+  assert.equal(cleared.note, null);
 });

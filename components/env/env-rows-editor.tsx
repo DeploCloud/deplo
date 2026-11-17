@@ -1,14 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2, TriangleAlert } from "lucide-react";
+import { Info, Plus, Trash2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { KEY_RE, parseEnvFile } from "@/lib/env-file";
+import { KEY_RE, NOTE_MAX, parseEnvFile } from "@/lib/env-file";
 
-export type EnvRow = { key: string; value: string };
+// `note` undefined is a closed "Add note"; an empty string is an open, blank one.
+export type EnvRow = { key: string; value: string; note?: string };
+
+export const NOTE_VISIBLE =
+  "Notes are visible to anyone who can see the variable, so never put a secret in one.";
 
 const GRID =
   "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_2rem] items-center gap-2";
@@ -30,6 +34,7 @@ export function EnvRowsEditor({
   singleRow = false,
   keyDisabled = false,
   valueReadOnly = false,
+  notes = false,
 }: {
   rows: EnvRow[];
   onChange: (rows: EnvRow[]) => void;
@@ -37,8 +42,10 @@ export function EnvRowsEditor({
   singleRow?: boolean;
   keyDisabled?: boolean;
   valueReadOnly?: boolean;
+  notes?: boolean;
 }) {
   const invalid = invalidRows(rows);
+  const [cut, setCut] = React.useState(0);
 
   function setRow(i: number, patch: Partial<EnvRow>) {
     onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -54,11 +61,17 @@ export function EnvRowsEditor({
     e.preventDefault();
     const kept = rows.filter((r, idx) => idx !== i && r.key.trim() !== "");
     const merged = [...kept];
-    for (const p of parsed) {
-      const at = merged.findIndex((r) => r.key === p.key);
-      if (at >= 0) merged[at] = p;
-      else merged.push(p);
+    for (const { key, value, note } of parsed) {
+      const at = merged.findIndex((r) => r.key === key);
+      const row = {
+        key,
+        value,
+        note: notes ? (note ?? merged[at]?.note) : undefined,
+      };
+      if (at >= 0) merged[at] = row;
+      else merged.push(row);
     }
+    if (notes) setCut(parsed.filter((p) => p.noteCut).length);
     onChange(merged.length ? merged : [{ key: "", value: "" }]);
   }
 
@@ -126,6 +139,27 @@ export function EnvRowsEditor({
                   <Trash2 className="size-4" />
                 </Button>
               )}
+              {notes &&
+                (r.note === undefined ? (
+                  <button
+                    type="button"
+                    onClick={() => setRow(i, { note: "" })}
+                    className="col-span-2 flex items-center gap-1 justify-self-start rounded px-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <Plus className="size-3" />
+                    Add note
+                  </button>
+                ) : (
+                  <Input
+                    value={r.note}
+                    onChange={(e) => setRow(i, { note: e.target.value })}
+                    placeholder="What is this variable for?"
+                    aria-label={`Note for ${r.key.trim() || "this variable"}`}
+                    maxLength={NOTE_MAX}
+                    autoFocus={r.note === ""}
+                    className="col-span-2 h-7 border-0 bg-transparent px-1.5 text-xs text-muted-foreground shadow-none focus-visible:ring-1 focus-visible:ring-offset-0"
+                  />
+                ))}
             </div>
           );
         })}
@@ -155,6 +189,17 @@ export function EnvRowsEditor({
           </div>
         )}
       </div>
+
+      {notes && rows.some((r) => r.note !== undefined) && (
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Info className="mt-px size-3.5 shrink-0" />
+          <span>
+            {cut > 0 &&
+              `${cut === 1 ? "A pasted note was" : `${cut} pasted notes were`} longer than ${NOTE_MAX} characters and ${cut === 1 ? "was" : "were"} shortened. `}
+            {NOTE_VISIBLE}
+          </span>
+        </p>
+      )}
 
       {invalid.length > 0 && (
         <p className="flex items-start gap-2 text-xs text-destructive">

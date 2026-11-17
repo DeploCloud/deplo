@@ -108,6 +108,7 @@ async function stitch(
     key: r.key,
     valueEnc: r.valueEnc,
     type: r.type as "plain" | "secret",
+    note: r.note,
     teamIds: teamsBy.get(r.id) ?? [],
     autoInject: r.autoInject,
     environmentIds: envsBy.get(r.id) ?? [],

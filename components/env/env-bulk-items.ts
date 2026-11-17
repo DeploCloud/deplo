@@ -49,7 +49,13 @@ export function sharedBulkItem(row: SharedVarDTO, id = row.id): BulkEnvItem {
 }
 
 export function unlinkBulkItem(
-  row: { id: string; key: string; value: string; masked: boolean },
+  row: {
+    id: string;
+    key: string;
+    value: string;
+    masked: boolean;
+    note?: string | null;
+  },
   appId: string,
   id: string,
   scope?: string,

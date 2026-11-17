@@ -43,6 +43,7 @@ import {
 } from "@/components/env/env-bulk-items";
 import { EnvGraphic } from "@/components/env/env-graphic";
 import {
+  EnvNoteUnderKey,
   EnvValueCell,
   EnvValueUnderKey,
 } from "@/components/env/env-value-cell";
@@ -280,6 +281,7 @@ export function EnvManager({
                             </SimpleTooltip>
                           )}
                         </div>
+                        <EnvNoteUnderKey note={row.note} />
                         <EnvValueUnderKey
                           value={row.value}
                           masked={row.masked}
@@ -311,9 +313,12 @@ export function EnvManager({
                                 ).then((ok) => ok && router.refresh()),
                             },
                             {
-                              label: row.connected ? "Rename" : "Edit",
+                              label: row.connected
+                                ? "Rename"
+                                : row.type === "secret"
+                                  ? "Edit note"
+                                  : "Edit",
                               icon: Pencil,
-                              disabled: row.type === "secret" && !row.connected,
                               onSelect: () => {
                                 setEditing(row);
                                 setAddOpen(true);
@@ -389,6 +394,7 @@ export function EnvManager({
                               <LooksLikeSecretBadge />
                             )}
                         </div>
+                        <EnvNoteUnderKey note={row.note} />
                         <EnvValueUnderKey
                           value={row.value}
                           masked={row.masked}

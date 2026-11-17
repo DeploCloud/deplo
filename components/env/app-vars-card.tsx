@@ -30,6 +30,7 @@ import {
   EnvSelectionHead,
 } from "@/components/env/env-bulk-selection";
 import {
+  EnvNoteUnderKey,
   EnvValueCell,
   EnvValueUnderKey,
 } from "@/components/env/env-value-cell";
@@ -187,6 +188,7 @@ export function AppVarsCard({
                       <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                         <Bone loading={loading}>{row.key}</Bone>
+                        {!loading && <EnvNoteUnderKey note={row.note} />}
                         <Bone
                           box
                           loading={loading}
@@ -220,9 +222,9 @@ export function AppVarsCard({
                           title={row.key}
                           actions={[
                             {
-                              label: "Edit",
+                              label:
+                                row.type === "secret" ? "Edit note" : "Edit",
                               icon: Pencil,
-                              disabled: row.type === "secret",
                               onSelect: () => onEdit(row),
                             },
                             {
@@ -265,6 +267,7 @@ export function AppVarsCard({
                             Shared
                           </Badge>
                         </div>
+                        {!loading && <EnvNoteUnderKey note={row.note} />}
                         <Bone
                           box
                           loading={loading}

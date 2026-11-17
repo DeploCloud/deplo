@@ -33,6 +33,7 @@ export interface DraftEnvRow {
   key: string;
   value: string;
   secret?: boolean;
+  note?: string;
 }
 
 export interface LinkableSharedVar {
@@ -115,6 +116,7 @@ function EnvDraftBody({
         key: r.key.trim(),
         value: r.value,
         secret: secret || undefined,
+        note: r.note?.trim() || undefined,
       })),
       picked,
     );
@@ -143,7 +145,7 @@ function EnvDraftBody({
           render={(t) =>
             t === "variables" ? (
               <div className="space-y-3">
-                <EnvRowsEditor rows={draft} onChange={setDraft} />
+                <EnvRowsEditor rows={draft} onChange={setDraft} notes />
                 <SecretRow secret={secret} onChange={setSecret} />
               </div>
             ) : sharedVars.length === 0 ? (

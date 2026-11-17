@@ -24,7 +24,11 @@ import {
 import { decryptSecret } from "../crypto";
 import { setSharedVarAppLink } from "./shared-vars/app-links";
 import { listSharedVarsForApp } from "./shared-vars/app-view";
-import { saveSharedVar, deleteSharedVar } from "./shared-vars/authoring";
+import {
+  saveSharedVar,
+  deleteSharedVar,
+  setSharedVarNote,
+} from "./shared-vars/authoring";
 import { loadSharedVarsForApp } from "./shared-vars/deploy-entries";
 import { listSharedVars } from "./shared-vars/team-view";
 
@@ -724,4 +728,39 @@ test("the activity trail says CREATED once, then UPDATED", async () => {
     "Created shared variable TRAIL",
     "Updated shared variable TRAIL",
   ]);
+});
+
+test("a shared secret takes a note without its value, author or apps moving", async () => {
+  const id = await asUser1(() =>
+    mkVar({ key: "NOTED", type: "secret", teamWide: true }),
+  );
+  const before = (await asUser1(() => listSharedVars())).find(
+    (v) => v.id === id,
+  )!;
+  await asUser1(() => setSharedVarNote(id, "  Rotated by the  ops team "));
+  const after = (await asUser1(() => listSharedVars())).find(
+    (v) => v.id === id,
+  )!;
+  assert.equal(after.note, "Rotated by the ops team");
+  assert.equal(after.updatedAt, before.updatedAt);
+  const [row] = await db
+    .select({ valueEnc: sharedVarsTable.valueEnc })
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.id, id));
+  assert.equal(decryptSecret(row.valueEnc), "v");
+  await asUser1(() => setSharedVarNote(id, null));
+  const cleared = (await asUser1(() => listSharedVars())).find(
+    (v) => v.id === id,
+  )!;
+  assert.equal(cleared.note, null);
+  const trail = (
+    await db.select({ message: activitiesTable.message }).from(activitiesTable)
+  ).map((r) => r.message);
+  assert.ok(trail.includes("Updated the note on shared variable NOTED"));
+  assert.ok(trail.includes("Removed the note from shared variable NOTED"));
+});
+
+test("another team cannot write a note on a variable it does not own", async () => {
+  const id = await asUser1(() => mkVar({ key: "MINE", teamWide: true }));
+  await assert.rejects(() => asUser2(() => setSharedVarNote(id, "x")));
 });

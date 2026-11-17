@@ -37,6 +37,7 @@ import {
 import { sharedBulkItem } from "@/components/env/env-bulk-items";
 import { SharedVarsGraphic } from "@/components/env/shared-vars-graphic";
 import {
+  EnvNoteUnderKey,
   EnvValueCell,
   EnvValueUnderKey,
 } from "@/components/env/env-value-cell";
@@ -92,10 +93,7 @@ export function SharedVarsManager({
     editing: SharedVarDTO | null;
   } | null>(null);
   const [editing, setEditing] = React.useState<SharedVarDTO | null>(
-    () =>
-      vars.find(
-        (v) => v.id === openEditId && v.editable && v.type !== "secret",
-      ) ?? null,
+    () => vars.find((v) => v.id === openEditId && v.editable) ?? null,
   );
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
@@ -275,6 +273,7 @@ export function SharedVarsManager({
                     <EnvSelectionCell id={v.id} />
                     <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                       {v.key}
+                      <EnvNoteUnderKey note={v.note} />
                       <EnvValueUnderKey value={v.value} masked={v.masked} />
                       <SharedWith
                         v={v}
@@ -301,9 +300,11 @@ export function SharedVarsManager({
                           title={v.key}
                           actions={[
                             {
-                              label: "Edit value",
+                              label:
+                                v.type === "secret"
+                                  ? "Edit note"
+                                  : "Edit value",
                               icon: Pencil,
-                              disabled: v.type === "secret",
                               onSelect: () => setEditing(v),
                             },
                             {
