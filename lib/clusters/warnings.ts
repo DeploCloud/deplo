@@ -125,7 +125,7 @@ export function composeClusterWarnings(input: {
     out.push({
       key: "one-server",
       title: "Failover needs a second server",
-      body: "With one server there is nowhere to move an App to. Drag another server onto this cluster.",
+      body: "With one server there is nowhere to move an App to. Add another one with Add server.",
     });
     return out;
   }
