@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { ChevronLeft, Network, Server as ServerIcon } from "lucide-react";
+import { Server as ServerIcon } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -13,7 +12,6 @@ import {
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
-  useDroppable,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -26,7 +24,6 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 
-import { UNGROUP_DROP_ID } from "@/components/apps/apps-grid/folder-trail";
 import { SortableItem } from "@/components/apps/apps-grid/sortable-item";
 import { DragStack, DRAG_DROP_ANIMATION } from "@/components/shared/drag-stack";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -35,15 +32,12 @@ import { useUrlFacets } from "@/components/shared/filter-facet";
 import type { ListView } from "@/components/shared/view-toggle";
 import {
   JoinClusterConfirm,
-  MakeLeaderConfirm,
   joinCluster,
-  type LeaderOption,
 } from "@/components/servers/cluster-actions";
 import {
   ClusterCard,
   type ClusterCardData,
 } from "@/components/servers/cluster-card";
-import { serversHref } from "@/components/servers/cluster-join";
 import { RemoveMemberDialog } from "@/components/servers/cluster-member-actions";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
@@ -61,79 +55,21 @@ const still = () => null;
 /** The servers the grid lists: outside a search, the ones in a cluster are found inside it. */
 export function listedServers(
   servers: ServerCardData[],
-  inCluster: boolean,
   filtering: boolean,
 ): ServerCardData[] {
-  return inCluster || filtering ? servers : servers.filter((s) => !s.cluster);
-}
-
-function ServersTrail({
-  name,
-  view,
-  dragging,
-  actions,
-}: {
-  name: string;
-  view: ListView;
-  dragging: boolean;
-  actions?: React.ReactNode;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: UNGROUP_DROP_ID });
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "flex flex-wrap items-center gap-2 rounded-md px-1 py-1 transition-colors",
-        dragging && "ring-dashed ring-1 ring-border",
-        isOver && "bg-primary-wash-strong ring-1 ring-primary/40",
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <Link
-          href={serversHref({ view })}
-          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeft className="size-4" />
-          Servers
-        </Link>
-        <span className="text-muted-foreground/50">/</span>
-        <span className="font-medium">{name}</span>
-      </div>
-      {dragging && (
-        <span className="ml-1 text-xs text-muted-foreground">
-          {isOver
-            ? "Release to remove it from the cluster"
-            : "drop here to remove it from the cluster"}
-        </span>
-      )}
-      {actions && <div className="ml-auto">{actions}</div>}
-    </div>
-  );
+  return filtering ? servers : servers.filter((s) => !s.cluster);
 }
 
 export function ServersGrid({
   servers,
   clusters,
   teams,
-  openCluster,
   view,
-  panel,
-  bar,
-  leaderChoices = [],
 }: {
-  /** Every server at the top level; inside a cluster, its servers. */
   servers: ServerCardData[];
-  /** The cluster cards of the top level; none inside a cluster. */
   clusters: ClusterCardData[];
   teams: TeamOption[];
-  openCluster: { id: string; name: string } | null;
   view: ListView;
-  /** The open cluster's warnings, above its servers. */
-  panel?: React.ReactNode;
-  /** The open cluster's own controls, beside its trail. */
-  bar?: React.ReactNode;
-  /** Where the open cluster's leader may run. */
-  leaderChoices?: LeaderOption[];
 }) {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
@@ -149,16 +85,10 @@ export function ServersGrid({
   const [joinOpen, setJoinOpen] = React.useState(false);
   const [removeId, setRemoveId] = React.useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = React.useState(false);
-  const [leaderAsk, setLeaderAsk] = React.useState<LeaderOption | null>(null);
-  const [leaderOpen, setLeaderOpen] = React.useState(false);
 
   const q = query.trim().toLowerCase();
   const faceted = picked.team.length > 0 || picked.use.length > 0;
-  const pool = listedServers(
-    servers,
-    openCluster !== null,
-    q !== "" || faceted,
-  );
+  const pool = listedServers(servers, q !== "" || faceted);
   const shown = filterServers(pool, {
     query,
     teams: picked.team,
@@ -218,8 +148,7 @@ export function ServersGrid({
     setRemoveOpen(true);
   }
 
-  const canDrag = (s: ServerCardData) =>
-    openCluster ? s.member?.emptying === "idle" : !s.cluster;
+  const canDrag = (s: ServerCardData) => !s.cluster;
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -231,11 +160,11 @@ export function ServersGrid({
     }),
   );
 
-  // A server lands on a cluster or on the trail, never on another server.
+  // A server lands on a cluster, never on another server.
   const collisionDetection = React.useCallback<CollisionDetection>(
     (args) => {
-      const targets = args.droppableContainers.filter(
-        (c) => clusterIds.has(String(c.id)) || c.id === UNGROUP_DROP_ID,
+      const targets = args.droppableContainers.filter((c) =>
+        clusterIds.has(String(c.id)),
       );
       const scoped = { ...args, droppableContainers: targets };
       // The keyboard has no pointer to be within anything.
@@ -257,8 +186,7 @@ export function ServersGrid({
     if (!event.over) return;
     const a = String(event.active.id);
     const o = String(event.over.id);
-    if (o === UNGROUP_DROP_ID) requestRemove(a);
-    else if (clusterIds.has(o)) requestJoin(a, o);
+    if (clusterIds.has(o)) requestJoin(a, o);
   }
 
   function onView(next: ListView) {
@@ -314,15 +242,6 @@ export function ServersGrid({
         }}
       >
         <div className="space-y-6">
-          {openCluster && (
-            <ServersTrail
-              name={openCluster.name}
-              view={view}
-              dragging={dragging}
-              actions={bar}
-            />
-          )}
-          {panel}
           {shownClusters.length > 0 && (
             <SortableContext
               items={shownClusters.map((c) => c.id)}
@@ -367,33 +286,19 @@ export function ServersGrid({
                       <ServerCard
                         server={s}
                         view={view}
-                        moveTargets={openCluster ? [] : moveTargets(s)}
-                        showCluster={!openCluster}
+                        moveTargets={moveTargets(s)}
+                        showCluster
                         dragHandle={canDrag(s) ? handle : undefined}
                         dragActive={dragActive}
                         busy={moving && movingId === s.id}
                         onJoin={(clusterId) => requestJoin(s.id, clusterId)}
                         onRemove={() => requestRemove(s.id)}
-                        leaderChoices={leaderChoices}
-                        deploMachineOutside={
-                          !servers.some((x) => x.isDeploHost)
-                        }
-                        onMakeLeader={(choice) => {
-                          setLeaderAsk(choice);
-                          setLeaderOpen(true);
-                        }}
                       />
                     )}
                   </SortableItem>
                 ))}
               </div>
             </SortableContext>
-          ) : openCluster && servers.length === 0 ? (
-            <EmptyState
-              icon={Network}
-              title="This cluster has no servers"
-              description="Drag a server onto this cluster from Servers, or use Move to cluster in its menu."
-            />
           ) : (
             shownClusters.length === 0 && (
               <EmptyState
@@ -428,16 +333,6 @@ export function ServersGrid({
           option={joinOption}
           cluster={joinTarget}
           onJoin={() => join(joinAsk.serverId, joinAsk.clusterId)}
-        />
-      )}
-      {openCluster && leaderAsk && (
-        <MakeLeaderConfirm
-          key={leaderAsk.serverId}
-          clusterId={openCluster.id}
-          choice={leaderAsk}
-          servers={servers.length}
-          open={leaderOpen}
-          onOpenChange={setLeaderOpen}
         />
       )}
       {removing?.cluster && removing.member && (

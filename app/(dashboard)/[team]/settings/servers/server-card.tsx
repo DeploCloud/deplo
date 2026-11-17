@@ -46,6 +46,7 @@ export type ServerCardData = ServerFilterFields & {
   uninstallError: string | null;
   /** Its newest reading; null while it has none. */
   usage: ServerUsage | null;
+  apps: number;
   cluster: { id: string; name: string; servers: number } | null;
   member: ServerMemberState | null;
   /** The cluster's leader runs on this server. */

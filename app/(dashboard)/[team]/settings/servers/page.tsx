@@ -10,7 +10,6 @@ import {
   memberState,
   type ClusterJoinOption,
 } from "@/components/servers/cluster-join";
-import { ClusterBar } from "@/components/servers/cluster-bar";
 import { ClusterNotices } from "@/components/servers/cluster-panel";
 import {
   loadClusterWarnings,
@@ -57,6 +56,7 @@ import { experimentOn } from "@/lib/data/experiments";
 import { serverUsages } from "@/lib/data/monitoring";
 import { appCounts } from "@/lib/data/servers/workloads";
 import { usageTotals } from "@/components/servers/server-usage";
+import { ClusterView } from "./cluster-view";
 
 export const metadata = { title: "Servers" };
 
@@ -174,6 +174,7 @@ export default async function ServersPage(
       uninstallPending: Boolean(server.uninstallPending),
       uninstallError: server.uninstallError ?? null,
       usage: usages.get(server.id) ?? null,
+      apps: counts.byServer.get(server.id) ?? 0,
       cluster: held
         ? {
             id: held.cluster.id,
@@ -244,6 +245,42 @@ export default async function ServersPage(
     servers.map((s) => [s.id, healthOf(s)]),
   );
 
+  if (open) {
+    const card = clusterCards.find((c) => c.id === open.cluster.id)!;
+    return (
+      <ServerHealthProvider seed={healthSeed}>
+        <AutoRefresh active={changing} />
+        <ClusterView
+          cluster={{
+            id: open.cluster.id,
+            name: open.cluster.name,
+            allTeams: open.cluster.allTeams,
+            teamIds: clusterTeamIds.get(open.cluster.id) ?? [],
+            failoverEnabled: open.cluster.failoverEnabled,
+            replicationEnabled: open.cluster.replicationEnabled,
+            loadBalancingEnabled: open.cluster.loadBalancingEnabled,
+            loadBalancingMode: open.cluster.loadBalancingMode,
+            members: card.members,
+            totals: card.totals,
+            apps: card.apps,
+          }}
+          servers={openServers}
+          teams={teams}
+          joinOptions={open.joinOptions}
+          leaderChoices={leaderChoices}
+          notices={
+            <Suspense fallback={null}>
+              <ClusterNotices
+                clusterId={open.cluster.id}
+                warnings={warningsOf.get(open.cluster.id)!}
+              />
+            </Suspense>
+          }
+        />
+      </ServerHealthProvider>
+    );
+  }
+
   return (
     <ServerHealthProvider seed={healthSeed}>
       <div className="space-y-5">
@@ -271,41 +308,10 @@ export default async function ServersPage(
           />
         ) : (
           <ServersGrid
-            servers={openServers}
-            clusters={open ? [] : clusterCards}
+            servers={cards}
+            clusters={clusterCards}
             teams={teams}
-            openCluster={
-              open ? { id: open.cluster.id, name: open.cluster.name } : null
-            }
             view={view}
-            leaderChoices={leaderChoices}
-            panel={
-              open ? (
-                <Suspense fallback={null}>
-                  <ClusterNotices
-                    clusterId={open.cluster.id}
-                    warnings={warningsOf.get(open.cluster.id)!}
-                  />
-                </Suspense>
-              ) : undefined
-            }
-            bar={
-              open ? (
-                <ClusterBar
-                  cluster={{
-                    id: open.cluster.id,
-                    name: open.cluster.name,
-                    allTeams: open.cluster.allTeams,
-                    teamIds: clusterTeamIds.get(open.cluster.id) ?? [],
-                    failoverEnabled: open.cluster.failoverEnabled,
-                    replicationEnabled: open.cluster.replicationEnabled,
-                    loadBalancingEnabled: open.cluster.loadBalancingEnabled,
-                    loadBalancingMode: open.cluster.loadBalancingMode,
-                  }}
-                  teams={teams}
-                />
-              ) : undefined
-            }
           />
         )}
       </div>

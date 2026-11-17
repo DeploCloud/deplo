@@ -9,6 +9,7 @@ import {
   ServersGrid,
   listedServers,
 } from "@/app/(dashboard)/[team]/settings/servers/servers-grid";
+import { ClusterView } from "@/app/(dashboard)/[team]/settings/servers/cluster-view";
 import type { ClusterMember } from "@/lib/types/cluster";
 import {
   clusterHealth,
@@ -40,6 +41,7 @@ const server = (
   name: id,
   ip: "203.0.113.10",
   usage: null,
+  apps: 0,
   search: id,
   use: "everything",
   teams: [],
@@ -112,27 +114,51 @@ const CLUSTER: ClusterCardData = {
 const text = (html: string) =>
   html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
-const grid = (props: {
-  servers: ServerCardData[];
-  clusters: ClusterCardData[];
-  openCluster: { id: string; name: string } | null;
-}) =>
+const withHealth = (child: React.ReactNode) =>
   text(
     renderServerView(
       createElement(
         // Its children arrive as the third argument, which the props type cannot see.
         ServerHealthProvider as unknown as React.FC<{ seed: object }>,
         { seed: {} },
-        createElement(ServersGrid, { ...props, teams: [], view: "grid" }),
+        child,
       ),
     ),
+  );
+
+const grid = (props: {
+  servers: ServerCardData[];
+  clusters: ClusterCardData[];
+}) =>
+  withHealth(createElement(ServersGrid, { ...props, teams: [], view: "grid" }));
+
+const inside = (servers: ServerCardData[]) =>
+  withHealth(
+    createElement(ClusterView, {
+      cluster: {
+        id: "clu_eu",
+        name: "eu",
+        allTeams: true,
+        teamIds: [],
+        failoverEnabled: true,
+        replicationEnabled: false,
+        loadBalancingEnabled: false,
+        loadBalancingMode: "nearest",
+        members: CLUSTER.members,
+        totals: CLUSTER.totals,
+        apps: 0,
+      },
+      servers,
+      teams: [],
+      joinOptions: [],
+      leaderChoices: [],
+    }),
   );
 
 test("the top level shows each cluster as one card and only the servers outside a cluster", () => {
   const html = grid({
     servers: [FREE, JOINING, SETTLED],
     clusters: [CLUSTER],
-    openCluster: null,
   });
   assert.match(
     html,
@@ -144,25 +170,18 @@ test("the top level shows each cluster as one card and only the servers outside 
 });
 
 test("inside a cluster a server that just joined reads Provisioning until it works", () => {
-  const html = grid({
-    servers: [JOINING, SETTLED],
-    clusters: [],
-    openCluster: { id: "clu_eu", name: "eu" },
-  });
-  assert.match(html, /Servers \/ eu/);
+  const html = inside([JOINING, SETTLED]);
+  assert.match(html, /Servers eu .*2 servers acting as one/);
   assert.equal(html.match(/Provisioning/g)?.length, 1);
   assert.match(html, /server-b/);
   assert.match(html, /server-c/);
 });
 
-test("the server the leader runs on carries a Leader tag, and only that one", () => {
-  const html = grid({
-    servers: [JOINING, SETTLED],
-    clusters: [],
-    openCluster: { id: "clu_eu", name: "eu" },
-  });
-  assert.equal(html.match(/Leader/g)?.length, 1);
-  assert.match(html, /server-c 203\.0\.113\.10 Leader/);
+test("the cluster names the server its leader runs on", () => {
+  const html = inside([JOINING, SETTLED]);
+  assert.match(html, /acting as one · leader on server-c/);
+  assert.match(html, /Leader on server-c/);
+  assert.doesNotMatch(html, /leader on server-b/i);
 });
 
 test("a server's card leaves out its hardware and a lease the leader lost", () => {
@@ -170,22 +189,17 @@ test("a server's card leaves out its hardware and a lease the leader lost", () =
     cluster: eu,
     member: memberState(member({ leaseState: "fenced" })),
   });
-  const html = grid({
-    servers: [fenced],
-    clusters: [],
-    openCluster: { id: "clu_eu", name: "eu" },
-  });
-  assert.doesNotMatch(html, /Not responding|cores|GB RAM|run twice/);
+  const html = inside([fenced]);
+  assert.doesNotMatch(html, /Not responding|GB RAM|run twice/);
 });
 
 test("a search lists the servers of every cluster together", () => {
   const all = [FREE, JOINING, SETTLED];
   assert.deepEqual(
-    listedServers(all, false, false).map((s) => s.id),
+    listedServers(all, false).map((s) => s.id),
     ["server-a"],
   );
-  assert.equal(listedServers(all, false, true).length, 3);
-  assert.equal(listedServers([JOINING, SETTLED], true, false).length, 2);
+  assert.equal(listedServers(all, true).length, 3);
 });
 
 test("a cluster card names what it is, and how many servers are still joining", () => {
@@ -256,13 +270,9 @@ test("a server of a cluster names the servers its private network does not reach
       member({ network: { relayed: [], unreachable: ["server-c"] } }),
     ),
   });
-  const html = grid({
-    servers: [SETTLED, relayed, down],
-    clusters: [CLUSTER],
-    openCluster: eu,
-  });
-  assert.match(html, /Relayed/);
-  assert.match(html, /Can(&#x27;|')t reach a server/);
+  const html = inside([SETTLED, relayed, down]);
+  assert.match(html, /Reaches server-c through Deplo(&#x27;|')s relay/);
+  assert.match(html, /Cannot reach server-c now/);
   assert.equal(memberState(member()).network, "");
   assert.equal(
     memberState(member({ network: { relayed: ["b", "a"], unreachable: [] } }))

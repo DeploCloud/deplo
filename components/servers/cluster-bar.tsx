@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { MoreHorizontal, Settings2, Trash2 } from "lucide-react";
+import {
+  Copy,
+  MoreHorizontal,
+  Scale,
+  Settings2,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -21,7 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { InfoTip } from "@/components/ui/info-tip";
+import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
+import type { DocsTopic } from "@/lib/docs";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
 import type { LoadBalancingMode } from "@/lib/types/cluster";
@@ -152,7 +160,7 @@ export const MODE_LABELS: Record<LoadBalancingMode, string> = {
 };
 
 /** Load balancing on or off, and where it sends visitors. Off while replication is. */
-function LoadBalancingControl({ cluster }: { cluster: ClusterBarData }) {
+function LoadBalancingRow({ cluster }: { cluster: ClusterBarData }) {
   const router = useRouter();
   const [on, setOn] = useShownValue(cluster.loadBalancingEnabled);
   const [mode, setMode] = useShownValue(cluster.loadBalancingMode);
@@ -182,24 +190,29 @@ function LoadBalancingControl({ cluster }: { cluster: ClusterBarData }) {
   };
   const switchId = `load-balancing-${cluster.id}`;
   return (
-    <div className="flex items-center gap-2">
-      <Label htmlFor={switchId} className="text-sm">
-        Load balancing
-      </Label>
-      <InfoTip content={LOAD_BALANCING_HINT} docs="clusters.loadBalancing" />
-      <Switch
-        id={switchId}
-        checked={on}
-        disabled={pending || (!on && !cluster.replicationEnabled)}
-        onCheckedChange={(enabled) => save(enabled, mode)}
-      />
+    <SettingItem
+      icon={Scale}
+      title="Load balancing"
+      htmlFor={switchId}
+      info={LOAD_BALANCING_HINT}
+      docs="clusters.loadBalancing"
+      description="Share an app's visitors between the servers that run it."
+      control={
+        <Switch
+          id={switchId}
+          checked={on}
+          disabled={pending || (!on && !cluster.replicationEnabled)}
+          onCheckedChange={(enabled) => save(enabled, mode)}
+        />
+      }
+    >
       {on && (
         <Select
           value={mode}
           disabled={pending}
           onValueChange={(next) => save(true, next as LoadBalancingMode)}
         >
-          <SelectTrigger className="w-48" aria-label="Send visitors to">
+          <SelectTrigger className="w-full" aria-label="Send visitors to">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -211,41 +224,80 @@ function LoadBalancingControl({ cluster }: { cluster: ClusterBarData }) {
           </SelectContent>
         </Select>
       )}
-    </div>
+    </SettingItem>
   );
 }
 
-function SwitchRow({
+function SwitchItem({
   id,
+  icon,
   label,
   hint,
+  description,
   docs,
   value,
 }: {
   id: string;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   hint: string;
-  docs?: React.ComponentProps<typeof InfoTip>["docs"];
+  description: string;
+  docs?: DocsTopic;
   value: { on: boolean; pending: boolean; set: (on: boolean) => void };
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <Label htmlFor={id} className="text-sm">
-        {label}
-      </Label>
-      <InfoTip content={hint} docs={docs} />
-      <Switch
-        id={id}
-        checked={value.on}
-        disabled={value.pending}
-        onCheckedChange={value.set}
-      />
-    </div>
+    <SettingItem
+      icon={icon}
+      title={label}
+      htmlFor={id}
+      info={hint}
+      docs={docs}
+      description={description}
+      control={
+        <Switch
+          id={id}
+          checked={value.on}
+          disabled={value.pending}
+          onCheckedChange={value.set}
+        />
+      }
+    />
   );
 }
 
-/** What an open cluster offers, beside its trail: failover, replication and load balancing, Manage and Delete. */
-export function ClusterBar({
+/** An open cluster's switches: failover, replication and load balancing. */
+export function ClusterSettings({ cluster }: { cluster: ClusterBarData }) {
+  const failover = useFailoverSwitch(cluster);
+  const replication = useReplicationSwitch(cluster);
+  return (
+    <Card className="divide-y divide-border">
+      <SwitchItem
+        id={`failover-${cluster.id}`}
+        icon={ShieldCheck}
+        label="Failover"
+        hint={FAILOVER_HINT}
+        description="When a server stops, its apps move to another one."
+        docs="clusters.failoverSwitch"
+        value={failover}
+      />
+      <SwitchItem
+        id={`replication-${cluster.id}`}
+        icon={Copy}
+        label="Replication"
+        hint={REPLICATION_HINT}
+        description="Keep a copy of every app's data on the other servers."
+        docs="clusters.replicationSwitch"
+        value={replication}
+      />
+      <LoadBalancingRow
+        cluster={{ ...cluster, replicationEnabled: replication.on }}
+      />
+    </Card>
+  );
+}
+
+/** An open cluster's own menu: Manage and Delete. */
+export function ClusterMenu({
   cluster,
   teams,
 }: {
@@ -254,30 +306,11 @@ export function ClusterBar({
 }) {
   const [manage, setManage] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
-  const failover = useFailoverSwitch(cluster);
-  const replication = useReplicationSwitch(cluster);
   return (
-    <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-      <SwitchRow
-        id={`failover-${cluster.id}`}
-        label="Failover"
-        hint={FAILOVER_HINT}
-        docs="clusters.failoverSwitch"
-        value={failover}
-      />
-      <SwitchRow
-        id={`replication-${cluster.id}`}
-        label="Replication"
-        hint={REPLICATION_HINT}
-        docs="clusters.replicationSwitch"
-        value={replication}
-      />
-      <LoadBalancingControl
-        cluster={{ ...cluster, replicationEnabled: replication.on }}
-      />
+    <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label="Cluster menu">
+          <Button variant="ghost" size="icon" aria-label="Cluster menu">
             <MoreHorizontal className="size-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -309,6 +342,6 @@ export function ClusterBar({
         onOpenChange={setDeleting}
         trigger={false}
       />
-    </div>
+    </>
   );
 }
