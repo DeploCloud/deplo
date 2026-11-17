@@ -78,6 +78,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cluster_teams: COPY,
   clusters: COPY,
   cluster_members: { kind: "copy", needsServer: ["server_id"] },
+  // A server of the old map that had not joined yet: the new Deplo has its own servers to add.
+  cluster_join_requests: { kind: "skip", clear: true },
   // Sealed to the old machine's leader; the new one makes its own key.
   cluster_leader_keys: { kind: "skip", clear: true },
   // The leader's placement, mirrored; a member left out of the server map reads as waiting.

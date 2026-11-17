@@ -10,7 +10,7 @@ import {
 
 import { isoTimestamptz } from "../columns";
 import { apps } from "./apps";
-import { teams } from "./identity";
+import { teams, users } from "./identity";
 import { servers } from "./servers";
 
 // Several servers that act as one (spec #176). A null leader server means Deplo's own machine.
@@ -294,3 +294,24 @@ export const clusterNetworkLinks = pgTable(
   },
   (t) => [primaryKey({ columns: [t.clusterId, t.serverId, t.peerServerId] })],
 );
+
+// A server added from inside a cluster: it joins once it is installed and answers.
+export const clusterJoinRequests = pgTable("cluster_join_requests", {
+  serverId: text("server_id")
+    .primaryKey()
+    .references(() => servers.id, { onDelete: "cascade" }),
+  clusterId: text("cluster_id")
+    .notNull()
+    .references(() => clusters.id, { onDelete: "cascade" }),
+  // Who asked, and where: the join runs as them, so every check of a join holds.
+  requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  requestedByTeamId: text("requested_by_team_id").references(() => teams.id, {
+    onDelete: "set null",
+  }),
+  // Why the last try did not join; empty while nothing was refused.
+  error: text("error").notNull().default(""),
+  triedAt: isoTimestamptz("tried_at"),
+  requestedAt: isoTimestamptz("requested_at").notNull(),
+});

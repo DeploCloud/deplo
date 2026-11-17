@@ -32,6 +32,10 @@ import {
   parseHostAddress,
 } from "../../host-address";
 import type { Server } from "../../types/server";
+import {
+  assertJoinableCluster,
+  requestClusterJoin,
+} from "../clusters/join-requests";
 
 export interface AddServerInput {
   name: string;
@@ -41,6 +45,8 @@ export interface AddServerInput {
   buildOnly?: boolean;
   importOnly?: boolean;
   teamIds?: string[];
+  /** Join this cluster once installed. */
+  clusterId?: string;
 }
 
 export interface AddServerResult {
@@ -76,6 +82,11 @@ export async function addServer(
   }
 
   if (!importOnly) await assertAddressFree(host);
+  if (input.clusterId) {
+    if (importOnly)
+      throw new Error("A migration source cannot join a cluster.");
+    await assertJoinableCluster(input.clusterId);
+  }
 
   const allTeams = importOnly ? false : (input.allTeams ?? true);
   const teamIds = importOnly
@@ -118,6 +129,7 @@ export async function addServer(
         .insert(serverTeamsTable)
         .values(teamIds.map((teamId) => ({ serverId: server.id, teamId })));
   });
+  if (input.clusterId) await requestClusterJoin(server.id, input.clusterId);
   await recordActivity(
     "server",
     `Connected server ${server.name}`,

@@ -106,6 +106,24 @@ export function ServerMenu({
               Manage
             </Link>
           </DropdownMenuItem>
+          {server.joining && (
+            <DropdownMenuItem
+              disabled={pending}
+              onSelect={() =>
+                startTransition(async () => {
+                  const res = await gqlAction(
+                    `mutation($serverId: String!) { cancelClusterJoin(serverId: $serverId) }`,
+                    { serverId: server.id },
+                  );
+                  if (!res.ok) toast.error(res.error);
+                  router.refresh();
+                })
+              }
+            >
+              <Undo2 className="size-4" />
+              Don&apos;t join {server.joining.clusterName}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onSelect={() =>
               void navigator.clipboard

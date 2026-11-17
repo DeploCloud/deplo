@@ -77,6 +77,11 @@ Register a remote server. Provisioned by a call-home bootstrap (no SSH-in): you 
 input AddServerInput {
   allTeams: Boolean
   buildOnly: Boolean
+
+  """
+  Join this cluster once the server is installed and answers. The join runs as you, with every check a join has.
+  """
+  clusterId: String
   host: String!
   importOnly: Boolean
   name: String!
@@ -4407,6 +4412,11 @@ type Mutation {
   Stop a backup that is running: the record settles as canceled and the dump is aborted on the host it runs on. Returns false when it had already finished.
   """
   cancelBackupRun(runId: String!): Boolean
+
+  """
+  A server added from inside a cluster stops waiting to join it, and stays one of your servers.
+  """
+  cancelClusterJoin(serverId: String!): Boolean
 
   """
   Cancel removing a server: it stays in the cluster and takes work again. What is moving right now finishes its move, and what already moved stays where it is.

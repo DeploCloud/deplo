@@ -67,6 +67,7 @@ const CONTROL_PLANE = [
   "clusters",
   "cluster_teams",
   "cluster_members",
+  "cluster_join_requests",
   "cluster_leader_keys",
   "workload_placements",
   "cluster_app_replicas",

@@ -47,6 +47,8 @@ export type ServerCardData = ServerFilterFields & {
   /** Its newest reading; null while it has none. */
   usage: ServerUsage | null;
   apps: number;
+  /** Added from inside a cluster: it joins once installed. */
+  joining: { clusterName: string; error: string } | null;
   cluster: { id: string; name: string; servers: number } | null;
   member: ServerMemberState | null;
   /** The cluster's leader runs on this server. */
@@ -241,6 +243,10 @@ export function ServerCard({
   );
 
   const notes = [
+    server.joining &&
+      (server.joining.error
+        ? `Waiting to join ${server.joining.clusterName}: ${server.joining.error}`
+        : `Joins ${server.joining.clusterName} once it is installed.`),
     server.uninstallPending && "Deplo is removing its agent from this machine.",
     server.uninstallError &&
       `Deplo could not remove its agent: ${server.uninstallError}`,

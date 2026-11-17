@@ -25,6 +25,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -70,6 +71,7 @@ import type { ServerUsage } from "@/lib/types/server";
 import { AgentVersionBadge } from "./agent-version-badge";
 import { ServerStatus, type ServerCardData } from "./server-card";
 import { ServerMenu } from "./server-menu";
+import { AddServer } from "@/components/servers/add-server";
 
 export type ClusterViewData = ClusterBarData & {
   members: { name: string; online: boolean }[];
@@ -146,6 +148,7 @@ export function ClusterView({
   const [, startJoin] = React.useTransition();
   const [chosen, setChosen] = React.useState<Set<string>>(() => new Set());
   const [bulkRemoveOpen, setBulkRemoveOpen] = React.useState(false);
+  const [installOpen, setInstallOpen] = React.useState(false);
   const { checkOne } = useServerHealth();
   const picked = servers.filter((s) => chosen.has(s.id));
   // A server already on its way out has nothing more to be asked.
@@ -233,6 +236,14 @@ export function ClusterView({
               clusterName={cluster.name}
               options={joinOptions}
               onPick={requestJoin}
+              onInstall={() => setInstallOpen(true)}
+            />
+            <AddServer
+              joinCluster={cluster}
+              teams={teams}
+              open={installOpen}
+              onOpenChange={setInstallOpen}
+              trigger={false}
             />
             <ClusterMenu cluster={cluster} teams={teams} />
           </div>
@@ -499,10 +510,12 @@ function AddServerMenu({
   clusterName,
   options,
   onPick,
+  onInstall,
 }: {
   clusterName: string;
   options: ClusterJoinOption[];
   onPick: (option: ClusterJoinOption) => void;
+  onInstall: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -516,6 +529,11 @@ function AddServerMenu({
         align="end"
         className="max-h-80 w-64 overflow-y-auto"
       >
+        <DropdownMenuItem onSelect={onInstall}>
+          <Plus className="size-4" />
+          Install a new server
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
           Move an existing server into {clusterName}
         </DropdownMenuLabel>

@@ -89,6 +89,11 @@ const AddServerInputType = builder.inputType("AddServerInput", {
     storageOnly: t.boolean({ required: false }),
     buildOnly: t.boolean({ required: false }),
     importOnly: t.boolean({ required: false }),
+    clusterId: t.string({
+      required: false,
+      description:
+        "Join this cluster once the server is installed and answers. The join runs as you, with every check a join has.",
+    }),
   }),
 });
 
@@ -106,6 +111,7 @@ builder.mutationFields((t) => ({
         storageOnly: input.storageOnly ?? undefined,
         buildOnly: input.buildOnly ?? undefined,
         importOnly: input.importOnly ?? undefined,
+        clusterId: input.clusterId ?? undefined,
       }),
   }),
   uninstallServerAgent: t.field({

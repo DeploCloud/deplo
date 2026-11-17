@@ -19,9 +19,11 @@ import { seedServerRow } from "./infra-test-helpers";
 import { activities } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
+  clusterJoinRequests,
   clusterMembers,
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
+import { joinWaitingServers } from "./clusters/join-requests";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { __resetReleaseCacheForTests } from "../agent/release";
@@ -485,4 +487,31 @@ test("nobody targets a member directly: pickers leave it out and placing on it i
     }),
   );
   assert.equal(app.serverId, "srv_3");
+});
+
+test("a server added from inside a cluster joins it, as whoever asked, once it answers", async () => {
+  fleet.host("srv_2");
+  const cluster = await asAdmin(() => createCluster("eu", everyone));
+  await db
+    .update(serversTable)
+    .set({ status: "online" })
+    .where(eq(serversTable.id, "srv_2"));
+  await db.insert(clusterJoinRequests).values({
+    serverId: "srv_2",
+    clusterId: cluster.id,
+    requestedByUserId: USER_1,
+    requestedByTeamId: TEAM_A,
+    requestedAt: "2026-01-01T00:00:00.000Z",
+  });
+  assert.equal(await joinWaitingServers(), 1);
+  assert.equal((await db.select().from(clusterJoinRequests)).length, 0);
+  const members = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.deepEqual(
+    members.map((m) => m.serverId),
+    ["srv_2"],
+  );
+  const trail = (
+    await db.select({ m: activities.message }).from(activities)
+  ).map((r) => r.m);
+  assert.ok(trail.some((m) => m.startsWith("Added server")));
 });

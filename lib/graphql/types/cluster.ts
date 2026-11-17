@@ -56,6 +56,7 @@ import {
   type ClusterMember,
   type ClusterReleasedWorkload,
 } from "@/lib/types/cluster";
+import { cancelClusterJoin } from "@/lib/data/clusters/join-requests";
 
 // What the actor just changed shows in the cluster's warnings now, not at the next background pass.
 async function thenRefresh<T>(clusterId: string, done: Promise<T>): Promise<T> {
@@ -689,6 +690,17 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { clusterId, serverId }) =>
       cancelClusterMemberRemoval(clusterId, serverId),
+  }),
+  cancelClusterJoin: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "A server added from inside a cluster stops waiting to join it, and stays one of your servers.",
+    args: { serverId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serverId }) => {
+      await cancelClusterJoin(serverId);
+      return true;
+    },
   }),
   removeClusterMember: t.field({
     type: ClusterRef,

@@ -25,6 +25,7 @@ import { getClusterById } from "./roster";
 import { refreshAllClusterWarnings } from "./warnings";
 import { runClusterWatch } from "./watch";
 import { messageOf } from "../../utils";
+import { joinWaitingServers } from "./join-requests";
 
 // Starts a watch on every cluster's leader and keeps the leader's roster current; one Deplo instance holds the lease.
 export const CLUSTER_WATCH_LEASE = "cluster-watch";
@@ -103,6 +104,10 @@ export async function runClusterWatchTick(): Promise<void> {
       return;
     }
     state.holds = true;
+    // A server added from inside a cluster joins it once it is installed.
+    await joinWaitingServers().catch((e) =>
+      console.warn(`[cluster] waiting joins: ${messageOf(e)}`),
+    );
     const ids = (
       await getDb().select({ id: clustersTable.id }).from(clustersTable)
     ).map((r) => r.id);

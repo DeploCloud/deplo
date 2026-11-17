@@ -35,14 +35,28 @@ export function AddServer({
   autoOpen = false,
   teams = [],
   clusters = false,
+  joinCluster,
+  open: controlledOpen,
+  onOpenChange,
+  trigger = true,
 }: {
   autoOpen?: boolean;
   teams?: TeamOption[];
   // The Server clusters experiment is on, so a cluster may be added here.
   clusters?: boolean;
+  /** Added from inside this cluster: the server joins it once installed. */
+  joinCluster?: { id: string; name: string };
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  trigger?: boolean;
 } = {}) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(autoOpen);
+  const [ownOpen, setOwnOpen] = React.useState(autoOpen);
+  const open = controlledOpen ?? ownOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   const [pending, startTransition] = React.useTransition();
   const [kind, setKind] = React.useState<"server" | "cluster">("server");
   const [name, setName] = React.useState("");
@@ -128,6 +142,7 @@ export function AddServer({
             teamIds: access.allTeams ? [] : access.teamIds,
             storageOnly: role === "storage",
             buildOnly: role === "build",
+            clusterId: joinCluster?.id,
           },
         },
       );
@@ -152,21 +167,37 @@ export function AddServer({
         if (!o) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="size-4" />
-          Add
-        </Button>
-      </DialogTrigger>
+      {trigger && (
+        <DialogTrigger asChild>
+          <Button size="sm">
+            <Plus className="size-4" />
+            Add
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ServerCog className="size-4" />
-            {kind === "cluster" ? "Add a cluster" : "Add a server"}
+            {joinCluster
+              ? `Add a server to ${joinCluster.name}`
+              : kind === "cluster"
+                ? "Add a cluster"
+                : "Add a server"}
           </DialogTitle>
           <DialogDescription>
-            {command ? (
+            {command && joinCluster ? (
+              <>
+                Run this once on the server. It joins{" "}
+                <strong>{joinCluster.name}</strong> as soon as it calls home.
+              </>
+            ) : command ? (
               "Run this once on the server. The agent installs itself and calls home."
+            ) : joinCluster ? (
+              <>
+                Name it, then run the install command on it. It joins{" "}
+                <strong>{joinCluster.name}</strong> once it answers.
+              </>
             ) : kind === "cluster" ? (
               <>
                 Several servers that act as one. If one stops, its Apps move to
@@ -222,7 +253,7 @@ export function AddServer({
               </div>
             ) : (
               <div className="space-y-4">
-                {clusters && (
+                {clusters && !joinCluster && (
                   <KindPicker
                     kind={kind}
                     onChange={setKind}
@@ -260,19 +291,21 @@ export function AddServer({
                   onChange={setAccess}
                   disabled={pending}
                 />
-                <div className="space-y-2">
-                  <FieldLabel
-                    info="Changes what the install command sets up on the host. Most servers should do everything."
-                    docs="servers.role"
-                  >
-                    What this server is for
-                  </FieldLabel>
-                  <ServerRoleOptions
-                    value={role}
-                    onChange={setRole}
-                    disabled={() => pending}
-                  />
-                </div>
+                {!joinCluster && (
+                  <div className="space-y-2">
+                    <FieldLabel
+                      info="Changes what the install command sets up on the host. Most servers should do everything."
+                      docs="servers.role"
+                    >
+                      What this server is for
+                    </FieldLabel>
+                    <ServerRoleOptions
+                      value={role}
+                      onChange={setRole}
+                      disabled={() => pending}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </AnimatedHeight>

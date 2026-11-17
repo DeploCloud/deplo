@@ -57,6 +57,7 @@ import { serverUsages } from "@/lib/data/monitoring";
 import { appCounts } from "@/lib/data/servers/workloads";
 import { usageTotals } from "@/components/servers/server-usage";
 import { ClusterView } from "./cluster-view";
+import { listClusterJoinRequests } from "@/lib/data/clusters/join-requests";
 
 export const metadata = { title: "Servers" };
 
@@ -94,9 +95,10 @@ export default async function ServersPage(
     avatarUrl: t.avatarUrl,
   }));
 
-  const [usages, counts] = await Promise.all([
+  const [usages, counts, joinRequests] = await Promise.all([
     serverUsages(serversRaw.map((s) => s.id)),
     appCounts(),
+    listClusterJoinRequests(),
   ]);
   const selfAddrs = deploHostSelfAddresses();
   const servers = [...serversRaw].sort(
@@ -175,6 +177,7 @@ export default async function ServersPage(
       uninstallError: server.uninstallError ?? null,
       usage: usages.get(server.id) ?? null,
       apps: counts.byServer.get(server.id) ?? 0,
+      joining: joinRequests.get(server.id) ?? null,
       cluster: held
         ? {
             id: held.cluster.id,
