@@ -142,7 +142,7 @@ export default async function AppAdvancedSettingsPage(
           />
         </CapabilityFieldset>
 
-        {!isComposeStack && (
+        {!isComposeStack && flags.zeroDowntime && (
           <CapabilityFieldset cap="configure_apps">
             <ZeroDowntimeForm
               appId={project.id}

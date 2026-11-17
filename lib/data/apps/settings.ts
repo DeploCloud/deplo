@@ -45,6 +45,7 @@ import { cleanAppName } from "./create";
 import type { UploadArchive } from "../../types/app";
 import type { HealthCheck } from "../../types/container";
 import { stackReplicas } from "../../deploy/compose-stack/stand-in";
+import { requireExperiment } from "../experiments";
 
 export async function updateAppOwned(
   id: string,
@@ -140,6 +141,7 @@ export async function setAppZeroDowntimeDeploys(
   enabled: boolean,
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
+  if (enabled) await requireExperiment("zeroDowntime");
   const user = (await getCurrentUser())!;
   const rows = await getDb()
     .update(appsTable)

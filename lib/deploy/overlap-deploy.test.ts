@@ -26,6 +26,10 @@ import { servers } from "../db/schema/control-plane/servers";
 import { ContractVersion, type DeployRequest } from "../agent/gen/agent";
 import { runDeploymentGuarded } from "./build/deploy-run";
 import { OVERLAP_CAPABILITY } from "./overlap";
+import {
+  turnOffExperiments,
+  turnOnExperiments,
+} from "../data/experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -118,6 +122,7 @@ beforeEach(async () => {
     createdAt: "2026-11-08T00:00:00.000Z",
   });
   await seedDeployment(db, { id: "dpl_1", appId: "prj_1", status: "queued" });
+  await turnOnExperiments(db, "zeroDowntime");
 });
 
 async function deploy(): Promise<DeployRequest> {
@@ -135,6 +140,12 @@ describe("a redeploy keeps the old version online", () => {
     const req = await deploy();
     assert.equal(req.standInComposeYaml, "");
     assert.doesNotMatch(req.composeYaml, /healthcheck:/);
+  });
+
+  test("an app that turned it on swaps in place while the experiment is off", async () => {
+    await turnOffExperiments(db, "zeroDowntime");
+    const req = await deploy();
+    assert.equal(req.standInComposeYaml, "");
   });
 
   test("a current server gets the stand-in, and a live stack the proxy waits on", async () => {

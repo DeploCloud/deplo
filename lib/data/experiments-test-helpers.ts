@@ -21,3 +21,12 @@ export async function turnOnExperiments(
     .values({ id: "default", updatedAt: "2026-01-01T00:00:00.000Z", ...set })
     .onConflictDoUpdate({ target: instanceSettings.id, set });
 }
+
+export async function turnOffExperiments(
+  db: TestDb,
+  ...keys: ExperimentKey[]
+): Promise<void> {
+  await db
+    .update(instanceSettings)
+    .set(Object.fromEntries(keys.map((k) => [COLUMN[k], false])));
+}

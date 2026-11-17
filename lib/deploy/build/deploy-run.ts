@@ -78,6 +78,7 @@ import {
   loadPreviewForDeploy,
   readUploadCompose,
 } from "./deploy-run-inputs";
+import { experimentOn } from "../../data/experiments";
 
 export async function runDeploymentGuarded(depId: string): Promise<void> {
   try {
@@ -354,11 +355,13 @@ async function runDeployment(depId: string): Promise<void> {
         routes: routeDomains,
         image,
       });
-      // Beta, opt-in per app: off keeps the in-place swap. Replicas always overlap.
+      // Opt-in per app behind its experiment: off keeps the in-place swap. Replicas always overlap.
+      const zeroDowntime =
+        project.zeroDowntimeDeploys && (await experimentOn("zeroDowntime"));
       return {
         ...rendered,
         overlap:
-          project.zeroDowntimeDeploys ||
+          zeroDowntime ||
           rendered.overlap.replicas > 1 ||
           rendered.overlap.scaled
             ? rendered.overlap

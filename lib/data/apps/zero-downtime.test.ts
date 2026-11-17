@@ -14,6 +14,10 @@ import {
   seedServer,
 } from "../app-graph-test-helpers";
 import { setAppZeroDowntimeDeploys } from "./settings";
+import {
+  turnOffExperiments,
+  turnOnExperiments,
+} from "../experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -52,6 +56,7 @@ beforeEach(async () => {
   });
   await seedServer(db);
   await seedApp(db, { id: APP, teamId: TEAM_A, slug: "web" });
+  await turnOnExperiments(db, "zeroDowntime");
 });
 
 test("zero-downtime deploys are off until someone turns them on", async () => {
@@ -74,5 +79,16 @@ test("another team's app is out of reach", async () => {
   await assert.rejects(
     as(STRANGER, TEAM_B, () => setAppZeroDowntimeDeploys(APP, true)),
   );
+  assert.equal(await enabled(), false);
+});
+
+test("with the experiment off, nobody turns them on, and anyone may turn them off", async () => {
+  await as(OWNER, TEAM_A, () => setAppZeroDowntimeDeploys(APP, true));
+  await turnOffExperiments(db, "zeroDowntime");
+  await assert.rejects(
+    as(OWNER, TEAM_A, () => setAppZeroDowntimeDeploys(APP, true)),
+    /Zero-downtime deploys are not turned on for this Deplo/,
+  );
+  await as(OWNER, TEAM_A, () => setAppZeroDowntimeDeploys(APP, false));
   assert.equal(await enabled(), false);
 });
