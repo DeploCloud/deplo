@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { usageTotals } from "./server-usage";
 
@@ -41,4 +42,9 @@ test("a cluster with nobody answering reads as empty, never as divided by zero",
     diskUsed: 0,
     diskTotal: 0,
   });
+});
+
+test("usageTotals stays callable from the servers page, which renders on the server", () => {
+  const src = readFileSync("components/servers/server-usage.tsx", "utf8");
+  assert.ok(!src.startsWith('"use client"'));
 });
