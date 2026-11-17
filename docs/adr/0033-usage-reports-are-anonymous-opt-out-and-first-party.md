@@ -58,8 +58,10 @@ the promise that made people install Deplo in the first place.
    (`usaged.deplo.build`) has no auth code of its own and sits behind Deplo's
    domain basic auth. It shows distributions and adoption, never one instance.
 
-7. **A snapshot, not events.** Adding a field never bumps `schema`; a rename or removal
-   does, and the ingest refuses an unknown major with a 400. Per-action events would turn a
+7. **A snapshot, not events.** Adding a field never bumps `schema`; a rename does, and the
+   ingest refuses an unknown major with a 400. A removal does not, once the ingest has stopped
+   requiring the field and is deployed first: it ignores fields it does not know, so old and new
+   reports both pass (`features.gravatar` went this way). Per-action events would turn a
    privacy switch into a stream and need a queue and a schema per event for questions
    nobody is asking yet.
 
