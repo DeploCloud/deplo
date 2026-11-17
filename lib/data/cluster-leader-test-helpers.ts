@@ -42,6 +42,7 @@ import { getClusterById } from "./clusters/roster";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -224,6 +225,7 @@ export function leaderLab() {
         { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
       ],
     });
+    await turnOnExperiments(db, "clusters");
     await seedServer(db);
     process.env.DEPLO_SERVER_IP = "10.0.0.1";
     for (const [i, id] of SERVERS.entries()) {

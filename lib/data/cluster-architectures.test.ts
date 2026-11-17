@@ -48,6 +48,7 @@ import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
 import { runTool } from "../mcp/run-tool-test-helpers";
 import { getDatabase } from "./databases/rows";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 databaseLab();
 
@@ -64,6 +65,7 @@ let asked: Asked[] = [];
 let refusal: string | null = null;
 
 beforeEach(async () => {
+  await turnOnExperiments(db, "clusters");
   await db.delete(archsTable);
   await seedServerRow(db, {
     id: SERVER_OUT,

@@ -32,6 +32,7 @@ import { completePendingAppMigration } from "./app-migration";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember, listClusterMembers } from "./clusters/members";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 // What the tests of emptying a cluster member share: members with a disk, a leader that places, and seeders.
 
@@ -203,6 +204,7 @@ export function emptyLab(): void {
         },
       ],
     });
+    await turnOnExperiments(db, "clusters");
     await seedServer(db);
     process.env.DEPLO_SERVER_IP = "10.0.0.1";
     for (const [i, id] of MEMBERS.entries()) {

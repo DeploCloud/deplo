@@ -40,6 +40,7 @@ import {
 } from "./clusters/watch";
 import { renderCompose } from "../deploy/build/compose-render";
 import { getClusterById } from "./clusters/roster";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 export const AT = "2026-01-01T00:00:00.000Z";
 const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
@@ -83,6 +84,7 @@ export function failoverLab() {
         { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
       ],
     });
+    await turnOnExperiments(lab.db, "clusters");
     await seedServer(lab.db);
     process.env.DEPLO_SERVER_IP = "10.0.0.1";
     for (const [i, id] of ["srv_2", "srv_3"].entries()) {

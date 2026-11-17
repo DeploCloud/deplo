@@ -67,6 +67,7 @@ import {
   parse,
 } from "../deploy/traefik-stack-test-helpers";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -100,6 +101,7 @@ beforeEach(async () => {
       { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   for (const [i, id] of ["srv_2", "srv_3", "srv_4"].entries()) {
     await seedServerRow(db, {

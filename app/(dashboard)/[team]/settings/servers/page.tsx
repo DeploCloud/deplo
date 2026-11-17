@@ -53,6 +53,7 @@ import {
   type ServerHealthState,
 } from "./server-health-provider";
 import { RefreshFleetButton } from "./check-status-button";
+import { experimentOn } from "@/lib/data/experiments";
 
 export const metadata = { title: "Servers" };
 
@@ -236,7 +237,11 @@ export default async function ServersPage(
           actions={
             <>
               <RefreshFleetButton />
-              <AddServer autoOpen={autoOpenServer} teams={teams} />
+              <AddServer
+                autoOpen={autoOpenServer}
+                teams={teams}
+                clusters={await experimentOn("clusters")}
+              />
             </>
           }
         />

@@ -24,6 +24,7 @@ import {
   LOAD_BALANCING_MODES,
 } from "../../types/cluster";
 import type { Team } from "../../types/team";
+import { requireExperiment } from "../experiments";
 
 type Row = typeof clustersTable.$inferSelect;
 
@@ -95,6 +96,7 @@ export async function resolveTeamCluster(
   teamId: string,
   clusterId: string,
 ): Promise<Cluster> {
+  await requireExperiment("clusters");
   const cluster = (await listClustersForTeam(teamId)).find(
     (c) => c.id === clusterId,
   );

@@ -136,6 +136,7 @@ beforeEach(async () => {
       { id: USER_B, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   for (const [i, id] of MEMBERS.entries()) {

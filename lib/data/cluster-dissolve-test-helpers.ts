@@ -40,6 +40,7 @@ import { withPanelRoute } from "../deploy/traefik-stack";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember, listClusterMembers } from "./clusters/members";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let handle: TestDb;
 let pg: PGlite;
@@ -161,6 +162,7 @@ export function dissolveHarness(): void {
         { id: "user_member", teamId: TEAM_A, role: "member" },
       ],
     });
+    await turnOnExperiments(db(), "clusters");
     await seedServer(db());
     process.env.DEPLO_SERVER_IP = "10.0.0.1";
     for (const [i, id] of MEMBERS.entries())

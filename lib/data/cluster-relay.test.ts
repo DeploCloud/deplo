@@ -42,6 +42,7 @@ import {
   syncClusterRelayRoute,
 } from "./clusters/relay";
 import { savePanelTunnel } from "./instance-settings/panel-tunnel-store";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -98,6 +99,7 @@ beforeEach(async () => {
       { id: "user_member", teamId: TEAM_A, role: "member" },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   await setFingerprint(SERVER_1, FP1);
   // The seeded server stands for Deplo's own machine; the other one is elsewhere.

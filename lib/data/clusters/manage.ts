@@ -28,6 +28,7 @@ import { ensureClusterLeader } from "./leader";
 import { balanceEntrancesSoon, openEntrancesSoon } from "./load-balancing";
 import { refreshVolumeAppBundles, replicateClusterSoon } from "./replication";
 import { getClusterById, requireClusterAdmin } from "./roster";
+import { requireExperiment } from "../experiments";
 
 export interface ClusterSharingInput {
   allTeams: boolean;
@@ -73,6 +74,7 @@ export async function createCluster(
   sharing: ClusterSharingInput,
 ): Promise<Cluster> {
   const { teamId, user } = await requireClusterAdmin();
+  await requireExperiment("clusters");
   const clean = cleanClusterName(name);
   const teamIds = sharing.allTeams ? [] : [...new Set(sharing.teamIds)];
   await assertNameFree(clean);

@@ -3,6 +3,7 @@ import "server-only";
 import { requireActiveTeamId } from "../../membership";
 import { listServerChoices } from "../servers/roster";
 import { listClustersForTeam } from "./roster";
+import { experimentOn } from "../experiments";
 
 export interface PlacementChoice {
   kind: "server" | "cluster";
@@ -24,7 +25,9 @@ export const placementOption = (c: PlacementChoice) => ({
 export async function listPlacementChoices(): Promise<PlacementChoice[]> {
   const teamId = await requireActiveTeamId();
   const servers = await listServerChoices();
-  const clusters = await listClustersForTeam(teamId);
+  const clusters = (await experimentOn("clusters"))
+    ? await listClustersForTeam(teamId)
+    : [];
   return [
     ...servers.map((s) => ({
       kind: "server" as const,

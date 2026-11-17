@@ -44,6 +44,7 @@ import {
   parseWatchLine,
   watchClusterOnce,
 } from "./clusters/watch";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -74,6 +75,7 @@ beforeEach(async () => {
       { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   for (const [i, id] of ["srv_2", "srv_3"].entries()) {

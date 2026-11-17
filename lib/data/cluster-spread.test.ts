@@ -81,6 +81,7 @@ import { activities } from "../db/schema/control-plane/activity";
 import { __resetCooldowns } from "../notify/cooldown";
 import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -133,6 +134,7 @@ beforeEach(async () => {
       { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   for (const [i, id] of MEMBERS.entries()) {

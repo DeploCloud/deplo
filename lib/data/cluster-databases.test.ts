@@ -58,6 +58,7 @@ import { createDatabase } from "./databases/provision";
 import { moveDatabaseToCluster, updateDatabase } from "./databases/server-move";
 import { restoreBackup } from "./backups/restore";
 import { FAILOVER_PROMISES } from "../databases/failover-copy";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -114,6 +115,7 @@ beforeEach(async () => {
       },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   for (const [i, id] of ["srv_2", "srv_3", "srv_4"].entries()) {

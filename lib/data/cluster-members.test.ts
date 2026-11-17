@@ -46,6 +46,7 @@ import { getCluster } from "./clusters/roster";
 import { listServerChoices } from "./servers/roster";
 import { createApp } from "./apps/create";
 import { failoverOn } from "../types/cluster";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -94,6 +95,7 @@ beforeEach(async () => {
       },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   await fingerprint(SERVER_1, FP1);
   // The seeded server stands for Deplo's own machine; srv_2 and srv_3 are elsewhere.

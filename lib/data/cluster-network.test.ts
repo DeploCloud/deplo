@@ -34,6 +34,7 @@ import {
 } from "./clusters/network";
 import { clusterRoster } from "./clusters/relay";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -64,6 +65,7 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
+  await turnOnExperiments(db, "clusters");
   // srv_1 is Deplo's own machine: it leads the cluster and stands in for any other leader.
   await seedServer(db);
   process.env.DEPLO_SERVER_IP = "10.0.0.1";

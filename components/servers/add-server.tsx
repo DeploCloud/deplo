@@ -34,9 +34,12 @@ import { ServerRoleOptions } from "./server-role-options";
 export function AddServer({
   autoOpen = false,
   teams = [],
+  clusters = false,
 }: {
   autoOpen?: boolean;
   teams?: TeamOption[];
+  // The Server clusters experiment is on, so a cluster may be added here.
+  clusters?: boolean;
 } = {}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen);
@@ -219,7 +222,13 @@ export function AddServer({
               </div>
             ) : (
               <div className="space-y-4">
-                <KindPicker kind={kind} onChange={setKind} disabled={pending} />
+                {clusters && (
+                  <KindPicker
+                    kind={kind}
+                    onChange={setKind}
+                    disabled={pending}
+                  />
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="srv-name">Display name</Label>
                   <Input

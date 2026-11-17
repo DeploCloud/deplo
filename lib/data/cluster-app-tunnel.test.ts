@@ -65,6 +65,7 @@ import {
   __setDnsResolve4ForTest,
   __resetDnsResolve4ForTest,
 } from "./domains/dns-check";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -132,6 +133,7 @@ beforeEach(async () => {
       { id: USER_B, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   for (const [i, id] of ["srv_2", "srv_3", "srv_4"].entries()) {

@@ -32,6 +32,11 @@ import {
   listClustersForTeam,
 } from "./clusters/roster";
 import { removeServer } from "./servers/removal";
+import {
+  turnOffExperiments,
+  turnOnExperiments,
+} from "./experiments-test-helpers";
+import { listPlacementChoices } from "./clusters/choices";
 
 let db: TestDb;
 let pg: PGlite;
@@ -63,6 +68,7 @@ beforeEach(async () => {
       { id: "user_member", teamId: TEAM_A, role: "member" },
     ],
   });
+  await turnOnExperiments(db, "clusters");
   await seedServer(db);
   // The seeded server stands for Deplo's own machine.
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
@@ -263,3 +269,17 @@ test("a server that leads a cluster cannot be removed from under it", async () =
 async function getCluster_(id: string) {
   return asAdmin(() => getCluster(id));
 }
+
+test("with the experiment off, no cluster is created or offered for placement", async () => {
+  await asAdmin(() => createCluster("eu", everyone));
+  await turnOffExperiments(db, "clusters");
+  await assert.rejects(
+    () => asAdmin(() => createCluster("us", everyone)),
+    /Server clusters are not turned on for this Deplo/,
+  );
+  const choices = await asAdmin(() => listPlacementChoices());
+  assert.deepEqual(
+    choices.filter((c) => c.kind === "cluster"),
+    [],
+  );
+});

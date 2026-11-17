@@ -44,6 +44,7 @@ import { forgetLeaderRoster } from "./clusters/leader-sync";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { applyLeaderEvent, type LeaderEvent } from "./clusters/watch";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 // What the tests of a database on a cluster share: the lab, its seeders and what they read back (#202).
 
@@ -159,6 +160,7 @@ export function databaseLab(): void {
         { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
       ],
     });
+    await turnOnExperiments(db, "clusters");
     await seedServer(db);
     process.env.DEPLO_SERVER_IP = "10.0.0.1";
     for (const [i, id] of ["srv_2", "srv_3", "srv_4"].entries()) {
