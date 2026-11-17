@@ -23,12 +23,18 @@ release would strand every server they manage.
    so there is nothing for the fleet to pick up. It then builds static
    (`CGO_ENABLED=0 -trimpath`) `linux/amd64` + `linux/arm64`, runs `sha256sum` over both into
    `checksums.txt`, and publishes all three as release assets.
-3. **Pin it in the control plane** (ADR-0037): `"deplo": { "agent": "<tag without v>" }` in
+3. **Reboot the released artifact before anyone hears of it.** Install the binary from the release
+   (checked against its `checksums.txt`, never a local build) on every server of a lab cluster
+   with a database and an App with a Volume, cut the power of all of them at once, start them
+   again, and check both come back on the server they were placed on. v0.5.3-canary.10 passed
+   every test and then never started either again after a reboot: only the released binary on a
+   real boot says it works. Until then the release stays a pre-release that nothing pins.
+4. **Pin it in the control plane** (ADR-0037): `"deplo": { "agent": "<tag without v>" }` in
    `package.json`, and raise `agentMin` only if the panel now needs the newer agent - every server
    below it becomes unusable until it updates. That is the whole switch: the expected version is
    the pin, resolved from `releases/download/v<pin>/checksums.txt` (no API call) and memoised for
    the process. `docker-image.yml` refuses to publish a panel whose pin has no `checksums.txt`.
-4. **Ship the panel.** Once it runs, it updates every server behind the pin by itself (§3). By hand
+5. **Ship the panel.** Once it runs, it updates every server behind the pin by itself (§3). By hand
    is only for an agent-only re-cut, through §6.
 
 ## 2. The asset-name contract
