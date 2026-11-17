@@ -250,6 +250,7 @@ export const DOCS = {
   "panel.tunnel": "operations/cloudflare-tunnel",
   "upgrade.overview": "operations/update",
   "upgrade.releases": "operations/update#release-history",
+  "upgrade.canary": "operations/update#stable-or-canary-releases",
   "upgrade.log": "operations/update#update-log",
   "upgrade.automatic": "operations/update#automatic-updates",
   "deplo.move": "operations/move-deplo",

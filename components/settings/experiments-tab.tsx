@@ -41,7 +41,7 @@ const DOCS: Record<ExperimentKey, DocsTopic> = {
   pullRequests: "previews.overview",
   clusters: "clusters.overview",
   tunnels: "panel.tunnel",
-  canary: "upgrade.releases",
+  canary: "upgrade.canary",
 };
 
 // What a pause stops. Clusters and tunnels never get here: they refuse while in use.
