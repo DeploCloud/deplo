@@ -4,7 +4,7 @@ import { inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { users as usersTable } from "../db/schema/control-plane/identity";
-import { avatarResolver } from "../avatar";
+import { avatarUrlFor } from "../avatar";
 import type { VarAuthor } from "../types/identity";
 
 export async function loadUserIdentities(
@@ -23,7 +23,6 @@ export async function loadUserIdentities(
     })
     .from(usersTable)
     .where(inArray(usersTable.id, unique));
-  const avatarUrl = await avatarResolver();
   return new Map(
     rows.map(
       (r) =>
@@ -34,7 +33,7 @@ export async function loadUserIdentities(
             name: r.name,
             username: r.username,
             avatarColor: r.avatarColor,
-            avatarUrl: avatarUrl(r),
+            avatarUrl: avatarUrlFor(r),
           },
         ] as const,
     ),

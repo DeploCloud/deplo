@@ -50,19 +50,17 @@ function PendingLabel({
 
 export function AccountPanel({
   user,
-  gravatar,
   passkeys,
   sessions,
 }: {
   user: PublicUser;
-  gravatar: string | null;
   passkeys: number;
   sessions: number;
 }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <ProfileCard user={user} gravatar={gravatar} />
+        <ProfileCard user={user} />
         <EmailCard user={user} />
       </div>
       <SecurityCard
@@ -74,13 +72,7 @@ export function AccountPanel({
   );
 }
 
-function ProfileCard({
-  user,
-  gravatar,
-}: {
-  user: PublicUser;
-  gravatar: string | null;
-}) {
+function ProfileCard({ user }: { user: PublicUser }) {
   const router = useRouter();
   const choice = avatarChoiceFromUrl(user.avatarUrl);
   const [pending, startTransition] = React.useTransition();
@@ -116,7 +108,6 @@ function ProfileCard({
         sources={{
           choice,
           letters: avatarInitials(user.name, user.username),
-          gravatar,
         }}
         onSave={(image) =>
           gqlAction(

@@ -19,7 +19,7 @@ import {
 } from "../membership-shared";
 import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
 import { memberScopeFor } from "./node-scope";
-import { avatarResolver, avatarUrlFor } from "../avatar";
+import { avatarUrlFor } from "../avatar";
 import type { Capability } from "../types/identity";
 import {
   currentIdentity,
@@ -250,7 +250,7 @@ async function userIdentity(userId: string): Promise<{
     username: r.username,
     name: r.name,
     avatarColor: r.avatarColor,
-    avatarUrl: await avatarUrlFor(r),
+    avatarUrl: avatarUrlFor(r),
   };
 }
 
@@ -409,7 +409,6 @@ export async function folderShareCandidates(
   );
 
   const q = query?.trim().toLowerCase();
-  const avatarUrl = await avatarResolver();
   return rows
     .filter((r) => r.userId !== ownerUserId && !alreadyGranted.has(r.userId))
     .filter(
@@ -424,6 +423,6 @@ export async function folderShareCandidates(
       username: r.username,
       name: r.name,
       avatarColor: r.avatarColor,
-      avatarUrl: avatarUrl(r),
+      avatarUrl: avatarUrlFor(r),
     }));
 }

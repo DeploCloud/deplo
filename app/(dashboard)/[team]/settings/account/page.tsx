@@ -1,5 +1,4 @@
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { avatarUrlFor } from "@/lib/avatar";
 import { listMyPasskeys } from "@/lib/data/passkeys";
 import { listMySessions } from "@/lib/data/sessions";
 import { PageHeader } from "@/components/shared/page-header";
@@ -13,9 +12,6 @@ export default async function SettingsAccountPage() {
     listMyPasskeys(),
     listMySessions(),
   ]);
-  const gravatar = user
-    ? await avatarUrlFor({ image: "gravatar", email: user.email })
-    : null;
 
   return (
     <div className="space-y-6">
@@ -27,7 +23,6 @@ export default async function SettingsAccountPage() {
       {user && (
         <AccountPanel
           user={user}
-          gravatar={gravatar}
           passkeys={passkeys.length}
           sessions={sessions.length}
         />

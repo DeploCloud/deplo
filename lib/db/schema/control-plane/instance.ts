@@ -29,7 +29,6 @@ export const instanceSettings = pgTable("instance_settings", {
   vapidPublicKey: text("vapid_public_key"),
   vapidPrivateKeyEnc: text("vapid_private_key_enc"),
   logMaxDays: integer("log_max_days").notNull().default(7),
-  gravatarEnabled: boolean("gravatar_enabled").notNull().default(false),
   networkSweepAt: isoTimestamptz("network_sweep_at"),
   networkSweepFailed: integer("network_sweep_failed").notNull().default(0),
   takeoverPlatform: text("takeover_platform"),

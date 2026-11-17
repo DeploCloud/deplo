@@ -36,7 +36,7 @@ export const VarAuthorRef = builder
       avatarUrl: t.exposeString("avatarUrl", {
         nullable: true,
         description:
-          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram. Derived server-side, so the address itself never travels.",
+          "Resolved profile picture: a chosen face or an uploaded image, else null for the monogram.",
       }),
     }),
   });

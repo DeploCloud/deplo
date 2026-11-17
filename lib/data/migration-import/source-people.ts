@@ -4,7 +4,7 @@ import { inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { users as usersTable } from "../../db/schema/control-plane/identity";
-import { avatarResolver } from "../../avatar";
+import { avatarUrlFor } from "../../avatar";
 import { listMembers } from "../../migration/dokploy/client";
 import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
@@ -73,7 +73,6 @@ export async function planMembers(
     );
   const byEmail = new Map(accounts.map((a) => [a.email.toLowerCase(), a]));
   const memberIds = new Set(await teamMemberIds(teamId));
-  const url = await avatarResolver();
 
   return people.map((p) => {
     const account = byEmail.get(p.email) ?? null;
@@ -81,7 +80,7 @@ export async function planMembers(
       ...p,
       name: p.name || p.email,
       hasAccount: account != null,
-      avatarUrl: account ? url(account) : null,
+      avatarUrl: account ? avatarUrlFor(account) : null,
       avatarColor: account?.avatarColor ?? null,
       inTeam: account != null && memberIds.has(account.id),
     };

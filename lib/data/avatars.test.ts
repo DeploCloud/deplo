@@ -6,7 +6,6 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import { sha256Hex } from "../crypto";
 import {
   avatarChoiceFromUrl,
   initialsFallbackUrl,
@@ -41,7 +40,6 @@ import {
   updateTeamAvatar,
 } from "./teams";
 import { updateMyAvatar } from "./account";
-import { setGravatarEnabled } from "./instance-settings/settings-store";
 import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
 import { teams as teamsTable } from "../db/schema/control-plane/identity";
 import { eq } from "drizzle-orm";
@@ -75,7 +73,6 @@ beforeEach(async () => {
       { id: OUTSIDER, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
-  await as(OWNER, () => setGravatarEnabled(true));
 });
 
 const as = <T>(
@@ -96,17 +93,11 @@ const joinTeamB = (id: string) =>
 const memberRow = async (userId: string) =>
   (await as(OWNER, () => listMembers())).find((m) => m.userId === userId)!;
 
-test("no uploaded picture resolves to a Gravatar address built from the email", async () => {
-  const row = await memberRow(MEMBER);
-  const expected = sha256Hex(`${MEMBER}@example.io`);
-  assert.equal(
-    row.avatarUrl,
-    `https://gravatar.com/avatar/${expected}?s=160&d=404`,
-  );
-  assert.match(row.avatarUrl!, /d=404/);
+test("no picture leaves the letters to the component, and nothing points off this instance", async () => {
+  assert.equal((await memberRow(MEMBER)).avatarUrl, null);
 });
 
-test("the member list carries no email, only the derived address", async () => {
+test("the member list carries no email", async () => {
   const row = await memberRow(MEMBER);
   assert.ok(!("email" in row), "a member row must never carry an email");
   assert.ok(
@@ -115,15 +106,12 @@ test("the member list carries no email, only the derived address", async () => {
   );
 });
 
-test("an uploaded picture wins over Gravatar, and clearing gives it back", async () => {
+test("an uploaded picture shows, and clearing it gives the letters back", async () => {
   await as(MEMBER, () => updateMyAvatar(PICTURE));
   assert.equal((await memberRow(MEMBER)).avatarUrl, PICTURE);
 
   await as(MEMBER, () => updateMyAvatar(null));
-  assert.match(
-    (await memberRow(MEMBER)).avatarUrl!,
-    /^https:\/\/gravatar\.com\//,
-  );
+  assert.equal((await memberRow(MEMBER)).avatarUrl, null);
 });
 
 test("a value that is not a plain image data-URI is refused, and stores nothing", async () => {
@@ -132,6 +120,7 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
     "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
     "/templates/n8n.svg",
     "javascript:alert(1)",
+    "gravatar",
   ]) {
     await assert.rejects(
       as(MEMBER, () => updateMyAvatar(bad)),
@@ -139,22 +128,10 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
       `must refuse ${bad}`,
     );
   }
-  assert.match(
-    (await memberRow(MEMBER)).avatarUrl!,
-    /^https:\/\/gravatar\.com\//,
-  );
-});
-
-test("with the instance switch off, no Gravatar address is emitted anywhere", async () => {
-  await as(OWNER, () => setGravatarEnabled(false));
   assert.equal((await memberRow(MEMBER)).avatarUrl, null);
-
-  await as(MEMBER, () => updateMyAvatar(PICTURE));
-  assert.equal((await memberRow(MEMBER)).avatarUrl, PICTURE);
 });
 
 test("nothing chosen leaves the letters to the component, like a team", async () => {
-  await as(OWNER, () => setGravatarEnabled(false));
   assert.equal((await memberRow(MEMBER)).avatarUrl, null);
   assert.equal(
     initialsFallbackUrl("Ada Lovelace"),
@@ -176,24 +153,9 @@ test("a preset face is stored as a marker and served from this instance", async 
   );
 });
 
-test("initials is a choice, so the monogram survives an enabled Gravatar", async () => {
+test("initials is a choice, so the monogram stays", async () => {
   await as(MEMBER, () => updateMyAvatar("initials"));
   assert.equal((await memberRow(MEMBER)).avatarUrl, null);
-});
-
-test("choosing Gravatar falls back to a face when the instance turns it off", async () => {
-  await as(MEMBER, () => updateMyAvatar("gravatar"));
-  assert.match(
-    (await memberRow(MEMBER)).avatarUrl!,
-    /^https:\/\/gravatar\.com\//,
-  );
-
-  await as(OWNER, () => setGravatarEnabled(false));
-  assert.equal(
-    (await memberRow(MEMBER)).avatarUrl,
-    null,
-    "their pick is off instance-wide, so nothing about them leaves the box",
-  );
 });
 
 test("a seed that is not a plain word is refused, in and out of the URL", async () => {
@@ -245,8 +207,8 @@ test("the picker reads back the source it just wrote", () => {
     kind: "uploaded",
     src: PICTURE,
   });
-  assert.deepEqual(avatarChoiceFromUrl("https://gravatar.com/avatar/abc?s=1"), {
-    kind: "gravatar",
+  assert.deepEqual(avatarChoiceFromUrl("https://example.com/avatar/abc"), {
+    kind: "initials",
   });
 
   assert.deepEqual(avatarChoiceFromValue("planets:electric:zoe"), {
@@ -255,7 +217,7 @@ test("the picker reads back the source it just wrote", () => {
     preset: "electric",
     seed: "zoe",
   });
-  assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "gravatar" });
+  assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "initials" });
   assert.deepEqual(avatarChoiceFromValue(PICTURE), {
     kind: "uploaded",
     src: PICTURE,
@@ -393,7 +355,7 @@ test("a team may wear a generated picture, not a person's sources", async () => 
     packsFor(true).map((p) => p.style),
     ["initials"],
   );
-  for (const bad of ["gravatar", "initials", "glyphs:default:nova"])
+  for (const bad of ["initials", "glyphs:default:nova"])
     await assert.rejects(
       as(OWNER, () => updateTeamAvatar(bad)),
       /Unsupported/i,

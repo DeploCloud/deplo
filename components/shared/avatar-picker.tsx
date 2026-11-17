@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { AtSign, Camera, Upload } from "lucide-react";
+import { Camera, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +22,6 @@ import {
   type AvatarChoice,
   DEFAULT_PACK,
   facePath,
-  GRAVATAR_VALUE,
   MAX_AVATAR_STRING_LEN,
   packRow,
   packsFor,
@@ -34,7 +33,6 @@ import { TeamPlaceholder } from "@/components/shared/user-avatar";
 export type AvatarSources = {
   choice: AvatarChoice;
   letters: string;
-  gravatar?: string | null;
   team?: boolean;
 };
 
@@ -348,7 +346,7 @@ function AvatarSourceDialog({
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
-  const { choice, letters, gravatar } = sources;
+  const { choice, letters } = sources;
   const seed = previewSeed(letters, sources.team);
   const worn = choice.kind === "generated" ? choice : null;
   const packs = packsFor(sources.team);
@@ -420,26 +418,6 @@ function AvatarSourceDialog({
           </div>
         ) : null}
         <div className="grid gap-2">
-          {gravatar ? (
-            <SourceCard
-              visual={
-                <>
-                  <AtSign className="size-4" />
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={gravatar}
-                    alt=""
-                    draggable={false}
-                    className="absolute inset-0 size-full object-cover"
-                  />
-                </>
-              }
-              label="Use Gravatar"
-              selected={choice.kind === "gravatar"}
-              disabled={busy}
-              onClick={() => onPick(GRAVATAR_VALUE)}
-            />
-          ) : null}
           <SourceCard
             quiet
             visual={

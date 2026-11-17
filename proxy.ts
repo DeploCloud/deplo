@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { templatesApiBase } from "@/templates/api-base";
-import { GRAVATAR_ORIGINS } from "@/lib/apps/avatar-shared";
 import { isWildcardDnsHost } from "@/lib/www-redirect";
 import {
   ACTIVE_TEAM_COOKIE,
@@ -63,7 +62,7 @@ export function proxy(request: NextRequest) {
     }`,
     `worker-src 'self'`,
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' blob: data: ${GRAVATAR_ORIGINS.join(" ")} https://avatars.githubusercontent.com${
+    `img-src 'self' blob: data: https://avatars.githubusercontent.com${
       templatesOrigin ? ` ${templatesOrigin}` : ""
     }`,
     `font-src 'self' data:`,

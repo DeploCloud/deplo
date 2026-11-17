@@ -34,7 +34,6 @@ import { DEPLO_VERSION } from "../../version";
 import { serverLabel } from "../../utils";
 import { recordActivity } from "../activity";
 import { instanceOwnerUserId } from "../instance-owner";
-import { gravatarEnabled } from "../../avatar";
 import { panelTunnelHostname } from "./panel-tunnel-store";
 
 export const SETTINGS_ID = "default";
@@ -51,7 +50,6 @@ export type InstanceSettings = {
   panelTunnelHostname: string | null;
   deploHostIp: string | null;
   logMaxDays: number;
-  gravatarEnabled: boolean;
   usageReportsEnabled: boolean;
   usageReportsForcedOff: boolean;
   usageReportLastSentAt: string | null;
@@ -115,34 +113,6 @@ export async function setLogMaxDays(days: number): Promise<InstanceSettings> {
   await recordActivity(
     "instance",
     `Set the maximum log range to ${value} ${value === 1 ? "day" : "days"}`,
-    user.name,
-    null,
-    teamId,
-  );
-  return getInstanceSettings();
-}
-
-export async function setGravatarEnabled(
-  enabled: boolean,
-): Promise<InstanceSettings> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
-
-  const now = nowIso();
-  await getDb()
-    .insert(instanceSettings)
-    .values({ id: SETTINGS_ID, gravatarEnabled: enabled, updatedAt: now })
-    .onConflictDoUpdate({
-      target: instanceSettings.id,
-      set: { gravatarEnabled: enabled, updatedAt: now },
-    });
-
-  await recordActivity(
-    "instance",
-    enabled
-      ? "Turned on Gravatar profile pictures"
-      : "Turned off Gravatar profile pictures",
     user.name,
     null,
     teamId,
@@ -315,7 +285,6 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
         : "request",
     storedPanelUrl: panelUrl,
     logMaxDays: clampLogMaxDays(logMaxDays),
-    gravatarEnabled: await gravatarEnabled(),
     usageReportsEnabled: usage.enabled,
     usageReportsForcedOff: usageReportsForcedOff(),
     usageReportLastSentAt: usage.lastSentAt,

@@ -31,7 +31,6 @@ import {
   type DiagnosticHost,
 } from "@/components/settings/deplo-diagnostics-card";
 import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
-import { GravatarCard } from "@/components/settings/gravatar-card";
 import { UsageReportCard } from "@/components/settings/usage-report-card";
 import { SecurityUpdatesCard } from "@/components/settings/security-updates-card";
 import type { SecurityUpdatesStatus } from "@/lib/data/security-updates/settings";
@@ -136,7 +135,6 @@ export function DeploSettingsPanel({
       <TabsContent value="advanced" className="space-y-8">
         <SettingGroup icon={SlidersHorizontal} title="Instance">
           <LogsRetentionCard logMaxDays={settings.logMaxDays} />
-          <GravatarCard enabled={settings.gravatarEnabled} />
         </SettingGroup>
         <SettingGroup icon={Globe} title="Panel access">
           <PanelBackupAddressCard settings={settings} />

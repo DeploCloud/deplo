@@ -8,7 +8,7 @@ import {
   users as usersTable,
 } from "../../db/schema/control-plane/identity";
 import { assertUser } from "../../auth/current-user";
-import { avatarResolver, teamAvatarUrl } from "../../avatar";
+import { avatarUrlFor, teamAvatarUrl } from "../../avatar";
 import {
   isInstanceAdmin,
   requireActiveTeamId,
@@ -99,14 +99,12 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
       homeByUser.set(m.userId, home);
     }
   }
-
-  const avatarUrl = await avatarResolver();
   return filtered.map((u) => ({
     userId: u.id,
     username: u.username,
     name: u.name,
     avatarColor: u.avatarColor,
-    avatarUrl: avatarUrl(u),
+    avatarUrl: avatarUrlFor(u),
     teamName: homeByUser.get(u.id)?.name ?? null,
     teamAvatarUrl: teamAvatarUrl(homeByUser.get(u.id)?.image),
   }));

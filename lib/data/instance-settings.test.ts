@@ -43,12 +43,10 @@ import { requestPanelAddress } from "../../scripts/recover";
 import {
   getInstanceSettings,
   instancePublicBaseUrl,
-  setGravatarEnabled,
   setUsageReportsEnabled,
   usageReportState,
 } from "./instance-settings/settings-store";
 import { activities } from "../db/schema/control-plane/activity";
-import { gravatarEnabled } from "../avatar";
 import { panelRoute, withPanelRoute } from "../deploy/traefik-stack";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
@@ -380,34 +378,6 @@ test("no route of ours: only a panel with no domain at all is a refusal", () => 
 
   assert.equal(noRouteReason("https://deplo.example.com"), null);
   assert.equal(noRouteReason("https://deplo.203-0-113-10.nip.io"), null);
-});
-
-test("Gravatar defaults OFF, and only an instance admin can turn it on", async () => {
-  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
-
-  await assert.rejects(
-    asUser(MEMBER, () => setGravatarEnabled(true)),
-    /admin/i,
-    "a plain member must not decide this for the instance",
-  );
-  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
-
-  await db
-    .insert(instanceSettings)
-    .values({ id: "default", updatedAt: "2024-01-01T00:00:00.000Z" });
-  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
-});
-
-test("setGravatarEnabled round-trips, and the read is ungated", async () => {
-  await asUser(ADMIN, () => setGravatarEnabled(false));
-  assert.equal(await asUser(MEMBER, () => gravatarEnabled()), false);
-  assert.equal(
-    (await asUser(ADMIN, () => getInstanceSettings())).gravatarEnabled,
-    false,
-  );
-
-  await asUser(ADMIN, () => setGravatarEnabled(true));
-  assert.equal(await asUser(MEMBER, () => gravatarEnabled()), true);
 });
 
 test("Anonymous usage statistics is ON by default, and only an instance admin can turn it off", async () => {

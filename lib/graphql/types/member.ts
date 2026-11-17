@@ -76,7 +76,7 @@ export const MemberRef = builder.objectRef<MemberDTO>("Member").implement({
     avatarUrl: t.exposeString("avatarUrl", {
       nullable: true,
       description:
-        "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+        "Resolved profile picture: a chosen face or an uploaded image, else null for the monogram.",
     }),
     createdAt: t.exposeString("createdAt"),
   }),
@@ -95,7 +95,7 @@ export const UserSearchResultRef = builder
       avatarUrl: t.exposeString("avatarUrl", {
         nullable: true,
         description:
-          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+          "Resolved profile picture: a chosen face or an uploaded image, else null for the monogram.",
       }),
       teamName: t.exposeString("teamName", { nullable: true }),
       teamAvatarUrl: t.exposeString("teamAvatarUrl", { nullable: true }),
@@ -115,7 +115,7 @@ export const GlobalUserRef = builder
       avatarUrl: t.exposeString("avatarUrl", {
         nullable: true,
         description:
-          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+          "Resolved profile picture: a chosen face or an uploaded image, else null for the monogram.",
       }),
       teamCount: t.exposeInt("teamCount"),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
@@ -156,7 +156,7 @@ export const UserDetailRef = builder
       avatarUrl: t.exposeString("avatarUrl", {
         nullable: true,
         description:
-          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+          "Resolved profile picture: a chosen face or an uploaded image, else null for the monogram.",
       }),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
       isInstanceOwner: t.exposeBoolean("isInstanceOwner", {

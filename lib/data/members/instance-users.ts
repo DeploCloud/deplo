@@ -15,7 +15,7 @@ import { setUserPassword } from "../../auth/password-credential";
 import { revokeAllSessions } from "../../auth/session-records";
 import { assertPasswordPolicy } from "../../password-policy";
 import { assertPasswordNotPwned } from "../../pwned-password";
-import { avatarResolver, avatarUrlFor, teamAvatarUrl } from "../../avatar";
+import { avatarUrlFor, teamAvatarUrl } from "../../avatar";
 import { instanceOwnerUserId } from "../instance-owner";
 import { requireInstanceAdmin } from "../../membership";
 import { recordForEveryTeamOf } from "./activity-actor";
@@ -98,13 +98,12 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
       { slug: m.slug, name: m.name, avatarUrl: teamAvatarUrl(m.image) },
     ]);
   const ownerUserId = await instanceOwnerUserId();
-  const avatarUrl = await avatarResolver();
   return users.map((u) => ({
     userId: u.id,
     username: u.username,
     name: u.name,
     avatarColor: u.avatarColor,
-    avatarUrl: avatarUrl(u),
+    avatarUrl: avatarUrlFor(u),
     teamCount: teamsByUser.get(u.id)?.length ?? 0,
     teams: teamsByUser.get(u.id) ?? [],
     isInstanceAdmin: u.isInstanceAdmin ?? false,
@@ -161,7 +160,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     name: u.name,
     email: u.email,
     avatarColor: u.avatarColor,
-    avatarUrl: await avatarUrlFor(u),
+    avatarUrl: avatarUrlFor(u),
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     isInstanceOwner: u.id === (await instanceOwnerUserId()),
     suspended: u.suspended ?? false,

@@ -14,7 +14,7 @@ import {
 import { nowIso } from "../../ids";
 import { getCurrentUser } from "../../auth/current-user";
 import {
-  avatarResolver,
+  avatarUrlFor,
   teamAvatarUrl as deploTeamAvatarUrl,
 } from "../../avatar";
 import {
@@ -297,14 +297,13 @@ async function actorFaces(
     })
     .from(usersTable)
     .where(inArray(usersTable.id, ids));
-  const url = await avatarResolver();
   return new Map(
     people.map((p) => [
       p.id,
       {
         username: p.username,
         avatarColor: p.avatarColor,
-        avatarUrl: url(p),
+        avatarUrl: avatarUrlFor(p),
       },
     ]),
   );

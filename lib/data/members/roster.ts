@@ -21,7 +21,7 @@ import {
   projects as projectsTable,
 } from "../../db/schema/control-plane/projects";
 import { tokenCountsByUser } from "../tokens/reach";
-import { avatarResolver } from "../../avatar";
+import { avatarUrlFor } from "../../avatar";
 import { requireActiveTeamId, requireTeamWide } from "../../membership";
 import { accessDelta } from "../../membership-shared";
 import { ensureTeamRoles } from "../roles/builtin-roles";
@@ -105,7 +105,6 @@ export async function listMembers(): Promise<MemberDTO[]> {
   );
   const deltas = await memberDeltas(db, teamId, rows, caps);
   const tokens = await tokenCountsByUser(teamId);
-  const avatarUrl = await avatarResolver();
   return rows.map((r) => ({
     userId: r.userId,
     membershipId: r.membershipId,
@@ -122,7 +121,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
     isPrimaryOwner: r.userId === founderId,
     isInstanceAdmin: r.isInstanceAdmin ?? false,
     avatarColor: r.avatarColor,
-    avatarUrl: avatarUrl(r),
+    avatarUrl: avatarUrlFor(r),
     createdAt: r.createdAt,
   }));
 }

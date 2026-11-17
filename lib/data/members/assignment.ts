@@ -129,7 +129,7 @@ export async function addExistingMember(input: {
     membershipId,
     username: target.username,
     name: target.name,
-    avatarUrl: await avatarUrlFor(target),
+    avatarUrl: avatarUrlFor(target),
     role: assignment.rank,
     roleId: assignment.roleId,
     roleName: assignment.roleName,

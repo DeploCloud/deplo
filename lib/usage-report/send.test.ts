@@ -312,7 +312,6 @@ test("the report describes the fleet in aggregate and names nothing", async () =
       passkeys: true,
       gitProvider: true,
       notificationChannel: true,
-      gravatar: false,
     },
   });
 

@@ -9,7 +9,7 @@ import {
   migrationRuns as runsTable,
 } from "../../db/schema/control-plane/migration";
 import { newId, nowIso } from "../../ids";
-import { avatarResolver } from "../../avatar";
+import { avatarUrlFor } from "../../avatar";
 import { requireInstanceAdmin } from "../../membership";
 import { sourceClient } from "../../migration/source";
 import type {
@@ -76,7 +76,6 @@ export async function runMembersOf(runId: string): Promise<MigrationInvite[]> {
       ),
     );
   const byEmail = new Map(accounts.map((a) => [a.email.toLowerCase(), a]));
-  const url = await avatarResolver();
 
   const out: MigrationInvite[] = [];
   for (const r of rows) {
@@ -92,7 +91,7 @@ export async function runMembersOf(runId: string): Promise<MigrationInvite[]> {
       outcome: r.outcome,
       message: r.message,
       hasAccount: account != null,
-      avatarUrl: account ? url(account) : null,
+      avatarUrl: account ? avatarUrlFor(account) : null,
     });
   }
   return out;

@@ -63,7 +63,6 @@ export interface UsageReport {
     passkeys: boolean;
     gitProvider: boolean;
     notificationChannel: boolean;
-    gravatar: boolean;
   };
 }
 
@@ -134,7 +133,6 @@ export async function buildUsageReport(opts: {
     db
       .select({
         takeoverPlatform: instanceSettings.takeoverPlatform,
-        gravatarEnabled: instanceSettings.gravatarEnabled,
       })
       .from(instanceSettings)
       .where(eq(instanceSettings.id, "default"))
@@ -218,7 +216,6 @@ export async function buildUsageReport(opts: {
       passkeys,
       gitProvider: gitConnection || githubApp,
       notificationChannel,
-      gravatar: settings?.gravatarEnabled ?? false,
     },
   };
 }

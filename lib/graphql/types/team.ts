@@ -31,8 +31,7 @@ export const TeamRef = builder.objectRef<Team>("Team").implement({
     }),
     avatarUrl: t.exposeString("avatarUrl", {
       nullable: true,
-      description:
-        "The team's picture, or null for its two-letter monogram. A team has no email, so there is no Gravatar step.",
+      description: "The team's picture, or null for its two-letter monogram.",
     }),
     createdAt: t.exposeString("createdAt"),
   }),

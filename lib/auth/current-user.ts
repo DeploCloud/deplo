@@ -47,7 +47,7 @@ async function toPublic(u: {
     // A temporary password the host also knows must not reach instance-admin powers.
     isInstanceAdmin: (u.isInstanceAdmin ?? false) && !u.mustChangePassword,
     avatarColor: u.avatarColor,
-    avatarUrl: await avatarUrlFor(u),
+    avatarUrl: avatarUrlFor(u),
     twoFactorEnabled: u.twoFactorEnabled ?? false,
   };
 }

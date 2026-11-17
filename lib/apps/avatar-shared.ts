@@ -1,8 +1,3 @@
-export const GRAVATAR_ORIGINS = [
-  "https://gravatar.com",
-  "https://secure.gravatar.com",
-] as const;
-
 export const AVATAR_IMAGE_TYPES = [
   "image/png",
   "image/jpeg",
@@ -26,7 +21,6 @@ export function isValidAvatarValue(value: string): boolean {
   return AVATAR_DATA_URI_RE.test(value);
 }
 
-export const GRAVATAR_VALUE = "gravatar";
 export const INITIALS_VALUE = "initials";
 
 export const AVATAR_STYLES = {
@@ -179,7 +173,7 @@ export function faceParts(
 }
 
 export function isValidUserAvatarValue(value: string): boolean {
-  if (value === GRAVATAR_VALUE || value === INITIALS_VALUE) return true;
+  if (value === INITIALS_VALUE) return true;
   if (faceParts(value)) return true;
   return isValidAvatarValue(value);
 }
@@ -200,7 +194,6 @@ export function avatarPreviewUrl(
 export type AvatarChoice =
   | { kind: "generated"; style: AvatarStyle; preset: string; seed: string }
   | { kind: "uploaded"; src: string }
-  | { kind: "gravatar" }
   | { kind: "initials" };
 
 export function avatarChoiceFromValue(
@@ -208,7 +201,6 @@ export function avatarChoiceFromValue(
 ): AvatarChoice {
   const parts = faceParts(value);
   if (parts) return { kind: "generated", ...parts };
-  if (value === GRAVATAR_VALUE) return { kind: "gravatar" };
   if (value && isValidAvatarValue(value))
     return { kind: "uploaded", src: value };
   return { kind: "initials" };
@@ -219,8 +211,6 @@ export function avatarChoiceFromUrl(
 ): AvatarChoice {
   if (!url) return { kind: "initials" };
   if (url.startsWith("data:")) return { kind: "uploaded", src: url };
-  if (GRAVATAR_ORIGINS.some((o) => url.startsWith(o)))
-    return { kind: "gravatar" };
   if (!url.startsWith("/api/avatar/")) return { kind: "initials" };
   const [style, preset, file] = url.slice("/api/avatar/".length).split("/");
   const parts = faceParts(
