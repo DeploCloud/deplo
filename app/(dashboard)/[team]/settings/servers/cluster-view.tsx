@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   Activity,
   Boxes,
+  ArrowRightFromLine,
   ChevronLeft,
   Crown,
   Network,
@@ -54,7 +55,14 @@ import {
   serversHref,
   type ClusterJoinOption,
 } from "@/components/servers/cluster-join";
-import { RemoveMemberDialog } from "@/components/servers/cluster-member-actions";
+import {
+  RemoveMemberDialog,
+  RemoveMembersDialog,
+} from "@/components/servers/cluster-member-actions";
+import { ServerSelectionBar } from "@/components/servers/server-bulk";
+import { useSelectionShortcuts } from "@/components/shared/card-selection";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useServerHealth } from "./server-health-provider";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { UsageMeters } from "@/components/servers/server-usage";
 import { formatBytes } from "@/lib/utils";
@@ -136,6 +144,27 @@ export function ClusterView({
   const [joinAsk, setJoinAsk] = React.useState<ClusterJoinOption | null>(null);
   const [joinOpen, setJoinOpen] = React.useState(false);
   const [, startJoin] = React.useTransition();
+  const [chosen, setChosen] = React.useState<Set<string>>(() => new Set());
+  const [bulkRemoveOpen, setBulkRemoveOpen] = React.useState(false);
+  const { checkOne } = useServerHealth();
+  const picked = servers.filter((s) => chosen.has(s.id));
+  // A server already on its way out has nothing more to be asked.
+  const leavable = picked.filter((s) => s.member?.emptying === "idle");
+  const selectAll = React.useCallback(
+    () => setChosen(new Set(servers.map((s) => s.id))),
+    [servers],
+  );
+  const clear = React.useCallback(() => setChosen(new Set()), []);
+  useSelectionShortcuts({ count: chosen.size, selectAll, clear });
+  const toggle = (ids: string[], on: boolean) =>
+    setChosen((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
 
   const health = clusterHealth(cluster.members.map((m) => m.online));
   const leader = servers.find((s) => s.leader);
@@ -226,6 +255,24 @@ export function ClusterView({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="Select all servers"
+                        checked={
+                          picked.length === 0
+                            ? false
+                            : picked.length === servers.length
+                              ? true
+                              : "indeterminate"
+                        }
+                        onCheckedChange={(on) =>
+                          toggle(
+                            servers.map((s) => s.id),
+                            on === true,
+                          )
+                        }
+                      />
+                    </TableHead>
                     <TableHead>Server</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="max-md:hidden">CPU</TableHead>
@@ -238,7 +285,17 @@ export function ClusterView({
                 </TableHeader>
                 <TableBody>
                   {servers.map((s) => (
-                    <TableRow key={s.id}>
+                    <TableRow
+                      key={s.id}
+                      data-state={chosen.has(s.id) ? "selected" : undefined}
+                    >
+                      <TableCell className="w-10">
+                        <Checkbox
+                          aria-label={`Select ${s.name}`}
+                          checked={chosen.has(s.id)}
+                          onCheckedChange={(on) => toggle([s.id], on === true)}
+                        />
+                      </TableCell>
                       <TableCell>
                         <Link
                           href={`/settings/servers/${s.id}`}
@@ -342,6 +399,63 @@ export function ClusterView({
           </section>
         </aside>
       </div>
+
+      <ServerSelectionBar
+        picked={picked}
+        onSelectAll={selectAll}
+        onClear={clear}
+        onCheck={(ids) => ids.forEach(checkOne)}
+      >
+        <SimpleTooltip
+          content={
+            leavable.length === 0
+              ? "These servers are already leaving the cluster."
+              : `Take ${leavable.length === 1 ? leavable[0].name : `${leavable.length} servers`} out of ${cluster.name}`
+          }
+        >
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              disabled={leavable.length === 0}
+              onClick={() => setBulkRemoveOpen(true)}
+            >
+              <ArrowRightFromLine className="size-4" />
+              Remove from cluster
+            </Button>
+          </span>
+        </SimpleTooltip>
+      </ServerSelectionBar>
+      {leavable.length > 1 && (
+        <RemoveMembersDialog
+          key={leavable.map((s) => s.id).join()}
+          open={bulkRemoveOpen}
+          onOpenChange={setBulkRemoveOpen}
+          clusterId={cluster.id}
+          clusterName={cluster.name}
+          servers={leavable.map((s) => ({
+            id: s.id,
+            name: s.name,
+            held: s.member?.held ?? 0,
+          }))}
+          memberCount={servers.length}
+          onDone={clear}
+        />
+      )}
+      {leavable.length === 1 && (
+        <RemoveMemberDialog
+          key={leavable[0].id}
+          open={bulkRemoveOpen}
+          onOpenChange={setBulkRemoveOpen}
+          clusterId={cluster.id}
+          clusterName={cluster.name}
+          serverId={leavable[0].id}
+          serverName={leavable[0].name}
+          held={leavable[0].member?.held ?? 0}
+          memberCount={servers.length}
+        />
+      )}
 
       {joinAsk && (
         <JoinClusterConfirm

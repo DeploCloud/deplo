@@ -1,6 +1,6 @@
 "use client";
 
-import { useFlatPathname } from "@/lib/nav";
+import { useFlatPathname, useSearchParams } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 const FULL_BLEED = [
@@ -11,9 +11,17 @@ const FULL_BLEED = [
   /^\/storage\/databases\/[^/]+\/console\/?$/,
 ];
 
-const DOTTED = [/^\/$/, /^\/apps\/?$/, /^\/storage\/?$/];
+const DOTTED = [
+  /^\/$/,
+  /^\/apps\/?$/,
+  /^\/storage\/?$/,
+  /^\/settings\/servers\/?$/,
+];
 
-export function isDottedRoute(pathname: string): boolean {
+// Inside a cluster the servers are a table, not cards to drag.
+export function isDottedRoute(pathname: string, search = ""): boolean {
+  if (/^\/settings\/servers\/?$/.test(pathname))
+    return !new URLSearchParams(search).has("cluster");
   return DOTTED.some((re) => re.test(pathname));
 }
 
@@ -36,8 +44,9 @@ export function ShellFrame({
   children: React.ReactNode;
 }) {
   const pathname = useFlatPathname();
+  const search = useSearchParams();
   const full = useFullBleedRoute();
-  const dotted = !full && isDottedRoute(pathname);
+  const dotted = !full && isDottedRoute(pathname, search.toString());
 
   return (
     <div

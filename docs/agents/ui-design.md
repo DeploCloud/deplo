@@ -137,11 +137,11 @@
   (`bg-background`, `text-muted-foreground`). App defaults to dark; theme is a **custom provider**
   (`useTheme` from `@/components/theme-provider`, not next-themes), zero-flash via the `theme`
   cookie read in `app/layout.tsx`. `cn()` from `@/lib/utils`; the only path alias is `@/* → ./*`.
-- **The dotted ground is the surface that ANSWERS THE MOUSE**, not a decoration: the three
-  grids where cards drag and marquee-select (`/`, `/apps`, `/storage` - the homes of
-  `use-card-selection`), and nowhere else (`isDottedRoute`,
+- **The dotted ground is the surface that ANSWERS THE MOUSE**, not a decoration: the four
+  grids where cards drag and marquee-select (`/`, `/apps`, `/storage`, `/settings/servers` -
+  the homes of `use-card-selection`), and nowhere else (`isDottedRoute`,
   `components/layout/shell-frame.tsx`). A resource's own pages, lists, streams, forms and
-  settings are reading surfaces and stay flat.
+  settings are reading surfaces and stay flat, a cluster's page included.
 - **Every FILL is opaque - never `bg-<token>/<alpha>`.** A translucent surface lets that
   ground through it, and a veil over a plain page is a colour nobody chose. Neutral surfaces are
   `bg-surface` / `bg-surface-strong`, a tint is `bg-<colour>-wash` / `-wash-strong`

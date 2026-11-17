@@ -47,7 +47,20 @@ import {
   gridClass,
 } from "@/components/servers/servers-toolbar";
 import { cn } from "@/lib/utils";
+import { useCardSelection } from "@/components/shared/use-card-selection";
+import {
+  SelectionCanvas,
+  useSelectionShortcuts,
+} from "@/components/shared/card-selection";
+import {
+  BulkJoinConfirm,
+  MoveToClusterButton,
+  ServerSelectionBar,
+  planBulkJoin,
+  type BulkJoinPlan,
+} from "@/components/servers/server-bulk";
 import { ServerCard, type ServerCardData } from "./server-card";
+import { useServerHealth } from "./server-health-provider";
 
 // Cards stay where they are while one is dragged: a server has no order to change, only a cluster to join.
 const still = () => null;
@@ -102,6 +115,32 @@ export function ServersGrid({
     [clusters],
   );
   const byId = new Map(servers.map((s) => [s.id, s]));
+
+  const { selected, canvasRef, marqueeRef, onItemClick, clear, selectAll } =
+    useCardSelection(shown.map((s) => s.id));
+  useSelectionShortcuts({ count: selected.size, selectAll, clear });
+  const { checkOne } = useServerHealth();
+  const chosen = shown.filter((s) => selected.has(s.id));
+  const groupDrag =
+    activeId !== null && selected.has(activeId) && selected.size > 1;
+  const [bulk, setBulk] = React.useState<{
+    cluster: ClusterCardData;
+    plan: BulkJoinPlan;
+  } | null>(null);
+  const [bulkOpen, setBulkOpen] = React.useState(false);
+
+  // Some of the picked servers may not fit: the confirm says which stay out and why.
+  function requestBulkJoin(clusterId: string, list: ServerCardData[]) {
+    const cluster = clusters.find((c) => c.id === clusterId);
+    if (!cluster) return;
+    const plan = planBulkJoin(list, cluster);
+    if (plan.joining.length === 0)
+      return void toast.error(
+        plan.skipped.map((s) => `${s.name}: ${s.reason}`).join(". "),
+      );
+    setBulk({ cluster, plan });
+    setBulkOpen(true);
+  }
 
   const dragging = activeId !== null;
   const active = activeId ? (byId.get(activeId) ?? null) : null;
@@ -186,7 +225,9 @@ export function ServersGrid({
     if (!event.over) return;
     const a = String(event.active.id);
     const o = String(event.over.id);
-    if (clusterIds.has(o)) requestJoin(a, o);
+    if (!clusterIds.has(o)) return;
+    if (selected.has(a) && selected.size > 1) requestBulkJoin(o, chosen);
+    else requestJoin(a, o);
   }
 
   function onView(next: ListView) {
@@ -241,7 +282,11 @@ export function ServersGrid({
           setOverId(null);
         }}
       >
-        <div className="space-y-6">
+        <SelectionCanvas
+          canvasRef={canvasRef}
+          marqueeRef={marqueeRef}
+          className="space-y-6"
+        >
           {shownClusters.length > 0 && (
             <SortableContext
               items={shownClusters.map((c) => c.id)}
@@ -281,6 +326,9 @@ export function ServersGrid({
                     scaleOut={overCluster}
                     locked={!canDrag(s)}
                     dataKind="server"
+                    selected={selected.has(s.id)}
+                    groupDragging={groupDrag && selected.has(s.id)}
+                    onSelect={(e) => onItemClick(s.id, e)}
                   >
                     {({ handle, dragActive }) => (
                       <ServerCard
@@ -308,12 +356,12 @@ export function ServersGrid({
               />
             )
           )}
-        </div>
+        </SelectionCanvas>
 
         <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
           {active ? (
             <DragStack
-              count={1}
+              count={groupDrag ? selected.size : 1}
               className={cn(
                 "transition-transform duration-200 ease-out",
                 overCluster && "scale-50 opacity-80",
@@ -324,6 +372,31 @@ export function ServersGrid({
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      <ServerSelectionBar
+        picked={chosen}
+        onSelectAll={selectAll}
+        onClear={clear}
+        onCheck={(ids) => ids.forEach(checkOne)}
+      >
+        <MoveToClusterButton
+          clusters={clusters}
+          onPick={(id) => requestBulkJoin(id, chosen)}
+        />
+      </ServerSelectionBar>
+      {bulk && (
+        <BulkJoinConfirm
+          key={bulk.cluster.id}
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          cluster={bulk.cluster}
+          plan={bulk.plan}
+          onDone={() => {
+            clear();
+            router.refresh();
+          }}
+        />
+      )}
 
       {joinAsk && joinOption && joinTarget && (
         <JoinClusterConfirm

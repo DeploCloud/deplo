@@ -4,8 +4,14 @@ import assert from "node:assert/strict";
 import { isDottedRoute } from "./shell-frame";
 
 test("the grids that drag and select are dotted, nothing else", () => {
-  for (const p of ["/", "/apps", "/storage"])
+  for (const p of ["/", "/apps", "/storage", "/settings/servers"])
     assert.equal(isDottedRoute(p), true, p);
+  assert.equal(isDottedRoute("/settings/servers", "view=list"), true);
+  assert.equal(
+    isDottedRoute("/settings/servers", "cluster=clu_1"),
+    false,
+    "inside a cluster the servers are a table",
+  );
 
   for (const p of [
     "/apps/web",
@@ -15,7 +21,7 @@ test("the grids that drag and select are dotted, nothing else", () => {
     "/servers",
     "/deployments",
     "/templates",
-    "/settings/servers",
+    "/settings/servers/srv_1",
   ])
     assert.equal(isDottedRoute(p), false, p);
 });

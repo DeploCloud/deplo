@@ -8,6 +8,7 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { ChoiceCard } from "@/components/shared/choice-card";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
+import { oneByOne } from "./server-bulk";
 
 export type MemberEmptyingState = "idle" | "removing" | "stopped";
 
@@ -112,6 +113,95 @@ export function RemoveMemberDialog({
           keepWorkloads: held > 0 && keep,
         });
         if (res.ok) router.refresh();
+        return res;
+      }}
+    />
+  );
+}
+
+/** Several servers leave at once: one choice for where all their Apps go. */
+export function RemoveMembersDialog({
+  open,
+  onOpenChange,
+  clusterId,
+  clusterName,
+  servers,
+  memberCount,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  clusterId: string;
+  clusterName: string;
+  servers: { id: string; name: string; held: number }[];
+  memberCount: number;
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const left = memberCount - servers.length;
+  const held = servers.reduce((n, s) => n + s.held, 0);
+  // With nobody left there is nowhere to send their work, so they may only leave with it.
+  const [keep, setKeep] = React.useState(left === 0);
+  const names = servers.map((s) => s.name).join(", ");
+  return (
+    <ConfirmAction
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Remove ${servers.length} servers`}
+      description={
+        <>
+          <strong>{names}</strong> leave {clusterName} and stay your servers.{" "}
+          <DocsLink topic="clusters.removing" />
+        </>
+      }
+      consequence={
+        left === 0
+          ? `${clusterName} is left with no servers.`
+          : left === 1
+            ? `With one server left, ${clusterName} stops failing over.`
+            : undefined
+      }
+      extra={
+        held > 0 ? (
+          <div role="radiogroup" className="space-y-2">
+            <ChoiceCard
+              icon={ArrowRightFromLine}
+              title="Move their Apps to the other servers"
+              blurb="One at a time. Anything with stored data pauses while it is copied. Each leaves once nothing is left on it."
+              disabled={left === 0}
+              disabledNote={`They are every server of ${clusterName}, so there is nowhere to move them.`}
+              selected={!keep}
+              onSelect={() => setKeep(false)}
+            />
+            <ChoiceCard
+              icon={HardDrive}
+              title="Keep their Apps on these servers"
+              blurb="They leave at once. Their Apps and databases keep running where they are, and no longer fail over."
+              selected={keep}
+              onSelect={() => setKeep(true)}
+            />
+          </div>
+        ) : undefined
+      }
+      confirmLabel="Remove"
+      successMessage={
+        held > 0 && !keep
+          ? `Moving what they run, then they leave ${clusterName}`
+          : `${servers.length} servers left ${clusterName}`
+      }
+      onConfirm={async () => {
+        const res = await oneByOne(
+          servers,
+          (s) => s.name,
+          (s) =>
+            gqlAction(REMOVE_MEMBER, {
+              clusterId,
+              serverId: s.id,
+              keepWorkloads: s.held > 0 && keep,
+            }),
+        );
+        router.refresh();
+        onDone();
         return res;
       }}
     />
