@@ -41,12 +41,15 @@ export interface AddDomainProps {
   suggestedDomain?: string;
   // Domains connected for automatic DNS that the viewer may use in this team.
   autoDnsZones?: string[];
+  // The Tunnels experiment is on, so a domain may be served through Cloudflare Tunnel.
+  tunnels?: boolean;
 }
 
 export function AddDomain({
   project,
   suggestedDomain,
   autoDnsZones = [],
+  tunnels = false,
 }: AddDomainProps) {
   const canManage = useAppCan("manage_domains");
   const [open, setOpen] = React.useState(false);
@@ -57,7 +60,7 @@ export function AddDomain({
   );
   const [wantsTunnel, setWantsTunnel] = React.useState(false);
   const zone = coveringZone(autoDnsZones, name);
-  const tunnel = wantsTunnel && zone !== null;
+  const tunnel = tunnels && wantsTunnel && zone !== null;
 
   const services = React.useMemo(
     () => Object.keys(servicesOf(project.compose ?? null) ?? {}),
@@ -199,7 +202,7 @@ export function AddDomain({
                   id="add-domain-tunnel"
                   zone={zone}
                   tunnel={tunnel}
-                  onTunnel={setWantsTunnel}
+                  onTunnel={tunnels ? setWantsTunnel : undefined}
                 />
               )}
               <DomainConfigFields

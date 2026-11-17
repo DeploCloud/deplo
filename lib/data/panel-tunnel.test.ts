@@ -51,6 +51,10 @@ import {
   rememberPanelUrl,
 } from "./instance-settings/settings-store";
 import type { PanelReachability } from "./instance-settings/panel-probe";
+import {
+  turnOffExperiments,
+  turnOnExperiments,
+} from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -115,6 +119,7 @@ beforeEach(async () => {
       { id: MEMBER, teamId: TEAM_A, role: "member", isInstanceAdmin: false },
     ],
   });
+  await turnOnExperiments(db, "tunnels");
   process.env.DEPLO_SERVER_IP = HOST_IP;
   await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
   forgetRoutedFallback();
@@ -591,4 +596,12 @@ test("only an instance admin can give the tunnel a new token", async () => {
     /admin/i,
   );
   assert.equal(await savedToken(), API_TOKEN);
+});
+
+test("with the experiment off, the panel cannot be put behind a tunnel", async () => {
+  await turnOffExperiments(db, "tunnels");
+  await assert.rejects(
+    () => turnOn(),
+    /Tunnels are not turned on for this Deplo/,
+  );
 });

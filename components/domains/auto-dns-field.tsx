@@ -15,7 +15,8 @@ export function AutoDnsField({
   id: string;
   zone: string;
   tunnel: boolean;
-  onTunnel: (on: boolean) => void;
+  // Left out while the Tunnels experiment is off: Deplo still makes the DNS record.
+  onTunnel?: (on: boolean) => void;
 }) {
   return (
     <div className="space-y-2 rounded-md border border-[#f38020]/40 bg-[#f38020]/5 px-3 py-2">
@@ -27,17 +28,19 @@ export function AutoDnsField({
           <DocsLink topic="domains.automaticDnsAdd" />
         </span>
       </p>
-      <div className="flex items-center justify-between gap-3">
-        <FieldLabel
-          htmlFor={id}
-          className="cursor-pointer font-normal"
-          info="Cloudflare reaches this server over a connection it opens: no port to open, HTTPS included. The first one restarts the server's proxy briefly."
-          docs="domains.automaticDnsTunnel"
-        >
-          Use Cloudflare Tunnel
-        </FieldLabel>
-        <Switch id={id} checked={tunnel} onCheckedChange={onTunnel} />
-      </div>
+      {onTunnel && (
+        <div className="flex items-center justify-between gap-3">
+          <FieldLabel
+            htmlFor={id}
+            className="cursor-pointer font-normal"
+            info="Cloudflare reaches this server over a connection it opens: no port to open, HTTPS included. The first one restarts the server's proxy briefly."
+            docs="domains.automaticDnsTunnel"
+          >
+            Use Cloudflare Tunnel
+          </FieldLabel>
+          <Switch id={id} checked={tunnel} onCheckedChange={onTunnel} />
+        </div>
+      )}
     </div>
   );
 }

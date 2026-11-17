@@ -21,6 +21,7 @@ import {
   PendingList,
   PendingRows,
 } from "@/components/shared/pending-create";
+import { experimentOn } from "@/lib/data/experiments";
 
 export const metadata = { title: "App Domains" };
 
@@ -73,6 +74,7 @@ export default async function AppDomainsPage(
               }}
               suggestedDomain={suggestedDomain}
               autoDnsZones={autoDns}
+              tunnels={await experimentOn("tunnels")}
             />
           }
         />

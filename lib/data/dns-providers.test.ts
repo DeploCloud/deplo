@@ -53,6 +53,10 @@ import {
 } from "./dns-providers/provision";
 import { restoreTunnelConnectors } from "./dns-providers/tunnels";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
+import {
+  turnOffExperiments,
+  turnOnExperiments,
+} from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -97,6 +101,7 @@ beforeEach(async () => {
       { id: MATE, teamId: TEAM_A, role: "member" },
     ],
   });
+  await turnOnExperiments(db, "tunnels");
   await seedServer(db);
   await seedApp(db, { id: "prj_1" });
   host = { yaml: STACK, applied: 0 };
@@ -433,4 +438,14 @@ test("a tunnel domain is added beside the name's MX record", async () => {
   assert.equal(cf.records.size, 2);
   await as(OWNER, () => removeDomain(dom.id));
   assert.deepEqual([...cf.records.keys()], ["mx"], "the MX record stays");
+});
+
+test("with the experiment off, a domain cannot ask for a tunnel", async () => {
+  await connect();
+  await turnOffExperiments(db, "tunnels");
+  await assert.rejects(
+    () =>
+      as(OWNER, () => addDomain("prj_1", "app.example.com", { tunnel: true })),
+    /Tunnels are not turned on for this Deplo/,
+  );
 });

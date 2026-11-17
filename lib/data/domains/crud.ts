@@ -66,6 +66,7 @@ import {
   registerAppTunnelDomain,
   settleAppTunnel,
 } from "../clusters/app-tunnel";
+import { requireExperiment } from "../experiments";
 
 export async function listDomains(
   appId?: string,
@@ -185,6 +186,8 @@ async function addDomainUnlocked(
     .from(domainsTable)
     .where(and(eq(domainsTable.name, clean), ne(domainsTable.appId, appId)))
     .limit(1);
+  if (!shared && config.tunnel === true && project.clusterId == null)
+    await requireExperiment("tunnels");
   // A cluster App's domain in a connected Cloudflare zone is always served by the App's own tunnel.
   const tunnel = shared
     ? shared.tunnel === true
