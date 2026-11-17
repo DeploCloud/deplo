@@ -9,6 +9,7 @@ import {
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { TEAM_A } from "./identity-test-helpers";
 import type { AgentConnection } from "../infra/agent-client/connection";
+import { turnOnExperiments } from "./experiments-test-helpers";
 
 export const TRUNCATE_CRONS = `truncate table cron_runs, cron_job_env, cron_jobs
   restart identity cascade;`;
@@ -101,6 +102,7 @@ export async function enableCrons(
   kind: "app" | "database",
   id: string,
 ): Promise<void> {
+  await turnOnExperiments(db, "crons");
   if (kind === "app") {
     await db
       .update(appsTable)

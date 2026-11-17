@@ -6,7 +6,8 @@ import { sourceClient } from "../../migration/source";
 import { type AddressRules, rehostPairs } from "./app-address-vars";
 import type { SourceCredential } from "../../migration/source";
 import type { CronTargetKind } from "../../types/cron";
-import { createCronJob, setCronEnabled } from "../crons/job-crud";
+import { insertCronJob, writeCronEnabled } from "../crons/job-crud";
+import { experimentOn } from "../experiments";
 
 function renamedService(
   name: string | null | undefined,
@@ -54,7 +55,7 @@ export async function importCrons(
         : null;
     if (moved) env = moved.pairs;
     try {
-      await createCronJob(target.kind, target.id, {
+      await insertCronJob(target.kind, target.id, {
         ...s.native,
         name: s.name,
         schedule: s.cronExpression,
@@ -71,9 +72,13 @@ export async function importCrons(
       );
     }
   }
+  if (landed > 0 && !(await experimentOn("crons")))
+    notes.push(
+      "Cron jobs are not turned on for this Deplo, so they came across paused. An instance admin can turn them on in Settings > Deplo > Experiments.",
+    );
   if (opts.cronEnabled !== true) return landed;
   try {
-    await setCronEnabled(target.kind, target.id, true);
+    await writeCronEnabled(target.kind, target.id, true);
   } catch (e) {
     notes.push(
       `Cron jobs ran on {panel} but are switched off here: ${errorMessage(e, "refused")}. Switch them on under Crons.`,

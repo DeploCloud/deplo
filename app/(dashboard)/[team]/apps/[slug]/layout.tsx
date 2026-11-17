@@ -28,6 +28,7 @@ import { AppHeader } from "@/components/apps/app-header";
 import { WaitingForRoom } from "@/components/shared/waiting-for-room";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
 import { getAppRuntime } from "@/lib/data/console";
+import { experiments } from "@/lib/data/experiments";
 
 const PROJECT_TITLE_MAX = 24;
 
@@ -62,7 +63,7 @@ export default async function AppLayout(
   const project = await getAppBySlug(slug);
   if (!project || project.deletingAt) notFound();
   const buildsOwnImage = appBuildsItsOwnImage(project);
-  const [capabilities, rollback, latestScreenshotAt, waiting] =
+  const [capabilities, rollback, latestScreenshotAt, waiting, flags] =
     await Promise.all([
       appCapabilities(project.id),
       buildsOwnImage ? rollbackTarget(project.id) : null,
@@ -70,6 +71,7 @@ export default async function AppLayout(
         ? screenshotCapturedAt(project.latestDeployment.id)
         : null,
       appWaitingNote(project),
+      experiments(),
     ]);
 
   const runtime =
@@ -103,7 +105,7 @@ export default async function AppLayout(
               capabilities,
               isGithubApp: project.source === "github",
               previewsEnabled: project.previewEnabled,
-              cronsEnabled: project.cronEnabled,
+              cronsEnabled: project.cronEnabled && flags.crons,
               consoleEnabled: project.consoleEnabled,
             },
           }}
@@ -177,7 +179,7 @@ export default async function AppLayout(
               capabilities={capabilities}
               isGithubApp={project.source === "github"}
               previewsEnabled={project.previewEnabled}
-              cronsEnabled={project.cronEnabled}
+              cronsEnabled={project.cronEnabled && flags.crons}
               consoleEnabled={project.consoleEnabled}
             />
           }

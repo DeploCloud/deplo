@@ -25,6 +25,7 @@ import { listProjects } from "./projects/read";
 import { listRoles } from "./roles/role-list";
 import { listServers } from "./servers/roster";
 import { listMyTeams } from "./teams";
+import { experimentOn } from "./experiments";
 
 export interface SearchTeam {
   id: ID;
@@ -277,7 +278,9 @@ export async function search(
         on("domain", () => listDomains()),
         on("member", listMembers),
         on("role", listRoles),
-        on("cron", listTeamCronJobs),
+        on("cron", async () =>
+          (await experimentOn("crons")) ? listTeamCronJobs() : [],
+        ),
       ]);
 
       const mine = <R extends { teamId: string }>(rows: R[]) =>

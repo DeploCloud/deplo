@@ -38,6 +38,7 @@ import { DeployHookPanel } from "@/components/apps/settings/deploy-hook-panel";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { providerFor } from "@/lib/git/providers/registry";
 import { appBuildsItsOwnImage, usesComposeStack } from "@/lib/utils";
+import { experiments } from "@/lib/data/experiments";
 
 export const metadata = { title: "Advanced" };
 
@@ -65,7 +66,9 @@ export default async function AppAdvancedSettingsPage(
     project.serverId,
     RESTART_CAPABILITY,
   );
-  const cron = canCron ? await listAppCronJobs(project.id) : null;
+  const flags = await experiments();
+  const cron =
+    canCron && flags.crons ? await listAppCronJobs(project.id) : null;
 
   const isComposeStack = usesComposeStack(project);
   const buildsOwnImage = appBuildsItsOwnImage(project);
@@ -101,14 +104,16 @@ export default async function AppAdvancedSettingsPage(
           />
         </CapabilityFieldset>
 
-        <CapabilityFieldset cap="manage_crons">
-          <CronSettingsForm
-            targetKind="app"
-            targetId={project.id}
-            enabled={cron?.enabled ?? project.cronEnabled}
-            jobCount={cron?.jobs.length ?? 0}
-          />
-        </CapabilityFieldset>
+        {flags.crons && (
+          <CapabilityFieldset cap="manage_crons">
+            <CronSettingsForm
+              targetKind="app"
+              targetId={project.id}
+              enabled={cron?.enabled ?? project.cronEnabled}
+              jobCount={cron?.jobs.length ?? 0}
+            />
+          </CapabilityFieldset>
+        )}
 
         {project.source !== "compose" && (
           <CapabilityFieldset cap="configure_apps">

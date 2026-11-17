@@ -7,6 +7,8 @@ import { listDatabaseCronJobs } from "@/lib/data/crons/listing";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CronJobsList } from "@/components/crons/cron-jobs-list";
+import { experimentOn } from "@/lib/data/experiments";
+import { ExperimentOff } from "@/components/shared/experiment-off";
 
 export const metadata = { title: "Cron jobs" };
 
@@ -16,6 +18,8 @@ export default async function DatabaseCronJobsPage(
   const { id } = await props.params;
   const db = await getDatabase(id);
   if (!db) notFound();
+  if (!(await experimentOn("crons")))
+    return <ExperimentOff experiment="crons" />;
 
   const [canCron, canConsole] = await Promise.all([
     hasCapability("manage_crons"),

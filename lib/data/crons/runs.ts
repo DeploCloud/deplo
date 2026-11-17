@@ -15,6 +15,7 @@ import { recordActivity } from "../activity";
 import { type CronRunDTO, toRunDTO } from "./dto";
 import { gateJob } from "./gates";
 import { MAX_KEEP_RUNS } from "./job-validate";
+import { requireExperiment } from "../experiments";
 
 // Gated on manage_crons and not view: stdout can hold anything the command printed, the job's environment included.
 export async function listCronRuns(
@@ -32,6 +33,7 @@ export async function listCronRuns(
 }
 
 export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
+  await requireExperiment("crons");
   const { job, teamId, targetEnabled } = await gateJob(jobId);
   if (!targetEnabled) {
     throw new Error(

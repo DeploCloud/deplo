@@ -26,6 +26,8 @@ import {
 import * as cronsCrud from "./crons/job-crud";
 import * as cronsListing from "./crons/listing";
 import * as cronsRuns from "./crons/runs";
+import { listSchedulableJobs } from "../crons/runner/targets";
+import { instanceSettings } from "../db/schema/control-plane/instance";
 
 const crons = { ...cronsCrud, ...cronsListing, ...cronsRuns };
 
@@ -623,4 +625,34 @@ test("an app holds at most 20 cron jobs", async () => {
       /At most 20 cron jobs/,
     );
   });
+});
+
+test("with the experiment off, nothing is scheduled and nothing new is switched on", async () => {
+  const id = await asOwner(
+    async () => (await crons.createCronJob("app", "prj_1", validJob)).id,
+  );
+  assert.equal((await listSchedulableJobs()).length, 1);
+  await db
+    .update(instanceSettings)
+    .set({ experimentCrons: false })
+    .where(eq(instanceSettings.id, "default"));
+  assert.deepEqual(await listSchedulableJobs(), [], "a pause, not a loss");
+  await assert.rejects(
+    () => asOwner(() => crons.createCronJob("app", "prj_1", validJob)),
+    /Cron jobs are not turned on for this Deplo/,
+  );
+  await assert.rejects(
+    () => asOwner(() => crons.setCronEnabled("database", "db_1", true)),
+    /not turned on/,
+  );
+  await assert.rejects(
+    () => asOwner(() => cronsRuns.runCronJobNow(id)),
+    /not turned on/,
+  );
+  await asOwner(() => crons.setCronEnabled("app", "prj_1", false));
+  const [job] = await db
+    .select({ enabled: cronJobsTable.enabled })
+    .from(cronJobsTable)
+    .where(eq(cronJobsTable.id, id));
+  assert.equal(job.enabled, true, "the job itself is untouched");
 });

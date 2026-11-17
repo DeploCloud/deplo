@@ -12,6 +12,7 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
+import { experimentOn } from "../../data/experiments";
 
 export type JobRow = typeof cronJobsTable.$inferSelect;
 export type RunRow = typeof cronRunsTable.$inferSelect;
@@ -109,6 +110,8 @@ function assembleTarget(r: {
 }
 
 export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
+  // The experiment off is a pause: every job and every switch stays as it is.
+  if (!(await experimentOn("crons"))) return [];
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)

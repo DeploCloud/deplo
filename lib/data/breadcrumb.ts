@@ -10,6 +10,7 @@ import { listFolders } from "./folders";
 import { appScopeWhere } from "./app-graph-load";
 import { appCapabilitiesForTeam } from "./node-access";
 import { listProjects } from "./projects/read";
+import { experiments } from "./experiments";
 import type { BreadcrumbGraph } from "../breadcrumb-model";
 
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
@@ -57,6 +58,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         .from(databasesTable)
         .where(eq(databasesTable.teamId, teamId))
     : [];
+  const flags = await experiments();
   return {
     folders: folders.map((f) => ({
       id: f.id,
@@ -75,7 +77,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         logo: s.logo ?? null,
         features: {
           pullRequests: s.source === "github" && s.previewEnabled,
-          cronJobs: s.cronEnabled,
+          cronJobs: s.cronEnabled && flags.crons,
           console: s.consoleEnabled,
         },
       })),

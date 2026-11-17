@@ -6,6 +6,8 @@ import { listAppCronJobs } from "@/lib/data/crons/listing";
 import { CronJobsList } from "@/components/crons/cron-jobs-list";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Lock } from "lucide-react";
+import { experimentOn } from "@/lib/data/experiments";
+import { ExperimentOff } from "@/components/shared/experiment-off";
 
 export const metadata = { title: "Cron jobs" };
 
@@ -15,6 +17,8 @@ export default async function AppCronJobsPage(
   const { slug } = await props.params;
   const app = await getAppBySlug(slug);
   if (!app) notFound();
+  if (!(await experimentOn("crons")))
+    return <ExperimentOff experiment="crons" />;
 
   const canManage = await hasAppCapability(app.id, "manage_crons");
   if (!canManage) {

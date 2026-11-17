@@ -18,6 +18,7 @@ import { getDatabaseStandby } from "@/lib/data/databases/standby";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { Button } from "@/components/ui/button";
+import { experimentOn } from "@/lib/data/experiments";
 
 export const metadata = { title: "Advanced" };
 
@@ -36,7 +37,10 @@ export default async function DatabaseAdvancedSettingsPage(
       // Expert only: a database on a cluster. An engine that keeps no copy says why instead.
       db.clusterId ? getDatabaseStandby(db.id) : null,
     ]);
-  const cron = canConsole && canCron ? await listDatabaseCronJobs(db.id) : null;
+  const cron =
+    canConsole && canCron && (await experimentOn("crons"))
+      ? await listDatabaseCronJobs(db.id)
+      : null;
 
   return (
     <section className="space-y-6">

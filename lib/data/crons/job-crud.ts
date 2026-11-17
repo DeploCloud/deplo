@@ -16,10 +16,21 @@ import { validateEnv, writeEnv } from "./job-env";
 import { buildPatch, type CronJobInput } from "./job-validate";
 import { oneJob } from "./listing";
 import { assertServiceInTarget } from "./target-services";
+import { requireExperiment } from "../experiments";
 
 const MAX_JOBS_PER_TARGET = 20;
 
 export async function setCronEnabled(
+  targetKind: CronTargetKind,
+  targetId: string,
+  enabled: boolean,
+): Promise<void> {
+  if (enabled) await requireExperiment("crons");
+  await writeCronEnabled(targetKind, targetId, enabled);
+}
+
+// A migration keeps its source's crons while the experiment is off: off is a pause, never a loss.
+export async function writeCronEnabled(
   targetKind: CronTargetKind,
   targetId: string,
   enabled: boolean,
@@ -63,6 +74,15 @@ export async function setCronEnabled(
 }
 
 export async function createCronJob(
+  targetKind: CronTargetKind,
+  targetId: string,
+  input: CronJobInput,
+): Promise<CronJobDTO> {
+  await requireExperiment("crons");
+  return insertCronJob(targetKind, targetId, input);
+}
+
+export async function insertCronJob(
   targetKind: CronTargetKind,
   targetId: string,
   input: CronJobInput,

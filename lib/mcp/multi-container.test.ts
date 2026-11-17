@@ -32,6 +32,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { createToken } from "../data/tokens/mint";
 import { POST } from "@/app/api/mcp/route";
 import type { Capability } from "../types/identity";
+import { turnOnExperiments } from "../data/experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -119,6 +120,7 @@ beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH} ${TRUNCATE}`);
   await seedIdentity(db);
   await seedServer(db);
+  await turnOnExperiments(db, "crons");
   rerouted = new Map();
   await seedApp(db, {
     id: "prj_analytics",

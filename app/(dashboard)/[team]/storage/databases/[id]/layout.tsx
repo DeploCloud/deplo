@@ -10,6 +10,7 @@ import { hasCapability } from "@/lib/membership";
 import { DbNavSync } from "@/components/storage/db-nav-store";
 import { DetailFrame } from "@/components/layout/detail-frame";
 import { DatabaseHeader } from "@/components/storage/database-header";
+import { experiments } from "@/lib/data/experiments";
 
 const DB_TITLE_MAX = 24;
 
@@ -32,10 +33,11 @@ export default async function DatabaseLayout(
   props: LayoutProps<"/[team]/storage/databases/[id]">,
 ) {
   const { id } = await props.params;
-  const [db, canConfigure, canDelete] = await Promise.all([
+  const [db, canConfigure, canDelete, flags] = await Promise.all([
     getDatabase(id),
     hasCapability("configure_databases"),
     hasCapability("delete_databases"),
+    experiments(),
   ]);
   if (!db) notFound();
 
@@ -50,7 +52,7 @@ export default async function DatabaseLayout(
     <DatabaseLiveStatusProvider key={db.id} initial={initialLive}>
       <DbNavSync
         id={db.id}
-        cronsEnabled={db.cronEnabled}
+        cronsEnabled={db.cronEnabled && flags.crons}
         logo={db.logo}
         type={db.type}
       />
