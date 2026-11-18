@@ -16,6 +16,7 @@ import { nowIso } from "../ids";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
+import { __forgetAgentHellos } from "./servers/agent-capabilities";
 import { getServerById } from "./servers/roster";
 import {
   checkServerHealth,
@@ -71,6 +72,7 @@ beforeEach(async () => {
       { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
     ],
   });
+  __forgetAgentHellos();
   agent = await startFakeAgent();
   await seedAgentServer(SERVER, agent);
   door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
