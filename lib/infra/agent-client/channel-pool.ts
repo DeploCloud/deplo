@@ -41,6 +41,24 @@ export async function serverChannel(
   return callerView(shared.channel);
 }
 
+// Servers a cluster's leader said are not answering: a call waits only briefly for their link (deplo#244).
+const DOWN_KEY = Symbol.for("deplo.agent-client.declared-down");
+const downSlot = globalThis as unknown as { [DOWN_KEY]?: Set<string> };
+const declaredDown: Set<string> = (downSlot[DOWN_KEY] ??= new Set());
+
+/** How long a call waits for the link of a server the leader declared down. */
+export const DOWN_LINK_WAIT_MS = 1_000;
+
+/** The leader said this server stopped answering (or answers again); its link coming up clears it too. */
+export function declareServerDown(serverId: string, down: boolean): void {
+  if (down) declaredDown.add(serverId);
+  else declaredDown.delete(serverId);
+}
+
+export function serverDeclaredDown(serverId: string): boolean {
+  return declaredDown.has(serverId);
+}
+
 /** No new call gets this server's channel, and its link closes now. */
 export function dropAgentChannel(serverId: string): void {
   pool.delete(serverId);
@@ -57,8 +75,12 @@ async function linkFor(
     revokeAgentLink(serverId);
     link = undefined;
   }
-  if (link) return link;
-  link = (await waitForLink(serverId, LINK_WAIT_MS)) ?? undefined;
+  if (link) {
+    declaredDown.delete(serverId);
+    return link;
+  }
+  const wait = declaredDown.has(serverId) ? DOWN_LINK_WAIT_MS : LINK_WAIT_MS;
+  link = (await waitForLink(serverId, wait)) ?? undefined;
   if (link?.pinnedFingerprint === pinnedFingerprint) return link;
   throw new AgentOfflineError(serverId);
 }
