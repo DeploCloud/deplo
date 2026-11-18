@@ -72,8 +72,43 @@ function isUnder(path: string, prefix: string): boolean {
 
 const TRANSIENT_PREFIXES = ["/new", "/templates"];
 
+function jump(delta: number): "jumped" {
+  navigating = true;
+  setTimeout(() => {
+    navigating = false;
+  }, 1000);
+  window.history.go(delta);
+  return "jumped";
+}
+
+type NavigationEntries = {
+  currentEntry: { index: number } | null;
+  entries(): { url: string | null }[];
+};
+
+// The browser's own list of entries, when it has one: a same-URL push or a state another
+// replaceState wiped can't throw it off, unlike the stamps below.
+function backOutOfEntries(
+  nav: NavigationEntries,
+  prefix: string,
+): "jumped" | "none" {
+  const entries = nav.entries();
+  const current = nav.currentEntry!.index;
+  for (let i = current - 1; i >= 0; i--) {
+    const url = entries[i]?.url;
+    if (!url) return "none";
+    const p = new URL(url).pathname;
+    if (TRANSIENT_PREFIXES.some((t) => isUnder(p, t))) continue;
+    if (!isUnder(p, prefix)) return jump(i - current);
+  }
+  return "none";
+}
+
 export function backOutOf(prefix: string): "jumped" | "busy" | "none" {
   if (navigating) return "busy";
+
+  const nav = (window as { navigation?: NavigationEntries }).navigation;
+  if (nav?.currentEntry) return backOutOfEntries(nav, prefix);
 
   const stamped = readStamp();
   const current = typeof stamped === "number" ? stamped : known ? depth : null;
@@ -83,14 +118,7 @@ export function backOutOf(prefix: string): "jumped" | "busy" | "none" {
     const p = stack[i];
     if (p == null) return "none";
     if (TRANSIENT_PREFIXES.some((t) => isUnder(p, t))) continue;
-    if (!isUnder(p, prefix)) {
-      navigating = true;
-      setTimeout(() => {
-        navigating = false;
-      }, 1000);
-      window.history.go(i - current);
-      return "jumped";
-    }
+    if (!isUnder(p, prefix)) return jump(i - current);
   }
   return "none";
 }
