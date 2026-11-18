@@ -32,6 +32,7 @@ import { requireInstanceAdmin } from "../membership";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { nowIso } from "../ids";
 import { instanceFrozen } from "./deplo-move/freeze";
+import { recordAgentHello } from "./servers/agent-capabilities";
 import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
 import { unlinkedServerMessage } from "./servers/panel-address";
 import { AGENT_REINSTALL_MESSAGE } from "../agent-reachability";
@@ -358,4 +359,5 @@ async function linkCameBack(
     observedAt,
   );
   await markServerSeen(serverId, hello.agentVersion, observedTraefik(hello));
+  await recordAgentHello(serverId, hello.agentVersion, hello.capabilities);
 }

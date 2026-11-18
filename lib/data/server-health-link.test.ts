@@ -7,12 +7,16 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
-import { servers } from "../db/schema/control-plane/servers";
+import {
+  serverAgentCapabilities,
+  servers,
+} from "../db/schema/control-plane/servers";
 import { runWithIdentity } from "../auth/request-context";
 import { nowIso } from "../ids";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
+import { __forgetAgentHellos } from "./servers/agent-capabilities";
 import { getServerById } from "./servers/roster";
 import {
   checkServerHealth,
@@ -24,6 +28,7 @@ import { HEALTH_MESSAGES } from "../infra/server-health";
 import { AGENT_REINSTALL_MESSAGE } from "../agent-reachability";
 import { dropAgentChannel } from "../infra/agent-client/channel-pool";
 import { AGENT_LINK_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import { CERT_RENEWAL_CAPABILITY } from "../agent/cert-renewal";
 import {
   startFakeAgent,
   type FakeAgent,
@@ -67,6 +72,7 @@ beforeEach(async () => {
       { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
     ],
   });
+  __forgetAgentHellos();
   agent = await startFakeAgent();
   await seedAgentServer(SERVER, agent);
   door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
@@ -447,4 +453,18 @@ test("after a restart, a check never dials a server that linked once: nothing ch
   assert.equal(settled.status, "offline");
   assert.equal(settled.statusMessage, HEALTH_MESSAGES.offline);
   assert.equal(agent.connections().opened, 0, "nothing dialed it");
+});
+
+test("every link that comes up stores what its Hello reported, so a render reads it without a dial", async () => {
+  startServerLinkStatus({ graceMs: 200 });
+  await cut(await linkIn());
+  await until(
+    async () =>
+      (await db.select().from(serverAgentCapabilities)).some(
+        (r) =>
+          r.serverId === SERVER && r.capability === CERT_RENEWAL_CAPABILITY,
+      ),
+    "the reconnect's Hello is stored",
+  );
+  assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });

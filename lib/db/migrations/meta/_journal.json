@@ -1793,6 +1793,13 @@
       "when": 1796062500000,
       "tag": "0266_env_example_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1796062600000,
+      "tag": "0267_server_agent_capabilities",
+      "breakpoints": true
     }
   ]
 }
