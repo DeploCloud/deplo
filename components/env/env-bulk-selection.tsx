@@ -248,44 +248,52 @@ function useSelection() {
   return context;
 }
 
-export function EnvSelectionHead({ ids }: { ids?: string[] }) {
+export function EnvSelectAll({ ids }: { ids?: string[] }) {
   const { items, selected, pending, toggle } = useSelection();
   const visible = items.filter((item) => !ids || ids.includes(item.id));
   const count = visible.filter((item) => selected.has(item.id)).length;
   return (
+    <Checkbox
+      aria-label="Select all variables"
+      disabled={pending || visible.length === 0}
+      checked={
+        count === 0 ? false : count === visible.length ? true : "indeterminate"
+      }
+      onCheckedChange={(checked) =>
+        toggle(
+          visible.map((item) => item.id),
+          checked === true,
+        )
+      }
+    />
+  );
+}
+
+export function EnvSelectBox({ id }: { id: string }) {
+  const { items, selected, pending, toggle } = useSelection();
+  const item = items.find((row) => row.id === id);
+  return (
+    <Checkbox
+      aria-label={`Select ${item?.key ?? "variable"}`}
+      checked={selected.has(id)}
+      disabled={pending || !item}
+      onCheckedChange={(checked) => toggle([id], checked === true)}
+    />
+  );
+}
+
+export function EnvSelectionHead({ ids }: { ids?: string[] }) {
+  return (
     <TableHead className="w-10 max-md:hidden">
-      <Checkbox
-        aria-label="Select all variables"
-        disabled={pending || visible.length === 0}
-        checked={
-          count === 0
-            ? false
-            : count === visible.length
-              ? true
-              : "indeterminate"
-        }
-        onCheckedChange={(checked) =>
-          toggle(
-            visible.map((item) => item.id),
-            checked === true,
-          )
-        }
-      />
+      <EnvSelectAll ids={ids} />
     </TableHead>
   );
 }
 
 export function EnvSelectionCell({ id }: { id: string }) {
-  const { items, selected, pending, toggle } = useSelection();
-  const item = items.find((row) => row.id === id);
   return (
     <TableCell className="w-10 max-md:hidden">
-      <Checkbox
-        aria-label={`Select ${item?.key ?? "variable"}`}
-        checked={selected.has(id)}
-        disabled={pending || !item}
-        onCheckedChange={(checked) => toggle([id], checked === true)}
-      />
+      <EnvSelectBox id={id} />
     </TableCell>
   );
 }

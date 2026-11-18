@@ -20,5 +20,16 @@ test("on a phone a variable's value rides under its key, never in a column of it
       name,
     );
   }
-  assert.equal(tables, 4);
+  assert.equal(tables, 3);
+});
+
+test("in the app's variable list the value column hides below md and rides under the key", () => {
+  const list = readFileSync("components/env/env-list.tsx", "utf8");
+  assert.match(list, /<div className="min-w-0 max-md:hidden">\{value\}<\/div>/);
+  assert.match(list, /<span className="max-md:hidden">Value<\/span>/);
+  const rows = readFileSync("components/env/env-manager-rows.tsx", "utf8");
+  const values =
+    rows.match(/value=\{\s*(?:<Bone[^>]*>\s*)?<EnvValueCell/g) ?? [];
+  assert.ok(values.length >= 3);
+  assert.equal(rows.match(/<EnvValueUnderKey/g)?.length, values.length);
 });

@@ -2,39 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { toast } from "sonner";
-import {
-  Pencil,
-  Plus,
-  Trash2,
-  Share2,
-  SearchX,
-  Settings,
-  Unlink,
-} from "lucide-react";
-import Link from "@/components/ui/link";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Plus, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Bone } from "@/components/ui/skeleton";
-import { InfoTip } from "@/components/ui/info-tip";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
-import { RowActions } from "@/components/shared/row-actions";
-import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import {
   EnvBulkSelection,
-  EnvSelectionCell,
-  EnvSelectionHead,
+  EnvSelectAll,
 } from "@/components/env/env-bulk-selection";
 import {
   standaloneBulkItem,
@@ -42,16 +17,17 @@ import {
   unlinkBulkItem,
 } from "@/components/env/env-bulk-items";
 import { EnvGraphic } from "@/components/env/env-graphic";
+import { EnvList } from "@/components/env/env-list";
 import {
-  EnvNoteUnderKey,
-  EnvValueCell,
-  EnvValueUnderKey,
-} from "@/components/env/env-value-cell";
-import { TimeAgo } from "@/components/shared/time-ago";
+  EnvRowSkeleton,
+  PLACEHOLDER_FACET_ROWS,
+  PLACEHOLDER_KEYS,
+  SharedRow,
+  StandaloneRow,
+  rowKey,
+  type EnvRow,
+} from "@/components/env/env-manager-rows";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
-import { DatabaseLogo } from "@/components/storage/database-logo";
-import { EnvAuthorCell } from "@/components/env/env-author-cell";
-import { EnvEditButton } from "@/components/env/env-edit-button";
 import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
 import {
   editorFacet,
@@ -61,7 +37,6 @@ import {
 } from "@/components/env/env-filters/facets";
 import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
 import { gqlAction } from "@/lib/graphql-client";
-import { envNameLooksSensitive } from "@/lib/env-secret-name";
 import type { EnvVarDTO } from "@/lib/types/env";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars/app-view";
 import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
@@ -71,11 +46,6 @@ import type {
   ProjectRef,
   TeamRef,
 } from "@/components/env/shared-var-wizard/types";
-
-type EnvRow =
-  ({ kind: "standalone" } & EnvVarDTO) | ({ kind: "shared" } & AppSharedVarDTO);
-
-const rowKey = (row: EnvRow) => `${row.kind}:${row.id}`;
 
 export function EnvManager({
   appId,
@@ -105,7 +75,16 @@ export function EnvManager({
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  const [opened, setOpened] = React.useState<ReadonlySet<string>>(new Set());
   const router = useRouter();
+
+  function toggleOpen(key: string) {
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
 
   // The vars this app opted into (ADR-0012) plus the ones injected with no opt-in (ADR-0027).
   const appliedShared = React.useMemo(
@@ -231,212 +210,43 @@ export function EnvManager({
             description="No variable matches the current search and filters."
           />
         ) : (
-          <div className="rounded-xl border border-border">
-            <Table className="max-md:[&_td]:px-2 max-md:[&_td>div]:flex-wrap max-md:[&_th]:px-2">
-              <TableHeader>
-                <TableRow>
-                  <EnvSelectionHead />
-                  <TableHead className="whitespace-nowrap max-md:w-full">
-                    Key
-                  </TableHead>
-                  <TableHead className="w-full max-md:hidden">Value</TableHead>
-                  <TableHead className="whitespace-nowrap max-md:hidden">
-                    Last modified
-                  </TableHead>
-                  <TableHead className="whitespace-nowrap max-md:hidden">
-                    Modified by
-                  </TableHead>
-                  <TableHead className="text-right whitespace-nowrap">
-                    <span className="max-md:sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading &&
-                  PLACEHOLDER_KEYS.map((k) => (
-                    <EnvRowSkeleton key={k} envKey={k} />
-                  ))}
-                {shownRows.map((row) =>
-                  row.kind === "standalone" ? (
-                    <TableRow key={rowKey(row)}>
-                      <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
-                        <div className="flex items-center gap-2">
-                          <VariableKey row={row} />
-                          {row.type === "plain" &&
-                            !row.detectedDatabase &&
-                            envNameLooksSensitive(row.key) && (
-                              <LooksLikeSecretBadge />
-                            )}
-                          {row.database && !row.database.reachable && (
-                            <SimpleTooltip
-                              content={`This app cannot reach ${row.database.name}, so its next deploy fails until one of them moves.`}
-                            >
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] font-normal whitespace-nowrap text-destructive"
-                              >
-                                Unreachable
-                              </Badge>
-                            </SimpleTooltip>
-                          )}
-                        </div>
-                        <EnvNoteUnderKey note={row.note} />
-                        <EnvValueUnderKey
-                          value={row.value}
-                          masked={row.masked}
-                        />
-                      </TableCell>
-                      <TableCell className="max-md:hidden">
-                        <EnvValueCell value={row.value} masked={row.masked} />
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
-                        <TimeAgo at={row.updatedAt} />
-                      </TableCell>
-                      <TableCell className="max-md:hidden">
-                        <EnvAuthorCell
-                          author={row.updatedBy ?? row.createdBy ?? null}
-                        />
-                      </TableCell>
-                      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
-                        <RowActions
-                          title={row.key}
-                          actions={[
-                            row.connected && {
-                              label: "Unlink",
-                              icon: Unlink,
-                              onSelect: () =>
-                                void unlinkVariable(
-                                  row.id,
-                                  row.key,
-                                  row.database?.name,
-                                ).then((ok) => ok && router.refresh()),
-                            },
-                            {
-                              label: row.connected
-                                ? "Rename"
-                                : row.type === "secret"
-                                  ? "Edit note"
-                                  : "Edit",
-                              icon: Pencil,
-                              onSelect: () => {
-                                setEditing(row);
-                                setAddOpen(true);
-                              },
-                            },
-                            {
-                              label: "Delete",
-                              icon: Trash2,
-                              destructive: true,
-                              onSelect: () => setDeleteId(row.id),
-                            },
-                          ]}
-                        >
-                          <div className="flex justify-end gap-1">
-                            {row.connected && (
-                              <UnlinkButton
-                                id={row.id}
-                                envKey={row.key}
-                                database={row.database?.name}
-                              />
-                            )}
-                            <EnvEditButton
-                              secret={row.type === "secret" && !row.connected}
-                              label={row.connected ? "Rename" : "Edit"}
-                              onClick={() => {
-                                setEditing(row);
-                                setAddOpen(true);
-                              }}
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeleteId(row.id)}
-                              aria-label="Delete"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
-                        </RowActions>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    <TableRow key={rowKey(row)}>
-                      <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
-                        <div className="flex items-center gap-2">
-                          {row.key}
-                          <Badge
-                            variant="muted"
-                            className="gap-1 text-[10px] font-normal whitespace-nowrap"
-                          >
-                            <Share2 className="size-3" />
-                            {row.linked &&
-                            detailsById.get(row.id)?.editable !== false
-                              ? "Shared"
-                              : (row.ownerTeamName ?? "Every team")}
-                          </Badge>
-                          {composeKeys.includes(row.key) && (
-                            <SimpleTooltip content="This app's compose file sets this variable itself, so the compose value is what the container gets.">
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] font-normal whitespace-nowrap"
-                              >
-                                Set in the compose file
-                              </Badge>
-                            </SimpleTooltip>
-                          )}
-                          {row.type === "plain" &&
-                            row.linked &&
-                            detailsById.get(row.id)?.editable !== false &&
-                            envNameLooksSensitive(row.key) && (
-                              <LooksLikeSecretBadge />
-                            )}
-                        </div>
-                        <EnvNoteUnderKey note={row.note} />
-                        <EnvValueUnderKey
-                          value={row.value}
-                          masked={row.masked}
-                        />
-                      </TableCell>
-                      <TableCell className="max-md:hidden">
-                        <EnvValueCell value={row.value} masked={row.masked} />
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
-                        <TimeAgo at={row.updatedAt} />
-                      </TableCell>
-                      <TableCell className="max-md:hidden">
-                        <EnvAuthorCell author={row.updatedBy ?? null} />
-                      </TableCell>
-                      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
-                        {row.linked ? (
-                          <SharedRowActions
-                            row={row}
-                            appId={appId}
-                            manageable={
-                              canCreateShared &&
-                              detailsById.get(row.id)?.editable !== false
-                            }
-                            onRemoved={() => remove(rowKey(row))}
-                            onRestored={() => restore(rowKey(row))}
-                          />
-                        ) : (
-                          <SimpleTooltip
-                            content={`Shared by ${row.ownerTeamName ?? "an instance admin"}. Only they can change it.`}
-                          >
-                            <span className="text-xs text-muted-foreground">
-                              Read-only
-                            </span>
-                          </SimpleTooltip>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          <EnvList select={<EnvSelectAll />}>
+            {loading &&
+              PLACEHOLDER_KEYS.map((k) => (
+                <EnvRowSkeleton key={k} envKey={k} />
+              ))}
+            {shownRows.map((row) =>
+              row.kind === "standalone" ? (
+                <StandaloneRow
+                  key={rowKey(row)}
+                  row={row}
+                  open={opened.has(rowKey(row))}
+                  onToggle={() => toggleOpen(rowKey(row))}
+                  onEdit={() => {
+                    setEditing(row);
+                    setAddOpen(true);
+                  }}
+                  onDelete={() => setDeleteId(row.id)}
+                />
+              ) : (
+                <SharedRow
+                  key={rowKey(row)}
+                  row={row}
+                  open={opened.has(rowKey(row))}
+                  onToggle={() => toggleOpen(rowKey(row))}
+                  appId={appId}
+                  editable={detailsById.get(row.id)?.editable !== false}
+                  manageable={
+                    canCreateShared &&
+                    detailsById.get(row.id)?.editable !== false
+                  }
+                  composeSetsIt={composeKeys.includes(row.key)}
+                  onRemoved={() => remove(rowKey(row))}
+                  onRestored={() => restore(rowKey(row))}
+                />
+              ),
+            )}
+          </EnvList>
         )}
       </EnvBulkSelection>
 
@@ -479,245 +289,3 @@ export function EnvManager({
     </div>
   );
 }
-
-function SharedRowActions({
-  row,
-  appId,
-  manageable,
-  onRemoved,
-  onRestored,
-}: {
-  row: AppSharedVarDTO;
-  appId: string;
-  manageable: boolean;
-  onRemoved: () => void;
-  onRestored: () => void;
-}) {
-  const router = useRouter();
-  const keepsArriving = row.autoInject;
-
-  function removeFromApp() {
-    if (!keepsArriving) onRemoved();
-    void (async () => {
-      const res = await gqlAction(
-        `mutation($varId: String!, $appId: String!, $linked: Boolean!) {
-           setSharedVarAppLink(varId: $varId, appId: $appId, linked: $linked)
-         }`,
-        { varId: row.id, appId, linked: false },
-      );
-      if (res.ok) {
-        toast.success(
-          keepsArriving
-            ? `${row.key} now arrives from ${row.ownerTeamName ?? "an instance admin"}`
-            : `Removed ${row.key} from this app`,
-        );
-        router.refresh();
-      } else {
-        if (!keepsArriving) onRestored();
-        toast.error(res.error);
-      }
-    })();
-  }
-
-  return (
-    <RowActions
-      title={row.key}
-      actions={[
-        manageable && {
-          label: "Manage",
-          icon: Settings,
-          href: `/variables?tab=shared&edit=${row.id}`,
-        },
-        {
-          label: "Remove from this app",
-          icon: Unlink,
-          destructive: true,
-          onSelect: removeFromApp,
-        },
-      ]}
-    >
-      <div className="flex justify-end gap-1">
-        {manageable && (
-          <SimpleTooltip content="Manage this shared variable">
-            <Button variant="ghost" size="icon-sm" asChild aria-label="Manage">
-              <Link href={`/variables?tab=shared&edit=${row.id}`}>
-                <Settings className="size-4" />
-              </Link>
-            </Button>
-          </SimpleTooltip>
-        )}
-        <SimpleTooltip
-          content={
-            keepsArriving
-              ? "Remove this app's opt-in. It still arrives from the team that shares it."
-              : "Remove from this app. Every other app keeps it."
-          }
-        >
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={removeFromApp}
-            aria-label="Remove from this app"
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <Unlink className="size-4" />
-          </Button>
-        </SimpleTooltip>
-      </div>
-    </RowActions>
-  );
-}
-
-// The logo and the name both open the database a value comes from.
-function VariableKey({ row }: { row: EnvVarDTO }) {
-  const db = row.database ?? row.detectedDatabase;
-  if (!db) return <>{row.key}</>;
-  return (
-    <SimpleTooltip
-      content={row.database ? `Comes from ${db.name}` : `Points at ${db.name}`}
-    >
-      <Link
-        href={`/storage/databases/${db.id}`}
-        className="flex min-w-0 items-center gap-2 hover:underline"
-      >
-        <DatabaseLogo type={db.type} logo={db.logo} size={18} />
-        {row.key}
-      </Link>
-    </SimpleTooltip>
-  );
-}
-
-// Unlink keeps today's value and stops following; Delete stays its own action.
-async function unlinkVariable(
-  id: string,
-  envKey: string,
-  database?: string,
-): Promise<boolean> {
-  const res = await gqlAction(
-    /* GraphQL */ `
-      mutation ($id: String!) {
-        unlinkEnv(id: $id) {
-          id
-        }
-      }
-    `,
-    { id },
-  );
-  if (!res.ok) {
-    toast.error(res.error);
-    return false;
-  }
-  toast.success(`${envKey} no longer follows ${database ?? "its database"}`, {
-    description: "It keeps its current value.",
-  });
-  return true;
-}
-
-function UnlinkButton({
-  id,
-  envKey,
-  database,
-}: {
-  id: string;
-  envKey: string;
-  database?: string;
-}) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  return (
-    <SimpleTooltip content="Unlink">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        disabled={pending}
-        aria-label="Unlink"
-        onClick={() =>
-          startTransition(async () => {
-            if (await unlinkVariable(id, envKey, database)) router.refresh();
-          })
-        }
-      >
-        <Unlink className="size-4" />
-      </Button>
-    </SimpleTooltip>
-  );
-}
-
-function LooksLikeSecretBadge() {
-  return (
-    <InfoTip
-      tone="warning"
-      label="This name usually holds a credential"
-      className="size-4"
-      content="This name usually holds a credential. Edit it and turn on Secret: the value is then write-only and nothing shows it again."
-    />
-  );
-}
-
-const PLACEHOLDER_KEYS = ["DATABASE_URL", "API_KEY", "NODE_ENV"];
-
-// A variable's row while the tab loads: its real cells, the values boned.
-function EnvRowSkeleton({ envKey }: { envKey: string }) {
-  return (
-    <TableRow>
-      <EnvSelectionCell id={envKey} />
-      <TableCell className="font-mono text-xs font-medium max-md:break-all">
-        <div className="flex items-center gap-2">
-          <Bone>{envKey}</Bone>
-        </div>
-        <Bone box className="w-full md:hidden">
-          <EnvValueUnderKey value="" masked />
-        </Bone>
-      </TableCell>
-      <TableCell className="max-md:hidden">
-        <Bone box className="w-full">
-          <EnvValueCell value="" masked />
-        </Bone>
-      </TableCell>
-      <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
-        <Bone>2 months ago</Bone>
-      </TableCell>
-      <TableCell className="max-md:hidden">
-        <Bone box>
-          <EnvAuthorCell author={PLACEHOLDER_AUTHOR} />
-        </Bone>
-      </TableCell>
-      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
-        <RowActions title={envKey} actions={PLACEHOLDER_ACTIONS}>
-          <div className="flex justify-end gap-1">
-            {[Pencil, Trash2].map((Icon, i) => (
-              <Bone box key={i}>
-                <Button variant="ghost" size="icon-sm" disabled>
-                  <Icon className="size-4" />
-                </Button>
-              </Bone>
-            ))}
-          </div>
-        </RowActions>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-const PLACEHOLDER_AUTHOR = {
-  id: "loading",
-  name: "Someone",
-  username: "someone",
-  avatarColor: "",
-  avatarUrl: null,
-};
-
-// What a typical App's variables offer the filters: both types, one editor.
-const PLACEHOLDER_FACET_ROWS = (["plain", "secret"] as const).map(
-  (type) =>
-    ({
-      type,
-      kind: "standalone",
-      updatedBy: PLACEHOLDER_AUTHOR,
-    }) as unknown as EnvRow,
-);
-
-const PLACEHOLDER_ACTIONS = [
-  { label: "Edit", icon: Pencil, disabled: true },
-  { label: "Delete", icon: Trash2, destructive: true, disabled: true },
-];
