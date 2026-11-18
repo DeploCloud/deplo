@@ -5,23 +5,14 @@ import { useSettingsLoading } from "@/components/apps/settings/settings-loading"
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { toast } from "sonner";
-import {
-  Check,
-  Copy,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-  Webhook,
-} from "lucide-react";
+import { RefreshCw, ShieldCheck, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { FeatureRow } from "@/components/apps/settings/settings-shared";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { CommandLine } from "@/components/shared/code-block";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
-import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 
 export function DeployHookPanel({
@@ -115,13 +106,14 @@ export function DeployHookPanel({
                   if (v !== null) setRevealed(true);
                 });
               }}
+              onCopy={resolve}
+              copyLabel="Copy deploy hook URL"
               labels={{
                 reveal: "Reveal deploy hook URL",
                 hide: "Hide deploy hook URL",
               }}
             />
           </Bone>
-          <CopyResolved resolve={resolve} />
           <ConfirmAction
             title="Rotate the deploy hook URL?"
             description="The current URL stops working immediately."
@@ -166,45 +158,5 @@ export function DeployHookPanel({
         </p>
       </div>
     </FeatureRow>
-  );
-}
-
-function CopyResolved({ resolve }: { resolve: () => Promise<string | null> }) {
-  const [copied, setCopied] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const timer = React.useRef<number | undefined>(undefined);
-  React.useEffect(() => () => window.clearTimeout(timer.current), []);
-
-  async function copy() {
-    setBusy(true);
-    const v = await resolve();
-    setBusy(false);
-    if (v === null) return;
-    if (!(await copyText(v))) return;
-    setCopied(true);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setCopied(false), 1500);
-  }
-
-  return (
-    <SimpleTooltip content={copied ? "Copied" : "Copy deploy hook URL"}>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Copy deploy hook URL"
-        disabled={busy}
-        className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-        onClick={copy}
-      >
-        {busy ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : copied ? (
-          <Check className="size-3.5 text-[var(--success)]" />
-        ) : (
-          <Copy className="size-3.5" />
-        )}
-      </Button>
-    </SimpleTooltip>
   );
 }

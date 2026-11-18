@@ -3,12 +3,10 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Check, Clock, Copy, LinkIcon, Loader2, Trash2 } from "lucide-react";
+import { Clock, LinkIcon, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { RowActions } from "@/components/shared/row-actions";
-import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type { RegistrationLinkDTO } from "@/lib/data/members/registration-links";
@@ -32,7 +30,6 @@ export function RegistrationLinkRow({
   const [revealed, setRevealed] = React.useState(false);
   const [value, setValue] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
   const [revoking, startRevoke] = React.useTransition();
 
   const left = useTimeLeft(link.expiresAt);
@@ -64,15 +61,6 @@ export function RegistrationLinkRow({
     void resolve().then((v) => {
       if (v !== null) setRevealed(true);
     });
-  }
-
-  async function copy() {
-    const v = await resolve();
-    if (v === null) return;
-    if (!(await copyText(v))) return;
-    toast.success("Registration link copied");
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   }
 
   function revoke() {
@@ -131,12 +119,6 @@ export function RegistrationLinkRow({
             <RowActions
               title="Registration link"
               actions={[
-                canReveal && {
-                  label: "Copy link",
-                  icon: Copy,
-                  disabled: pending,
-                  onSelect: () => void copy(),
-                },
                 {
                   label: "Revoke",
                   icon: Trash2,
@@ -147,25 +129,6 @@ export function RegistrationLinkRow({
               ]}
             >
               <div className="flex shrink-0 items-center gap-1">
-                {canReveal && (
-                  <SimpleTooltip content="Copy the link without showing it">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={copy}
-                      disabled={pending}
-                      aria-label="Copy registration link"
-                    >
-                      {copied ? (
-                        <Check className="size-4 text-emerald-500" />
-                      ) : pending ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Copy className="size-4" />
-                      )}
-                    </Button>
-                  </SimpleTooltip>
-                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -182,6 +145,8 @@ export function RegistrationLinkRow({
             value={value}
             revealed={revealed}
             onToggle={canReveal ? toggle : undefined}
+            onCopy={resolve}
+            copyLabel="Copy registration link"
             pending={pending}
             placeholder={link.linkMasked}
             locked={!canReveal}

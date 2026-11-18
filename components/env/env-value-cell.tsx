@@ -20,6 +20,8 @@ export function EnvValueCell({
       value={value}
       revealed={revealed}
       onToggle={() => setRevealed((r) => !r)}
+      onCopy={() => value}
+      copyLabel="Copy value"
       placeholderClassName="tracking-wider"
     />
   );

@@ -339,18 +339,17 @@ function PanelFallbackRow({
         </p>
       </div>
       {!disabled && (
-        <div className="flex w-full items-center gap-1">
-          <RevealChip
-            value={url}
-            revealed={revealed}
-            onToggle={() => setRevealed((v) => !v)}
-            labels={{
-              reveal: "Reveal the backup address",
-              hide: "Hide the backup address",
-            }}
-          />
-          <CopyButton value={url} />
-        </div>
+        <RevealChip
+          value={url}
+          revealed={revealed}
+          onToggle={() => setRevealed((v) => !v)}
+          onCopy={() => url}
+          copyLabel="Copy the backup address"
+          labels={{
+            reveal: "Reveal the backup address",
+            hide: "Hide the backup address",
+          }}
+        />
       )}
     </div>
   );
