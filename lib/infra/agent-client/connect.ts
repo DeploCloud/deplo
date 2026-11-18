@@ -1,5 +1,6 @@
 import "server-only";
 
+import { recordAgentHello } from "../../data/servers/agent-capabilities";
 import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
 import { agentSelfRpc } from "./agent-self-rpc";
@@ -122,6 +123,7 @@ export async function gateConnection(
     const hello = await conn.hello();
     if (hello.agentVersion !== stored)
       await markServerSeen(serverId, hello.agentVersion);
+    await recordAgentHello(serverId, hello.agentVersion, hello.capabilities);
     assertAgentUsable(hello.agentVersion);
     let first: typeof hello | null = hello;
     return {

@@ -251,6 +251,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   security_ignores: COPY,
   // Updates of this Deplo's own fleet against its own pin.
   server_agent_updates: { kind: "local" },
+  // What this Deplo's own fleet said over Hello: the next Hello writes it again.
+  server_agent_capabilities: { kind: "local" },
   // The old Deplo's machines: read for the server map and team access, never inserted.
   server_teams: { kind: "copy", mapped: true },
   servers: { kind: "copy", mapped: true },

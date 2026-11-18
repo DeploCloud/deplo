@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import * as yaml from "js-yaml";
 
@@ -16,9 +16,16 @@ import {
   MEMBERS,
   asAdmin,
   clusterOf,
+  db,
   dissolveHarness,
   hosts,
 } from "./cluster-dissolve-test-helpers";
+import { activities } from "../db/schema/control-plane/activity";
+import { serverAgentCapabilities } from "../db/schema/control-plane/servers";
+import {
+  __forgetAgentHellos,
+  recordAgentHello,
+} from "./servers/agent-capabilities";
 
 dissolveHarness();
 
@@ -26,38 +33,44 @@ type Svc = Record<string, unknown> & { labels?: string[] };
 const services = (doc: string) =>
   (yaml.load(doc) as { services: Record<string, Svc> }).services;
 
-const supervising = (...ids: string[]) => {
-  for (const id of ids)
-    hosts[id].capabilities.push(CLUSTER_SUPERVISE_CAPABILITY);
-};
+const FAILSAFE = "0.5.3-canary.11";
+// A Hello from each server, as the agent link's door or a connection hears it.
+const hello = (id: string, version: string, caps: string[]) =>
+  recordAgentHello(id, version, caps);
+const supervising = (...ids: string[]) =>
+  Promise.all(
+    ids.map((id) =>
+      hello(id, FAILSAFE, ["cluster", CLUSTER_SUPERVISE_CAPABILITY]),
+    ),
+  );
 
-test("a cluster supervises its writers only when every member's agent says so", async () => {
+beforeEach(async () => {
+  __forgetAgentHellos();
+  await db().delete(serverAgentCapabilities);
+});
+
+test("a cluster supervises its writers only when every member's agent said so", async () => {
   const cluster = await clusterOf("eu", MEMBERS);
   assert.equal(
     await asAdmin(() => clusterSupervisesWriters(cluster.id)),
     false,
-    "no agent says so yet",
+    "no agent has said anything yet",
   );
-  for (const id of MEMBERS) hosts[id].capabilities.push("cluster.supervise");
+  for (const id of MEMBERS)
+    await hello(id, "0.5.3-canary.10", ["cluster", "cluster.supervise"]);
   assert.equal(
     await asAdmin(() => clusterSupervisesWriters(cluster.id)),
     false,
     "agent 0.5.3-canary.10 says cluster.supervise and leaves a writer it cannot read down",
   );
-  supervising(MEMBERS[0], MEMBERS[1]);
+  await supervising(MEMBERS[0], MEMBERS[1]);
   assert.equal(
     await asAdmin(() => clusterSupervisesWriters(cluster.id)),
     false,
     "a failover may start it on the third",
   );
-  supervising(MEMBERS[2]);
+  await supervising(MEMBERS[2]);
   assert.equal(await asAdmin(() => clusterSupervisesWriters(cluster.id)), true);
-  hosts[MEMBERS[2]].unreachable = true;
-  assert.equal(
-    await asAdmin(() => clusterSupervisesWriters(cluster.id)),
-    false,
-    "a member that cannot answer keeps Docker's policy",
-  );
   assert.equal(
     await asAdmin(() => clusterSupervisesWriters("clu_none")),
     false,
@@ -65,9 +78,64 @@ test("a cluster supervises its writers only when every member's agent says so", 
   );
 });
 
+test("a render never dials a server: one that is down keeps what it last reported", async () => {
+  const cluster = await clusterOf("eu", MEMBERS);
+  await supervising(...MEMBERS);
+  hosts[MEMBERS[2]].unreachable = true;
+  const calls = MEMBERS.map((id) => hosts[id].calls.length);
+  const started = Date.now();
+  assert.equal(await asAdmin(() => clusterSupervisesWriters(cluster.id)), true);
+  assert.ok(Date.now() - started < 1000, "waited on a server that is down");
+  assert.deepEqual(
+    MEMBERS.map((id) => hosts[id].calls.length),
+    calls,
+    "a render dialed a server",
+  );
+});
+
+test("a downgraded agent loses the capability at its first Hello, and Activity says so", async () => {
+  const cluster = await clusterOf("eu", MEMBERS);
+  await supervising(...MEMBERS);
+  assert.equal(await asAdmin(() => clusterSupervisesWriters(cluster.id)), true);
+  await hello(MEMBERS[2], "0.5.3-canary.10", ["cluster", "cluster.supervise"]);
+  assert.equal(
+    await asAdmin(() => clusterSupervisesWriters(cluster.id)),
+    false,
+    "the first render after the reconnect renders Docker's policy",
+  );
+  const rows = await db()
+    .select({ message: activities.message })
+    .from(activities);
+  assert.ok(
+    rows.some(
+      (r) =>
+        r.message.includes(
+          "went back from v0.5.3-canary.11 to v0.5.3-canary.10",
+        ) && r.message.includes(CLUSTER_SUPERVISE_CAPABILITY),
+    ),
+    JSON.stringify(rows),
+  );
+  await hello(MEMBERS[2], FAILSAFE, ["cluster", CLUSTER_SUPERVISE_CAPABILITY]);
+  assert.equal(await asAdmin(() => clusterSupervisesWriters(cluster.id)), true);
+});
+
+test("the same Hello twice writes nothing", async () => {
+  await supervising(MEMBERS[0]);
+  const first = await db()
+    .select({ at: serverAgentCapabilities.reportedAt })
+    .from(serverAgentCapabilities);
+  await new Promise((r) => setTimeout(r, 5));
+  __forgetAgentHellos();
+  await supervising(MEMBERS[0]);
+  const again = await db()
+    .select({ at: serverAgentCapabilities.reportedAt })
+    .from(serverAgentCapabilities);
+  assert.deepEqual(again, first);
+});
+
 test("only what keeps data on such a cluster starts under its lease", async () => {
   const cluster = await clusterOf("eu", MEMBERS);
-  supervising(...MEMBERS);
+  await supervising(...MEMBERS);
   const volume = { type: "named" as const, name: "data", mountPath: "/data" };
   await asAdmin(async () => {
     assert.equal(

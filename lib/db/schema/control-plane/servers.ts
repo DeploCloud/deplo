@@ -105,3 +105,17 @@ export const serverAgentUpdates = pgTable("server_agent_updates", {
   lastError: text("last_error").notNull().default(""),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
+
+// What each server's agent last said it can do over Hello, read at render so nothing dials a server then.
+export const serverAgentCapabilities = pgTable(
+  "server_agent_capabilities",
+  {
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+    agentVersion: text("agent_version").notNull(),
+    reportedAt: isoTimestamptz("reported_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.serverId, t.capability] })],
+);
