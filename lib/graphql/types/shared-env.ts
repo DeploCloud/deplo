@@ -189,7 +189,7 @@ const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
     note: t.string({
       required: false,
       description:
-        "At most 280 characters. Left out keeps the stored note; an empty string removes it.",
+        "At most 1000 characters. Left out keeps the stored note; an empty string removes it.",
     }),
     teamIds: t.idList({
       required: true,

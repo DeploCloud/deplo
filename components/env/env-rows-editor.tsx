@@ -5,11 +5,17 @@ import { Info, Plus, Trash2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { KEY_RE, NOTE_MAX, parseEnvFile } from "@/lib/env-file";
 
 // `note` undefined is a closed "Add note"; an empty string is an open, blank one.
-export type EnvRow = { key: string; value: string; note?: string };
+export type EnvRow = {
+  key: string;
+  value: string;
+  note?: string;
+  noteLoose?: boolean;
+};
 
 export const NOTE_VISIBLE =
   "Notes are visible to anyone who can see the variable, so never put a secret in one.";
@@ -56,17 +62,18 @@ export function EnvRowsEditor({
 
   function onPaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
-    const parsed = parseEnvFile(text);
+    const parsed = parseEnvFile(text, { loose: notes });
     if (parsed.length === 0) return;
     e.preventDefault();
     const kept = rows.filter((r, idx) => idx !== i && r.key.trim() !== "");
     const merged = [...kept];
-    for (const { key, value, note } of parsed) {
+    for (const { key, value, note, noteLoose } of parsed) {
       const at = merged.findIndex((r) => r.key === key);
       const row = {
         key,
         value,
         note: notes ? (note ?? merged[at]?.note) : undefined,
+        noteLoose: notes && note !== undefined && noteLoose,
       };
       if (at >= 0) merged[at] = row;
       else merged.push(row);
@@ -150,15 +157,35 @@ export function EnvRowsEditor({
                     Add note
                   </button>
                 ) : (
-                  <Input
-                    value={r.note}
-                    onChange={(e) => setRow(i, { note: e.target.value })}
-                    placeholder="What is this variable for?"
-                    aria-label={`Note for ${r.key.trim() || "this variable"}`}
-                    maxLength={NOTE_MAX}
-                    autoFocus={r.note === ""}
-                    className="col-span-2 h-7 border-0 bg-transparent px-1.5 text-xs text-muted-foreground shadow-none focus-visible:ring-1 focus-visible:ring-offset-0"
-                  />
+                  <div className="col-span-2 space-y-1">
+                    <Textarea
+                      value={r.note}
+                      onChange={(e) =>
+                        setRow(i, { note: e.target.value, noteLoose: false })
+                      }
+                      placeholder="What is this variable for?"
+                      aria-label={`Note for ${r.key.trim() || "this variable"}`}
+                      maxLength={NOTE_MAX}
+                      autoFocus={r.note === ""}
+                      rows={Math.min(4, Math.max(1, r.note.split("\n").length))}
+                      className="min-h-0 resize-none border-0 bg-transparent px-1.5 py-1 font-sans text-xs text-muted-foreground shadow-none focus-visible:ring-1 focus-visible:ring-offset-0"
+                    />
+                    {r.noteLoose && (
+                      <p className="flex items-center gap-1.5 px-1.5 text-[11px] text-warning">
+                        <TriangleAlert className="size-3 shrink-0" />A blank
+                        line separated this comment from the variable.
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRow(i, { note: undefined, noteLoose: false })
+                          }
+                          className="cursor-pointer text-foreground underline underline-offset-2"
+                        >
+                          Remove
+                        </button>
+                      </p>
+                    )}
+                  </div>
                 ))}
             </div>
           );

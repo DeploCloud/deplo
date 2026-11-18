@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { NOTE_VISIBLE } from "@/components/env/env-rows-editor";
 import { NOTE_MAX } from "@/lib/env-file";
@@ -22,12 +22,14 @@ export function NoteField({
       >
         Note
       </FieldLabel>
-      <Input
+      <Textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="What is this variable for?"
         maxLength={NOTE_MAX}
         autoFocus={autoFocus}
+        rows={3}
+        className="min-h-0 font-sans"
       />
       <p className="text-xs text-muted-foreground">{NOTE_VISIBLE}</p>
     </div>

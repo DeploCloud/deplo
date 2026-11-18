@@ -26,11 +26,12 @@ test("copy includes only readable Plain values and keeps scopes and special char
   );
   assert.equal(
     copyEnvItems(items),
-    '# API\n\nPORT="3000"\nEMPTY=""\nTEXT=' + JSON.stringify(items[5].value),
+    '# --- API ---\n\nPORT="3000"\nEMPTY=""\nTEXT=' +
+      JSON.stringify(items[5].value),
   );
 });
 
-test("a copy pasted back keeps each note and no scope becomes one", () => {
+test("a copy pasted back keeps each note, line by line, and no scope becomes one", () => {
   const items: BulkEnvItem[] = [
     {
       id: "a",
@@ -53,12 +54,12 @@ test("a copy pasted back keeps each note and no scope becomes one", () => {
   const copied = copyEnvItems(items);
   assert.equal(
     copied,
-    '# web\n\n# Public base\nAPI_URL="x"\nDEBUG="false"\n\n# api\n\n# two lines\nPORT="3000"',
+    '# --- web ---\n\n# Public base\nAPI_URL="x"\nDEBUG="false"\n\n# --- api ---\n\n# two\n# lines\nPORT="3000"',
   );
   assert.deepEqual(parseEnvFile(copied), [
     { key: "API_URL", value: "x", note: "Public base" },
     { key: "DEBUG", value: "false" },
-    { key: "PORT", value: "3000", note: "two lines" },
+    { key: "PORT", value: "3000", note: "two\nlines" },
   ]);
 });
 

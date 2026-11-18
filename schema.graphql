@@ -361,7 +361,7 @@ input AppEnvInput {
   key: String!
 
   """
-  What the variable is for, at most 280 characters. Anyone who can see the variable can read it.
+  What the variable is for, at most 1000 characters. Anyone who can see the variable can read it.
   """
   note: String
 
@@ -3147,7 +3147,7 @@ input EnvEntryInput {
   key: String!
 
   """
-  At most 280 characters. Left out keeps the stored note; an empty string removes it.
+  At most 1000 characters. Left out keeps the stored note; an empty string removes it.
   """
   note: String
   value: String!
@@ -7026,7 +7026,7 @@ input SaveSharedVarInput {
   key: String!
 
   """
-  At most 280 characters. Left out keeps the stored note; an empty string removes it.
+  At most 1000 characters. Left out keeps the stored note; an empty string removes it.
   """
   note: String
   projectIds: [ID!]!
@@ -8379,7 +8379,7 @@ input UpsertEnvInput {
   key: String!
 
   """
-  At most 280 characters. Left out keeps the stored note; an empty string removes it.
+  At most 1000 characters. Left out keeps the stored note; an empty string removes it.
   """
   note: String
   targets: [EnvTarget!]

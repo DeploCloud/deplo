@@ -86,7 +86,7 @@ test("the comment block right above a key becomes its note", () => {
       ].join("\n"),
     ),
     [
-      { key: "DB_POOL", value: "10", note: "Pool size for the API" },
+      { key: "DB_POOL", value: "10", note: "Pool size for\nthe API" },
       { key: "API_URL", value: "https://acme.com", note: "public base URL" },
       { key: "DEBUG", value: "false" },
       { key: "PORT", value: "3000", note: "inline wins" },
@@ -96,13 +96,60 @@ test("the comment block right above a key becomes its note", () => {
 });
 
 test("a pasted note over the limit is cut and says so", () => {
-  const [e] = parseEnvFile(`# ${"a".repeat(300)}\nKEY=1`);
-  assert.equal(e.note?.length, 280);
+  const [e] = parseEnvFile(`# ${"a".repeat(1100)}\nKEY=1`);
+  assert.equal(e.note?.length, 1000);
   assert.equal(e.noteCut, true);
 });
 
-test("a typed note over the limit is refused, whitespace folds to one line", () => {
-  assert.equal(noteInput("  two\n lines "), "two lines");
+test("a typed note over the limit is refused, each line folds but the breaks stay", () => {
+  assert.equal(noteInput("  two\n\n lines   here "), "two\nlines here");
   assert.equal(noteInput("   "), null);
-  assert.throws(() => noteInput("a".repeat(281)), /at most 280/);
+  assert.throws(() => noteInput("a".repeat(1001)), /at most 1000/);
+});
+
+test("a section title is never a note, even right above a key", () => {
+  assert.deepEqual(
+    parseEnvFile("# --- Email ---\nSMTP_HOST=x\n# === Auth\nA=1"),
+    [
+      { key: "SMTP_HOST", value: "x" },
+      { key: "A", value: "1" },
+    ],
+  );
+});
+
+const BEHIND_BLANK = [
+  "# --- Email ---",
+  "# Ask Maria for the shared mailbox.",
+  "",
+  "SMTP_HOST=smtp.acme.com",
+  "# Leave empty to log mail instead.",
+  "# Use the SMTP password, not the API key.",
+  "SMTP_PASSWORD=x",
+].join("\n");
+
+test("a comment behind a blank line is dropped unless asked for, then flagged", () => {
+  assert.deepEqual(parseEnvFile(BEHIND_BLANK)[0], {
+    key: "SMTP_HOST",
+    value: "smtp.acme.com",
+  });
+  assert.deepEqual(parseEnvFile(BEHIND_BLANK, { loose: true }), [
+    {
+      key: "SMTP_HOST",
+      value: "smtp.acme.com",
+      note: "Ask Maria for the shared mailbox.",
+      noteLoose: true,
+    },
+    {
+      key: "SMTP_PASSWORD",
+      value: "x",
+      note: "Leave empty to log mail instead.\nUse the SMTP password, not the API key.",
+    },
+  ]);
+});
+
+test("a section title cuts a loose comment off from the next key", () => {
+  assert.deepEqual(
+    parseEnvFile("# file intro\n\n# --- Auth ---\nAUTH_URL=x", { loose: true }),
+    [{ key: "AUTH_URL", value: "x" }],
+  );
 });

@@ -119,7 +119,7 @@ const AppEnvInput = builder.inputType("AppEnvInput", {
     }),
     note: t.string({
       required: false,
-      description: `What the variable is for, at most 280 characters. Anyone who can see the variable can read it.`,
+      description: `What the variable is for, at most 1000 characters. Anyone who can see the variable can read it.`,
     }),
   }),
 });

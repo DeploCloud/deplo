@@ -20,6 +20,8 @@ export function readableEnvItems(items: BulkEnvItem[]) {
 }
 
 const oneLine = (s: string) => s.replace(/[\r\n]+/g, " ");
+const commented = (note: string) =>
+  note.split(/\r?\n/).map((line) => `# ${line}`);
 
 // A scope is a heading with a blank line under it, so pasting the copy back reads only notes as notes.
 export function copyEnvItems(items: BulkEnvItem[]): string {
@@ -28,10 +30,10 @@ export function copyEnvItems(items: BulkEnvItem[]): string {
   for (const item of readableEnvItems(items)) {
     if (item.scope && item.scope !== scope) {
       if (out.length) out.push("");
-      out.push(`# ${oneLine(item.scope)}`, "");
+      out.push(`# --- ${oneLine(item.scope)} ---`, "");
     }
     scope = item.scope ?? scope;
-    if (item.note) out.push(`# ${oneLine(item.note)}`);
+    if (item.note) out.push(...commented(item.note));
     out.push(`${item.key}=${JSON.stringify(item.value)}`);
   }
   return out.join("\n");

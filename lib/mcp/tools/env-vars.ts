@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { appId, tool, type McpToolDef } from "./tool-def";
+import { NOTE_MAX } from "../../env-file";
 
 export const ENV: McpToolDef[] = [
   tool({
@@ -48,7 +49,7 @@ export const ENV: McpToolDef[] = [
         ),
       note: z
         .string()
-        .max(280)
+        .max(NOTE_MAX)
         .optional()
         .describe(
           "What the variable is for. Readable by anyone who can see the variable, so never a secret.",
@@ -86,7 +87,7 @@ export const ENV: McpToolDef[] = [
       id: z.string().describe("The variable's id, from list_env."),
       note: z
         .string()
-        .max(280)
+        .max(NOTE_MAX)
         .optional()
         .describe("Omit or leave empty to remove the note."),
     }),
@@ -210,7 +211,7 @@ export const APP_SHARED_ENV: McpToolDef[] = [
       secret: z.boolean().optional().describe("Store it masked."),
       note: z
         .string()
-        .max(280)
+        .max(NOTE_MAX)
         .optional()
         .describe(
           "What the variable is for. Readable by anyone who can see it, so never a secret.",
@@ -262,7 +263,7 @@ export const APP_SHARED_ENV: McpToolDef[] = [
       id: z.string().describe("From list_shared_vars."),
       note: z
         .string()
-        .max(280)
+        .max(NOTE_MAX)
         .optional()
         .describe("Omit or leave empty to remove the note."),
     }),

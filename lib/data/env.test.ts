@@ -240,8 +240,8 @@ test("a note travels with the variable and a line without one keeps it", async (
   );
   [row] = rows;
   await assert.rejects(
-    () => asUser1(() => setEnvNote(row.id, "x".repeat(281))),
-    /at most 280/,
+    () => asUser1(() => setEnvNote(row.id, "x".repeat(1001))),
+    /at most 1000/,
   );
 });
 

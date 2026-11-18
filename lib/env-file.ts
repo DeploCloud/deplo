@@ -1,6 +1,6 @@
 export const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-export const NOTE_MAX = 280;
+export const NOTE_MAX = 1000;
 
 export interface EnvFileEntry {
   key: string;
@@ -8,13 +8,22 @@ export interface EnvFileEntry {
   // The comment above the line, or after its value.
   note?: string;
   noteCut?: true;
+  // The note sat behind a blank line: only kept when asked for, and worth a second look.
+  noteLoose?: true;
 }
 
 const SINGLE_QUOTED = /^(["'])(.*?)\1\s*(?:#(.*))?$/;
 const WORDY = /[\p{L}\p{N}]/u;
+// `--- Database ---`, `=== Email`: a section title, never a note.
+const HEADING = /^[-=*~_]{2,}|[-=*~_]{2,}$/;
 
+// Each line folds its own whitespace; the line breaks stay.
 export function cleanNote(raw: string | null | undefined): string | null {
-  const note = (raw ?? "").replace(/\s+/g, " ").trim();
+  const note = (raw ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
   return note || null;
 }
 
@@ -33,33 +42,41 @@ function commentText(raw: string | undefined): string {
 
 function noteOf(
   inline: string | undefined,
-  above: string[],
+  lines: string[],
 ): Pick<EnvFileEntry, "note" | "noteCut"> {
-  const note = cleanNote(commentText(inline) || above.join(" "));
+  const note = cleanNote(commentText(inline) || lines.join("\n"));
   if (!note) return {};
   return note.length > NOTE_MAX
     ? { note: note.slice(0, NOTE_MAX).trimEnd(), noteCut: true }
     : { note };
 }
 
-// The one .env reader: the paste box, importEnv and the migration importers all go through it.
+// The one .env reader: the paste box, importEnv, .env.example and the migration importers.
 // see https://deplo.build/docs/guides/config/environment-variables#add-a-note
-export function parseEnvFile(text: string | null | undefined): EnvFileEntry[] {
+export function parseEnvFile(
+  text: string | null | undefined,
+  { loose = false }: { loose?: boolean } = {},
+): EnvFileEntry[] {
   if (!text) return [];
   const out: EnvFileEntry[] = [];
   const at = new Map<string, number>();
   const lines = text.split("\n");
   let above: string[] = [];
+  let behindBlank: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim().replace(/^export\s+/, "");
     if (line.startsWith("#")) {
       const text = commentText(line);
-      if (text) above.push(text);
+      if (HEADING.test(text)) {
+        above = [];
+        behindBlank = [];
+      } else if (text) above.push(text);
       continue;
     }
     const eq = line.indexOf("=");
     const key = eq === -1 ? "" : line.slice(0, eq).trim();
     if (!key) {
+      if (above.length) behindBlank = above;
       above = [];
       continue;
     }
@@ -88,8 +105,15 @@ export function parseEnvFile(text: string | null | undefined): EnvFileEntry[] {
         i = end;
       }
     }
-    const entry = { key, value, ...noteOf(inline, above) };
+    const far = loose && !above.length && !commentText(inline);
+    const entry: EnvFileEntry = {
+      key,
+      value,
+      ...noteOf(inline, far ? behindBlank : above),
+    };
+    if (far && entry.note) entry.noteLoose = true;
     above = [];
+    behindBlank = [];
     const seen = at.get(key);
     if (seen === undefined) {
       at.set(key, out.length);
