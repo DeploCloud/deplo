@@ -269,6 +269,16 @@ test("a failover of an App on its own domain writes the Activity entry and redep
     source: "custom",
     createdAt: AT,
   });
+  // The leader says where it placed the App before it says it moved.
+  await apply(
+    cluster.id,
+    event(cluster.id, "placement", {
+      kind: "app",
+      workloadId: "prj_web",
+      members: ["srv_3"],
+      epoch: 2,
+    }),
+  );
   await apply(
     cluster.id,
     event(cluster.id, "failed_over", {

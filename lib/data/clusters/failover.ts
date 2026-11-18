@@ -131,6 +131,27 @@ async function databaseFailedOver(
     )
     .limit(1);
   if (!row) return;
+  const placedOn = (
+    (await listWorkloadPlacements("database", [row.id])).get(row.id) ?? []
+  )
+    .map((p) => p.serverId)
+    .filter(Boolean);
+  if (placedOn.length > 0 && !placedOn.includes(d.to)) {
+    await recordActivity(
+      "database",
+      supersededSentence(
+        row.name,
+        await serverName(d.to),
+        await serverName(placedOn[0]!),
+      ),
+      ACTOR,
+      null,
+      row.teamId,
+      null,
+      row.id,
+    );
+    return;
+  }
   const target = await getServerById(d.to);
   // The backup is read from this database's own runs; the event's time is only what is left when it is gone.
   const run = await backupClock(row.teamId, row.id, d.backupId);
@@ -202,6 +223,15 @@ async function databaseFailedOver(
   if (row.standby) syncStandbySoon(row.id);
 }
 
+/** A move the leader made that a newer placement replaced before Deplo applied it. */
+export function supersededSentence(
+  name: string,
+  to: string,
+  now: string,
+): string {
+  return `Did not move ${name} to ${to}: the cluster's leader placed it on ${now} since`;
+}
+
 /** One workload has run on its new member: say so, and give an App's generated address its new host. */
 export async function applyFailedOver(
   cluster: Cluster,
@@ -224,6 +254,22 @@ export async function applyFailedOver(
   if (!app) return;
   const why = REASONS[String(d.reason)] ?? "stopped answering";
   const [from, to] = await Promise.all([serverName(d.from), serverName(d.to)]);
+  const placedOn = (
+    (await listWorkloadPlacements("app", [app.id])).get(app.id) ?? []
+  )
+    .map((p) => p.serverId)
+    .filter(Boolean);
+  if (placedOn.length > 0 && !placedOn.includes(d.to)) {
+    // A newer placement already moved it on: said once, and its address stays where it runs now (deplo#244).
+    await recordActivity(
+      "app",
+      supersededSentence(app.name, to, await serverName(placedOn[0]!)),
+      ACTOR,
+      app.id,
+      app.teamId,
+    );
+    return;
+  }
   // An App with a Volume came back from a backup: the entry names it, as a database's does (#204).
   const run = await backupClock(app.teamId, app.id, d.backupId);
   const restored = run || typeof d.backupId === "string";
@@ -491,7 +537,9 @@ export async function adoptLeaderMoves(
       .map((e) => e.member || null);
     if (members.length === 0) continue;
     const mirror = (await listWorkloadPlacements(kind, [id])).get(id) ?? [];
-    if (mirror.map((p) => p.serverId).join() !== members.join())
+    const unseen = mirror.map((p) => p.serverId).join() !== members.join();
+    let worded = false;
+    if (unseen)
       try {
         await recordPlacement({
           clusterId: cluster.id,
@@ -507,6 +555,7 @@ export async function adoptLeaderMoves(
     for (const m of moves) {
       if (m.kind !== kind || m.id !== id) continue;
       if (!lost || m.seq <= lost.after || m.seq >= lost.before) continue;
+      worded ||= Boolean(m.member);
       if (m.member)
         await applyFailedOver(cluster, {
           kind,
@@ -527,6 +576,22 @@ export async function adoptLeaderMoves(
         waiting.set(m.from, w);
       }
     }
+    // Deplo never read this move (an old leader made it, or its event is gone): the newest one is said all the same.
+    const last = [...moves]
+      .reverse()
+      .find((m) => m.kind === kind && m.id === id && m.member);
+    if (unseen && !worded && last?.member && members.includes(last.member))
+      await applyFailedOver(cluster, {
+        kind,
+        workloadId: id,
+        from: last.from,
+        to: last.member,
+        reason: last.reason,
+        backupId: last.backupId,
+        backupAt: last.backupAt,
+        restoreMs: last.restoreMs,
+        promoted: last.promoted,
+      });
   }
   for (const [member, w] of waiting)
     await applyFailoverSummary(cluster, w.seq, { member, waiting: w.left });
