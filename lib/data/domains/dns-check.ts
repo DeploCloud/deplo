@@ -105,10 +105,14 @@ export async function verifyDomain(
     "manage_domains",
   );
 
-  const status = await checkDomainDns(
-    dom.name,
-    await appServerAddresses(dom.appId),
-  );
+  const clusterId = dom.answersEverywhere
+    ? (await loadAppGraph(dom.appId))?.clusterId
+    : null;
+  const status = clusterId
+    ? await (
+        await import("../clusters/answer-dns")
+      ).answerDomainStatus(dom.name, clusterId)
+    : await checkDomainDns(dom.name, await appServerAddresses(dom.appId));
   const ssl = isRoutableDomain({ status, proxied: dom.proxied });
   // Already routed behind Cloudflare: what it does to the live route decides, not the DNS alone.
   const probed =

@@ -12,6 +12,7 @@ import {
   applyFailoverSummary,
   applyMoveFailed,
 } from "./failover";
+import { syncClusterAnswerDnsSoon } from "./answer-dns";
 import { leaderHost } from "./host";
 import {
   forgetLeaderRoster,
@@ -96,6 +97,8 @@ async function memberLeaseChanged(
   const name = (await getServerById(serverId))?.name ?? "A server";
   const text = await leaseChangeSentence(clusterId, clusterName, name, state);
   await recordClusterActivity(clusterId, text);
+  // A server that stopped or is back changes which addresses a domain on every server lists.
+  syncClusterAnswerDnsSoon(clusterId);
 }
 
 export type EventResult = "applied" | "skipped" | "frozen";

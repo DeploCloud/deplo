@@ -1,5 +1,6 @@
 import "server-only";
 
+import { syncClusterAnswerDnsSoon } from "./answer-dns";
 import { asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -507,6 +508,8 @@ export async function addClusterMember(
   } catch (e) {
     console.warn(`[cluster-relay] ${clusterId}: ${messageOf(e)}`);
   }
+  // A domain that answers on every server lists the new one too.
+  syncClusterAnswerDnsSoon(clusterId);
   // An App that came along keeps its address wherever it runs from now: its domains switch without waiting for the sweep.
   if (cameApps.length > 0)
     inBackground(serverId, () => joinAppTunnels(cameApps, user));
