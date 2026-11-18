@@ -7276,6 +7276,16 @@ type SecurityUpdate {
   imageRef: String
   installedVersion: String
   level: SecurityLevel
+
+  """
+  The version that image would move to; null when its fix is a newer build of the same version.
+  """
+  newerTag: String
+
+  """
+  True when the newer build or version could not be read, so whether it fixes this is unknown. Deplo tries again a day later.
+  """
+  newerUnreadable: Boolean
   osvUrl: String
   packageName: String
 
@@ -7320,6 +7330,14 @@ type SecurityUpdateGroup {
   installedVersion: String
   key: ID
   level: SecurityLevel
+
+  """
+  For an image, the version it would move to; null for a newer build of the same version.
+  """
+  newerTag: String
+
+  """True when the image's newer build or version could not be read."""
+  newerUnreadable: Boolean
   packageName: String
   service: String
 
@@ -7355,7 +7373,7 @@ type SecurityUpdates {
   groups: [SecurityUpdateGroup!]
 
   """
-  A newer version of the image on the same line, when the registry lists one.
+  The version the top counted `newer_tag` update moves its image to. Each advisory carries its own `newerTag`.
   """
   newerTag: String
 

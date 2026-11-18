@@ -369,6 +369,37 @@ export function candidateTarget(
   return w.newerTagDigest ? `${repo}@${w.newerTagDigest}` : null;
 }
 
+type NewerState = Pick<
+  typeof workloadImages.$inferSelect,
+  | "imageRef"
+  | "repoDigest"
+  | "registryStatus"
+  | "registryDigest"
+  | "newerTag"
+  | "newerTagDigest"
+  | "candidateRef"
+  | "candidateStatus"
+>;
+
+// The version this workload's own image would move to; null when the same tag got a newer build.
+export function newerVersion(w: NewerState): string | null {
+  const moved =
+    w.registryDigest && w.repoDigest && w.registryDigest !== w.repoDigest;
+  return moved ? null : w.newerTag;
+}
+
+// The newer build was pulled and could not be read: no answer until the next try a day later.
+export function newerUnreadable(w: NewerState): boolean {
+  const target = candidateTarget(w);
+  return (
+    !!target &&
+    w.candidateRef === target &&
+    !!w.candidateStatus &&
+    w.candidateStatus !== "ok" &&
+    w.candidateStatus !== "busy"
+  );
+}
+
 // ponytail: one pull per server per tick, the first that needs one; a queue if images pile up.
 async function readOneCandidate(
   serverId: string,

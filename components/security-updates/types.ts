@@ -20,6 +20,8 @@ export interface Update {
   ignoredBy: string | null;
   service: string;
   imageRef: string;
+  newerTag: string | null;
+  newerUnreadable: boolean;
   via: string[];
   direct: boolean | null;
   osvUrl: string;
@@ -29,7 +31,6 @@ export interface Answer {
   checkedAt: string | null;
   checking: boolean;
   unreadable: string[];
-  newerTag: string | null;
   updates: Update[];
 }
 

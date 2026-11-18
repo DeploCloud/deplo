@@ -93,6 +93,15 @@ const SecurityUpdateRef = builder
         description:
           "The image it was found in. An image's update moves the image as a whole.",
       }),
+      newerTag: t.exposeString("newerTag", {
+        nullable: true,
+        description:
+          "The version that image would move to; null when its fix is a newer build of the same version.",
+      }),
+      newerUnreadable: t.exposeBoolean("newerUnreadable", {
+        description:
+          "True when the newer build or version could not be read, so whether it fixes this is unknown. Deplo tries again a day later.",
+      }),
       via: t.exposeStringList("via", {
         description:
           "Who pulls the package in, from its parent up to the app's own dependency; empty for a direct one or when Deplo cannot tell. An indirect one is fixed with an override.",
@@ -118,6 +127,17 @@ const SecurityUpdateGroupRef = builder
           "True when the update moves a whole image to a newer build or version; `packageName` and `installedVersion` are then null.",
       }),
       imageRef: t.string({ resolve: (g) => g.items[0].imageRef }),
+      newerTag: t.string({
+        nullable: true,
+        description:
+          "For an image, the version it would move to; null for a newer build of the same version.",
+        resolve: (g) => (g.image ? g.items[0].newerTag : null),
+      }),
+      newerUnreadable: t.boolean({
+        description:
+          "True when the image's newer build or version could not be read.",
+        resolve: (g) => g.image && g.items[0].newerUnreadable,
+      }),
       service: t.string({ resolve: (g) => g.items[0].service }),
       packageName: t.string({
         nullable: true,
@@ -185,7 +205,7 @@ const SecurityUpdatesRef = builder
       newerTag: t.exposeString("newerTag", {
         nullable: true,
         description:
-          "A newer version of the image on the same line, when the registry lists one.",
+          "The version the top counted `newer_tag` update moves its image to. Each advisory carries its own `newerTag`.",
       }),
       groups: t.field({
         type: [SecurityUpdateGroupRef],

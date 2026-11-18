@@ -273,3 +273,54 @@ test("groups count once per package with EPSS on each advisory", async () => {
     ["a:true", "b:false", "c:true"],
   );
 });
+
+test("each image names its own newer version, never another service's", async () => {
+  const image = (service: string, imageRef: string, newerTag: string) => ({
+    serverId: SERVER_1,
+    workloadId: "prj_web",
+    service,
+    kind: "app",
+    teamId: TEAM_A,
+    appId: "prj_web",
+    imageRef,
+    imageId: IMG,
+    running: true,
+    seenAt: T0,
+    checkedAt: T0,
+    registryStatus: "ok",
+    newerTag,
+    newerTagDigest: `sha256:${service}`,
+  });
+  await db.insert(workloadImages).values([
+    image("db", "postgres:17.5", "17.12"),
+    image("client", "ghcr.io/acme/client:v2.9.2", "v2.9.3"),
+    {
+      ...image("backend", "ghcr.io/acme/backend:v2.9.2", "v2.9.3"),
+      candidateRef: "ghcr.io/acme/backend@sha256:backend",
+      candidateStatus: "too_large",
+    },
+  ]);
+  const finding = (service: string, fix: string) => ({
+    serverId: SERVER_1,
+    workloadId: "prj_web",
+    service,
+    vulnId: `GHSA-${service}`,
+    ecosystem: "npm",
+    packageName: "next",
+    installedVersion: "16.2.6",
+    fixedVersion: "16.4.6",
+    location: "/app/node_modules/next/package.json",
+    level: "critical",
+    fix,
+    firstSeenAt: T0,
+  });
+  await db
+    .insert(securityFindings)
+    .values([finding("client", "newer_tag"), finding("backend", "unverified")]);
+  const s = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
+  const by = (svc: string) => s!.updates.find((u) => u.service === svc)!;
+  assert.equal(by("client").newerTag, "v2.9.3", "not postgres's 17.12");
+  assert.equal(by("client").newerUnreadable, false);
+  assert.equal(by("backend").newerUnreadable, true, "its read failed");
+  assert.equal(s!.newerTag, "v2.9.3");
+});

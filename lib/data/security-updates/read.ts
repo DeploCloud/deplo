@@ -28,6 +28,10 @@ import {
 } from "../../security-updates/group";
 import { activeIgnores, ignoreKey } from "../../security-updates/ignored";
 import { securityState } from "../../security-updates/state";
+import {
+  newerUnreadable,
+  newerVersion,
+} from "../../security-updates/workloads";
 import { getDatabase } from "../databases/rows";
 import { hasAppCapability } from "../node-access";
 
@@ -58,6 +62,10 @@ export interface SecurityUpdate {
   service: string;
   // The image it was found in: an image's update moves it whole.
   imageRef: string;
+  // The version that image would move to; null when its fix is a newer build of the same one.
+  newerTag: string | null;
+  // The newer build or version could not be read, so whether it fixes this is unknown.
+  newerUnreadable: boolean;
   // Who pulls the package in, parent first up to the app's own dependency; [] when direct or unknown.
   via: string[];
   // Named in the app's package.json; null when Deplo cannot tell.
@@ -74,6 +82,7 @@ export interface SecurityUpdates {
   unreadable: string[];
   count: number;
   exploited: number;
+  // The version the top counted newer-version update moves to: what the banner's button names.
   newerTag: string | null;
   updates: SecurityUpdate[];
   // One per package of the app's, or per image, with its advisories: what the dashboard lists.
@@ -145,7 +154,7 @@ async function subjectUpdates(
     .where(and(eq(workloadImages.teamId, teamId), owner));
   const findings = rows.length
     ? await db
-        .select({ f: securityFindings, imageRef: workloadImages.imageRef })
+        .select({ f: securityFindings, wi: workloadImages })
         .from(securityFindings)
         .innerJoin(
           workloadImages,
@@ -186,7 +195,7 @@ async function subjectUpdates(
   );
   const updates = findings
     .filter(({ f }) => inScope(f) && !stale.has(workloadKey(f)))
-    .map(({ f, imageRef }): SecurityUpdate => {
+    .map(({ f, wi }): SecurityUpdate => {
       const ig = ignores.get(ignoreKey(subjectId, f.vulnId));
       const a = affectedFor(
         osv.filter((o) => o.vulnId === f.vulnId),
@@ -215,7 +224,9 @@ async function subjectUpdates(
         actionable: isActionable(f),
         epss: a?.cve ? (epss.get(a.cve) ?? null) : null,
         service: f.service,
-        imageRef,
+        imageRef: wi.imageRef,
+        newerTag: newerVersion(wi),
+        newerUnreadable: newerUnreadable(wi),
         via: f.via ? f.via.split("\t") : [],
         direct: f.direct,
         osvUrl: `https://osv.dev/vulnerability/${encodeURIComponent(f.vulnId)}`,
@@ -244,7 +255,9 @@ async function subjectUpdates(
     ],
     count: counted.count,
     exploited: counted.exploited,
-    newerTag: rows.find((r) => r.wi.newerTag)?.wi.newerTag ?? null,
+    newerTag:
+      updates.find((u) => u.fix === "newer_tag" && u.counted && !u.ignored)
+        ?.newerTag ?? null,
     updates,
     groups: groupUpdates(updates),
   };

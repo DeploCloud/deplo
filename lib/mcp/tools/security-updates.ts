@@ -6,6 +6,8 @@ const GROUP_FIELDS = /* GraphQL */ `
   key
   image
   imageRef
+  newerTag
+  newerUnreadable
   service
   packageName
   installedVersion

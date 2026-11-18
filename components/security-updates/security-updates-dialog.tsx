@@ -25,7 +25,6 @@ const QUERY = /* GraphQL */ `
       checkedAt
       checking
       unreadable
-      newerTag
       updates {
         vulnId
         cve
@@ -46,6 +45,8 @@ const QUERY = /* GraphQL */ `
         ignoredBy
         service
         imageRef
+        newerTag
+        newerUnreadable
         via
         direct
         osvUrl
@@ -120,7 +121,6 @@ export function SecurityUpdatesDialog({
   // The service is worth naming only when the app runs more than one.
   const manyServices = new Set(answer?.updates.map((u) => u.service)).size > 1;
   const list = {
-    newerTag: answer?.newerTag ?? null,
     manyServices,
     subject: { appId, databaseId },
     canIgnore,

@@ -7,7 +7,10 @@ export interface FixLineInput {
   packageName: string;
   installedVersion: string;
   fixedVersion: string | null;
+  // The version the image would move to; null for a newer build of the same one.
   newerTag: string | null;
+  // The newer build or version could not be read.
+  newerUnreadable: boolean;
   // How many advisories an image's update closes.
   flaws: number;
   // Who pulls the package in, parent first; [] when direct or unknown.
@@ -44,6 +47,7 @@ function codeLine(u: FixLineInput): string {
 // What the team does to get the fix, in one line.
 export function fixLine(u: FixLineInput): string {
   const flaws = plural(u.flaws, "known flaw", "known flaws");
+  const newer = u.newerTag ? `Version ${u.newerTag}` : "A newer build";
   switch (u.fix) {
     case "code":
       return codeLine(u);
@@ -56,9 +60,11 @@ export function fixLine(u: FixLineInput): string {
         ? `Version ${u.newerTag} is available and fixes ${flaws}`
         : `A newer version of this image fixes ${flaws}`;
     case "upstream":
-      return `The newer build still has ${u.flaws === 1 ? "it" : "them"}: waiting on the image's maintainers`;
+      return `${u.newerTag ? newer : "The newer build"} still has ${u.flaws === 1 ? "it" : "them"}: waiting on the image's maintainers`;
     case "unverified":
-      return `A newer build is out: Deplo is checking whether it fixes ${flaws}`;
+      return u.newerUnreadable
+        ? `${newer} is out, but Deplo could not check whether it fixes ${flaws}`
+        : `${newer} is out: Deplo is checking whether it fixes ${flaws}`;
     default:
       return "";
   }

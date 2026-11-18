@@ -9,6 +9,7 @@ const base = {
   installedVersion: "1.2.5",
   fixedVersion: "1.2.6",
   newerTag: null,
+  newerUnreadable: false,
   flaws: 1,
   via: [] as string[],
   direct: true as boolean | null,
@@ -34,6 +35,25 @@ test("fixLine: one plain line per way of getting the fix", () => {
   assert.equal(
     fixLine({ ...base, fix: "unverified" }),
     "A newer build is out: Deplo is checking whether it fixes 1 known flaw",
+  );
+  assert.equal(
+    fixLine({ ...base, fix: "unverified", newerTag: "v2.9.3", flaws: 57 }),
+    "Version v2.9.3 is out: Deplo is checking whether it fixes 57 known flaws",
+  );
+  assert.equal(
+    fixLine({
+      ...base,
+      fix: "unverified",
+      newerTag: "v2.9.3",
+      newerUnreadable: true,
+      flaws: 57,
+    }),
+    "Version v2.9.3 is out, but Deplo could not check whether it fixes 57 known flaws",
+    "a read that failed is never 'checking'",
+  );
+  assert.equal(
+    fixLine({ ...base, fix: "upstream", newerTag: "26.10", flaws: 2 }),
+    "Version 26.10 still has them: waiting on the image's maintainers",
   );
   assert.equal(
     fixLine({

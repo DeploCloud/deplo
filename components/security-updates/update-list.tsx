@@ -18,7 +18,6 @@ import type { Subject, Update } from "./types";
 export function UpdateList({
   title,
   groups,
-  newerTag,
   manyServices,
   subject,
   canIgnore,
@@ -26,7 +25,6 @@ export function UpdateList({
 }: {
   title: string;
   groups: UpdateGroup<Update>[];
-  newerTag: string | null;
   manyServices: boolean;
   subject: Subject;
   canIgnore: boolean;
@@ -65,7 +63,6 @@ export function UpdateList({
           <UpdateRow
             key={g.key}
             g={g}
-            newerTag={newerTag}
             manyServices={manyServices}
             action={
               !canIgnore ? null : g.items.every((i) => i.ignored) ? (
@@ -113,12 +110,10 @@ export function UpdateList({
 // One advisory opens straight on osv.dev; several, or an image's, open a list of their own.
 function UpdateRow({
   g,
-  newerTag,
   manyServices,
   action,
 }: {
   g: UpdateGroup<Update>;
-  newerTag: string | null;
   manyServices: boolean;
   action: React.ReactNode;
 }) {
@@ -128,13 +123,13 @@ function UpdateRow({
   const single = g.items.length === 1;
   const label = `${g.image ? u.imageRef : `${u.packageName} ${u.installedVersion}`}${g.fixedVersion ? ` -> ${g.fixedVersion}` : ""}`;
   const titleClass =
-    "inline-flex max-w-full items-center gap-1 font-mono text-xs underline-offset-2 hover:underline";
+    "inline-flex max-w-full min-w-0 items-center gap-1 text-left font-mono text-xs underline-offset-2 hover:underline";
 
   return (
     <li className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-3 py-2.5">
       <SecurityLevelBadge level={g.level} />
       <div className="min-w-0 flex-1 text-sm">
-        <p className="flex min-w-0 items-center gap-1">
+        <p className="flex min-w-0 flex-wrap items-center gap-1">
           {single ? (
             <a
               href={u.osvUrl}
@@ -142,7 +137,7 @@ function UpdateRow({
               rel="noopener noreferrer"
               className={titleClass}
             >
-              <span className="truncate">{label}</span>
+              <span className="break-all">{label}</span>
               <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
             </a>
           ) : (
@@ -152,7 +147,7 @@ function UpdateRow({
               onClick={() => setOpen((v) => !v)}
               className={cn(titleClass, "cursor-pointer")}
             >
-              <span className="truncate">{label}</span>
+              <span className="break-all">{label}</span>
               <ChevronDown
                 className={cn(
                   "size-3.5 shrink-0 text-muted-foreground transition-transform",
@@ -177,7 +172,8 @@ function UpdateRow({
                 packageName: u.packageName,
                 installedVersion: u.installedVersion,
                 fixedVersion: g.fixedVersion,
-                newerTag,
+                newerTag: u.newerTag,
+                newerUnreadable: u.newerUnreadable,
                 flaws: g.items.length,
                 via: u.via,
                 direct: u.direct,
