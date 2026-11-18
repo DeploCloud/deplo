@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { listEnv, listEnvManageableApps } from "@/lib/data/env";
+import { listEnvExampleKeys } from "@/lib/data/env-example";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { listSharedVarsForApp } from "@/lib/data/shared-vars/app-view";
 import { listSharedVarTeams } from "@/lib/data/shared-vars/authoring";
@@ -51,6 +52,7 @@ export default async function AppEnvPage(
     environments,
     shareableTeams,
     teamApps,
+    pending,
   ] = await Promise.all([
     listEnv(project.id),
     listSharedVarsForApp(project.id),
@@ -60,6 +62,7 @@ export default async function AppEnvPage(
     teamWideEnv ? listAllEnvironmentsForTeam() : Promise.resolve([]),
     teamWideEnv ? listSharedVarTeams() : Promise.resolve([]),
     teamWideEnv ? listEnvManageableApps() : Promise.resolve([]),
+    listEnvExampleKeys(project.id),
   ]);
   const projects = projectSummaries.map((p) => ({
     id: p.id,
@@ -85,6 +88,7 @@ export default async function AppEnvPage(
       <EnvManager
         appId={project.id}
         vars={vars}
+        pending={pending}
         sharedVars={sharedVars}
         sharedVarDetails={sharedVarDetails}
         composeKeys={composeDeclaredEnvKeys(project.compose)}

@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { listDeployments } from "@/lib/data/deployments/deployment-queries";
 import { isInstanceAdmin } from "@/lib/membership";
+import { listEnvExampleKeys } from "@/lib/data/env-example";
+import { MissingValuesNotice } from "@/components/apps/missing-values-notice";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
@@ -20,12 +22,14 @@ export default async function AppDeploymentsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  const [deployments, canDeploy, canRollback, isAdmin] = await Promise.all([
-    listDeployments({ appId: project.id }),
-    hasAppCapability(project.id, "deploy_apps"),
-    hasAppCapability(project.id, "rollback_apps"),
-    isInstanceAdmin(),
-  ]);
+  const [deployments, canDeploy, canRollback, isAdmin, missing] =
+    await Promise.all([
+      listDeployments({ appId: project.id }),
+      hasAppCapability(project.id, "deploy_apps"),
+      hasAppCapability(project.id, "rollback_apps"),
+      isInstanceAdmin(),
+      listEnvExampleKeys(project.id),
+    ]);
   const inProgress = deployments.filter((d) =>
     IN_PROGRESS.has(d.status),
   ).length;
@@ -47,6 +51,7 @@ export default async function AppDeploymentsPage(
 
   return (
     <div className="space-y-4">
+      <MissingValuesNotice slug={slug} count={missing.length} />
       {deployments.length === 0 ? (
         <>
           <div className="flex items-center justify-between gap-3">

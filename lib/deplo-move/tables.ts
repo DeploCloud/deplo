@@ -133,6 +133,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   domain_middlewares: COPY,
   domains: COPY,
   env_var_targets: COPY,
+  env_example_keys: COPY,
   env_vars: { kind: "copy", rekey: { value_enc: SECRET } },
   environment_grants: COPY,
   environments: COPY,

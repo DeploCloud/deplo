@@ -62,6 +62,7 @@ import type { App, DeploySource } from "../../types/app";
 import type { BuildConfig, GitRepo } from "../../types/build";
 import type { EnvTarget, EnvVar } from "../../types/env";
 import { startDeployment } from "../../deploy/build/deploy-start";
+import { autoReadEnvExample } from "../env-example";
 import { ensureAutoDomain, ensureExtraDomain } from "../domains/auto-domains";
 import { isHostnameClaim } from "../domains/hostname-claim";
 import { isRoutableService } from "../domains/route-config";
@@ -635,6 +636,11 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   for (const varId of input.sharedVarIds ?? []) {
     await setSharedVarAppLink(varId, project.id, true);
   }
+
+  // The app's page lists what its .env.example asks for before any deploy runs.
+  const born = await loadAppGraph(project.id);
+  if (born?.repo)
+    autoReadEnvExample(project.id, born.repo, born.build.rootDirectory);
 
   const wantsDeploy = input.deploy !== false;
   // create_apps is not deploy_apps: the first deploy is asked for separately, else the app is born idle.

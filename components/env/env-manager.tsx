@@ -20,6 +20,7 @@ import { EnvGraphic } from "@/components/env/env-graphic";
 import { EnvList } from "@/components/env/env-list";
 import {
   EnvRowSkeleton,
+  PendingRow,
   PLACEHOLDER_FACET_ROWS,
   PLACEHOLDER_KEYS,
   SharedRow,
@@ -50,6 +51,7 @@ import {
 import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
 import { gqlAction } from "@/lib/graphql-client";
 import type { EnvVarDTO } from "@/lib/types/env";
+import type { EnvExampleKeyDTO } from "@/lib/data/env-example";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars/app-view";
 import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
@@ -62,6 +64,7 @@ import type {
 export function EnvManager({
   appId,
   vars,
+  pending = [],
   sharedVars,
   sharedVarDetails,
   canCreateShared,
@@ -74,6 +77,7 @@ export function EnvManager({
 }: {
   appId: string;
   vars: EnvVarDTO[];
+  pending?: EnvExampleKeyDTO[];
   sharedVars: AppSharedVarDTO[];
   sharedVarDetails: SharedVarDTO[];
   canCreateShared: boolean;
@@ -93,9 +97,39 @@ export function EnvManager({
   const router = useRouter();
 
   const known = React.useMemo<KnownVar[]>(
-    () => vars.map((v) => ({ key: v.key, type: v.type })),
-    [vars],
+    () => [
+      ...vars.map((v) => ({ key: v.key, type: v.type })),
+      ...pending.map((p) => ({
+        key: p.key,
+        type: "plain" as const,
+        pending: true,
+      })),
+    ],
+    [vars, pending],
   );
+  const [dismissed, setDismissed] = React.useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
+  function dismiss(id: string) {
+    setDismissed((prev) => new Set(prev).add(id));
+    void (async () => {
+      const res = await gqlAction(
+        `mutation($id: String!) { dismissEnvExampleKey(id: $id) }`,
+        { id },
+      );
+      if (res.ok) {
+        router.refresh();
+        return;
+      }
+      toast.error(res.error);
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    })();
+  }
   // A plain variable a draft would overwrite steps aside until the draft is saved or dropped.
   const drafted = new Set(drafts.map((d) => d.key.trim()).filter(Boolean));
 
@@ -215,8 +249,22 @@ export function EnvManager({
     };
   });
 
-  const hasVars = loading || rows.length > 0 || drafts.length > 0;
-  const hasMatches = loading || shownRows.length > 0 || drafts.length > 0;
+  // A name to fill is no type, author or date a facet could match: facets hide it, search finds it.
+  const faceted = Object.values(filters.facets).some((v) => v?.length);
+  const needle = filters.q.trim().toLowerCase();
+  const toFill = faceted
+    ? []
+    : pending.filter(
+        (p) =>
+          !dismissed.has(p.id) &&
+          !drafted.has(p.key) &&
+          p.key.toLowerCase().includes(needle),
+      );
+
+  const hasVars =
+    loading || rows.length > 0 || drafts.length > 0 || pending.length > 0;
+  const hasMatches =
+    loading || shownRows.length > 0 || drafts.length > 0 || toFill.length > 0;
   const listed = shownRows.filter(
     (row) =>
       !(
@@ -295,6 +343,16 @@ export function EnvManager({
                 onSave={saveDrafts}
               />
             )}
+            {toFill.map((item) => (
+              <PendingRow
+                key={item.id}
+                item={item}
+                appId={appId}
+                open={opened.has(`pending:${item.id}`)}
+                onToggle={() => toggleOpen(`pending:${item.id}`)}
+                onDismiss={() => dismiss(item.id)}
+              />
+            ))}
             {loading &&
               PLACEHOLDER_KEYS.map((k) => (
                 <EnvRowSkeleton key={k} envKey={k} />

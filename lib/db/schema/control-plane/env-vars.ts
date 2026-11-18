@@ -45,6 +45,26 @@ export const envVars = pgTable(
   ],
 );
 
+// A name the app's .env.example lists that has no value yet. It never reaches a container.
+export const envExampleKeys = pgTable(
+  "env_example_keys",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    note: text("note"),
+    // The file's own value: offered in the field, never saved without a person.
+    example: text("example"),
+    // Deleted from the list: it stays hidden until the file drops the name and lists it again.
+    dismissed: boolean("dismissed").notNull().default(false),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("env_example_keys_app_key_uq").on(t.appId, t.key)],
+);
+
 export const appPreviewEnvVars = pgTable(
   "app_preview_env_vars",
   {

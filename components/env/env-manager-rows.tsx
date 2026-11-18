@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import {
+  FileCode2,
   MessageSquareText,
   Pencil,
   Settings,
@@ -15,6 +16,8 @@ import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Bone } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RowActions } from "@/components/shared/row-actions";
@@ -28,10 +31,15 @@ import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { EnvEditButton } from "@/components/env/env-edit-button";
 import { EnvListRow, EnvNotePanel } from "@/components/env/env-list";
 import { DatabaseLogo } from "@/components/storage/database-logo";
+import {
+  savedToast,
+  type AutoLinked,
+} from "@/components/env/env-var-edit-form";
 import { gqlAction } from "@/lib/graphql-client";
 import { envNameLooksSensitive } from "@/lib/env-secret-name";
 import type { EnvVarDTO } from "@/lib/types/env";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars/app-view";
+import type { EnvExampleKeyDTO } from "@/lib/data/env-example";
 
 export type EnvRow =
   ({ kind: "standalone" } & EnvVarDTO) | ({ kind: "shared" } & AppSharedVarDTO);
@@ -162,6 +170,128 @@ export function StandaloneRow({
             )
           }
         />
+      }
+    />
+  );
+}
+
+const NEEDS_VALUE =
+  "Needs a value: .env.example lists it, but nothing is set yet. The app may not start without it.";
+
+// A name the app's .env.example asks for: its note guides, its example waits in the field.
+export function PendingRow({
+  item,
+  appId,
+  open,
+  onToggle,
+  onDismiss,
+}: {
+  item: EnvExampleKeyDTO;
+  appId: string;
+  open: boolean;
+  onToggle: () => void;
+  onDismiss: () => void;
+}) {
+  const router = useRouter();
+  const [value, setValue] = React.useState(item.example ?? "");
+  const [secret, setSecret] = React.useState(false);
+  const [saving, startSaving] = React.useTransition();
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    startSaving(async () => {
+      type AddResult = { added: number; autoLinked: AutoLinked[] };
+      const res = await gqlAction<{ addEnv: AddResult }, AddResult>(
+        `mutation($appId: String!, $entries: [EnvEntryInput!]!) {
+          addEnv(appId: $appId, entries: $entries) {
+            added autoLinked { key database }
+          }
+        }`,
+        {
+          appId,
+          entries: [
+            {
+              key: item.key,
+              value,
+              note: item.note ?? undefined,
+              secret: secret || undefined,
+            },
+          ],
+        },
+        (d) => d.addEnv,
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      savedToast("Variable added", res.data?.autoLinked ?? []);
+      router.refresh();
+    });
+  }
+
+  return (
+    <EnvListRow
+      tone="pending"
+      open={open}
+      onToggle={onToggle}
+      keyCell={
+        <div className="flex items-center gap-2">
+          {item.key}
+          <NoteMark note={item.note} open={open} />
+          <InfoTip
+            tone="warning"
+            label="Needs a value"
+            className="size-4"
+            content={NEEDS_VALUE}
+            docs="env.example"
+          />
+        </div>
+      }
+      value={<span className="text-xs text-muted-foreground">-</span>}
+      modified={<TimeAgo at={item.seenAt} />}
+      author={
+        <span className="flex w-fit items-center gap-2 text-xs text-muted-foreground">
+          <FileCode2 className="size-4 shrink-0" />
+          .env.example
+        </span>
+      }
+      actions={
+        <SimpleTooltip content="Remove from the list. It comes back only if .env.example drops it and lists it again.">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onDismiss}
+            aria-label="Remove"
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </SimpleTooltip>
+      }
+      panel={
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <EnvNotePanel note={item.note} />
+          <form onSubmit={save} className="space-y-2">
+            <p className="text-xs font-medium">Value</p>
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={secret ? "Paste the secret" : "Paste the value"}
+              aria-label={`Value for ${item.key}`}
+              autoFocus
+              className="h-8 font-mono text-xs"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <Switch checked={secret} onCheckedChange={setSecret} />
+                Secret
+              </label>
+              <Button type="submit" size="sm" disabled={saving}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </div>
       }
     />
   );

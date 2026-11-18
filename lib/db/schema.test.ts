@@ -114,6 +114,7 @@ const CONTROL_PLANE = [
   "app_previews",
   "app_preview_env_vars",
   "pending_teardowns",
+  "env_example_keys",
   "env_vars",
   "env_var_targets",
   "domains",

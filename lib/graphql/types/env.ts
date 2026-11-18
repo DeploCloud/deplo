@@ -14,6 +14,7 @@ import {
   type AppEnvGroup,
 } from "@/lib/data/env";
 import { unlinkEnv } from "@/lib/data/database-links";
+import { dismissEnvExampleKey } from "@/lib/data/env-example";
 import type { AutoLink } from "@/lib/data/database-autolink";
 import { dismissPendingChanges } from "@/lib/data/pending-changes";
 import type { EnvDatabaseRef, EnvVarDTO } from "@/lib/types/env";
@@ -312,6 +313,19 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await deleteEnv(id);
+      return true;
+    },
+  }),
+  dismissEnvExampleKey: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_env" },
+    unauthorizedError: () =>
+      "You can’t change this App’s environment variables with your current team role. Ask a team admin for the Manage environment variables capability.",
+    description:
+      "Hide a name the app's .env.example asks for. It comes back when the file drops the name and lists it again. Returns true.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await dismissEnvExampleKey(id);
       return true;
     },
   }),

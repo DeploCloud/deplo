@@ -4715,6 +4715,11 @@ type Mutation {
   disconnectDatabase(appId: String!, databaseId: String!): Boolean
 
   """
+  Hide a name the app's .env.example asks for. It comes back when the file drops the name and lists it again. Returns true.
+  """
+  dismissEnvExampleKey(id: String!): Boolean
+
+  """
   Stop telling this app that its addresses changed when it was imported: clears `importedFrom` on every one of its domains. Per app on purpose - a migration brings over many, and one blanket dismissal would hide the fact on every app nobody has looked at yet.
   """
   dismissImportedDomains(appId: String!): Boolean

@@ -36,6 +36,10 @@ import { deploImageClaim, deploImageMessage } from "../deplo-image";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "../source";
 import { extractArchive } from "../upload";
 import {
+  autoReadEnvExample,
+  autoReadEnvExampleFromTree,
+} from "../../data/env-example";
+import {
   autoDetectComposeLogo,
   autoDetectFrameworkFromTree,
   autoDetectLogoFromTree,
@@ -548,6 +552,7 @@ async function runDeployment(depId: string): Promise<void> {
             project.build.rootDirectory,
           );
         }
+        autoReadEnvExample(project.id, repo, project.build.rootDirectory);
         const forkUrl = preview?.isFork
           ? forkCloneUrl(repo.url, preview.headCloneUrl)
           : null;
@@ -717,6 +722,11 @@ async function runDeployment(depId: string): Promise<void> {
               project.build.rootDirectory,
             );
           }
+          await autoReadEnvExampleFromTree(
+            project.id,
+            root,
+            project.build.rootDirectory,
+          );
           await buildAndMaybeAgent({
             workDir: work,
             root,

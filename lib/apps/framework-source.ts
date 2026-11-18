@@ -65,16 +65,20 @@ function hintsFor(
   };
 }
 
-export async function detectRepoFramework(
+// The files at the app's root in its repo, and a way to read one: GitHub or a connected provider.
+export interface RepoRoot {
+  files: string[];
+  read(name: string): Promise<string | null>;
+}
+
+export async function openRepoRoot(
   repo: GitRepo,
   rootDirectory?: string | null,
-): Promise<RepoBuildHints> {
-  if (repo.connectionId) {
-    return detectViaConnection(repo, rootDirectory);
-  }
-  if (!isGithubRepo(repo)) return NO_HINTS;
+): Promise<RepoRoot | null> {
+  if (repo.connectionId) return openViaConnection(repo, rootDirectory);
+  if (!isGithubRepo(repo)) return null;
   const fullName = githubFullName(repo);
-  if (!fullName) return NO_HINTS;
+  if (!fullName) return null;
 
   const installationId =
     repo.installationId ?? (await activeTeamInstallationId());
@@ -83,64 +87,72 @@ export async function detectRepoFramework(
     repo.branch?.trim() || "HEAD",
     installationId,
   );
-  if (tree.length === 0) return NO_HINTS;
+  if (tree.length === 0) return null;
 
   const rootRel = normalizeRootRel(rootDirectory);
   const files = rootFileNames(
     tree.map((entry) => entry.path),
     rootRel,
   );
-  if (files.length === 0) return NO_HINTS;
+  if (files.length === 0) return null;
 
-  const blobAt = async (name: string): Promise<string | null> => {
-    const path = rootRel && rootRel !== "." ? `${rootRel}/${name}` : name;
-    const entry = tree.find((e) => e.path.toLowerCase() === path.toLowerCase());
-    if (!entry || entry.size > MAX_MANIFEST_BYTES) return null;
-    const bytes = await fetchRepoBlob(fullName, entry.sha, installationId);
-    return bytes ? bytes.toString("utf8") : null;
+  return {
+    files,
+    read: async (name) => {
+      const path = rootRel && rootRel !== "." ? `${rootRel}/${name}` : name;
+      const entry = tree.find(
+        (e) => e.path.toLowerCase() === path.toLowerCase(),
+      );
+      if (!entry || entry.size > MAX_MANIFEST_BYTES) return null;
+      const bytes = await fetchRepoBlob(fullName, entry.sha, installationId);
+      return bytes ? bytes.toString("utf8") : null;
+    },
   };
-
-  const manifestText = await blobAt("package.json");
-  const manifest = manifestText ? parsePackageManifest(manifestText) : null;
-  const angularJson = files.includes("angular.json")
-    ? await blobAt("angular.json")
-    : null;
-  return hintsFor(files, manifest, angularJson);
 }
 
-async function detectViaConnection(
+async function openViaConnection(
   repo: GitRepo,
   rootDirectory?: string | null,
-): Promise<RepoBuildHints> {
+): Promise<RepoRoot | null> {
   const cred = await readGitCredential(repo.connectionId!);
   const api = cred ? providerFor(cred.provider).api : null;
-  if (!cred || !api || !repo.repo) return NO_HINTS;
+  if (!cred || !api || !repo.repo) return null;
   const ref = repo.branch?.trim() || "HEAD";
 
   const paths = await api.listTree(cred, repo.repo, ref).catch(() => []);
-  if (paths.length === 0) return NO_HINTS;
+  if (paths.length === 0) return null;
 
   const rootRel = normalizeRootRel(rootDirectory);
   const files = rootFileNames(paths, rootRel);
-  if (files.length === 0) return NO_HINTS;
+  if (files.length === 0) return null;
 
-  const textAt = (name: string) =>
-    readProviderText(
-      api,
-      cred,
-      repo.repo!,
-      ref,
-      rootRel && rootRel !== "." ? `${rootRel}/${name}` : name,
-    ).catch(() => null);
+  return {
+    files,
+    read: async (name) =>
+      files.includes(name)
+        ? readProviderText(
+            api,
+            cred,
+            repo.repo!,
+            ref,
+            rootRel && rootRel !== "." ? `${rootRel}/${name}` : name,
+          ).catch(() => null)
+        : null,
+  };
+}
 
-  const manifestText = files.includes("package.json")
-    ? await textAt("package.json")
-    : null;
+export async function detectRepoFramework(
+  repo: GitRepo,
+  rootDirectory?: string | null,
+): Promise<RepoBuildHints> {
+  const root = await openRepoRoot(repo, rootDirectory);
+  if (!root) return NO_HINTS;
+  const manifestText = await root.read("package.json");
   const manifest = manifestText ? parsePackageManifest(manifestText) : null;
-  const angularJson = files.includes("angular.json")
-    ? await textAt("angular.json")
+  const angularJson = root.files.includes("angular.json")
+    ? await root.read("angular.json")
     : null;
-  return hintsFor(files, manifest, angularJson);
+  return hintsFor(root.files, manifest, angularJson);
 }
 
 async function activeTeamInstallationId(): Promise<string | null> {
