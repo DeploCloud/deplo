@@ -170,6 +170,7 @@ export function FacetOptionList({
   activeIndex,
   onActivate,
   empty,
+  className,
 }: {
   options: FacetOption[];
   values: string[];
@@ -180,9 +181,10 @@ export function FacetOptionList({
   activeIndex?: number;
   onActivate?: (index: number) => void;
   empty?: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="max-h-72 space-y-0.5 overflow-y-auto">
+    <div className={cn("max-h-72 space-y-0.5 overflow-y-auto", className)}>
       {empty}
       {groupedOptions(options).map((bucket) => (
         <div key={bucket.group ?? ""}>

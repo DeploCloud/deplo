@@ -330,7 +330,6 @@ export function AllAppsEnvManager({
       <EnvFilters
         state={filters}
         onChange={setFilters}
-        onClear={clear}
         facets={facets}
         counts={counts}
         actions={

@@ -92,7 +92,6 @@ export function BasicAuthManager({
   const {
     state: filters,
     setState: setFilters,
-    clear,
     shown,
     counts,
   } = useEnvFilters(rows, facets);
@@ -138,7 +137,6 @@ export function BasicAuthManager({
         <EnvFilters
           state={filters}
           onChange={setFilters}
-          onClear={clear}
           facets={facets}
           counts={counts}
           actions={addButton("default")}

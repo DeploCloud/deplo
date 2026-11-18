@@ -123,7 +123,6 @@ export function EnvManager({
   const {
     state: filters,
     setState: setFilters,
-    clear,
     shown: shownRows,
     counts,
   } = useEnvFilters(rows, facets);
@@ -178,7 +177,6 @@ export function EnvManager({
         <EnvFilters
           state={filters}
           onChange={setFilters}
-          onClear={clear}
           facets={facets}
           counts={counts}
           actions={addButton("default")}

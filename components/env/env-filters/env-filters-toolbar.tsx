@@ -2,7 +2,6 @@
 
 import type * as React from "react";
 import { ArrowUpDown, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -11,17 +10,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
 import { FilterSheet } from "@/components/shared/filter-sheet";
-import { FacetCombobox } from "./facet-combobox";
-import { FacetMenu } from "./facet-menu";
+import { activeFacets, FacetSections, FiltersPopover } from "./filters-popover";
 import type { EnvFacet, EnvFilterState, EnvSort, FilterableVar } from "./types";
 
 export function EnvFilters<T extends FilterableVar>({
   state,
   onChange,
-  onClear,
   facets,
   counts,
   actions,
@@ -31,7 +27,6 @@ export function EnvFilters<T extends FilterableVar>({
 }: {
   state: EnvFilterState;
   onChange: (next: EnvFilterState) => void;
-  onClear: () => void;
   facets: EnvFacet<T>[];
   counts?: Record<string, Record<string, number>>;
   actions?: React.ReactNode;
@@ -39,8 +34,7 @@ export function EnvFilters<T extends FilterableVar>({
   noun?: string;
   keySortLabel?: string;
 }) {
-  const picked = Object.values(state.facets).filter((v) => v?.length).length;
-  const hasFilter = Boolean(state.q.trim()) || picked > 0;
+  const picked = activeFacets(state);
 
   const visible = facets.filter(
     (f) =>
@@ -49,20 +43,15 @@ export function EnvFilters<T extends FilterableVar>({
       Boolean(state.facets[f.id]?.length),
   );
 
-  const pickers = visible.map((facet) => (
-    <FacetPicker
-      key={facet.id}
-      facet={facet}
-      values={state.facets[facet.id] ?? []}
-      counts={counts?.[facet.id]}
-      onChange={(values) =>
-        onChange({
-          ...state,
-          facets: { ...state.facets, [facet.id]: values },
-        })
-      }
+  const sections = (
+    <FacetSections
+      facets={visible}
+      state={state}
+      counts={counts}
+      onChange={onChange}
     />
-  ));
+  );
+  const clearFacets = () => onChange({ ...state, facets: {} });
   const sortSelect = (
     <Select
       value={state.sort}
@@ -95,7 +84,7 @@ export function EnvFilters<T extends FilterableVar>({
       )}
     >
       <div className="flex w-full gap-2 md:contents">
-        <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[16rem]">
+        <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={state.q}
@@ -106,57 +95,24 @@ export function EnvFilters<T extends FilterableVar>({
           />
         </div>
         {sheet && (
-          <FilterSheet
-            active={picked}
-            onClear={() => onChange({ ...state, facets: {} })}
-          >
-            {pickers}
+          <FilterSheet active={picked} onClear={clearFacets}>
+            {sections}
             {sortSelect}
           </FilterSheet>
         )}
       </div>
 
       <div className={cn("contents", sheet && "max-md:hidden")}>
-        {pickers}
-        <Button
-          variant="ghost"
-          disabled={!hasFilter}
-          className={cn("shrink-0", !hasFilter && "invisible")}
-          onClick={onClear}
-        >
-          Clear filters
-        </Button>
+        {sheet && (
+          <FiltersPopover active={picked} onClear={clearFacets}>
+            {sections}
+          </FiltersPopover>
+        )}
         {sortSelect}
       </div>
 
       {actions && (
         <div className="flex shrink-0 items-center gap-2">{actions}</div>
-      )}
-    </div>
-  );
-}
-
-function FacetPicker<T>(props: {
-  facet: EnvFacet<T>;
-  values: string[];
-  counts?: Record<string, number>;
-  onChange: (values: string[]) => void;
-}) {
-  const { facet } = props;
-  return (
-    <div className="flex min-w-[10rem] flex-1 items-center gap-1 lg:min-w-0">
-      {facet.searchable ? (
-        <FacetCombobox {...props} />
-      ) : (
-        <FacetMenu {...props} />
-      )}
-      {facet.info != null && (
-        <InfoTip
-          content={facet.info}
-          docs={facet.docs}
-          className="shrink-0"
-          label={`About the ${facet.label.toLowerCase()} filter`}
-        />
       )}
     </div>
   );

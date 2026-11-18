@@ -187,7 +187,6 @@ export function SharedVarsManager({
   const {
     state: filters,
     setState: setFilters,
-    clear,
     shown,
     counts,
   } = useEnvFilters(rows, facets, (v) =>
@@ -219,7 +218,6 @@ export function SharedVarsManager({
         <EnvFilters
           state={filters}
           onChange={setFilters}
-          onClear={clear}
           facets={facets}
           counts={counts}
         />
