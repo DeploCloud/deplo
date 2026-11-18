@@ -3,6 +3,7 @@ import "server-only";
 
 import { loadAppGraph } from "../../data/app-graph-load";
 import { loadAppConnectorToken } from "../../data/clusters/app-tunnel";
+import { appStartsUnderLease } from "../../data/clusters/supervise";
 import { withAppConnector } from "../app-connector";
 import { basicAuthUsersValue } from "../../data/basic-auth";
 import { primaryDomainName } from "../../data/domains/primary-domain";
@@ -126,6 +127,7 @@ async function rerouteOn(
         volumes: project.volumes,
         stickySessions: project.stickySessions,
         resources: project.resources,
+        underLease: await appStartsUnderLease(project),
       });
       mounts = (project.mounts ?? []).map((m) => ({
         path: m.filePath,
@@ -158,6 +160,7 @@ async function rerouteOn(
         // Routing is what a reroute renders again, and the cookie is routing.
         stickySessions: project.stickySessions,
         scaled: spread || parseStackScaled(current.yaml, name),
+        underLease: await appStartsUnderLease(project),
       });
     }
 

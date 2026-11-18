@@ -21,7 +21,7 @@ import { assertPasswordPolicy } from "../../password-policy";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { assertPasswordSafe } from "./validate";
 import { requireDatabase } from "./rows";
-import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
+import { databaseStackYaml, rerouteRequest } from "./stack";
 import { resolveTeamServer } from "./server-ports";
 import type { Database } from "../../types/database";
 import { assertNotPausedForMove } from "../deplo-move/source-guard";
@@ -150,7 +150,7 @@ export async function rotateDatabasePassword(
       ...cur,
       connectionStringEnc: encryptSecret(newConn),
     };
-    const yaml = renderDatabaseStackYaml(updated, newPassword);
+    const yaml = await databaseStackYaml(updated, newPassword);
     const conn = await connectAgent(cur.serverId);
     try {
       const res = await conn.reroute(rerouteRequest(cur, yaml));

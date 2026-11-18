@@ -29,7 +29,7 @@ import { assembleDatabase } from "../backup-rows";
 import { mountsFor } from "../databases/rows";
 import {
   databasePassword,
-  renderDatabaseStackYaml,
+  databaseStackYaml,
   rerouteRequest,
 } from "../databases/stack";
 import { withKeyedLock } from "../keyed-mutex";
@@ -221,7 +221,7 @@ async function connectionHere(db: Database, password: string): Promise<string> {
 // Through the agent with no signed-in user: the move itself is the actor.
 async function provisionDatabase(db: Database): Promise<void> {
   const password = databasePassword(db);
-  const yaml = renderDatabaseStackYaml(db, password);
+  const yaml = await databaseStackYaml(db, password);
   // A teardown queued by an earlier, cancelled move would otherwise remove this one later.
   await dropTeardown(db.serverId, db.host);
   const conn = await connectAgent(db.serverId);

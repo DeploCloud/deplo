@@ -2,6 +2,7 @@ import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { basicAuthUsersValue } from "../../data/basic-auth";
+import { appStartsUnderLease } from "../../data/clusters/supervise";
 import type { RoutableDomain } from "../../data/domains/routes";
 import { namesTakenOnNetwork } from "../../data/name-clash";
 import { getServerById } from "../../data/servers/roster";
@@ -53,6 +54,7 @@ export interface ComposeStackApp {
   teamId: string;
   environmentId?: string | null;
   serverId: string;
+  clusterId?: string | null;
   name: string;
   slug: string;
   compose: string | null;
@@ -144,6 +146,7 @@ async function prepareComposeStack(
     volumes: project.volumes,
     network: deployNetwork(project, opts.preview ? deployKey : null),
     dockerVersion: (await getServerById(opts.serverId))?.dockerVersion,
+    underLease: !opts.preview && (await appStartsUnderLease(project)),
   });
   return {
     stackYaml,

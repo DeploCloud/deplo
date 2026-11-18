@@ -12,11 +12,7 @@ import { DB_DATA_DIRS } from "../../deploy/database-compose";
 import { withKeyedLock } from "../keyed-mutex";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { requireDatabase } from "./rows";
-import {
-  databasePassword,
-  renderDatabaseStackYaml,
-  rerouteRequest,
-} from "./stack";
+import { databasePassword, databaseStackYaml, rerouteRequest } from "./stack";
 import type { DatabaseMount, DatabaseType } from "../../types/database";
 import { assertNotPausedForMove } from "../deplo-move/source-guard";
 
@@ -113,7 +109,7 @@ export async function setDatabaseMounts(
     const conn = await connectAgent(cur.serverId);
     try {
       const res = await conn.reroute(
-        rerouteRequest(next, renderDatabaseStackYaml(next, password)),
+        rerouteRequest(next, await databaseStackYaml(next, password)),
       );
       if (!res.ok)
         throw new Error(

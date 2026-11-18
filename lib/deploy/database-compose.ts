@@ -1,5 +1,6 @@
 import { escapeComposeDollars } from "./compose-stack/compose-read";
 import { deploLabels } from "./compose-stack/service-stamp";
+import { RESTART_LABEL } from "./restart-under-lease";
 import { renderYamlKeys } from "./health-check";
 import { defaultLogging, renderResourceLimitsYaml } from "./resources";
 import type { ResourceLimits } from "../types/container";
@@ -142,6 +143,8 @@ export function generateDatabaseCompose(input: {
   standby?: { command: string[]; env: string[] } | null;
   // The database itself, while it keeps a standby copy: its engine's row may add start settings.
   keepsStandby?: boolean;
+  // On a cluster whose agents start it under its lease: Docker never starts it at boot (deplo#237).
+  underLease?: boolean;
 }): string {
   const {
     name,
@@ -220,7 +223,10 @@ export function generateDatabaseCompose(input: {
       "\n"
     : "";
   const ports = hostPort ? `    ports:\n      - "${hostPort}:${port}"\n` : "";
-  const labels = deploLabels(databaseId, name)
+  const labels = [
+    ...deploLabels(databaseId, name),
+    ...(input.underLease ? [`${RESTART_LABEL}=unless-stopped`] : []),
+  ]
     .map((l) => `      - ${l}`)
     .join("\n");
   const resources =
@@ -245,7 +251,7 @@ services:
   ${service}:
     image: ${image}
     container_name: ${service}
-    restart: unless-stopped
+    restart: ${input.underLease ? `"no"` : "unless-stopped"}
     labels:
 ${labels}
     networks:

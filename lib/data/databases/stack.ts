@@ -20,6 +20,7 @@ import { archivesChangeLog } from "../../databases/change-log";
 import { loadDatabase, mountsFor } from "./rows";
 import type { Database } from "../../types/database";
 import { isPausedForMove } from "../deplo-move/source-guard";
+import { databaseStartsUnderLease } from "../clusters/supervise";
 
 export function dbVolumeHostName(slug: string): string {
   return `deplo-${slug}_${slug}-data`;
@@ -36,12 +37,25 @@ export function mongoKeyfileFor(databaseId: string): string {
   return deriveKey(`mongo-keyfile:${databaseId}`).toString("base64");
 }
 
+/** The stack as a deploy renders it: restart policy "no" on a cluster whose agents start it under its lease. */
+export async function databaseStackYaml(
+  db: Database,
+  password: string,
+  standby?: { command: string[]; env: string[] },
+): Promise<string> {
+  return renderDatabaseStackYaml(db, password, standby, {
+    underLease: await databaseStartsUnderLease(db),
+  });
+}
+
 export function renderDatabaseStackYaml(
   db: Database,
   password: string,
   standby?: { command: string[]; env: string[] },
+  opts: { underLease?: boolean } = {},
 ): string {
   return generateDatabaseCompose({
+    underLease: opts.underLease,
     standby,
     keepsStandby: Boolean(db.standby),
     name: db.host,
@@ -144,7 +158,7 @@ export async function rerouteDatabase(
   const cur = assembleDatabase(row, await mountsFor(row.id));
   if (!cur || cur.status === "provisioning") return "deferred";
   const password = databasePassword(cur);
-  const rendered = renderDatabaseStackYaml(cur, password);
+  const rendered = await databaseStackYaml(cur, password);
   const conn = await connectAgent(cur.serverId);
   try {
     const current = await conn.readStack(cur.host);
@@ -174,7 +188,7 @@ export async function teardownDatabaseStack(
         password = randomToken(24);
       }
       const healed = await conn.reroute(
-        rerouteRequest(db, renderDatabaseStackYaml(db, password)),
+        rerouteRequest(db, await databaseStackYaml(db, password)),
       );
       if (healed.ok) res = await conn.destroyStack(db.host, true);
     }

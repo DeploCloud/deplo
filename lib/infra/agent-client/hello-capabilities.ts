@@ -124,6 +124,10 @@ export const CLUSTER_ANSWERS_CAPABILITY = "cluster.forwarders.answers";
 export const CLUSTER_NETWORK_CAPABILITY = "cluster.network";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
 export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
+// The agent starts a cluster's databases and Apps with stored data itself, under their lease (deplo#237): their
+// restart policy may be "no", so a server back from a power cut never starts a copy that runs elsewhere by now.
+// Not bare "cluster.supervise": agent 0.5.3-canary.10 says that and leaves a writer it cannot read down.
+export const CLUSTER_SUPERVISE_CAPABILITY = "cluster.supervise.failsafe";
 
 // The agent holds a marked service back until the App is ready: a tunnel's connector must not send visitors to an App that is not up.
 export const START_AFTER_READY_CAPABILITY = "deploy.start-after-ready";

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { labelEntries, readTraefikLabel } from "../compose-lint/traefik-labels";
+import { RESTART_LABEL } from "../restart-under-lease";
 import type { App } from "./types";
 
 export function deploLabels(appId: string, slug: string): string[] {
@@ -50,6 +51,15 @@ export function takeTraefikLabels(
 
 export function mergeLabels(svc: App, add: string[]): void {
   svc.labels = mergeLabelEntries(svc.labels, add);
+}
+
+/** Turns a service's restart policy off, kept in RESTART_LABEL for the agent; one that never restarts stays as it is. */
+export function leaseRestart(svc: App): void {
+  const policy =
+    typeof svc.restart === "string" ? svc.restart.split(":")[0].trim() : "";
+  if (!policy || policy === "no") return;
+  svc.restart = "no";
+  mergeLabels(svc, [`${RESTART_LABEL}=${policy}`]);
 }
 
 export function mergeBuildLabels(

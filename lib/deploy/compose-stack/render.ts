@@ -28,6 +28,7 @@ import {
 } from "./stack-network";
 import {
   deploLabels,
+  leaseRestart,
   mergeBuildLabels,
   mergeEnvironment,
   mergeLabels,
@@ -138,6 +139,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       if (traefik.ignored.length > 0)
         input.onWarn?.(ignoredTraefikMessage(serviceName, traefik.ignored));
       mergeLabels(svc as App, containerLabels);
+      if (input.underLease) leaseRestart(svc as App);
       mergeBuildLabels(svc as App, serviceName, tracking);
       mergeEnvironment(svc as App, envKeys);
       mergeResourceLimits(svc as App, input.resources);

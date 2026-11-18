@@ -34,7 +34,7 @@ import { assertNotProvisioning, mountsFor, requireDatabase } from "./rows";
 import {
   databasePassword,
   dbVolumeHostName,
-  renderDatabaseStackYaml,
+  databaseStackYaml,
   rerouteRequest,
 } from "./stack";
 import { redeployArchs } from "../clusters/architectures";
@@ -226,7 +226,7 @@ async function applyDatabasePlacement(
     );
     // Rendered for where it will be: arriving on a cluster starts archiving a Postgres change log, leaving stops it.
     const clusterId = movingFrom ? (cluster?.id ?? null) : cur.clusterId;
-    const yaml = renderDatabaseStackYaml(
+    const yaml = await databaseStackYaml(
       {
         ...cur,
         clusterId,
