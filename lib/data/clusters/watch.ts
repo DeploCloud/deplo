@@ -107,12 +107,14 @@ export type EventResult = "applied" | "skipped" | "frozen";
 export async function applyLeaderEvent(
   clusterId: string,
   e: LeaderEvent,
+  opts: { advance?: boolean } = {},
 ): Promise<EventResult> {
   if (await instanceFrozen()) return "frozen";
   const cluster = await getClusterById(clusterId);
   if (!cluster || e.cluster !== clusterId || e.seq <= cluster.eventSeq)
     return "skipped";
   const advance = async (extra: { leaderEpoch?: number } = {}) => {
+    if (opts.advance === false) return;
     await getDb()
       .update(clustersTable)
       .set({ eventSeq: e.seq, ...extra })
@@ -249,6 +251,67 @@ export async function reconcileCluster(
     );
 }
 
+/** Moves the stored sequence up to `seq`, never down. */
+async function advanceTo(clusterId: string, seq: number): Promise<void> {
+  await getDb()
+    .update(clustersTable)
+    .set({ eventSeq: seq })
+    .where(
+      and(eq(clustersTable.id, clusterId), lt(clustersTable.eventSeq, seq)),
+    );
+}
+
+/**
+ * Independent moves are applied side by side, each workload's in order (deplo#244); the sequence moves only once all
+ * of them are done, so a restart in between applies again what was not finished.
+ */
+export class MoveBatch {
+  private running = new Map<string, Promise<EventResult>>();
+  private highest = 0;
+  private failure: unknown = null;
+  private frozen = false;
+  constructor(
+    private clusterId: string,
+    private apply: typeof applyLeaderEvent = applyLeaderEvent,
+  ) {}
+
+  add(e: LeaderEvent): void {
+    const key = `${String(e.data.kind)}/${String(e.data.workloadId)}`;
+    const before =
+      this.running.get(key) ?? Promise.resolve("applied" as EventResult);
+    this.highest = Math.max(this.highest, e.seq);
+    this.running.set(
+      key,
+      before.then(async (r) => {
+        if (r === "frozen") return r;
+        try {
+          const out = await this.apply(this.clusterId, e, {
+            advance: false,
+          });
+          if (out === "frozen") this.frozen = true;
+          return out;
+        } catch (err) {
+          this.failure ??= err;
+          return "skipped";
+        }
+      }),
+    );
+  }
+
+  /** Waits for every move under way, then stores the sequence: "frozen" when a Deplo move stopped one. */
+  async settle(): Promise<"applied" | "frozen"> {
+    if (this.running.size === 0) return "applied";
+    await Promise.all(this.running.values());
+    this.running.clear();
+    const failure = this.failure;
+    this.failure = null;
+    if (failure) throw failure;
+    if (this.frozen) return "frozen";
+    await advanceTo(this.clusterId, this.highest);
+    return "applied";
+  }
+}
+
 export type WatchEnd = "ended" | "frozen" | "reset" | "no_leader";
 
 /**
@@ -281,11 +344,30 @@ export async function watchClusterOnce(
     }
   };
   const stream = watchClusterLeader(host.id, seq);
+  const batch = new MoveBatch(clusterId);
   try {
     for await (const raw of stream) {
       if (signal?.aborted) break;
       const line = parseWatchLine(raw);
-      if (!line || line.kind === "ping") continue;
+      if (!line) continue;
+      const move =
+        line.kind === "event" &&
+        line.event.cluster === clusterId &&
+        line.event.type === "failed_over";
+      if (move) {
+        if (lost && !sawEvent) lost.before = line.event.seq;
+        sawEvent = true;
+        batch.add(line.event);
+        seq = Math.max(seq, line.event.seq);
+        if (!reconciled && head !== null && seq >= head) {
+          if ((await batch.settle()) === "frozen") return "frozen";
+          await reconcile();
+        }
+        continue;
+      }
+      // Anything else waits for the moves before it: a placement or summary reads what they changed.
+      if ((await batch.settle()) === "frozen") return "frozen";
+      if (line.kind === "ping") continue;
       if (line.kind === "hello") {
         if (line.head < seq) {
           await getDb()
@@ -310,7 +392,10 @@ export async function watchClusterOnce(
       }
       if (!reconciled && head !== null && seq >= head) await reconcile();
     }
+    if ((await batch.settle()) === "frozen") return "frozen";
   } finally {
+    // What was applied before the stream broke keeps its place, so it is not said twice.
+    await batch.settle().catch(() => undefined);
     await stream.return(undefined);
   }
   return "ended";
@@ -329,6 +414,30 @@ const sleep = (ms: number, signal: AbortSignal) =>
     );
   });
 
+async function currentLeaderHostId(clusterId: string): Promise<string | null> {
+  const cluster = await getClusterById(clusterId).catch(() => null);
+  return cluster
+    ? ((await leaderHost(cluster).catch(() => null))?.id ?? null)
+    : null;
+}
+
+/** Waits up to `ms`, ending as soon as another server leads the cluster: a takeover is watched at once (deplo#244). */
+export async function pauseUnlessLeaderMoves(
+  clusterId: string,
+  from: string | null,
+  ms: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const until = Date.now() + ms;
+  while (!signal.aborted && Date.now() < until) {
+    await sleep(Math.min(LEADER_CHECK_MS, until - Date.now()), signal);
+    if ((await currentLeaderHostId(clusterId)) !== from) return;
+  }
+}
+
+/** How often a watch that lost its leader looks for the one that takes over. */
+export const LEADER_CHECK_MS = 1_000;
+
 /** Keeps a cluster's watch open, reconnecting with a growing pause, until the signal aborts. */
 export async function runClusterWatch(
   clusterId: string,
@@ -337,10 +446,12 @@ export async function runClusterWatch(
   let pause = 1000;
   let lastMessage = "";
   while (!signal.aborted) {
+    const host = await currentLeaderHostId(clusterId);
     try {
       const end = await watchClusterOnce(clusterId, signal);
       lastMessage = "";
-      if (end === "no_leader" || end === "frozen") await sleep(15_000, signal);
+      if (end === "no_leader" || end === "frozen")
+        await pauseUnlessLeaderMoves(clusterId, host, 15_000, signal);
       else {
         pause = 1000;
         await sleep(end === "reset" ? 0 : 1000, signal);
@@ -350,7 +461,8 @@ export async function runClusterWatch(
       if (message !== lastMessage)
         console.warn(`[cluster-watch] ${clusterId}: ${message}`);
       lastMessage = message;
-      await sleep(pause, signal);
+      // A leader's server the leader before declared down is not tried again until the pause, unless another takes over.
+      await pauseUnlessLeaderMoves(clusterId, host, pause, signal);
       pause = Math.min(pause * 2, 30_000);
     }
   }

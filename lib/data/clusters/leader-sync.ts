@@ -16,6 +16,7 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { appKeepsVolume } from "../../apps/failover-copy";
+import { declareServerDown } from "../../infra/agent-client/channel-pool";
 import { nowIso } from "../../ids";
 import {
   callClusterLeader,
@@ -310,6 +311,7 @@ export async function setMemberLease(
   serverId: string,
   state: ClusterLeaseState,
 ): Promise<boolean> {
+  declareServerDown(serverId, state !== "ok");
   const rows = await getDb()
     .update(membersTable)
     .set({ leaseState: state, leaseChangedAt: nowIso() })
