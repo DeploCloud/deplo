@@ -63,6 +63,7 @@ const CONTROL_PLANE = [
   "team_folder_order",
   "servers",
   "server_teams",
+  "server_agent_capabilities",
   "server_agent_updates",
   "clusters",
   "cluster_teams",

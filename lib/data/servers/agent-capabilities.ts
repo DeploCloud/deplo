@@ -17,8 +17,12 @@ import { instanceFrozen } from "../deplo-move/freeze";
 // A server that never reported lacks every capability; one that cannot answer keeps what it last said.
 
 const SEEN_KEY = Symbol.for("deplo.agent-capabilities.seen");
-const slot = globalThis as unknown as { [SEEN_KEY]?: Map<string, string> };
+const slot = globalThis as unknown as {
+  [SEEN_KEY]?: Map<string, { sig: string; at: number }>;
+};
 const seen = (slot[SEEN_KEY] ??= new Map());
+// A Hello already stored is not read again for this long: a row lost meanwhile comes back within it.
+const SEEN_FOR_MS = 5 * 60_000;
 
 const signature = (version: string, caps: string[]) =>
   `${version}|${[...caps].sort().join(",")}`;
@@ -32,7 +36,8 @@ export async function recordAgentHello(
   if (!agentVersion) return;
   const caps = [...new Set(capabilities ?? [])].sort();
   const sig = signature(agentVersion, caps);
-  if (seen.get(serverId) === sig) return;
+  const last = seen.get(serverId);
+  if (last?.sig === sig && Date.now() - last.at < SEEN_FOR_MS) return;
   try {
     if (await instanceFrozen()) return;
     const db = getDb();
@@ -69,7 +74,7 @@ export async function recordAgentHello(
           );
       });
     }
-    seen.set(serverId, sig);
+    seen.set(serverId, { sig, at: Date.now() });
     if (oldVersion && (dropped.length > 0 || isNewer(oldVersion, agentVersion)))
       await recordDowngrade(serverId, oldVersion, agentVersion, dropped);
   } catch (e) {
