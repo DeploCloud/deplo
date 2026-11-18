@@ -54,6 +54,7 @@ import {
   recordOnce,
   refreshLeaderKeys,
 } from "./bundles";
+import { copyImagesToMembers, stackImages } from "./images";
 import { standbyMemberOf } from "./placement";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import {
@@ -202,6 +203,12 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
     db,
     await databaseStackYaml(db, databasePassword(db)),
   );
+  // Its engine's image goes ahead to every member, so a restore there never waits on the registry.
+  void copyImagesToMembers(
+    cluster.id,
+    db.serverId,
+    stackImages(sent.composeYaml),
+  ).catch(() => undefined);
   const source = await latestRestorable({
     kind: KIND,
     id: db.id,

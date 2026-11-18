@@ -32,14 +32,22 @@ import { rollbackKeepBySlug } from "./docker-cleanup/live-inventory";
 import { addClusterMember } from "./clusters/members";
 import { clearPlacement } from "./clusters/placement";
 import {
+  __forgetRegistryCopies,
+  copyImagesToMembers,
   copyImageAfterDeploy,
   copyReleaseToMembers,
+  stackImages,
   isBuiltImage,
   listClusterImageProgress,
   membersHoldingImage,
   reconcileClusterImages,
 } from "./clusters/images";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import {
+  __forgetAgentHellos,
+  recordAgentHello,
+} from "./servers/agent-capabilities";
+import { serverAgentCapabilities } from "../db/schema/control-plane/servers";
 import {
   __resetClusterWatchForTest,
   releaseClusterWatchLease,
@@ -507,4 +515,55 @@ test("a source that is not a member of the App's cluster copies nothing", async 
   await copyReleaseToMembers("app_web", REL1, SERVER_1);
   assert.deepEqual(await rows(), []);
   for (const h of Object.values(hosts)) assert.deepEqual(h.imageCopies, []);
+});
+
+// A failover never needs the registry: what a cluster workload pulled goes ahead to the other members.
+const copiesRegistry = (...ids: string[]) =>
+  Promise.all(
+    ids.map((id) =>
+      recordAgentHello(id, "0.5.3-canary.13", ["cluster.images.registry"]),
+    ),
+  );
+
+test("a registry image goes from the server that runs it to every member whose agent copies one", async () => {
+  __forgetAgentHellos();
+  __forgetRegistryCopies();
+  await db.delete(serverAgentCapabilities);
+  const cluster = await clusterWithApp();
+  await copiesRegistry("srv_2", "srv_3");
+  await copyImagesToMembers(cluster.id, "srv_2", ["postgres:17", REL1]);
+  assert.deepEqual(
+    hostOf("srv_2").imageCopies.map((c) => [c.imageRef, c.targetFingerprint]),
+    [["postgres:17", "3".repeat(64)]],
+    "srv_4's agent does not copy registry images, and a build goes by its own path",
+  );
+  assert.deepEqual(
+    hostOf("srv_3").imageExpects.map((e) => e.imageRef),
+    ["postgres:17"],
+  );
+  // Asked again, a member that took it is not asked twice.
+  await copyImagesToMembers(cluster.id, "srv_2", ["postgres:17"]);
+  assert.equal(hostOf("srv_2").imageCopies.length, 1);
+});
+
+test("a source whose agent cannot copy a registry image copies nothing", async () => {
+  __forgetAgentHellos();
+  __forgetRegistryCopies();
+  await db.delete(serverAgentCapabilities);
+  const cluster = await clusterWithApp();
+  await copiesRegistry("srv_3", "srv_4");
+  await copyImagesToMembers(cluster.id, "srv_2", ["postgres:17"]);
+  assert.deepEqual(hostOf("srv_2").imageCopies, []);
+});
+
+test("the images of a rendered stack are what a copy asks for", () => {
+  const stack = [
+    "services:",
+    "  db-pg:",
+    "    image: postgres:17",
+    "  side:",
+    '    image: "ghcr.io/o/a:1"',
+    "",
+  ].join("\n");
+  assert.deepEqual(stackImages(stack), ["postgres:17", "ghcr.io/o/a:1"]);
 });

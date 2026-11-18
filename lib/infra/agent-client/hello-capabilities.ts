@@ -104,6 +104,9 @@ export const CLUSTER_CAPABILITY = "cluster";
 // The agent copies a built image to another member of its cluster over the relay (ADR-0044).
 export const CLUSTER_IMAGES_CAPABILITY = "cluster.images";
 
+// A member copies a registry image from another and starts a failover from what it holds: no registry needed.
+export const CLUSTER_REGISTRY_IMAGES_CAPABILITY = "cluster.images.registry";
+
 // The agent starts a workload its cluster's leader moves to it; without it the leader's order is renewed and ignored.
 export const CLUSTER_FAILOVER_CAPABILITY = "cluster.failover";
 

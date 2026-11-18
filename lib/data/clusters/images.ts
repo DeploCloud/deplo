@@ -16,7 +16,9 @@ import {
 } from "../../infra/agent-client/cluster-host";
 import { requireActiveTeamId } from "../../membership";
 import type { ClusterImageProgress } from "../../types/cluster";
+import { CLUSTER_REGISTRY_IMAGES_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { serversReporting } from "../servers/agent-capabilities";
 import { withKeyedLock } from "../keyed-mutex";
 import { fingerprintOf } from "./relay";
 
@@ -240,9 +242,85 @@ export function copyImageAfterDeploy(depId: string, serverId: string): void {
     )[0];
     // A preview never fails over, and its build is not one of the App's releases (#212).
     if (dep?.previewId) return;
-    if (!dep?.imageRef || !isBuiltImage(dep.imageRef)) return;
-    await copyReleaseToMembers(dep.appId, dep.imageRef, serverId);
+    if (!dep?.imageRef) return;
+    if (isBuiltImage(dep.imageRef))
+      return copyReleaseToMembers(dep.appId, dep.imageRef, serverId);
+    const app = (
+      await getDb()
+        .select({ clusterId: appsTable.clusterId })
+        .from(appsTable)
+        .where(eq(appsTable.id, dep.appId))
+        .limit(1)
+    )[0];
+    if (app?.clusterId)
+      await copyImagesToMembers(app.clusterId, serverId, [dep.imageRef]);
   })().catch((e) => console.warn(`[cluster-images] ${depId}: ${message(e)}`));
+}
+
+// (server, image) pairs a copy already put in place in this process: each push asks no member twice.
+const HELD_KEY = Symbol.for("deplo.cluster-images.registry-held");
+const heldSlot = globalThis as unknown as { [HELD_KEY]?: Set<string> };
+const registryHeld: Set<string> = (heldSlot[HELD_KEY] ??= new Set());
+
+/**
+ * Puts the registry images a cluster workload runs on every other member of its architecture, from the server that
+ * runs it, so a failover there starts from what it holds and never needs the registry. Only between agents that copy
+ * registry images; a failure is logged and the next push tries again.
+ */
+export async function copyImagesToMembers(
+  clusterId: string,
+  sourceServerId: string,
+  refs: string[],
+): Promise<void> {
+  const wanted = [...new Set(refs.filter((r) => r && !isBuiltImage(r)))];
+  if (wanted.length === 0 || (await instanceFrozen())) return;
+  const all = await members(clusterId);
+  const source = all.find((m) => m.serverId === sourceServerId);
+  if (!source?.arch) return;
+  const others = all.filter(
+    (m) => m.serverId !== source.serverId && m.arch === source.arch,
+  );
+  const able = await serversReporting(
+    [source.serverId, ...others.map((m) => m.serverId)],
+    CLUSTER_REGISTRY_IMAGES_CAPABILITY,
+  );
+  if (!able.has(source.serverId)) return;
+  const from = await fingerprintOf(source.serverId);
+  if (!from) return;
+  for (const t of others.filter((m) => able.has(m.serverId)))
+    for (const ref of wanted) {
+      const key = `${t.serverId} ${ref}`;
+      if (registryHeld.has(key)) continue;
+      try {
+        const fingerprint = await fingerprintOf(t.serverId);
+        if (!fingerprint) continue;
+        await expectClusterImage(t.serverId, ref, from, IMAGE_RELEASES_KEPT);
+        await copyClusterImage(
+          source.serverId,
+          ref,
+          fingerprint,
+          IMAGE_RELEASES_KEPT,
+        );
+        registryHeld.add(key);
+      } catch (e) {
+        console.warn(`[cluster-images] ${ref} -> ${t.serverId}: ${message(e)}`);
+      }
+    }
+}
+
+/** The images a rendered stack names, for copying them ahead of a failover. */
+export function stackImages(composeYaml: string): string[] {
+  const out: string[] = [];
+  for (const m of composeYaml.matchAll(
+    /^\s+image:\s*["']?([^\s"'#]+)["']?\s*$/gm,
+  ))
+    out.push(m[1]!);
+  return out;
+}
+
+/** Test seam: forget which registry images were copied. */
+export function __forgetRegistryCopies(): void {
+  registryHeld.clear();
 }
 
 /** Members that hold a release, for the placement rule: a member still copying is not a target. */
