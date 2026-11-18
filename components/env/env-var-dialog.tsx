@@ -80,11 +80,14 @@ export function EnvVarDialog({
   projects = [],
   environments = [],
   teams = [],
+  tab,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   appId: string;
   editing: EnvVarDTO | null;
+  // Opened on Shared or Database: a variable typed by hand is added in the list instead.
+  tab?: "shared" | "database";
   existingKeys?: string[];
   // Every key on the app, secrets included: a connection may replace any of them.
   appKeys?: string[];
@@ -118,6 +121,7 @@ export function EnvVarDialog({
       projects={projects}
       environments={environments}
       teams={teams}
+      tab={tab}
     />
   );
 }
@@ -147,6 +151,7 @@ function AddDialog({
   projects,
   environments,
   teams,
+  tab: firstTab,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -159,8 +164,9 @@ function AddDialog({
   projects: ProjectRef[];
   environments: TeamEnvironment[];
   teams: TeamRef[];
+  tab?: "shared" | "database";
 }) {
-  const [tab, setTab] = React.useState<AddTab>("standalone");
+  const [tab, setTab] = React.useState<AddTab>(firstTab ?? "standalone");
   const [creating, setCreating] = React.useState(false);
   const panel: AddPanel = creating ? "new-shared" : tab;
 
@@ -173,7 +179,9 @@ function AddDialog({
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle>Add environment variables</DialogTitle>
           <DialogDescription>
-            Add variables to this app, link shared ones, or connect a database.
+            {firstTab
+              ? "Link a shared variable or connect a database to this app."
+              : "Add variables to this app, link shared ones, or connect a database."}
           </DialogDescription>
         </DialogHeader>
 
@@ -195,10 +203,12 @@ function AddDialog({
               </Button>
             ) : (
               <SegmentedTabsList>
-                <SegmentedTabsTrigger value="standalone">
-                  <Plus />
-                  Standalone
-                </SegmentedTabsTrigger>
+                {!firstTab && (
+                  <SegmentedTabsTrigger value="standalone">
+                    <Plus />
+                    Standalone
+                  </SegmentedTabsTrigger>
+                )}
                 <SegmentedTabsTrigger value="shared">
                   <Share2 />
                   Shared

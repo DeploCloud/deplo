@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { Plus, SearchX } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { SearchX } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
@@ -28,6 +28,18 @@ import {
   type EnvRow,
 } from "@/components/env/env-manager-rows";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
+import { EnvAddButton, type AddKind } from "@/components/env/env-add-button";
+import { EnvDraftRows } from "@/components/env/env-drafts";
+import {
+  hasContent,
+  newDraft,
+  type Draft,
+  type KnownVar,
+} from "@/components/env/env-drafts-model";
+import {
+  savedToast,
+  type AutoLinked,
+} from "@/components/env/env-var-edit-form";
 import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
 import {
   editorFacet,
@@ -76,7 +88,66 @@ export function EnvManager({
   const [addOpen, setAddOpen] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [opened, setOpened] = React.useState<ReadonlySet<string>>(new Set());
+  const [drafts, setDrafts] = React.useState<Draft[]>([]);
+  const [addTab, setAddTab] = React.useState<AddKind | undefined>();
   const router = useRouter();
+
+  const known = React.useMemo<KnownVar[]>(
+    () => vars.map((v) => ({ key: v.key, type: v.type })),
+    [vars],
+  );
+  // A plain variable a draft would overwrite steps aside until the draft is saved or dropped.
+  const drafted = new Set(drafts.map((d) => d.key.trim()).filter(Boolean));
+
+  function addDraft() {
+    setDrafts((prev) =>
+      prev.some((d) => !hasContent(d)) ? prev : [newDraft(), ...prev],
+    );
+  }
+
+  function saveDrafts(list: Draft[]) {
+    const before = drafts;
+    setDrafts([]);
+    void (async () => {
+      type AddResult = {
+        added: number;
+        skippedSecrets: number;
+        autoLinked: AutoLinked[];
+      };
+      const res = await gqlAction<{ addEnv: AddResult }, AddResult>(
+        `mutation($appId: String!, $entries: [EnvEntryInput!]!) {
+          addEnv(appId: $appId, entries: $entries) {
+            added skippedSecrets autoLinked { key database }
+          }
+        }`,
+        {
+          appId,
+          entries: list.map((d) => ({
+            key: d.key.trim(),
+            value: d.value,
+            note: d.note?.trim() || undefined,
+            secret: d.secret || undefined,
+          })),
+        },
+        (d) => d.addEnv,
+      );
+      if (!res.ok || res.data == null) {
+        setDrafts(before);
+        if (!res.ok) toast.error(res.error);
+        return;
+      }
+      const { added, skippedSecrets, autoLinked } = res.data;
+      savedToast(
+        skippedSecrets > 0
+          ? `Added ${added} variable(s), ${skippedSecrets} secret(s) skipped`
+          : added === 1
+            ? "Variable added"
+            : `Added ${added} variables`,
+        autoLinked,
+      );
+      router.refresh();
+    })();
+  }
 
   function toggleOpen(key: string) {
     setOpened((prev) => {
@@ -144,21 +215,28 @@ export function EnvManager({
     };
   });
 
-  const hasVars = loading || rows.length > 0;
-  const hasMatches = loading || shownRows.length > 0;
+  const hasVars = loading || rows.length > 0 || drafts.length > 0;
+  const hasMatches = loading || shownRows.length > 0 || drafts.length > 0;
+  const listed = shownRows.filter(
+    (row) =>
+      !(
+        row.kind === "standalone" &&
+        row.type === "plain" &&
+        drafted.has(row.key)
+      ),
+  );
 
   const addButton = (size: "sm" | "default") => (
-    <Button
+    <EnvAddButton
       size={size}
       disabled={loading}
-      onClick={() => {
+      onAdd={addDraft}
+      onMore={(kind) => {
         setEditing(null);
+        setAddTab(kind);
         setAddOpen(true);
       }}
-    >
-      <Plus className="size-4" />
-      Add
-    </Button>
+    />
   );
 
   return (
@@ -209,11 +287,19 @@ export function EnvManager({
           />
         ) : (
           <EnvList select={<EnvSelectAll />}>
+            {drafts.length > 0 && (
+              <EnvDraftRows
+                drafts={drafts}
+                onChange={setDrafts}
+                known={known}
+                onSave={saveDrafts}
+              />
+            )}
             {loading &&
               PLACEHOLDER_KEYS.map((k) => (
                 <EnvRowSkeleton key={k} envKey={k} />
               ))}
-            {shownRows.map((row) =>
+            {listed.map((row) =>
               row.kind === "standalone" ? (
                 <StandaloneRow
                   key={rowKey(row)}
@@ -222,6 +308,7 @@ export function EnvManager({
                   onToggle={() => toggleOpen(rowKey(row))}
                   onEdit={() => {
                     setEditing(row);
+                    setAddTab(undefined);
                     setAddOpen(true);
                   }}
                   onDelete={() => setDeleteId(row.id)}
@@ -249,7 +336,8 @@ export function EnvManager({
       </EnvBulkSelection>
 
       <EnvVarDialog
-        key={editing?.id ?? "new"}
+        key={`${editing?.id ?? "new"}:${addTab ?? ""}`}
+        tab={addTab}
         open={addOpen}
         onOpenChange={setAddOpen}
         appId={appId}

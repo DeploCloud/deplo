@@ -289,6 +289,8 @@ export interface EnvEntryInput {
   value: string;
   // Left out (or null) keeps the stored note: a .env line without a comment never erases one.
   note?: string | null;
+  // Only ever chosen by a person: a pasted line is plain until someone turns this on.
+  secret?: boolean | null;
 }
 
 export interface EnvAddResult {
@@ -329,7 +331,7 @@ export async function addEnv(
         key,
         value: entry.value,
         targets,
-        type: "plain",
+        type: entry.secret ? "secret" : "plain",
         note: entry.note ?? undefined,
       })),
     );

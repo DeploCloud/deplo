@@ -182,6 +182,11 @@ const EnvEntryInputType = builder.inputType("EnvEntryInput", {
       description:
         "At most 1000 characters. Left out keeps the stored note; an empty string removes it.",
     }),
+    secret: t.boolean({
+      required: false,
+      description:
+        "Store it as a secret. Left out stores it plain; a name already holding a secret is skipped either way.",
+    }),
   }),
 });
 

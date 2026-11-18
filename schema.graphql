@@ -3150,6 +3150,11 @@ input EnvEntryInput {
   At most 1000 characters. Left out keeps the stored note; an empty string removes it.
   """
   note: String
+
+  """
+  Store it as a secret. Left out stores it plain; a name already holding a secret is skipped either way.
+  """
+  secret: Boolean
   value: String!
 }
 

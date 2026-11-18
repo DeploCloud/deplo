@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Select, chevron, key, value, last modified, modified by, actions. Below md a row stacks.
-const COLS =
+export const ENV_LIST_COLS =
   "md:grid md:grid-cols-[1rem_1rem_minmax(0,1.1fr)_minmax(0,1.4fr)_7.5rem_9rem_5.5rem] md:items-center md:gap-3";
 
 export function EnvList({
@@ -19,7 +19,7 @@ export function EnvList({
     <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
       <div
         className={cn(
-          COLS,
+          ENV_LIST_COLS,
           "h-10 px-3 text-xs font-medium text-muted-foreground max-md:hidden",
         )}
       >
@@ -69,7 +69,7 @@ export function EnvListRow({
         tone === "draft" && "shadow-[inset_2px_0_0_var(--info)]",
       )}
     >
-      <div className={cn(COLS, "flex items-start gap-2 px-3 py-2.5")}>
+      <div className={cn(ENV_LIST_COLS, "flex items-start gap-2 px-3 py-2.5")}>
         <div className="flex h-5 items-center max-md:hidden">{select}</div>
         <button
           type="button"

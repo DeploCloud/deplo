@@ -273,3 +273,24 @@ test("a secret's note changes without touching its value, author or pending chan
   const [cleared] = await asUser1(() => listEnv("app_web"));
   assert.equal(cleared.note, null);
 });
+
+test("a draft marked secret is stored as one, and a name already secret is skipped either way", async () => {
+  const first = await asUser1(() =>
+    addEnv("app_web", [
+      { key: "RESEND_API_KEY", value: "re_1", secret: true },
+      { key: "MAIL_FROM", value: "shop@acme.com" },
+    ]),
+  );
+  assert.deepEqual([first.added, first.skippedSecrets], [2, 0]);
+  const again = await asUser1(() =>
+    addEnv("app_web", [
+      { key: "RESEND_API_KEY", value: "re_2", secret: true },
+      { key: "RESEND_API_KEY", value: "plain now" },
+    ]),
+  );
+  assert.deepEqual([again.added, again.skippedSecrets], [0, 2]);
+  const rows = await asUser1(() => listEnv("app_web"));
+  const byKey = new Map(rows.map((r) => [r.key, r.type]));
+  assert.equal(byKey.get("RESEND_API_KEY"), "secret");
+  assert.equal(byKey.get("MAIL_FROM"), "plain");
+});
