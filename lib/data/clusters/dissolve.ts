@@ -1,5 +1,6 @@
 import "server-only";
 
+import { syncClusterAnswerDnsSoon } from "./answer-dns";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -467,6 +468,7 @@ export async function removeClusterMember(
     teamId,
     actor: user,
   });
+  syncClusterAnswerDnsSoon(clusterId);
   return (await getClusterById(clusterId))!;
 }
 

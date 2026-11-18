@@ -202,6 +202,7 @@ export type DnsRecord = {
   content: string;
   proxied?: boolean;
   ttl?: number;
+  comment?: string | null;
 };
 
 export async function dnsRecords(
