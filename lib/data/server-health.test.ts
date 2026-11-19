@@ -1,6 +1,5 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { setTimeout as sleep } from "node:timers/promises";
 
 import type { PGlite } from "@electric-sql/pglite";
 
@@ -21,6 +20,7 @@ import {
 } from "./server-health";
 import { HEALTH_MESSAGES } from "../infra/server-health";
 import { __resetCooldowns, shouldFire } from "../notify/cooldown";
+import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
 import { instanceFrozen } from "./deplo-move/freeze";
 import { saveNotificationChannel } from "./notifications";
@@ -150,8 +150,7 @@ test("only a persisted offline-to-online transition sends a recovery alert", asy
     recordServerHealth(id, online, T2),
     recordServerHealth(id, online, T2),
   ]);
-  for (let attempt = 0; attempt < 100 && !capture.calls.length; attempt++)
-    await sleep(10);
+  await __settleAlertsForTest();
   assert.equal(capture.calls.length, 1);
 
   now += 31 * 60_000;
