@@ -482,6 +482,24 @@ test("ipv6: the drift check flips a valid domain when a stray AAAA appears, and 
   assert.deepEqual(hints.strays[d.id], { type: "AAAA", address: STRAY_V6 });
 });
 
+// A domain that answers on every server names every server of its cluster: the drift check must leave it to the
+// cluster's own check, or it calls it misconfigured and unroutes it (found on the lab, ADR-0048).
+test("the drift check leaves a domain that answers on every server alone", async () => {
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "every.example.io", {}));
+  await db
+    .update(domainsTable)
+    .set({ answersEverywhere: true })
+    .where(eq(domainsTable.id, d.id));
+  __setDnsResolve4ForTest(async () => [SERVER_IP, "203.0.113.77"]);
+  await sweepDomainDns();
+  const [row] = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, d.id));
+  assert.equal(row.status, "valid");
+});
+
 test("renaming to a generated address preserves routing settings and existing redirects", async () => {
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const config = {
