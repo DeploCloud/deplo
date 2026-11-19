@@ -97,6 +97,10 @@ test("lists every team's workloads and destinations, with where each can go", as
     teamId: TEAM_B,
     serverId: SERVER,
   });
+  await db
+    .update(appsTable)
+    .set({ logo: "/templates/umami.png", logoTone: "light" })
+    .where(eq(appsTable.id, "prj_b"));
   await seedDatabase(db, { id: "db_1", name: "pg-main", serverId: SERVER });
   await seedDestination(db, {
     id: "dst_b",
@@ -121,6 +125,15 @@ test("lists every team's workloads and destinations, with where each can go", as
     [["dst_b", "beta"]],
   );
   assert.equal(b.online, true);
+  // What the dialog draws each row's icon from.
+  assert.deepEqual(
+    [b.apps[0]!.logo, b.apps[0]!.logoTone, b.apps[0]!.engine],
+    ["/templates/umami.png", "light", null],
+  );
+  assert.deepEqual(
+    [b.databases[0]!.logo, b.databases[0]!.engine],
+    [null, "postgres"],
+  );
 });
 
 test("moves another team's app off the server, and that team's Activity says so", async () => {

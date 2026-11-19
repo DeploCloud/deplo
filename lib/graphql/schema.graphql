@@ -7869,6 +7869,7 @@ type ServerRemovalDestination {
 
   """Backup schedules that go with it."""
   schedules: Int
+  teamAvatarUrl: String
   teamName: String
 }
 
@@ -7876,7 +7877,11 @@ type ServerRemovalDestination {
 An App, database or cluster leader that keeps a server from being removed until it moves.
 """
 type ServerRemovalItem {
+  """A database's engine ("postgres"); null otherwise."""
+  engine: String
   id: ID
+  logo: String
+  logoTone: String
 
   """
   Where it can go: servers its team can use, or for a cluster the servers its leader can run on. Empty when nowhere.
@@ -7888,6 +7893,7 @@ type ServerRemovalItem {
   Why it cannot move from here right now (being deleted, still being created); empty when it can.
   """
   note: String
+  teamAvatarUrl: String
 
   """The team it belongs to; empty for a cluster."""
   teamName: String

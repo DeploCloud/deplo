@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { ArrowRightLeft, ChevronDown, Loader2, Trash2 } from "lucide-react";
+import {
+  ArrowRightLeft,
+  ChevronDown,
+  Loader2,
+  Network,
+  Server,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,6 +20,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { AppLogo, LogoImage } from "@/components/shared/project-logo";
+import { TeamAvatar } from "@/components/shared/user-avatar";
+import { DB_LOGOS } from "@/components/storage/db-engines";
+import type { DatabaseType } from "@/lib/types/database";
 import { gqlAction } from "@/lib/graphql-client";
 import { plural } from "@/lib/utils";
 
@@ -21,6 +32,10 @@ type Item = {
   id: string;
   name: string;
   teamName: string;
+  teamAvatarUrl: string | null;
+  logo: string | null;
+  logoTone: "dark" | "light" | null;
+  engine: string | null;
   moveTo: Target[];
   note: string;
 };
@@ -28,6 +43,7 @@ type Destination = {
   id: string;
   name: string;
   teamName: string;
+  teamAvatarUrl: string | null;
   schedules: number;
   artifacts: number;
 };
@@ -56,6 +72,7 @@ const BLOCKERS = /* GraphQL */ `
         id
         name
         teamName
+        teamAvatarUrl
         schedules
         artifacts
       }
@@ -67,6 +84,10 @@ const BLOCKERS = /* GraphQL */ `
     id
     name
     teamName
+    teamAvatarUrl
+    logo
+    logoTone
+    engine
     note
     moveTo {
       id
@@ -187,7 +208,7 @@ export function RemovalBlockerList({
 
   return (
     <div className="space-y-4">
-      <Section title="Apps" items={blockers.apps}>
+      <Section title="Apps" items={blockers.apps} icon={workloadIcon}>
         {(item) => (
           <MoveMenu
             item={item}
@@ -197,7 +218,7 @@ export function RemovalBlockerList({
           />
         )}
       </Section>
-      <Section title="Databases" items={blockers.databases}>
+      <Section title="Databases" items={blockers.databases} icon={workloadIcon}>
         {(item) => (
           <MoveMenu
             item={item}
@@ -207,7 +228,11 @@ export function RemovalBlockerList({
           />
         )}
       </Section>
-      <Section title="Cluster leaders" items={blockers.clusters}>
+      <Section
+        title="Cluster leaders"
+        items={blockers.clusters}
+        icon={() => <GlyphIcon icon={Network} />}
+      >
         {(item) => (
           <MoveMenu
             item={item}
@@ -223,7 +248,11 @@ export function RemovalBlockerList({
           />
         )}
       </Section>
-      <Section title="Backup destinations" items={blockers.destinations}>
+      <Section
+        title="Backup destinations"
+        items={blockers.destinations}
+        icon={() => <GlyphIcon icon={Server} />}
+      >
         {(d) => (
           <Button
             variant="outline"
@@ -249,13 +278,45 @@ export function RemovalBlockerList({
   );
 }
 
-function Section<T extends { id: string; name: string; teamName: string }>({
+const ICON = 32;
+
+function workloadIcon(item: Item) {
+  const engine = item.engine as DatabaseType | null;
+  return (
+    <AppLogo
+      logo={item.logo ?? (engine ? (DB_LOGOS[engine] ?? null) : null)}
+      tone={item.logoTone}
+      size={ICON}
+    />
+  );
+}
+
+function GlyphIcon({ icon: Icon }: { icon: typeof Server }) {
+  return (
+    <LogoImage
+      src={null}
+      size={ICON}
+      fallback={<Icon style={{ width: ICON / 2, height: ICON / 2 }} />}
+    />
+  );
+}
+
+function Section<
+  T extends {
+    id: string;
+    name: string;
+    teamName: string;
+    teamAvatarUrl: string | null;
+  },
+>({
   title,
   items,
+  icon,
   children,
 }: {
   title: string;
   items: T[];
+  icon: (item: T) => React.ReactNode;
   children: (item: T) => React.ReactNode;
 }) {
   if (items.length === 0) return null;
@@ -266,15 +327,23 @@ function Section<T extends { id: string; name: string; teamName: string }>({
         {items.map((item) => (
           <li
             key={item.id}
-            className="flex items-center justify-between gap-3 px-3 py-2"
+            className="flex items-center justify-between gap-3 px-3 py-2.5"
           >
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{item.name}</div>
-              {item.teamName && (
-                <div className="mt-1 truncate text-xs text-muted-foreground">
-                  {item.teamName}
-                </div>
-              )}
+            <div className="flex min-w-0 items-center gap-3">
+              {icon(item)}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{item.name}</div>
+                {item.teamName && (
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <TeamAvatar
+                      name={item.teamName}
+                      avatarUrl={item.teamAvatarUrl}
+                      size="xs"
+                    />
+                    <span className="truncate">{item.teamName}</span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="shrink-0">{children(item)}</div>
           </li>

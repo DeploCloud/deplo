@@ -16,6 +16,8 @@ import { dropDestination, removalImpactIn } from "../destinations/removal";
 import { listClusterLeaderChoices } from "../clusters/leader-move";
 import { clusterMemberServerIdSet } from "../clusters/members";
 import { canHostWorkloads, getServerById, listServersForTeam } from "./roster";
+import { asLogoTone } from "./workloads";
+import { teamAvatarUrl } from "../../avatar";
 
 // https://deplo.build/docs/operations/remove-a-server-or-uninstall
 
@@ -26,6 +28,11 @@ export type RemovalItem = {
   name: string;
   /** The team it belongs to; empty for a cluster. */
   teamName: string;
+  teamAvatarUrl: string | null;
+  logo: string | null;
+  logoTone: "dark" | "light" | null;
+  /** A database's engine ("postgres"); null otherwise. */
+  engine: string | null;
   /** Where it can go from here; empty when nowhere. */
   moveTo: RemovalTarget[];
   /** Why it cannot be moved from here right now, e.g. it is being deleted; empty when it can. */
@@ -36,6 +43,7 @@ export type RemovalDestination = {
   id: string;
   name: string;
   teamName: string;
+  teamAvatarUrl: string | null;
   schedules: number;
   artifacts: number;
 };
@@ -62,6 +70,9 @@ export async function blockingRows(id: string) {
         name: appsTable.name,
         teamId: appsTable.teamId,
         teamName: teamsTable.name,
+        teamImage: teamsTable.image,
+        logo: appsTable.logo,
+        logoTone: appsTable.logoTone,
         deletingAt: appsTable.deletingAt,
       })
       .from(appsTable)
@@ -73,6 +84,9 @@ export async function blockingRows(id: string) {
         name: databasesTable.name,
         teamId: databasesTable.teamId,
         teamName: teamsTable.name,
+        teamImage: teamsTable.image,
+        logo: databasesTable.logo,
+        engine: databasesTable.type,
         status: databasesTable.status,
       })
       .from(databasesTable)
@@ -88,6 +102,7 @@ export async function blockingRows(id: string) {
         name: destinationTable.name,
         teamId: destinationTable.teamId,
         teamName: teamsTable.name,
+        teamImage: teamsTable.image,
       })
       .from(destinationTable)
       .leftJoin(teamsTable, eq(teamsTable.id, destinationTable.teamId))
@@ -144,6 +159,10 @@ export async function serverRemovalBlockers(
         id: a.id,
         name: a.name,
         teamName: a.teamName ?? "",
+        teamAvatarUrl: teamAvatarUrl(a.teamImage),
+        logo: a.logo,
+        logoTone: asLogoTone(a.logoTone),
+        engine: null,
         moveTo: a.deletingAt ? [] : await targets(a.teamId),
         note: a.deletingAt ? "Being deleted" : "",
       })),
@@ -153,6 +172,10 @@ export async function serverRemovalBlockers(
         id: d.id,
         name: d.name,
         teamName: d.teamName ?? "",
+        teamAvatarUrl: teamAvatarUrl(d.teamImage),
+        logo: d.logo,
+        logoTone: null,
+        engine: d.engine,
         moveTo: d.status === "provisioning" ? [] : await targets(d.teamId),
         note: d.status === "provisioning" ? "Still being created" : "",
       })),
@@ -162,6 +185,10 @@ export async function serverRemovalBlockers(
         id: c.id,
         name: c.name,
         teamName: "",
+        teamAvatarUrl: null,
+        logo: null,
+        logoTone: null,
+        engine: null,
         moveTo: (await listClusterLeaderChoices(c.id))
           .filter((o) => !o.blocked && !o.current && o.serverId !== serverId)
           .map((o) => ({ id: o.serverId, name: o.serverName })),
@@ -175,6 +202,7 @@ export async function serverRemovalBlockers(
           id: d.id,
           name: d.name,
           teamName: d.teamName ?? "",
+          teamAvatarUrl: teamAvatarUrl(d.teamImage),
           schedules: impact.schedules,
           artifacts: impact.artifacts,
         };

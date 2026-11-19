@@ -30,6 +30,13 @@ const RemovalItemRef = builder
       teamName: t.exposeString("teamName", {
         description: "The team it belongs to; empty for a cluster.",
       }),
+      teamAvatarUrl: t.exposeString("teamAvatarUrl", { nullable: true }),
+      logo: t.exposeString("logo", { nullable: true }),
+      logoTone: t.exposeString("logoTone", { nullable: true }),
+      engine: t.exposeString("engine", {
+        nullable: true,
+        description: 'A database\'s engine ("postgres"); null otherwise.',
+      }),
       moveTo: t.field({
         type: [RemovalTargetRef],
         description:
@@ -51,6 +58,7 @@ const RemovalDestinationRef = builder
       id: t.exposeID("id"),
       name: t.exposeString("name"),
       teamName: t.exposeString("teamName"),
+      teamAvatarUrl: t.exposeString("teamAvatarUrl", { nullable: true }),
       schedules: t.exposeInt("schedules", {
         description: "Backup schedules that go with it.",
       }),

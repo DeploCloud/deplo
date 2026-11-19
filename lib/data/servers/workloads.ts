@@ -90,7 +90,7 @@ function live(id: string, status: AppStatus, neverDeployed: boolean) {
   };
 }
 
-const tone = (t: string | null): "dark" | "light" | null =>
+export const asLogoTone = (t: string | null): "dark" | "light" | null =>
   t === "dark" || t === "light" ? t : null;
 
 // Every team's apps and databases: a server is shared, and only an instance admin reads this.
@@ -163,7 +163,7 @@ export async function listServerWorkloads(
       kind: "app" as const,
       name: a.name,
       logo: a.logo,
-      logoTone: tone(a.logoTone),
+      logoTone: asLogoTone(a.logoTone),
       engine: null,
       teamName: a.teamName,
       teamSlug: a.teamSlug,
