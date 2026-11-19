@@ -69,6 +69,7 @@ async function heldDomains(appId: string) {
       recordId: domainDnsRecords.recordId,
       created: domainDnsRecords.created,
       oldTunnel: domainDnsRecords.tunnelId,
+      answersEverywhere: domainsTable.answersEverywhere,
     })
     .from(appTunnelDomains)
     .innerJoin(domainsTable, eq(domainsTable.id, appTunnelDomains.domainId))
@@ -337,7 +338,10 @@ export async function activateAppTunnel(
     if (await instanceFrozen()) return 0;
     const row = await loadAppTunnel(appId);
     if (!row) return 0;
-    const pending = (await heldDomains(appId)).filter((d) => !d.active);
+    // A domain that answers on every server follows by its records, never by the tunnel (ADR-0048).
+    const pending = (await heldDomains(appId)).filter(
+      (d) => !d.active && d.answersEverywhere !== true,
+    );
     if (pending.length === 0) return 0;
     const app = await loadAppGraph(appId);
     const home = await loadProviderSecret(row.providerId).catch(() => null);
@@ -663,7 +667,12 @@ export async function domainsLeftOnServer(app: {
   const server = (await getServerById(app.serverId))?.name ?? "its server";
   const out: Record<string, string> = {};
   for (const d of await loadDomainsForApp(app.id))
-    if (d.source !== "auto" && !d.tunnel && !follows.has(d.id))
+    if (
+      d.source !== "auto" &&
+      !d.tunnel &&
+      !d.answersEverywhere &&
+      !follows.has(d.id)
+    )
       out[d.id] = server;
   return out;
 }

@@ -30,6 +30,8 @@ export interface Domain {
   tunnel?: boolean;
   /** Every server of the App's cluster answers it (ADR-0048). */
   answersEverywhere?: boolean;
+  /** It answers everywhere, but its certificate has not reached the App's failover bundle yet. */
+  failoverWaitsForCertificate?: boolean;
   createdAt: string;
 }
 

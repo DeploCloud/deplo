@@ -164,6 +164,24 @@ export const DOMAINS: McpToolDef[] = [
     `,
   }),
   tool({
+    name: "set_domain_answers_everywhere",
+    title: "Answer a domain on every server",
+    description:
+      "For an App on a cluster: every server answers the domain and passes visitors to the one that runs the App, so it keeps answering through a failover. HTTPS domains only.",
+    group: "Domains",
+    requires: "manage_domains",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("The domain's id."),
+      on: z.boolean().describe("True to turn it on, false to turn it off."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetDomainAnswersEverywhere($id: String!, $on: Boolean!) {
+        setDomainAnswersEverywhere(id: $id, on: $on) { ${DOMAIN_FIELDS} }
+      }
+    `,
+  }),
+  tool({
     name: "set_primary_domain",
     title: "Make a domain primary",
     description:
