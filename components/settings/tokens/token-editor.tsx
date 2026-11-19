@@ -11,12 +11,6 @@ import {
   FolderTree,
   ServerCog,
 } from "lucide-react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -262,40 +256,31 @@ export function TokenEditor({
             </div>
 
             {canGrantInstanceAdmin && (
-              <Accordion type="single" collapsible>
-                <AccordionItem value="advanced" className="border-b-0">
-                  <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
-                    Advanced
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-2">
-                    <div className="flex items-start justify-between gap-4 rounded-lg border border-border px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-1.5 text-sm font-medium">
-                          <ServerCog className="size-3.5 text-muted-foreground" />
-                          Instance admin
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Lets this token administer the whole instance - every
-                          user, every team and every server, not just this team.
-                          Only turn it on for a token that manages Deplo itself.
-                        </p>
-                        {scoped && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            A token limited to projects can&apos;t administer
-                            the instance.
-                          </p>
-                        )}
-                      </div>
-                      <Switch
-                        checked={instanceAdmin}
-                        onCheckedChange={setInstanceAdmin}
-                        disabled={scoped}
-                        aria-label="Instance admin"
-                      />
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <ServerCog className="size-3.5 text-muted-foreground" />
+                    Instance admin
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Lets this token administer the whole instance - every user,
+                    every team and every server, not just this team. Only turn
+                    it on for a token that manages Deplo itself.
+                  </p>
+                  {scoped && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      A token limited to projects can&apos;t administer the
+                      instance.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  checked={instanceAdmin}
+                  onCheckedChange={setInstanceAdmin}
+                  disabled={scoped}
+                  aria-label="Instance admin"
+                />
+              </div>
             )}
           </CardContent>
         </Card>
