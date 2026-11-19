@@ -88,10 +88,11 @@ test("a GitHub repo named by owner/name alone is cloned from GitHub, on create a
     repo: "acme/web",
   });
   const vars = create.variables!(args) as {
-    input: { repo?: { url: string; repo: string } };
+    input: { repo?: { url: string; repo: string }; deploy?: boolean };
   };
   assert.equal(vars.input.repo?.url, "https://github.com/acme/web");
   assert.equal(vars.input.repo?.repo, "acme/web");
+  assert.equal(vars.input.deploy, false, "deploy_app is what deploys it");
 });
 
 test("an image app keeps its image on a server move", () => {

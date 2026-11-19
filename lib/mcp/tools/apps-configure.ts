@@ -194,6 +194,7 @@ export const APPS_CONFIG: McpToolDef[] = [
           environmentId: a.environmentId,
           folderId: a.folderId,
           autoDeploy: a.autoDeploy,
+          deploy: false,
           repo: url
             ? {
                 url,
