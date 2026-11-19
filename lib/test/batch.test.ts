@@ -11,8 +11,9 @@ const LEAVES_THINGS = `import { beforeEach, test } from "node:test";
 const log = ((globalThis as any).deploFixtureLog ??= []) as string[];
 process.env.DEPLO_FIXTURE = "a";
 (globalThis as any)[Symbol.for("deplo.fixture")] = "a";
+(globalThis as any).window = { history: {} };
 beforeEach(() => { log.push("a"); });
-test("a leaves an env var, a parked global and a hook behind", () => {});
+test("a leaves an env var, parked globals and a hook behind", () => {});
 ${"//".padEnd(400, "-")}
 `;
 const FINDS_NOTHING = `import assert from "node:assert/strict";
@@ -21,13 +22,14 @@ test("b sees none of it", () => {
   assert.deepEqual((globalThis as any).deploFixtureLog, ["a"]);
   assert.equal(process.env.DEPLO_FIXTURE, undefined);
   assert.equal((globalThis as any)[Symbol.for("deplo.fixture")], undefined);
+  assert.equal(typeof (globalThis as any).window, "undefined");
 });
 `;
 const FAILS = `import { test } from "node:test";
 test("c fails on purpose", () => { throw new Error("on purpose"); });
 `;
 
-test("files share a worker, not their hooks, env or parked globals; a failure fails the run", () => {
+test("files share a worker, not their hooks, env or globals; a failure fails the run", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "deplo-batch-"));
   try {
     writeFileSync(path.join(dir, "a.test.ts"), LEAVES_THINGS);
