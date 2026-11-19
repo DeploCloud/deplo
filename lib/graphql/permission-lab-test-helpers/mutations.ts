@@ -170,6 +170,16 @@ export const M = {
       }
     }
   `,
+  rotateToken: /* GraphQL */ `
+    mutation ($id: String!, $expiresAt: String) {
+      rotateToken(id: $id, expiresAt: $expiresAt) {
+        raw
+        token {
+          id
+        }
+      }
+    }
+  `,
   updateTeam: /* GraphQL */ `
     mutation ($input: UpdateTeamInput!) {
       updateTeam(input: $input) {
