@@ -54,7 +54,7 @@ repository root.
 | [0045](0045-a-cluster-leader-holds-sealed-failover-bundles.md)                            | A cluster leader holds each workload's last stack and variables, sealed to its own key, to fail over without Deplo. **Proposed**                                                            |
 | [0046](0046-replication-streams-member-to-member.md)                                      | Replication streams an App's stored data member to member as it changes, and gives every database a standby copy; it is the only way such an App fails over. **Proposed**                   |
 | [0047](0047-a-cluster-shares-a-private-network-over-wireguard.md)                         | A cluster's servers share a private WireGuard network run inside their agents: direct where a path answers, over the relay where none does. **Proposed**                                    |
-| [0048](0048-a-cluster-domain-answers-on-every-server.md)                                  | A cluster App's domain can answer on every server: passed through by SNI over the private network, DNS listing every healthy server, the certificate travelling in the bundle. **Proposed** |
+| [0048](0048-a-cluster-domain-answers-on-every-server.md)                                  | A cluster App's domain can answer on every server: passed through by SNI over the private network, DNS listing every healthy server, the certificate travelling in the bundle. **Accepted** |
 | [0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md)                                 | A cluster can answer for a DNS zone delegated to it, so a domain on every server needs no hand-written record, and DNS-01 needs no token on any server. **Proposed, not built**             |
 
 ## Amended or superseded

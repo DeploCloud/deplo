@@ -15,7 +15,7 @@ A domain that answers on every server (ADR-0048) needs one DNS record per health
 ### What it answers, and how it knows who is healthy
 
 - **Deplo hands each agent the zone** (`SetClusterZone`, gated on Hello `dns.zone`): the zones and names delegated, which App's domains live in them, every server's public addresses, the TTLs, and which servers are being emptied. The agent keeps it on disk like the network table, so it answers after a restart with Deplo down.
-- **Health is the agent's own view, not Deplo's**: a server is in the answer when this agent heard it over the private network in the last 10 s (the mesh's keepalive is 5 s, so two missed), or it is this server, and Deplo has not marked it as being emptied. Each name server answers from what it sees, so the answers outlive Deplo and the leader; the leader's lease state is not needed and not read.
+- **Health is the agent's own view, not Deplo's** (ADR-0048's lab: a stopped server left in the answers also fails certificate checks that land on it): a server is in the answer when this agent heard it over the private network in the last 10 s (the mesh's keepalive is 5 s, so two missed), or it is this server, and Deplo has not marked it as being emptied. Each name server answers from what it sees, so the answers outlive Deplo and the leader; the leader's lease state is not needed and not read.
 - **Each answer is every healthy server's A and AAAA** for a name of a domain that answers on every server; the NS and SOA of the zone; nothing else in phase 1 (no MX, no TXT the person writes: a zone that needs those is delegated one level down, see below). Answers are shuffled per query.
 
 ### When a server cannot see enough of its cluster
