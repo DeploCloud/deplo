@@ -277,6 +277,14 @@ compares its copy with the other's when both checkouts sit side by side. **Each 
 repos in the same step, the agent first. It is gated on `cluster.forwarders.answers`, so an agent without it gets no
 answers and its proxy is never changed.
 
+The certificate of such a domain (ADR-0048 step 2) is a sixth, across all three: the bundle's top-level `certificates`
+(`[{hosts, cert, key, sha256, notAfter}]`, Deplo's), which the leader copies unread into the start order's
+`certificates` (`lease.Start`, a hand-kept copy like the rest of `lease/`), and which the member's agent installs only
+for hostnames its answer table passes on. Deplo reads the pairs back with `ReadProxyCertificates` and gets the agent's
+renewal restarts in `SetClusterForwardersResponse.proxy_restarts`, acknowledged by the next table's
+`proxy_restarts_seen_ms`; both need Hello `cluster.answers.certificates`. A leader older than the field drops it, so a
+failover then orders a new certificate as before: ship the agent, then the leader (v0.1.0-canary.7), then the pins.
+
 ## 8. Rollback is forward-only
 
 Same as the fleet (`fleet-rollout.md` §10): nothing installs an older cluster binary than the one
