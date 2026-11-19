@@ -37,6 +37,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "dist/**",
+    ".scratch/**",
+    ".fwm/**",
     "next-env.d.ts",
   ]),
 ]);

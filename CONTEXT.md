@@ -711,7 +711,7 @@ observed from each Hello), because an amd64 image on an arm64 box dies with `exe
 format error` long after the deploy reported success. The deploy occupies the
 **builder's** queue lane, since that is where the cost is.
 **Beta**, and carrying the same chip the **Git connection** providers do: the machinery
-is proven end to end against two real hosts (`scripts/buildserver-e2e.mts`), but the
+was proven end to end against two real hosts, but the
 path through the dashboard has fewer real fleets behind it than the rest of the product.
 Nothing gets a build server by accident - an instance admin has to mark a host for it.
 _Avoid_: builder (that is the **build method**'s job - Railpack, a Dockerfile, a

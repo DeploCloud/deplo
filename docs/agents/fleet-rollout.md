@@ -28,8 +28,8 @@ release would strand every server they manage.
    below it becomes unusable until it updates. That is the whole switch: the expected version is
    the pin, resolved from `releases/download/v<pin>/checksums.txt` (no API call) and memoised for
    the process. `docker-image.yml` refuses to publish a panel whose pin has no `checksums.txt`.
-4. **Ship the panel.** Once it runs, it updates every server behind the pin by itself (§3). By hand
-   is only for an agent-only re-cut, through §6.
+4. **Ship the panel.** Once it runs, it updates every server behind the pin by itself (§3). An
+   agent-only re-cut goes out the same way, or through a server's Retry.
 
 ## 2. The asset-name contract
 
@@ -168,12 +168,11 @@ bare read makes a null-`server_id` deploy _invisible_, so the check returns zero
 as all-clear, and the self-update `syscall.Exec`s 750ms later straight through the live `Deploy`
 stream this section exists to protect. A safety check that fails open is worse than no check.
 
-## 6. Scripted updates run under real Node, never Bun
+## 6. A script that dials TLS runs under real Node, never Bun
 
-**Historical.** Nothing dials a server since the first update stop (ADR-0041): a server is reached
-only over its link, which ends at the running panel's door, so `scripts/fleet-update*.mts` and the
-`rollout-agent-*.mts` scripts reach no server from their own process. The Bun note still holds for
-the door, which opens the same mTLS inside every link.
+Nothing dials a server from a script any more (§3): a server is reached only over its link, which
+ends at the running panel's door. The Bun note still holds for that door, which opens the same mTLS
+inside every link.
 
 Bun's TLS peer-certificate verification rejects the agent certificate's SAN set and hands
 `checkServerIdentity` an **empty** cert object, so the fingerprint pin can never match and every
@@ -184,46 +183,16 @@ node v24.18.0 → certKeys:19, subjectaltname:"IP Address:…, DNS:localhost, IP
 bun  v1.3.14  → ERR_TLS_CERT_ALTNAME_INVALID, certKeys:0, subjectaltname:null
 ```
 
-`bun run test` and `bun run dev` are fine; anything that _dials an agent_ is not. Run rollout
-scripts from the repo root with:
+`bun run test` and `bun run dev` are fine. A one-off script that imports `lib/data` lives in the
+ignored `.scratch/` and runs from the repo root, never committed (AGENTS.md → "Repository layout"):
 
 ```sh
-/usr/bin/node \
-  --env-file=.env \
-  --require ./lib/test/server-only-shim.cjs \
-  --import tsx <script>.ts
+/usr/bin/node --env-file=.env --require ./lib/test/server-only-shim.cjs --import tsx .scratch/<script>.ts
 ```
 
-- Spell the path out. nvm is **gone** from this host (`/root/.nvm` no longer exists - that path is
-  what older revisions of this doc and `scripts/rollout-agent-1.12.mts` still print); real Node is
-  `/usr/bin/node`. A bare `node` works today but resolves off `PATH`, which is exactly where a
-  bun shim would sit.
 - `--env-file=.env` supplies `DEPLO_DATABASE_URL` / `DEPLO_SECRET` (the app fail-fasts without them).
-- `--require ./lib/test/server-only-shim.cjs` no-ops the `server-only` guard that `lib/data/*` and
-  `lib/agent/release.ts` import.
-- `--import tsx` gives TypeScript **and** the `@/*` path alias, which resolves off the repo's
-  `tsconfig.json`, so run from `/root/projects/deplo`, not from a scratch directory.
-- The repo is CJS: **no top-level `await`** in the script (esbuild errors out). Wrap the body in
-  `async function main() { … }` and call it.
-
-### `scripts/fleet-update.mts` flags
-
-```sh
-/usr/bin/node --env-file=.env --require ./lib/test/server-only-shim.cjs --import tsx \
-  scripts/fleet-update.mts --dry-run
-/usr/bin/node --env-file=.env --require ./lib/test/server-only-shim.cjs --import tsx \
-  scripts/fleet-update.mts --only=srv_… --expect=<capability>
-```
-
-- `--dry-run` touches no agent. Run it first, every time: it also prints the order.
-- **`--expect=<capability>` is mandatory whenever the new binary reports the same version as the
-  old one** - a re-cut tag, or a build off a tag that already shipped. The version then proves
-  nothing about the swap; the capability the new commit adds is the only evidence. **If the commit
-  adds none, adding one is part of the rollout, not an extra** - without it the script's confirm
-  loop compares a version to itself, decides nothing changed, and reports the host as already done.
-- `--only=<server id>` restricts the run to one server, which is how you drive §4's order by
-  hand. The script sorts remotes by App count on its own, so the plain run is already
-  canary-first; `--only` is for pausing between hosts.
+- `--require ./lib/test/server-only-shim.cjs` no-ops the `server-only` guard of `lib/data/*`.
+- `--import tsx` gives TypeScript **and** the `@/*` alias off the repo's `tsconfig.json`.
 
 ## 7. The footgun: the infra seam does not write `agent_version`
 

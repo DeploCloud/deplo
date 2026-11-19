@@ -63,6 +63,10 @@ DEPLO_TEST_FABLE.md
 SECURITY_AUDIT.md
 inj-scratch.ts
 
+# One-off scripts and personal harnesses: they run from here and never get committed.
+/.scratch/
+/.fwm/
+
 # Migration scratch dir. It holds a live API token, is untracked, and used to be
 # unignored - one `git add -A` away from being published.
 /.tmp-mig/
