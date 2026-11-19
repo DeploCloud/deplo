@@ -25,7 +25,10 @@ interface SourceArt {
   paths: MarkPath[];
 }
 
-export const SOURCE_ART: Record<SourceKind, SourceArt> = {
+// "panel" is any panel, before one is named.
+export type MarkKind = SourceKind | "panel";
+
+export const SOURCE_ART: Record<MarkKind, SourceArt> = {
   dokploy: {
     viewBox: "86 51.88 428.15 363.12",
     paths: [
@@ -61,6 +64,17 @@ export const SOURCE_ART: Record<SourceKind, SourceArt> = {
     ],
   },
   deplo: { viewBox: MARK_VIEWBOX, paths: [{ d: MARK_PATH }] },
+  panel: {
+    viewBox: "0 0 24 24",
+    paths: [
+      {
+        d: "M2 3h20v18H2Z M3.5 7.5v12h17v-12Z M4.5 4.5v1.5h1.5v-1.5Z M7 4.5v1.5h1.5v-1.5Z M9.5 4.5v1.5h1.5v-1.5Z",
+      },
+      {
+        d: "M8 7.5h1.5v12H8Z M11.5 10h7v1.5h-7Z M11.5 13h5v1.5h-5Z M11.5 16h6v1.5h-6Z M4.5 10H7v1.5H4.5Z M4.5 13H7v1.5H4.5Z",
+      },
+    ],
+  },
 };
 
 export function markPaths(art: SourceArt, dim = false): React.ReactNode {
@@ -79,7 +93,7 @@ export function SourceMark({
   kind,
   className,
 }: {
-  kind: SourceKind;
+  kind: MarkKind;
   className?: string;
 }) {
   const art = SOURCE_ART[kind];
@@ -116,7 +130,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   unknown: {
     name: "the panel",
     mention: "the panel",
-    connectTitle: "Connect to Dokploy or Coolify",
+    connectTitle: "Connect to other panels",
     urlLabel: "Panel address",
     urlInfo:
       "The address you open Dokploy or Coolify on. Not the machine's address - the next step asks for that.",

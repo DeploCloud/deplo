@@ -32,7 +32,7 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
         graphic={<MigrationGraphic state="connect" className="h-28" />}
         title="No migrations yet"
         docs="migration.dokploy"
-        description="Once you bring a Deplo, Dokploy or Coolify over, every run and its log stay here."
+        description="Once you bring a Deplo or another panel over, every run and its log stay here."
       />
     );
 

@@ -13,7 +13,7 @@ export default function Loading() {
             <BetaChip />
           </span>
         }
-        description="Bring another Deplo, Dokploy or Coolify here."
+        description="Bring another Deplo or another panel here."
       />
       <MigrationsTabsSkeleton />
     </div>

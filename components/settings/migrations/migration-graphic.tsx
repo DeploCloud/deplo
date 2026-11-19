@@ -16,22 +16,50 @@ import {
 } from "@/components/iso/iso";
 import { DEPLO, Mark } from "@/components/iso/parts";
 import { cn } from "@/lib/utils";
+import type { SourceView } from "./source-step";
+import type { MigrationPath, StepId } from "./steps";
 import {
   markPaths,
   SOURCE_ART,
   PICKABLE_KINDS,
   SOURCE_COPY,
   SWAP_HALF_MS,
+  type MarkKind,
   type SourceKind,
 } from "./sources";
 
 export type MigrationState =
   "connect" | "install" | "review" | "moving" | "done";
 
-function graphicLabel(state: MigrationState, kind: SourceKind | null): string {
-  if (!kind)
+// null: any panel. "unknown": Other panels was picked, the scan has not named it yet.
+export type GraphicSource = SourceKind | "unknown" | null;
+
+export function graphicSource({
+  step,
+  view,
+  path,
+  kind,
+  resumed,
+}: {
+  step: StepId;
+  view: SourceView;
+  path: MigrationPath;
+  kind: SourceKind | null;
+  resumed: boolean;
+}): GraphicSource {
+  if (!resumed && step === "source") return view === "sources" ? null : "deplo";
+  if (path === "move") return "deplo";
+  return kind ?? (!resumed && step === "connect" ? "unknown" : null);
+}
+
+function graphicLabel(state: MigrationState, kind: GraphicSource): string {
+  if (kind === "unknown")
     return "A Dokploy or a Coolify server and a Deplo server, not yet linked";
-  const n = kind === "deplo" ? "old Deplo" : SOURCE_COPY[kind].name;
+  const n = !kind
+    ? "panel"
+    : kind === "deplo"
+      ? "old Deplo"
+      : SOURCE_COPY[kind].name;
   switch (state) {
     case "connect":
       return `The ${n} server and a Deplo server, not yet linked`;
@@ -72,7 +100,7 @@ export function MigrationGraphic({
   className,
 }: {
   state?: MigrationState;
-  kind?: SourceKind | null;
+  kind?: GraphicSource;
   grid?: boolean;
   className?: string;
 }) {
@@ -97,17 +125,7 @@ export function MigrationGraphic({
 
       <Machine box={SOURCE} lit={!done}>
         <Decal face="left" at={[1 - MARK / 2, 5, 1.25 + MARK / 2]}>
-          {kind ? (
-            <SourceFace
-              key={kind}
-              kind={kind}
-              dim={done}
-              className={cn(
-                "iso-migration-mark",
-                done ? "text-border" : "text-foreground",
-              )}
-            />
-          ) : (
+          {kind === "unknown" ? (
             PICKABLE_KINDS.map((k, i) => (
               <SourceFace
                 key={k}
@@ -116,6 +134,16 @@ export function MigrationGraphic({
                 style={{ animationDelay: `${-i * SWAP_HALF_MS}ms` }}
               />
             ))
+          ) : (
+            <SourceFace
+              key={kind ?? "panel"}
+              kind={kind ?? "panel"}
+              dim={done}
+              className={cn(
+                "iso-migration-mark",
+                done ? "text-border" : "text-foreground",
+              )}
+            />
           )}
         </Decal>
       </Machine>
@@ -224,7 +252,7 @@ function SourceFace({
   className,
   style,
 }: {
-  kind: SourceKind;
+  kind: MarkKind;
   dim?: boolean;
   className?: string;
   style?: React.CSSProperties;

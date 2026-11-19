@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as React from "react";
 
-import { MigrationGraphic } from "./migration-graphic";
+import { graphicSource, MigrationGraphic } from "./migration-graphic";
 import { MARK_PATH } from "@/components/logo";
 import {
   copyFor,
@@ -37,16 +37,49 @@ test("before the scan, nothing is named a product", () => {
   assert.match(SOURCE_COPY.unknown.tokenInfo, /Coolify/);
 });
 
-test("the illustration offers both marks until it knows which panel it is", () => {
+test("before a source is picked, the illustration names no product", () => {
   const blank = html({ state: "connect" });
-  assert.ok(blank.includes(SOURCE_ART.dokploy.paths[0].d));
-  assert.ok(blank.includes(SOURCE_ART.coolify.paths[0].d));
+  assert.ok(blank.includes(SOURCE_ART.panel.paths[0].d));
+  assert.equal(blank.includes(SOURCE_ART.dokploy.paths[0].d), false);
+  assert.equal(blank.includes(SOURCE_ART.coolify.paths[0].d), false);
+  assert.doesNotMatch(blank, /iso-migration-swap|Dokploy|Coolify/);
+});
 
-  const swaps = blank.match(/iso-migration-swap/g) ?? [];
+test("inside Other panels, the illustration offers both marks until the scan names one", () => {
+  const guessing = html({ state: "connect", kind: "unknown" });
+  assert.ok(guessing.includes(SOURCE_ART.dokploy.paths[0].d));
+  assert.ok(guessing.includes(SOURCE_ART.coolify.paths[0].d));
+
+  const swaps = guessing.match(/iso-migration-swap/g) ?? [];
   assert.equal(swaps.length, 2);
-  assert.match(blank, new RegExp(`animation-delay:\\s*-${SWAP_HALF_MS}ms`));
+  assert.match(guessing, new RegExp(`animation-delay:\\s*-${SWAP_HALF_MS}ms`));
 
-  assert.match(blank, /A Dokploy or a Coolify server/);
+  assert.match(guessing, /A Dokploy or a Coolify server/);
+});
+
+test("Between Deplo shows Deplo, and the two marks appear only inside Other panels", () => {
+  const at = (
+    over: Partial<Parameters<typeof graphicSource>[0]>,
+  ): ReturnType<typeof graphicSource> =>
+    graphicSource({
+      step: "source",
+      view: "sources",
+      path: "import",
+      kind: null,
+      resumed: false,
+      ...over,
+    });
+  assert.equal(at({}), null);
+  for (const view of ["direction", "out", "deplo"] as const)
+    assert.equal(at({ view }), "deplo", view);
+  assert.equal(at({ step: "connect", kind: "deplo" }), "deplo");
+  assert.equal(at({ step: "connect", path: "move" }), "deplo");
+  assert.equal(at({ step: "review", path: "move" }), "deplo");
+  assert.equal(at({ view: "sources", path: "move" }), null);
+
+  assert.equal(at({ step: "connect" }), "unknown");
+  assert.equal(at({ step: "install", kind: "coolify" }), "coolify");
+  assert.equal(at({ step: "review", resumed: true }), null);
 });
 
 test("the mark that lands is the one the scan found", () => {
@@ -89,7 +122,7 @@ test("the token help says a token reads one team", () => {
 });
 
 test("a Deplo is only shown once the address turns out to be one", () => {
-  const blank = html({ state: "connect" });
+  const blank = html({ state: "connect", kind: "unknown" });
   assert.equal(blank.includes(MARK_PATH), true, "Deplo's own machine, right");
   assert.equal(
     (blank.match(/iso-migration-swap/g) ?? []).length,

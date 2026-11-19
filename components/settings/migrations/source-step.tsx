@@ -27,13 +27,8 @@ function DeploIcon({ className }: { className?: string }) {
   return <SourceMark kind="deplo" className={className} />;
 }
 
-function PanelIcons() {
-  return (
-    <span className="flex items-center gap-0.5">
-      <SourceMark kind="dokploy" className="size-3" />
-      <SourceMark kind="coolify" className="size-3" />
-    </span>
-  );
+function PanelIcon({ className }: { className?: string }) {
+  return <SourceMark kind="panel" className={className} />;
 }
 
 export function SourceStep({
@@ -143,7 +138,7 @@ export function SourceStep({
     <StepShell
       hero
       title="What are you migrating?"
-      lead="Copy between Deplo instances, or bring apps here from Dokploy or Coolify."
+      lead="Copy between Deplo instances, or bring apps here from another panel."
     >
       <div className="grid gap-4">
         {incoming && (
@@ -164,10 +159,10 @@ export function SourceStep({
             onSelect={() => onViewChange("direction")}
           />
           <ChoiceCard
-            icon={PanelIcons}
+            icon={PanelIcon}
             arrow
-            title="Dokploy or Coolify"
-            blurb="Its projects, apps and databases, into teams here."
+            title="Other panels"
+            blurb="Their projects, apps and databases, into teams here."
             disabled={incoming}
             onSelect={() => onPick("panel")}
           />

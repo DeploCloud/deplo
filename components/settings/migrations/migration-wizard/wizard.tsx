@@ -11,7 +11,11 @@ import { LeftoverDiskGraphic } from "@/components/takeover/leftover-disk-graphic
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { InstallStep } from "../install-step/install-step";
-import { MigrationGraphic, type MigrationState } from "../migration-graphic";
+import {
+  graphicSource,
+  MigrationGraphic,
+  type MigrationState,
+} from "../migration-graphic";
 import { type SourceKind } from "../sources";
 import { ReviewStep } from "../review-step";
 import { PeopleStep } from "../people-step";
@@ -402,7 +406,13 @@ export function MigrationWizard({
           ) : (
             <MigrationGraphic
               state={pose}
-              kind={path === "move" ? "deplo" : kind}
+              kind={graphicSource({
+                step,
+                view: sourceView,
+                path,
+                kind,
+                resumed: takenOver,
+              })}
               grid
               className={cn(
                 "h-auto w-full",

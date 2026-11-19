@@ -72,14 +72,23 @@ function setup(context = move) {
   };
 }
 
-test("start offers exactly Between Deplo and Dokploy or Coolify", () => {
+test("start offers exactly Between Deplo and Other panels", () => {
   const flow = setup();
   assert.deepEqual(
     flow.cards().map((card) => card.props.title),
-    ["Between Deplo", "Dokploy or Coolify"],
+    ["Between Deplo", "Other panels"],
   );
-  flow.choose("Dokploy or Coolify");
+  flow.choose("Other panels");
   assert.equal(flow.picked(), "panel");
+});
+
+test("the start screen names no other product", () => {
+  const flow = setup();
+  const words = [
+    String(flow.render().props.lead),
+    ...flow.cards().map((card) => `${card.props.title} ${card.props.blurb}`),
+  ];
+  for (const text of words) assert.doesNotMatch(text, /Dokploy|Coolify/, text);
 });
 
 test("incoming asks scope after direction and preserves both import paths", () => {
