@@ -33,7 +33,11 @@ export function DisconnectAppsDialog({
           <DocsLink topic="databases.connect" />
         </>
       }
-      consequence={`${apps.length === 1 ? "That app stops" : "Those apps stop"} following ${databaseName}. Their variables keep today's value, which stops working once it moves.`}
+      consequence={
+        apps.length === 1
+          ? `That app stops following ${databaseName}. Its variables keep today's value, which stops working once it moves.`
+          : `Those apps stop following ${databaseName}. Their variables keep today's value, which stops working once it moves.`
+      }
       confirmLabel="Disconnect all apps"
       successMessage="Apps disconnected. You can change the environment now."
       onConfirm={async () => {
