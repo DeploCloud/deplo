@@ -528,3 +528,33 @@ export async function relocateClusterApp(
   );
   return deploy;
 }
+
+/** An instance admin moving an App off a server being removed: it stays its team's, on a server the team can use. */
+export async function relocateAppOffServer(
+  id: string,
+  serverId: string,
+  user: { id: string; name: string },
+  why: string,
+): Promise<void> {
+  const app = await loadAppGraph(id);
+  if (!app) throw new Error("App not found");
+  assertNotMigrating("app", app.name, app.migrationRunId);
+  await applyAppSource(
+    id,
+    {
+      source: app.source,
+      repo: app.repo,
+      dockerImage: app.dockerImage,
+      serverId,
+    },
+    {
+      teamId: app.teamId,
+      user,
+      servers: await listServersForTeam(app.teamId),
+      repo: app.repo,
+      editReach: [],
+      traefikLabelsBy: null,
+    },
+    { deploy: app.source !== "upload" || app.upload != null, why },
+  );
+}

@@ -19,13 +19,25 @@ import { notCopied } from "../backups/copied-runs";
 import { getDestinationWithSecretsForTeam } from "./credentials";
 import { loadDestination } from "./listing";
 
-export async function destinationRemovalImpact(id: string): Promise<{
+export interface DestinationRemovalImpact {
   schedules: number;
   runs: number;
   artifacts: number;
-}> {
+}
+
+export async function destinationRemovalImpact(
+  id: string,
+): Promise<DestinationRemovalImpact> {
   const teamId = await requireActiveTeamId();
   await requireTeamWide("backup destinations");
+  return removalImpactIn(teamId, id);
+}
+
+/** Ungated: the caller holds the gate. */
+export async function removalImpactIn(
+  teamId: string,
+  id: string,
+): Promise<DestinationRemovalImpact> {
   const [sched] = await getDb()
     .select({ n: count() })
     .from(backupsTable)
@@ -64,8 +76,17 @@ export async function deleteDestination(
   opts: { deleteArtifacts?: boolean } = {},
 ): Promise<void> {
   const { membership } = await requireCapability("manage_backup_destinations");
-  const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
+  await dropDestination(membership.teamId, id, user.name, opts);
+}
+
+/** Ungated: `deleteDestination` holds the gate, or an instance admin removing the server it lives on. */
+export async function dropDestination(
+  teamId: string,
+  id: string,
+  actorName: string,
+  opts: { deleteArtifacts?: boolean } = {},
+): Promise<void> {
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
 
@@ -127,7 +148,7 @@ export async function deleteDestination(
     opts.deleteArtifacts
       ? `Removed backup destination ${d.name} and the backups kept there`
       : `Removed backup destination ${d.name}`,
-    user.name,
+    actorName,
     null,
     teamId,
   );

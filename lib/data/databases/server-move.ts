@@ -385,6 +385,32 @@ export async function relocateClusterDatabase(
   );
 }
 
+/** An instance admin moving a database off a server being removed: it stays its team's, on a server the team can use. */
+export async function relocateDatabaseOffServer(
+  id: string,
+  serverId: string,
+  actor: string,
+  why: string,
+): Promise<void> {
+  const db = await loadForDeplo(id);
+  const targetServer = await resolveTeamServer(db.teamId, serverId);
+  await applyDatabasePlacement(
+    id,
+    {
+      exposedPublicly: db.exposedPublicly,
+      exposedPort: db.exposedPort ?? undefined,
+      serverId,
+    },
+    {
+      teamId: db.teamId,
+      actor,
+      load: () => loadForDeplo(id),
+      targetServer,
+      why,
+    },
+  );
+}
+
 // Deplo acting for itself has no session, which the team-scoped loader requires.
 async function loadForDeplo(id: string): Promise<Database> {
   const [row] = await getDb()

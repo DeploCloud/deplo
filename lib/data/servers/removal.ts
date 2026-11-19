@@ -3,9 +3,6 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { backupDestination as destinationTable } from "../../db/schema/control-plane/backups";
-import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
-import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
 import { getCurrentUser } from "../../auth/current-user";
@@ -18,6 +15,7 @@ import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { clustersOfServer, pushClusterRosters } from "../clusters/relay";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById, serverRole } from "./roster";
+import { blockingRows } from "./removal-blockers";
 
 export interface ServerRemoval {
   uninstallCommand: string;
@@ -45,49 +43,40 @@ function nameList(names: string[], max = 5): string {
   return rest > 0 ? `${shown} …and ${rest} more` : shown;
 }
 
-export async function assertNoWorkloads(id: string): Promise<void> {
-  const [apps, dbs] = await Promise.all([
-    getDb()
-      .select({ slug: appsTable.slug })
-      .from(appsTable)
-      .where(eq(appsTable.serverId, id)),
-    getDb()
-      .select({ name: databasesTable.name })
-      .from(databasesTable)
-      .where(eq(databasesTable.serverId, id)),
-  ]);
-  if (apps.length > 0)
-    throw new Error(
+function refusal(
+  b: Awaited<ReturnType<typeof blockingRows>>,
+  workloadsOnly = false,
+): string | null {
+  if (b.apps.length > 0)
+    return (
       `Move or delete the apps on this server first, still assigned: ` +
-        `${nameList(apps.map((a) => a.slug))}`,
+      nameList(b.apps.map((a) => a.slug))
     );
-  if (dbs.length > 0)
-    throw new Error(
+  if (b.databases.length > 0)
+    return (
       `Move or delete the databases on this server first, still hosted here: ` +
-        `${nameList(dbs.map((d) => d.name))}`,
+      nameList(b.databases.map((d) => d.name))
     );
+  if (workloadsOnly) return null;
+  if (b.clusters.length > 0)
+    return `Move the leader of cluster ${nameList(b.clusters.map((c) => c.name))} to another server first.`;
+  if (b.destinations.length > 0)
+    return (
+      `Remove the backup destinations kept on this server first, still pointing ` +
+      `here: ${nameList(b.destinations.map((d) => d.name))}. The Remove server ` +
+      `dialog on this server's page lists them and removes each one.`
+    );
+  return null;
+}
+
+export async function assertNoWorkloads(id: string): Promise<void> {
+  const why = refusal(await blockingRows(id), true);
+  if (why) throw new Error(why);
 }
 
 async function assertServerRemovable(id: string): Promise<void> {
-  await assertNoWorkloads(id);
-  const leads = await getDb()
-    .select({ name: clustersTable.name })
-    .from(clustersTable)
-    .where(eq(clustersTable.leaderServerId, id));
-  if (leads.length > 0)
-    throw new Error(
-      `Move the leader of cluster ${nameList(leads.map((c) => c.name))} to another server first.`,
-    );
-  const destinations = await getDb()
-    .select({ name: destinationTable.name, teamId: destinationTable.teamId })
-    .from(destinationTable)
-    .where(eq(destinationTable.serverId, id));
-  if (destinations.length > 0)
-    throw new Error(
-      `Remove the backup destinations kept on this server first, still pointing ` +
-        `here: ${nameList(destinations.map((d) => d.name))}. Each one belongs to a ` +
-        `team, whose members remove it from Storage → Destinations.`,
-    );
+  const why = refusal(await blockingRows(id));
+  if (why) throw new Error(why);
 }
 
 export async function removeServer(id: string): Promise<ServerRemoval> {

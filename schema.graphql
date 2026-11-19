@@ -4939,6 +4939,11 @@ type Mutation {
   moveMigrationServiceData(input: MigrationSourceInput!, runId: String!, sourceId: String!, sourceKind: String!): MigrationDataMoveResult
 
   """
+  Move one App or database (`kind`: "app" or "database") off a server being removed, to a server its team can use. It stays its team's, and the move is recorded in that team's Activity. Returns true.
+  """
+  moveOffServer(id: String!, kind: String!, serverId: String!, toServerId: String!): Boolean
+
+  """
   Resolve the panel's own hostname and classify it the way a custom domain is classified: `valid` when its A or AAAA records point at this host and none points elsewhere, `cloudflare` when they are Cloudflare's anycast addresses and the origin cannot be read from DNS, `misconfigured` when it answers with something else, `pending` when it does not resolve, and `unknown` when there is nothing to check (a bare IP, or no host address on record). A mutation despite writing nothing, for the same reason panelHttps is one: it leaves the process.
   """
   panelDns: PanelDns
@@ -5025,6 +5030,11 @@ type Mutation {
   Remove a server from a cluster; it stays a server of this Deplo. Its Apps and databases first move to the other servers, one at a time in the background (read `members.emptying` for progress), and it leaves once nothing is left; refused before anything moves when the others lack the room. Call it again to continue a removal that stopped. With keepWorkloads it leaves at once and its Apps and databases stay on it as ordinary ones that no cluster moves; the last server must pass it.
   """
   removeClusterMember(clusterId: String!, keepWorkloads: Boolean, serverId: String!): Cluster
+
+  """
+  Remove a backup destination kept on a server being removed, with its schedules and restore points, for whichever team owns it. With `deleteArtifacts` the backup files go too. Returns true.
+  """
+  removeDestinationOffServer(deleteArtifacts: Boolean, id: String!, serverId: String!): Boolean
 
   """
   Disconnect a domain from automatic DNS. Its Cloudflare Tunnels are torn down; returns what Deplo could not clean up, or null.
@@ -6707,6 +6717,11 @@ type Query {
   serverMetricsHistory(serverId: String!): [ServerMetrics!]
 
   """
+  What keeps this server from being removed, so it can be fixed before removeServer refuses. Instance admins only.
+  """
+  serverRemovalBlockers(id: String!): ServerRemovalBlockers
+
+  """
   Every team's apps and databases on one server, with live status and usage. Instance admins only.
   """
   serverWorkloads(id: String!): [ServerWorkload!]
@@ -7821,6 +7836,67 @@ type ServerRemoval {
   A non-blocking hazard the operator must know about (e.g. an App was mid-move off this host, so its data volumes are now stranded there), or null.
   """
   warning: String
+}
+
+"""
+Everything that keeps a server from being removed, across every team. All lists empty means removeServer goes through.
+"""
+type ServerRemovalBlockers {
+  apps: [ServerRemovalItem!]
+
+  """Clusters whose leader runs on this server."""
+  clusters: [ServerRemovalItem!]
+
+  """
+  Apps still copying their data off this server. Not a blocker: removing the server now leaves that data behind.
+  """
+  copying: [String!]
+  databases: [ServerRemovalItem!]
+  destinations: [ServerRemovalDestination!]
+
+  """
+  False while the server does not answer: the backup files of a destination kept there cannot be deleted then.
+  """
+  online: Boolean
+}
+
+"""A backup destination kept on a server being removed."""
+type ServerRemovalDestination {
+  """Backup files kept there."""
+  artifacts: Int
+  id: ID
+  name: String
+
+  """Backup schedules that go with it."""
+  schedules: Int
+  teamName: String
+}
+
+"""
+An App, database or cluster leader that keeps a server from being removed until it moves.
+"""
+type ServerRemovalItem {
+  id: ID
+
+  """
+  Where it can go: servers its team can use, or for a cluster the servers its leader can run on. Empty when nowhere.
+  """
+  moveTo: [ServerRemovalTarget!]
+  name: String
+
+  """
+  Why it cannot move from here right now (being deleted, still being created); empty when it can.
+  """
+  note: String
+
+  """The team it belongs to; empty for a cluster."""
+  teamName: String
+}
+
+"""A server something can move to."""
+type ServerRemovalTarget {
+  id: ID
+  name: String
 }
 
 """

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { ShieldAlert, Trash2 } from "lucide-react";
+import { Loader2, ShieldAlert, Trash2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -23,6 +23,11 @@ import type { ServerSummary } from "../server-detail-tabs";
 import { DocsLink } from "@/components/ui/docs-link";
 import { ConsequenceNote } from "@/components/shared/confirm-action";
 import { ChangeAddress } from "./change-address";
+import {
+  RemovalBlockerList,
+  isClear,
+  useRemovalBlockers,
+} from "./removal-blockers";
 
 export function DangerZone({ server }: { server: ServerSummary }) {
   const router = useRouter();
@@ -98,34 +103,12 @@ export function DangerZone({ server }: { server: ServerSummary }) {
 
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove {server.name}?</DialogTitle>
-            <DialogDescription>
-              This revokes the agent&rsquo;s trust and{" "}
-              <strong>forgets the server</strong>. Move or delete its apps and
-              databases first. <DocsLink topic="servers.remove" />
-            </DialogDescription>
-          </DialogHeader>
-          <ConsequenceNote>
-            Nothing on the host is uninstalled: the agent, Traefik and the Deplo
-            network keep running. The command to remove them comes next.
-          </ConsequenceNote>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirm(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => remove()}
-              disabled={pending}
-            >
-              {pending ? "Removing" : "Remove server"}
-            </Button>
-          </DialogFooter>
+          <RemoveServerBody
+            server={server}
+            pending={pending}
+            onCancel={() => setConfirm(false)}
+            onRemove={remove}
+          />
         </DialogContent>
       </Dialog>
 
@@ -170,6 +153,87 @@ export function DangerZone({ server }: { server: ServerSummary }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+// Mounted only while the dialog is open, so what blocks the removal is read fresh each time.
+function RemoveServerBody({
+  server,
+  pending,
+  onCancel,
+  onRemove,
+}: {
+  server: ServerSummary;
+  pending: boolean;
+  onCancel: () => void;
+  onRemove: () => void;
+}) {
+  const { blockers, error, refresh } = useRemovalBlockers(server.id);
+  const clear = blockers !== null && isClear(blockers);
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Remove {server.name}?</DialogTitle>
+        <DialogDescription>
+          {blockers && !clear ? (
+            <>
+              These still use it. <strong>Move or remove each one</strong>{" "}
+              first. <DocsLink topic="servers.remove" />
+            </>
+          ) : (
+            <>
+              This revokes the agent&rsquo;s trust and{" "}
+              <strong>forgets the server</strong>.{" "}
+              <DocsLink topic="servers.remove" />
+            </>
+          )}
+        </DialogDescription>
+      </DialogHeader>
+      {!blockers ? (
+        error ? (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        ) : (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Checking what still runs here
+          </p>
+        )
+      ) : clear ? (
+        <div className="grid gap-3">
+          {blockers.copying.length > 0 && (
+            <ConsequenceNote>
+              {blockers.copying.join(", ")} still{" "}
+              {blockers.copying.length === 1 ? "copies its" : "copy their"} data
+              off this server. Removing it now leaves that data behind.
+            </ConsequenceNote>
+          )}
+          <ConsequenceNote>
+            Nothing on the host is uninstalled: the agent, Traefik and the Deplo
+            network keep running. The command to remove them comes next.
+          </ConsequenceNote>
+        </div>
+      ) : (
+        <RemovalBlockerList
+          serverId={server.id}
+          blockers={blockers}
+          refresh={refresh}
+        />
+      )}
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel} disabled={pending}>
+          Cancel
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={onRemove}
+          disabled={pending || !clear}
+        >
+          {pending ? "Removing" : "Remove server"}
+        </Button>
+      </DialogFooter>
     </>
   );
 }

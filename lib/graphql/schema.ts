@@ -63,6 +63,7 @@ import "./types/server/certificates";
 import "./types/server/enrollment";
 import "./types/server/health";
 import "./types/server/host-ops";
+import "./types/server/removal-blockers";
 import "./types/server/roster-queries";
 import "./types/server/server-ref";
 import "./types/server/settings";
