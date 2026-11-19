@@ -86,12 +86,7 @@ jobs:
         # build-time-only tooling (postcss, esbuild, the eslint dependency tree)
         # would otherwise make this job permanently red, and a check that is
         # always red is a check nobody reads.
-        run: |
-          # GHSA-fc5q-39xc-vjpf (picomatch): only lint-staged and typescript-eslint reach it, no fixed
-          # release exists, and their newest versions still need picomatch 4. The ignore lapses on 2026-12-18.
-          ignore=()
-          if [[ "$(date -u +%F)" < 2026-12-18 ]]; then ignore=(--ignore GHSA-fc5q-39xc-vjpf); fi
-          bun audit --audit-level=high "${ignore[@]}"
+        run: bun audit --audit-level=high
 
   typecheck:
     name: Types
