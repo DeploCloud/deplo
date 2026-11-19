@@ -40,6 +40,7 @@ import { recordPlacement } from "./clusters/placement";
 import {
   planClusterForwarding,
   reconcileNameForwarders,
+  routeAfterAnswers,
   syncNameForwarders,
 } from "./clusters/forwarders";
 import { databaseRelayNotice } from "./clusters/relay-notice";
@@ -1301,4 +1302,16 @@ test("load balancing passes an App with a domain that answers everywhere by, wit
     build: {},
   } as unknown as Parameters<typeof loadBalancingSkips>[0];
   assert.equal(loadBalancingSkips(app, true, true), LB_ANSWERS_EVERYWHERE);
+});
+
+test("a domain switched on is routed only once every proxy passes it on", async () => {
+  const steps: string[] = [];
+  await routeAfterAnswers("clu_1", "shop", {
+    sync: async (id) => {
+      await new Promise((r) => setTimeout(r, 5));
+      steps.push(`sync ${id}`);
+    },
+    reroute: async (id) => void steps.push(`reroute ${id}`),
+  });
+  assert.deepEqual(steps, ["sync clu_1", "reroute shop"]);
 });

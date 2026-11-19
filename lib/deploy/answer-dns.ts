@@ -14,6 +14,8 @@ export interface AnswerServer {
 export interface AnswerRecordSet {
   a: string[];
   aaaa: string[];
+  /** Every address of every server of the cluster, healthy or not: a record naming one still reaches the cluster. */
+  members?: string[];
 }
 
 /** TTL of each record Deplo writes: a stopped server drops out of answers within a minute. */
@@ -27,6 +29,7 @@ export function answerRecordSet(servers: AnswerServer[]): AnswerRecordSet {
   return {
     a: sorted(healthy.flatMap((s) => s.v4.slice(0, 1))),
     aaaa: sorted(healthy.flatMap((s) => s.v6.slice(0, 1))),
+    members: sorted(servers.flatMap((s) => [...s.v4, ...s.v6])),
   };
 }
 
@@ -38,7 +41,11 @@ export interface AnswerRecordCheck {
   extra: string[];
 }
 
-/** Whether what DNS answers is exactly the set: every healthy server, and none other. */
+/**
+ * Whether the domain reaches the cluster: valid while every address DNS answers is a server of the cluster and one
+ * of them is healthy, since each server passes the domain on. `missing` and `extra` say what to change to match the
+ * set exactly; a stopped server still listed costs visitors a retry, never the domain its route.
+ */
 export function checkAnswerRecords(
   answers: DnsAnswers,
   set: AnswerRecordSet,
@@ -57,12 +64,14 @@ export function checkAnswerRecords(
     ...sorted(answers.a).filter((ip) => !set.a.includes(ip)),
     ...sorted(answers.aaaa).filter((ip) => !set.aaaa.includes(ip)),
   ];
-  return {
-    status:
-      missing.length === 0 && extra.length === 0 ? "valid" : "misconfigured",
-    missing,
-    extra,
-  };
+  const members = set.members ? new Set(set.members) : null;
+  const healthy = new Set([...set.a, ...set.aaaa]);
+  const answered = [...answers.a, ...answers.aaaa];
+  const reaches = members
+    ? answered.every((ip) => members.has(ip) || healthy.has(ip)) &&
+      answered.some((ip) => healthy.has(ip))
+    : missing.length === 0 && extra.length === 0;
+  return { status: reaches ? "valid" : "misconfigured", missing, extra };
 }
 
 export interface RecordChange {
