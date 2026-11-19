@@ -14,6 +14,11 @@ import { setPrimaryDomain } from "@/lib/data/domains/primary-domain";
 import { rerouteApp } from "@/lib/deploy/build/reroute";
 import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import type { Domain } from "@/lib/types/domain";
+import { setDomainAnswersEverywhere } from "@/lib/data/domains/answer-switch";
+import { answerCertificatesMissing } from "@/lib/data/clusters/answer-certs";
+import { syncClusterAnswerDnsSoon } from "@/lib/data/clusters/answer-dns";
+import { loadAppGraph } from "@/lib/data/app-graph-load";
+import { syncNameForwardersSoon } from "@/lib/data/clusters/forwarders";
 
 const CertProviderEnum = builder.enumType("CertProvider", {
   values: ["letsencrypt", "cloudflare", "none", "custom"] as const,
@@ -90,6 +95,20 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
         "`misconfigured` - this is what keeps the host routed anyway, and makes " +
         "its URL https (the proxy terminates TLS). The declared twin of the " +
         "`cloudflare` status, which is detected from Cloudflare's published ranges.",
+    }),
+    answersEverywhere: t.boolean({
+      description:
+        "Answers on every server of the App's cluster (ADR-0048): each server passes its encrypted " +
+        "traffic to the one that runs the App, and DNS lists every healthy server.",
+      resolve: (d) => d.answersEverywhere === true,
+    }),
+    failoverWaitsForCertificate: t.boolean({
+      description:
+        "True while the domain answers on every server but its certificate has not reached the App's " +
+        "failover bundle yet, so a failover would have to order a new one. False otherwise.",
+      resolve: async (d) =>
+        d.answersEverywhere === true &&
+        (await answerCertificatesMissing(d.appId)).includes(d.name),
     }),
     tunnel: t.boolean({
       description:
@@ -271,6 +290,30 @@ builder.mutationFields((t) => ({
       };
       const appId = await updateDomain(id, next);
       await applyRouting(appId);
+      return reloadDomain(id, appId);
+    },
+  }),
+  setDomainAnswersEverywhere: t.field({
+    type: DomainRef,
+    authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t change this domain with your current team role. Ask a team admin for the Manage domains capability.",
+    description:
+      'Turn "Answer on every server" on or off for a domain of a cluster App (ADR-0048). Refused, with the reason, ' +
+      "for a domain it cannot work for: off a cluster, a generated name, plain HTTP, a Cloudflare tunnel, a hostname " +
+      "shared by path, a proxy with HTTP/3, or past the 200 Apps a cluster's servers carry.",
+    args: {
+      id: t.arg.string({ required: true }),
+      on: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, on }) => {
+      const appId = await setDomainAnswersEverywhere(id, on);
+      await applyRouting(appId);
+      const app = await loadAppGraph(appId);
+      if (app?.clusterId) {
+        syncNameForwardersSoon(app.clusterId);
+        syncClusterAnswerDnsSoon(app.clusterId);
+      }
       return reloadDomain(id, appId);
     },
   }),

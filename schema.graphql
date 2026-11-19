@@ -2997,6 +2997,10 @@ enum DockerCleanupTrigger {
 
 """A routable hostname attached to an app (Traefik router)."""
 type Domain {
+  """
+  Answers on every server of the App's cluster (ADR-0048): each server passes its encrypted traffic to the one that runs the App, and DNS lists every healthy server.
+  """
+  answersEverywhere: Boolean
   appId: ID
   appSlug: String
 
@@ -3016,6 +3020,11 @@ type Domain {
   corsOrigins: [String!]
   createdAt: String
   entrypoint: DomainEntrypoint
+
+  """
+  True while the domain answers on every server but its certificate has not reached the App's failover bundle yet, so a failover would have to order a new one. False otherwise.
+  """
+  failoverWaitsForCertificate: Boolean
   id: ID
 
   """
@@ -5478,6 +5487,11 @@ type Mutation {
 
   """Make an environment the project's default (unsets the previous one)."""
   setDefaultEnvironment(id: ID!): Boolean
+
+  """
+  Turn "Answer on every server" on or off for a domain of a cluster App (ADR-0048). Refused, with the reason, for a domain it cannot work for: off a cluster, a generated name, plain HTTP, a Cloudflare tunnel, a hostname shared by path, a proxy with HTTP/3, or past the 200 Apps a cluster's servers carry.
+  """
+  setDomainAnswersEverywhere(id: String!, on: Boolean!): Domain
 
   """
   Set or remove (null or empty) a variable's note, secrets included. A note is not deployed, so the app has no pending changes after it.

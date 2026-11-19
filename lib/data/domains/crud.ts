@@ -38,6 +38,7 @@ import type {
   DomainEntrypoint,
 } from "../../types/domain";
 import { DOMAIN_RE, assertHostnameClaimable } from "./hostname-claim";
+import { assertNoAnsweredPath } from "./answer-switch";
 import { appServerAddresses, checkDomainDns } from "./dns-check";
 import {
   assertTeamLetsencryptQuota,
@@ -179,6 +180,7 @@ async function addDomainUnlocked(
       pathPrefix ? "Domain + path already added" : "Domain already added",
     );
   await assertHostnameClaimable(clean, membership.teamId);
+  await assertNoAnsweredPath(clean, pathPrefix);
 
   // Another App's paths on this hostname: one DNS record serves them all, so this one is served the same way.
   const [shared] = await getDb()
@@ -354,6 +356,11 @@ async function updateDomainUnlocked(
     );
   // A rename is the other way onto another team's hostname, so it gets the same refusal addDomain makes.
   await assertHostnameClaimable(nextName, membership.teamId, id);
+  await assertNoAnsweredPath(nextName, nextPath, id);
+  if (current.answersEverywhere && nextPath)
+    throw new Error(
+      `${current.name} answers on every server, which sends the whole hostname to one server. Turn that off before giving it a path.`,
+    );
 
   const next: Domain = { ...current, name: nextName };
   if (patch.port !== undefined) next.port = patch.port ?? undefined;

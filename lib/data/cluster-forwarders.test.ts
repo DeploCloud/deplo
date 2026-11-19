@@ -69,6 +69,16 @@ import {
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { turnOnExperiments } from "./experiments-test-helpers";
 import { failoverBundlePushes } from "../db/schema/control-plane/clusters";
+import {
+  answerSwitchRefusal,
+  assertNoAnsweredPath,
+  proxyOffersHttp3,
+  setDomainAnswersEverywhere,
+} from "./domains/answer-switch";
+import {
+  LB_ANSWERS_EVERYWHERE,
+  loadBalancingSkips,
+} from "./clusters/load-balancing";
 import { decryptSecretOrThrow, encryptSecret } from "../crypto";
 import { CLUSTER_ANSWER_CERTIFICATES_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import {
@@ -1211,4 +1221,84 @@ test("a proxy restart for a renewal is in the Activity of each team on that serv
   // Acknowledged: the agent forgets it.
   await syncNameForwarders(c.id);
   assert.deepEqual(hosts["srv_3"]!.proxyRestarts, []);
+});
+
+// ---- ADR-0048 step 4: the switch ----
+
+test("each kind of domain the switch cannot work for is refused with its reason", () => {
+  const ok = {
+    name: "shop.example.com",
+    inCluster: true,
+    tunnel: false,
+    https: true,
+    pathPrefix: "",
+    sharedByPath: false,
+  };
+  assert.equal(answerSwitchRefusal(ok), null);
+  for (const [over, why] of [
+    [{ inCluster: false }, /Only an App on a cluster/],
+    [{ name: "shop-0a000033.nip.io" }, /generated address/],
+    [{ tunnel: true }, /Cloudflare tunnel/],
+    [{ https: false }, /plain HTTP/],
+    [{ pathPrefix: "/api" }, /shared by path/],
+    [{ sharedByPath: true }, /shared by path/],
+  ] as const)
+    assert.match(answerSwitchRefusal({ ...ok, ...over }) ?? "", why);
+  assert.ok(proxyOffersHttp3("- --entrypoints.websecure.http3=true"));
+  assert.ok(!proxyOffersHttp3(INSTALLED_WITH_PANEL));
+});
+
+test("the switch turns on for a cluster App's HTTPS domain, says so, and refuses a plain-HTTP one", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com", { answersEverywhere: false });
+  await domainOf("shop", "plain.example.com", {
+    answersEverywhere: false,
+    certProvider: "none",
+  });
+
+  await asAdmin(() => setDomainAnswersEverywhere("dom_shop.example.com", true));
+  const [row] = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, "dom_shop.example.com"));
+  assert.equal(row!.answersEverywhere, true);
+  const said = await db.select().from(activitiesTable);
+  assert.ok(said.some((a) => /answers on every server/.test(a.message)));
+
+  await assert.rejects(
+    asAdmin(() => setDomainAnswersEverywhere("dom_plain.example.com", true)),
+    /plain HTTP/,
+  );
+  // A path of a hostname that answers on every server cannot go to another route.
+  await assert.rejects(
+    assertNoAnsweredPath("shop.example.com", "/api"),
+    /answers on every server/,
+  );
+  await assertNoAnsweredPath("shop.example.com", "");
+});
+
+test("a proxy that offers HTTP/3 stops the switch, naming its server", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  hosts["srv_4"]!.proxy.yaml = INSTALLED_WITH_PANEL.replace(
+    "      - --entrypoints.websecure.address=:443\n",
+    "      - --entrypoints.websecure.address=:443\n      - --entrypoints.websecure.http3=true\n",
+  );
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com", { answersEverywhere: false });
+  await assert.rejects(
+    asAdmin(() => setDomainAnswersEverywhere("dom_shop.example.com", true)),
+    /offers HTTP\/3/,
+  );
+});
+
+test("load balancing passes an App with a domain that answers everywhere by, with the reason", () => {
+  const app = {
+    compose: null,
+    volumes: [],
+    build: {},
+  } as unknown as Parameters<typeof loadBalancingSkips>[0];
+  assert.equal(loadBalancingSkips(app, true, true), LB_ANSWERS_EVERYWHERE);
 });

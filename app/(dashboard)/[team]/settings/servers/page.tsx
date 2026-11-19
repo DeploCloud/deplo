@@ -1,3 +1,4 @@
+import { clustersWithAnswers } from "@/lib/data/clusters/answers";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { Server as ServerIcon } from "lucide-react";
@@ -265,6 +266,14 @@ export default async function ServersPage(
             replicationEnabled: open.cluster.replicationEnabled,
             loadBalancingEnabled: open.cluster.loadBalancingEnabled,
             loadBalancingMode: open.cluster.loadBalancingMode,
+            ...((await clustersWithAnswers()).includes(open.cluster.id)
+              ? {
+                  answerLimits: {
+                    maxConnections: open.cluster.answerMaxConnections,
+                    maxWaiting: open.cluster.answerMaxWaiting,
+                  },
+                }
+              : {}),
             members: card.members,
             totals: card.totals,
             apps: card.apps,

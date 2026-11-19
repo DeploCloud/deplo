@@ -9,6 +9,7 @@ import {
   clusterMembers as membersTable,
 } from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
+import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { appConnectorService } from "../../deploy/app-connector";
 import { appKeepsDataOnDisk } from "../../deploy/replicas";
 import { STOP_SERVICES_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
@@ -39,13 +40,19 @@ export const LB_NO_CLOUDFLARE =
 export const LB_KEEPS_DATA =
   "It keeps data on its server, so it runs on one server: replication keeps that data ready on the others.";
 
+export const LB_ANSWERS_EVERYWHERE =
+  "A domain of it answers on every server, which carries every visitor to the one server that runs it.";
+
 /** Why load balancing passes this App by, or null when it spreads it. Its cluster must have it on. */
 export function loadBalancingSkips(
   app: App,
   hasTunnel: boolean,
+  answersEverywhere = false,
 ): string | null {
   if (appDisk(app) !== null || appKeepsDataOnDisk(app) || usesComposeStack(app))
     return LB_KEEPS_DATA;
+  // Its certificate is on one server only, so its replicas stay there (ADR-0048, until #228).
+  if (answersEverywhere) return LB_ANSWERS_EVERYWHERE;
   return hasTunnel ? null : LB_NO_CLOUDFLARE;
 }
 
@@ -57,7 +64,20 @@ export async function appLoadBalanced(
   if (!app.clusterId) return false;
   const c = cluster ?? (await getClusterById(app.clusterId));
   if (!c?.loadBalancingEnabled || !c.replicationEnabled) return false;
-  return loadBalancingSkips(app, await appHasTunnel(app.id)) === null;
+  const [answering] = await getDb()
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .where(
+      and(
+        eq(domainsTable.appId, app.id),
+        eq(domainsTable.answersEverywhere, true),
+      ),
+    )
+    .limit(1);
+  return (
+    loadBalancingSkips(app, await appHasTunnel(app.id), Boolean(answering)) ===
+    null
+  );
 }
 
 /** How many replicas a load-balanced App runs: its own count, and at least one on every server that can take it. */

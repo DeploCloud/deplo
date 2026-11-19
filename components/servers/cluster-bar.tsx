@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import {
   Copy,
+  Gauge,
   MoreHorizontal,
   Scale,
   Settings2,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,7 +81,94 @@ export type ClusterBarData = {
   replicationEnabled: boolean;
   loadBalancingEnabled: boolean;
   loadBalancingMode: LoadBalancingMode;
+  /** Set when a domain of the cluster answers on every server: the caps each server carries them with. */
+  answerLimits?: { maxConnections: number; maxWaiting: number };
 };
+
+const SET_ANSWER_LIMITS = /* GraphQL */ `
+  mutation SetClusterAnswerLimits(
+    $id: String!
+    $maxConnections: Int!
+    $maxWaiting: Int!
+  ) {
+    setClusterAnswerLimits(
+      id: $id
+      maxConnections: $maxConnections
+      maxWaiting: $maxWaiting
+    ) {
+      id
+      answerMaxConnections
+      answerMaxWaiting
+    }
+  }
+`;
+
+const ANSWER_LIMITS_HINT =
+  "Open keep-alive and WebSocket connections count. Past either limit a visitor is turned away, and Activity says so.";
+
+/** How many visitors each server carries for the domains that answer on every server. */
+function AnswerLimitsRow({
+  cluster,
+  limits,
+}: {
+  cluster: { id: string; name: string };
+  limits: { maxConnections: number; maxWaiting: number };
+}) {
+  const router = useRouter();
+  const [conns, setConns] = React.useState(String(limits.maxConnections));
+  const [waiting, setWaiting] = React.useState(String(limits.maxWaiting));
+  const [pending, startTransition] = React.useTransition();
+  const changed =
+    conns !== String(limits.maxConnections) ||
+    waiting !== String(limits.maxWaiting);
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction(SET_ANSWER_LIMITS, {
+        id: cluster.id,
+        maxConnections: Number(conns),
+        maxWaiting: Number(waiting),
+      });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`Saved the visitor limits of ${cluster.name}`);
+      router.refresh();
+    });
+  };
+  return (
+    <SettingItem
+      icon={Gauge}
+      title="Visitors per server"
+      info={ANSWER_LIMITS_HINT}
+      docs="clusters.answerLimits"
+      description="For domains that answer on every server: at once, and waiting for one app."
+    >
+      <form className="flex flex-wrap items-center gap-2" onSubmit={save}>
+        <Input
+          type="number"
+          min={64}
+          max={65536}
+          value={conns}
+          onChange={(e) => setConns(e.target.value)}
+          aria-label="Connections at once"
+          className="w-32"
+          disabled={pending}
+        />
+        <Input
+          type="number"
+          min={1}
+          value={waiting}
+          onChange={(e) => setWaiting(e.target.value)}
+          aria-label="Waiting for one app"
+          className="w-32"
+          disabled={pending}
+        />
+        <Button type="submit" disabled={pending || !changed}>
+          Save
+        </Button>
+      </form>
+    </SettingItem>
+  );
+}
 
 /** A value shown at once and put back if Deplo refuses; a refresh that brings a new one from the server wins. */
 function useShownValue<T>(server: T) {
@@ -292,6 +381,9 @@ export function ClusterSettings({ cluster }: { cluster: ClusterBarData }) {
       <LoadBalancingRow
         cluster={{ ...cluster, replicationEnabled: replication.on }}
       />
+      {cluster.answerLimits && (
+        <AnswerLimitsRow cluster={cluster} limits={cluster.answerLimits} />
+      )}
     </Card>
   );
 }

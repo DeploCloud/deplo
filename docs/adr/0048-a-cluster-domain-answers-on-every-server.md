@@ -5,9 +5,9 @@
 **Steps** (Rollout below):
 
 - **1, the proxy change and the answer table: done**, hidden. Panel #227 (migrations 0259 and 0260), agent DeploCloud/deplo-agent#47, released in agent v0.5.3-canary.7.
-- **2, the certificate in the failover bundle: not done** (#231).
-- **3, the DNS record set: not done.**
-- **4, the switch shown: not done** (#230; it does not ship without the refusal past 200 Apps).
+- **2, the certificate in the failover bundle: done** (#231). Agent DeploCloud/deplo-agent#63 (Hello `cluster.answers.certificates`, agent v0.5.3-canary.14), leader DeploCloud/deplo-cluster#8 (v0.1.0-canary.7).
+- **3, the DNS record set: done** (#255).
+- **4, the switch shown: done** (#230), with every refusal below, past 200 Apps included.
 
 A failover moves an App, and its address must follow it **without Cloudflare being required**. Today only a domain served by a Cloudflare tunnel follows; a generated name follows by being renamed (it is a server's IP); any other domain keeps pointing at the server that stopped. **A domain of a cluster App can be set to answer on every server of the cluster ("Answer on every server"): each server passes its encrypted traffic, untouched, over the private network to a server that runs the App, and DNS names every healthy server.** Cloudflare stays a supported way to follow, not the only one.
 
@@ -72,6 +72,14 @@ A failover must not wait for a new certificate (HTTPS errors meanwhile) nor orde
 - **On the server a failover starts the App on**, the certificate goes in as a file at once, which answers before the App does, and into the store at the proxy's next start, where the file goes: a file left there would hide every renewal of the store's copy.
 - **A server that comes back after a failover** never serves the domain from its store: its answer router takes the hostname by SNI before any router of its own, and its copy of the App stays stopped. A renewal it attempts fails, since every check for the domain is passed on to the App's server, which did not ask: no certificate is issued, so no duplicate is spent. Its stale entry goes at its proxy's next start. If the App comes back to it, the bundle's newer certificate goes in as a file, which wins, and into the store at the next start, before the old entry's window opens.
 - **One restart, in the quietest hour, recorded.** A store that must change waits for the proxy's next start. When none comes before the renewal window of the entry the store holds (30 days before it expires), the agent restarts the proxy once, at the quietest hour it knows of before then: it keeps an hourly profile of the server's network traffic over the last seven days, and with none yet it picks 04:00 server time. It records each such restart, when and why; Deplo writes it into the Activity of every team with an App on that server when it next hears from the agent, so one made while Deplo was down still appears.
+
+How it is built (step 2):
+
+- **The file is the routes file.** The pair goes inline into `answers.yml`'s `tls.certificates` (Traefik reads a value that names no file as the content), which the proxy reloads live; nothing else on the server holds the key but that file and the proxy's store, both `0600`. A table from Deplo that carries certificates is refused: only a failover installs one, and only for hostnames this server passes on, and only one newer than the store's.
+- **Every start the agent makes is the store's moment**: the configuration change, the restart button and its own. It stops the proxy, writes the store (in one rename), takes the moved pairs out of the routes file, and starts it. A start the agent did not make (a reboot, a crash) changes nothing: the file keeps serving.
+- **The restart** comes at the last occurrence of the quiet hour that leaves a day before the window (an hour when the window is under two days away), or at once when none is left, which the record says. A restart that stored nothing waits an hour before the next try, and a pair of an App that does not run here never causes one: it leaves the routes file, live, once it is 15 minutes old (a failover installs it a moment before the App starts), as does an expired one.
+- **Deplo reads the pair from the App's server** on the cluster watch, every two minutes, naming the digest it holds per hostname: an unchanged pair comes back without its key. A new one is sealed into every stored copy of the bundle and sent to the leaders; a domain whose switch goes off takes its pair out, and a new deploy keeps the pairs of the domains still on. The restarts come back with the next table and are acknowledged in the one after.
+- **Duplicate limit**: nothing in this path orders a certificate. A failover installs the one it carries before the App's router appears (3 s for the proxy to load it), and a server the App left drops its stale entry at its next start, so it does not even try a renewal that would fail.
 
 ### DNS lists every healthy server
 
