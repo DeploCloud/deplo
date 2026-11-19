@@ -159,6 +159,7 @@ export async function sweepDomainDns(): Promise<void> {
       slug: appsTable.slug,
       appName: appsTable.name,
       proxied: domainsTable.proxied,
+      answersEverywhere: domainsTable.answersEverywhere,
     })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
@@ -167,6 +168,8 @@ export async function sweepDomainDns(): Promise<void> {
   const targets = new Map<string, Promise<DnsTargets>>();
   for (const row of rows) {
     if (row.proxied) continue;
+    // It names every server of its cluster, not the App's one: the cluster's own check keeps it (ADR-0048).
+    if (row.answersEverywhere) continue;
     try {
       if (!targets.has(row.appId))
         targets.set(row.appId, appServerAddresses(row.appId));
