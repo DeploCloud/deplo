@@ -135,6 +135,8 @@ export interface ProxyRestartReport {
   hosts: string[];
   /** It ran at once: no quiet hour was left before the renewal window. */
   urgent: boolean;
+  /** It took a moved App's certificate out of the store, so this server never renews it. */
+  dropped?: boolean;
 }
 
 /** A certificate a proxy serves for the hostnames in `hosts`; `keyPem` is empty when Deplo already holds it. */

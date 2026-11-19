@@ -170,6 +170,8 @@ export function proxyRestartMessage(
   r: ProxyRestartReport,
 ): string {
   const names = r.hosts.join(", ");
+  if (r.dropped)
+    return `Deplo restarted the proxy on ${server} ${at(r.atUnixMs)} to remove the certificate of ${names}, whose App now runs on another server, so ${server} never renews it. Visitors' open connections to that server reconnected.`;
   const when = r.urgent
     ? `${at(r.atUnixMs)}, at once since no quiet hour was left before the renewal window`
     : `${at(r.atUnixMs)}, its quietest hour before the renewal window`;

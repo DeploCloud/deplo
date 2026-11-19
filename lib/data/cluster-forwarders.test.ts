@@ -1219,6 +1219,21 @@ test("a proxy restart for a renewal is in the Activity of each team on that serv
   assert.deepEqual(rows.map((r) => r.teamId).sort(), [TEAM_A, TEAM_B].sort());
   assert.match(rows[0]!.message, /2026-11-19 at 04:00 UTC, its quietest hour/);
   assert.ok(rows.every((r) => !r.message.includes("SECRETKEYBODY")));
+  hosts["srv_3"]!.proxyRestarts = [
+    {
+      atUnixMs: at + 60_000,
+      hosts: ["shop.example.com"],
+      urgent: false,
+      dropped: true,
+    },
+  ];
+  await syncNameForwarders(c.id);
+  const dropped = await db
+    .select()
+    .from(activitiesTable)
+    .where(sql`${activitiesTable.message} like '%to remove the certificate%'`);
+  assert.equal(dropped.length, 2);
+  assert.match(dropped[0]!.message, /whose App now runs on another server/);
   // Acknowledged: the agent forgets it.
   await syncNameForwarders(c.id);
   assert.deepEqual(hosts["srv_3"]!.proxyRestarts, []);
