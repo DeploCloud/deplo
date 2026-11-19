@@ -35,7 +35,7 @@ import { clusterMemberServerIds, getClusterById } from "./roster";
 export type ClusterAnswer = { appId: string; hosts: string[]; slot: number };
 
 /** Each App of the cluster with an HTTPS domain, off its tunnel, that answers on every server: its hostnames. */
-async function answeringApps(
+export async function answeringApps(
   clusterId: string,
 ): Promise<Map<string, string[]>> {
   const rows = await getDb()

@@ -17,6 +17,8 @@ import type {
   ClusterLeaderPins,
   ClusterNetworkReport,
   ClusterNetworkTable,
+  ProxyCertificateReport,
+  ProxyRestartReport,
 } from "./connection";
 import {
   AgentClusterForwardersUnsupportedError,
@@ -38,6 +40,7 @@ import {
   CLUSTER_FAILOVER_RESTORE_CAPABILITY,
   CLUSTER_FORWARDERS_CAPABILITY,
   CLUSTER_ANSWERS_CAPABILITY,
+  CLUSTER_ANSWER_CERTIFICATES_CAPABILITY,
   CLUSTER_FORWARDERS_SERVICES_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
@@ -360,6 +363,7 @@ export async function setClusterForwarders(
   held: number;
   served: number;
   answerRefusals: ClusterAnswerRefusal[];
+  proxyRestarts: ProxyRestartReport[];
 }> {
   const conn = await connectAgent(serverId);
   try {
@@ -401,6 +405,26 @@ export async function setClusterForwarders(
         CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
       );
     throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+/**
+ * The newest certificate the server's proxy serves for each hostname, keyless where `known` names its digest; null from
+ * an agent that cannot read its proxy's store (ADR-0048).
+ */
+export async function readProxyCertificates(
+  serverId: string,
+  hosts: string[],
+  known: Record<string, string>,
+): Promise<ProxyCertificateReport[] | null> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_ANSWER_CERTIFICATES_CAPABILITY))
+      return null;
+    return await conn.readProxyCertificates(hosts, known);
   } finally {
     conn.close();
   }

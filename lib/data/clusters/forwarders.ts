@@ -24,6 +24,11 @@ import {
 import { appNetwork } from "../../deploy/network";
 import { portFor } from "../../deploy/ports";
 import { setClusterForwarders } from "../../infra/agent-client/cluster-host";
+import {
+  proxyRestartsSeen,
+  recordProxyRestarts,
+  syncAnswerCertificates,
+} from "./answer-certs";
 import { AgentClusterForwardersUnsupportedError } from "../../infra/agent-client/errors";
 import { instanceFrozen } from "../deplo-move/freeze";
 import {
@@ -177,9 +182,11 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
         hold: mine?.hold ?? [],
         serve: mine?.serve ?? [],
         ...passOn,
+        proxyRestartsSeenMs: proxyRestartsSeen(serverId),
       });
       if (res.answerRefusals.length > 0)
         await recordAnswerRefusals(clusterId, serverId, res.answerRefusals);
+      await recordProxyRestarts(serverId, res.proxyRestarts ?? []);
     } catch (e) {
       // A member with nothing to run and an agent too old to take the table is not a problem.
       if (
@@ -195,6 +202,10 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
   }
   // After the tables: a proxy that mounts the routes file finds it written.
   await syncAnswerProxies(clusterId, answers.length > 0);
+  // Each App's certificates follow it into its bundle; a switch turned off takes them out (ADR-0048).
+  await syncAnswerCertificates(clusterId).catch((e) =>
+    console.warn(`[answer-certs] ${clusterId}: ${message(e)}`),
+  );
 }
 
 /** After a deploy or a placement change: off the caller's lane, and it never throws. */

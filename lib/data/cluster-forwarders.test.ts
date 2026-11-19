@@ -68,6 +68,13 @@ import {
 } from "../deploy/traefik-stack-test-helpers";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { turnOnExperiments } from "./experiments-test-helpers";
+import { failoverBundlePushes } from "../db/schema/control-plane/clusters";
+import { decryptSecretOrThrow, encryptSecret } from "../crypto";
+import { CLUSTER_ANSWER_CERTIFICATES_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  __forgetProxyRestartsSeen,
+  answerCertificatesMissing,
+} from "./clusters/answer-certs";
 
 let db: TestDb;
 let pg: PGlite;
@@ -1066,4 +1073,142 @@ test("an App moved out of the cluster takes the change off its servers with it",
   for (const id of ["srv_2", "srv_3", "srv_4"])
     assert.deepEqual(last(id).answers, [], id);
   putBack("srv_2", "srv_3", "srv_4");
+});
+
+// ---- ADR-0048 step 2: the certificate travels with the App ----
+
+const SHOP_CERT = {
+  hosts: ["shop.example.com"],
+  certPem: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n",
+  keyPem:
+    "-----BEGIN EC PRIVATE KEY-----\nSECRETKEYBODY\n-----END EC PRIVATE KEY-----\n",
+  sha256: "c".repeat(64),
+  notAfterUnixMs: Date.parse("2099-01-01T00:00:00Z"),
+};
+
+async function storeBundle(appId: string, extra: Record<string, unknown> = {}) {
+  await db.delete(failoverBundlePushes);
+  await db.insert(failoverBundlePushes).values({
+    workloadKind: "app",
+    workloadId: appId,
+    keyFingerprint: "f".repeat(16),
+    deploymentId: "dpl_1",
+    bundleEnc: encryptSecret(
+      JSON.stringify({
+        v: 1,
+        kind: "app",
+        workload: appId,
+        deploymentId: "dpl_1",
+        stack: { slug: appId, imageRef: "" },
+        ...extra,
+      }),
+    ),
+    pushedAt: null,
+  });
+}
+
+async function bundleOf(appId: string) {
+  const [row] = await db
+    .select()
+    .from(failoverBundlePushes)
+    .where(eq(failoverBundlePushes.workloadId, appId));
+  return JSON.parse(decryptSecretOrThrow(row!.bundleEnc, "test")) as {
+    certificates?: { hosts: string[]; key: string; sha256: string }[];
+  };
+}
+
+function certsOn(id: string) {
+  hosts[id]!.capabilities.push(CLUSTER_ANSWER_CERTIFICATES_CAPABILITY);
+  hosts[id]!.proxyCerts = [SHOP_CERT];
+}
+
+test("the App's server's certificate is sealed into its bundle, and read again without its key", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await storeBundle("shop");
+  certsOn("srv_3");
+  assert.deepEqual(await answerCertificatesMissing("shop"), [
+    "shop.example.com",
+  ]);
+
+  await syncNameForwarders(c.id);
+
+  const b = await bundleOf("shop");
+  assert.deepEqual(
+    b.certificates?.map((x) => [x.hosts, x.sha256, x.key]),
+    [[["shop.example.com"], SHOP_CERT.sha256, SHOP_CERT.keyPem]],
+  );
+  assert.deepEqual(await answerCertificatesMissing("shop"), []);
+  // Only the App's own server is asked, and the next read names the digest Deplo holds, so no key crosses.
+  assert.equal(hosts["srv_2"]!.certReads.length, 0);
+  await syncNameForwarders(c.id);
+  assert.deepEqual(hosts["srv_3"]!.certReads.at(-1)?.known, {
+    "shop.example.com": SHOP_CERT.sha256,
+  });
+});
+
+test("a domain whose switch goes off takes its key out of the bundle", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com", { answersEverywhere: false });
+  await storeBundle("shop", {
+    certificates: [
+      {
+        hosts: ["shop.example.com"],
+        cert: "c",
+        key: "k",
+        sha256: "s",
+        notAfter: "2099-01-01T00:00:00Z",
+      },
+    ],
+  });
+  certsOn("srv_3");
+
+  await syncNameForwarders(c.id);
+
+  assert.equal((await bundleOf("shop")).certificates, undefined);
+});
+
+test("an agent that cannot read its proxy's store leaves the bundle as it is", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await domainOf("shop", "shop.example.com");
+  await storeBundle("shop");
+  hosts["srv_3"]!.proxyCerts = [SHOP_CERT];
+
+  await syncNameForwarders(c.id);
+
+  assert.equal((await bundleOf("shop")).certificates, undefined);
+  assert.equal(hosts["srv_3"]!.certReads.length, 0);
+});
+
+test("a proxy restart for a renewal is in the Activity of each team on that server, once", async () => {
+  const c = await cluster();
+  proxies("srv_2", "srv_3", "srv_4");
+  await place(c.id, "shop", "environ_a1", "srv_3");
+  await place(c.id, "blog", "environ_b1", "srv_3", TEAM_B);
+  await domainOf("shop", "shop.example.com");
+  const at = Date.parse("2026-11-19T04:00:00Z");
+  hosts["srv_3"]!.proxyRestarts = [
+    { atUnixMs: at, hosts: ["shop.example.com"], urgent: false },
+  ];
+
+  await syncNameForwarders(c.id);
+  __forgetProxyRestartsSeen();
+  await syncNameForwarders(c.id);
+
+  const rows = await db
+    .select()
+    .from(activitiesTable)
+    .where(sql`${activitiesTable.message} like 'Deplo restarted the proxy%'`);
+  assert.deepEqual(rows.map((r) => r.teamId).sort(), [TEAM_A, TEAM_B].sort());
+  assert.match(rows[0]!.message, /2026-11-19 at 04:00 UTC, its quietest hour/);
+  assert.ok(rows.every((r) => !r.message.includes("SECRETKEYBODY")));
+  // Acknowledged: the agent forgets it.
+  await syncNameForwarders(c.id);
+  assert.deepEqual(hosts["srv_3"]!.proxyRestarts, []);
 });

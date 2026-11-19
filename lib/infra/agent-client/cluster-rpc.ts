@@ -24,6 +24,7 @@ export function clusterRpc(
   | "copyClusterImage"
   | "expectClusterImage"
   | "setClusterForwarders"
+  | "readProxyCertificates"
   | "setClusterNetwork"
   | "setClusterReplicas"
   | "clusterReplicaStatus"
@@ -112,6 +113,7 @@ export function clusterRpc(
           answerPort: table.answerPort ?? 0,
           answerMaxConns: table.answerMaxConns ?? 0,
           answerMaxWaiting: table.answerMaxWaiting ?? 0,
+          proxyRestartsSeenMs: table.proxyRestartsSeenMs ?? 0,
         },
         CLUSTER_CALL_TIMEOUT_MS,
       );
@@ -127,7 +129,26 @@ export function clusterRpc(
           waiting: a.waiting,
           memory: a.memory,
         })),
+        proxyRestarts: (r.proxyRestarts ?? []).map((p) => ({
+          atUnixMs: Number(p.atUnixMs),
+          hosts: p.hosts ?? [],
+          urgent: p.urgent === true,
+        })),
       };
+    },
+    async readProxyCertificates(hosts, known) {
+      const r = await unary(
+        client.readProxyCertificates.bind(client),
+        { hosts, known },
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return (r.certificates ?? []).map((c) => ({
+        hosts: c.hosts ?? [],
+        certPem: c.certPem,
+        keyPem: c.keyPem,
+        sha256: c.sha256,
+        notAfterUnixMs: Number(c.notAfterUnixMs),
+      }));
     },
     async setClusterNetwork(table) {
       const r = await unary(

@@ -35,7 +35,14 @@ import {
   databaseFailoverReach,
   imageArchs,
 } from "./clusters/architectures";
-import { flushFailoverBundles, pushFailoverBundle } from "./clusters/bundles";
+import {
+  flushFailoverBundles,
+  pushFailoverBundle,
+  storedBundle,
+} from "./clusters/bundles";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import { failoverBundlePushes } from "../db/schema/control-plane/clusters";
+import { encryptSecret } from "../crypto";
 import { pushDatabaseBundle } from "./clusters/database-bundles";
 import { setClusterTeams } from "./clusters/manage";
 import { createDatabase } from "./databases/provision";
@@ -505,4 +512,58 @@ test("Database page: the only server of its kind warns, and a database on one se
     .set({ clusterId: null })
     .where(eq(databasesTable.id, "db_main"));
   assert.deepEqual(await dbReach(), { line: null, warning: null });
+});
+
+// ADR-0048: a deploy keeps the App's certificates for the domains still switched on, and drops the rest.
+test("a new deploy's bundle keeps the certificates of the domains that still answer everywhere", async () => {
+  const cluster = await mixed();
+  await web(cluster.id, "srv_2");
+  fakeRegistry({ "acme/web:1": BOTH });
+  await db.insert(domainsTable).values({
+    id: "dom_shop",
+    appId: "prj_web",
+    name: "shop.example.com",
+    status: "valid",
+    isPrimary: false,
+    ssl: true,
+    certProvider: "letsencrypt",
+    answersEverywhere: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  await pushFailoverBundle({
+    appId: "prj_web",
+    deploymentId: "dpl_1",
+    stack: stack(WEB),
+  });
+  await flushFailoverBundles();
+  const cert = (host: string) => ({
+    hosts: [host],
+    cert: "c",
+    key: `key-of-${host}`,
+    sha256: "s",
+    notAfter: "2099-01-01T00:00:00Z",
+  });
+  const held = await storedBundle("prj_web");
+  const withCerts = {
+    ...held!,
+    certificates: [cert("shop.example.com"), cert("gone.example.com")],
+  };
+  await db
+    .update(failoverBundlePushes)
+    .set({ bundleEnc: encryptSecret(JSON.stringify(withCerts)) })
+    .where(eq(failoverBundlePushes.workloadId, "prj_web"));
+
+  await pushFailoverBundle({
+    appId: "prj_web",
+    deploymentId: "dpl_2",
+    stack: stack(WEB),
+  });
+  await flushFailoverBundles();
+
+  const after = await storedBundle("prj_web");
+  assert.equal(after?.deploymentId, "dpl_2");
+  assert.deepEqual(
+    after?.certificates?.map((c) => c.hosts),
+    [["shop.example.com"]],
+  );
 });

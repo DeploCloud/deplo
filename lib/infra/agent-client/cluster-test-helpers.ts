@@ -20,6 +20,8 @@ import type {
   ClusterReplicaTable,
   ClusterNetworkTable,
   ClusterAnswerRefusal,
+  ProxyCertificateReport,
+  ProxyRestartReport,
 } from "./connection";
 import { __forgetMemberProbes } from "./cluster-host";
 import {
@@ -67,6 +69,11 @@ export interface FakeClusterHost {
   forwarders: ClusterForwarderTable[];
   /** What this host's agent says it turned away, with the next table; handed once (ADR-0048). */
   answerRefusals: ClusterAnswerRefusal[];
+  /** The proxy restarts this host's agent still holds: handed with each table until one acknowledges them. */
+  proxyRestarts: ProxyRestartReport[];
+  /** The pairs this host's proxy serves (ADR-0048), and every read Deplo made of them. */
+  proxyCerts: ProxyCertificateReport[];
+  certReads: { hosts: string[]; known: Record<string, string> }[];
   /** Every network table this host's agent was handed, in order, and how it says it reaches a peer (ADR-0047). */
   networkTables: ClusterNetworkTable[];
   networkPath: (fingerprint: string) => "direct" | "relay" | "none";
@@ -378,11 +385,29 @@ export function fakeClusterHosts(): {
           h.forwarders.push(table);
           const answerRefusals = h.answerRefusals;
           h.answerRefusals = [];
+          const seen = table.proxyRestartsSeenMs ?? 0;
+          h.proxyRestarts = h.proxyRestarts.filter((r) => r.atUnixMs > seen);
           return {
             held: table.hold.length,
             served: table.serve.length,
             answerRefusals,
+            proxyRestarts: [...h.proxyRestarts],
           };
+        }),
+      readProxyCertificates: (hosts, known) =>
+        guard(() => {
+          h.certReads.push({ hosts, known });
+          return h.proxyCerts
+            .map((c) => ({
+              ...c,
+              hosts: c.hosts.filter((x) => hosts.includes(x)),
+            }))
+            .filter((c) => c.hosts.length > 0)
+            .map((c) =>
+              c.hosts.every((x) => known[x] === c.sha256)
+                ? { ...c, keyPem: "" }
+                : c,
+            );
         }),
       setClusterNetwork: (table) =>
         guard(() => {
@@ -432,6 +457,9 @@ export function fakeClusterHosts(): {
         memberCalls: [],
         memberPins: [],
         answerRefusals: [],
+        proxyRestarts: [],
+        proxyCerts: [],
+        certReads: [],
         proxy: { yaml: "", applied: 0, refuse: "" },
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],

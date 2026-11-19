@@ -123,6 +123,9 @@ export const CLUSTER_FORWARDERS_SERVICES_CAPABILITY =
   "cluster.forwarders.services";
 // A domain that answers on every server (ADR-0048): the answer forwarder and the hand-over to the proxy.
 export const CLUSTER_ANSWERS_CAPABILITY = "cluster.forwarders.answers";
+// The certificate of such a domain travels with its App: read from the proxy, installed by a failover (ADR-0048).
+export const CLUSTER_ANSWER_CERTIFICATES_CAPABILITY =
+  "cluster.answers.certificates";
 // The cluster's private network (ADR-0047): a WireGuard tunnel between its servers, run inside each agent.
 export const CLUSTER_NETWORK_CAPABILITY = "cluster.network";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.

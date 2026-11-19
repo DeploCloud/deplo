@@ -3181,6 +3181,42 @@ export interface SetClusterForwardersRequest {
    */
   answerMaxConns: number;
   answerMaxWaiting: number;
+  /** The newest proxy restart Deplo has recorded: this member forgets those up to it. */
+  proxyRestartsSeenMs: number;
+}
+
+/** A restart of the proxy this agent made so that a certificate's renewal can happen. */
+export interface ProxyRestart {
+  atUnixMs: number;
+  /** The hostnames whose certificate went into the proxy's store. */
+  hosts: string[];
+  /** True when it ran at once: no quiet hour was left before the renewal window. */
+  urgent: boolean;
+}
+
+export interface ReadProxyCertificatesRequest {
+  hosts: string[];
+  /** Hostname to the sha256 (hex, of the leaf's DER) of the certificate Deplo already holds for it. */
+  known: { [key: string]: string };
+}
+
+export interface ReadProxyCertificatesRequest_KnownEntry {
+  key: string;
+  value: string;
+}
+
+/** One certificate, covering the hostnames asked for in hosts. */
+export interface ProxyCertificate {
+  hosts: string[];
+  /** The chain and its key as PEM; key_pem is empty when the digest is the one Deplo holds. */
+  certPem: string;
+  keyPem: string;
+  sha256: string;
+  notAfterUnixMs: number;
+}
+
+export interface ReadProxyCertificatesResponse {
+  certificates: ProxyCertificate[];
 }
 
 /** An App whose domains answer on every server, and how this member's proxy passes them on. */
@@ -3214,6 +3250,11 @@ export interface ClusterAnswerRefusal {
 export interface SetClusterForwardersResponse {
   /** Connections turned away since the last table (ADR-0048): each is reported once, then forgotten. */
   answerRefusals: ClusterAnswerRefusal[];
+  /**
+   * The restarts of this server's proxy made for a certificate's renewal (ADR-0048), kept until Deplo has
+   * read them (proxy_restarts_seen_ms).
+   */
+  proxyRestarts: ProxyRestart[];
   held: number;
   served: number;
 }
@@ -23861,6 +23902,7 @@ function createBaseSetClusterForwardersRequest(): SetClusterForwardersRequest {
     answerPort: 0,
     answerMaxConns: 0,
     answerMaxWaiting: 0,
+    proxyRestartsSeenMs: 0,
   };
 }
 
@@ -23892,6 +23934,9 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     }
     if (message.answerMaxWaiting !== 0) {
       writer.uint32(72).uint32(message.answerMaxWaiting);
+    }
+    if (message.proxyRestartsSeenMs !== 0) {
+      writer.uint32(80).int64(message.proxyRestartsSeenMs);
     }
     return writer;
   },
@@ -23981,6 +24026,14 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
             message.answerMaxWaiting = reader.uint32();
             continue;
           }
+          case 10: {
+            if (tag !== 80) {
+              break;
+            }
+
+            message.proxyRestartsSeenMs = longToNumber(reader.int64());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -24028,6 +24081,11 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
         : isSet(object.answer_max_waiting)
         ? globalThis.Number(object.answer_max_waiting)
         : 0,
+      proxyRestartsSeenMs: isSet(object.proxyRestartsSeenMs)
+        ? globalThis.Number(object.proxyRestartsSeenMs)
+        : isSet(object.proxy_restarts_seen_ms)
+        ? globalThis.Number(object.proxy_restarts_seen_ms)
+        : 0,
     };
   },
 
@@ -24060,6 +24118,9 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     if (message.answerMaxWaiting !== 0) {
       obj.answerMaxWaiting = Math.round(message.answerMaxWaiting);
     }
+    if (message.proxyRestartsSeenMs !== 0) {
+      obj.proxyRestartsSeenMs = Math.round(message.proxyRestartsSeenMs);
+    }
     return obj;
   },
 
@@ -24077,6 +24138,534 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
     message.answerPort = object.answerPort ?? 0;
     message.answerMaxConns = object.answerMaxConns ?? 0;
     message.answerMaxWaiting = object.answerMaxWaiting ?? 0;
+    message.proxyRestartsSeenMs = object.proxyRestartsSeenMs ?? 0;
+    return message;
+  },
+};
+
+function createBaseProxyRestart(): ProxyRestart {
+  return { atUnixMs: 0, hosts: [], urgent: false };
+}
+
+export const ProxyRestart: MessageFns<ProxyRestart> = {
+  encode(message: ProxyRestart, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.atUnixMs !== 0) {
+      writer.uint32(8).int64(message.atUnixMs);
+    }
+    for (const v of message.hosts) {
+      writer.uint32(18).string(v!);
+    }
+    if (message.urgent !== false) {
+      writer.uint32(24).bool(message.urgent);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProxyRestart {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseProxyRestart();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.atUnixMs = longToNumber(reader.int64());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.hosts.push(reader.string());
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.urgent = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ProxyRestart {
+    return {
+      atUnixMs: isSet(object.atUnixMs)
+        ? globalThis.Number(object.atUnixMs)
+        : isSet(object.at_unix_ms)
+        ? globalThis.Number(object.at_unix_ms)
+        : 0,
+      hosts: globalThis.Array.isArray(object?.hosts) ? object.hosts.map((e: any) => globalThis.String(e)) : [],
+      urgent: isSet(object.urgent) ? globalThis.Boolean(object.urgent) : false,
+    };
+  },
+
+  toJSON(message: ProxyRestart): unknown {
+    const obj: any = {};
+    if (message.atUnixMs !== 0) {
+      obj.atUnixMs = Math.round(message.atUnixMs);
+    }
+    if (message.hosts?.length) {
+      obj.hosts = message.hosts;
+    }
+    if (message.urgent !== false) {
+      obj.urgent = message.urgent;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProxyRestart>, I>>(base?: I): ProxyRestart {
+    return ProxyRestart.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProxyRestart>, I>>(object: I): ProxyRestart {
+    const message = createBaseProxyRestart();
+    message.atUnixMs = object.atUnixMs ?? 0;
+    message.hosts = object.hosts?.map((e) => e) || [];
+    message.urgent = object.urgent ?? false;
+    return message;
+  },
+};
+
+function createBaseReadProxyCertificatesRequest(): ReadProxyCertificatesRequest {
+  return { hosts: [], known: {} };
+}
+
+export const ReadProxyCertificatesRequest: MessageFns<ReadProxyCertificatesRequest> = {
+  encode(message: ReadProxyCertificatesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.hosts) {
+      writer.uint32(10).string(v!);
+    }
+    globalThis.Object.entries(message.known).forEach(([key, value]: [string, string]) => {
+      ReadProxyCertificatesRequest_KnownEntry.encode({ key: key as any, value }, writer.uint32(18).fork()).join();
+    });
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadProxyCertificatesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseReadProxyCertificatesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.hosts.push(reader.string());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            const entry2 = ReadProxyCertificatesRequest_KnownEntry.decode(reader, reader.uint32());
+            if (entry2.value !== undefined) {
+              message.known[entry2.key] = entry2.value;
+            }
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ReadProxyCertificatesRequest {
+    return {
+      hosts: globalThis.Array.isArray(object?.hosts) ? object.hosts.map((e: any) => globalThis.String(e)) : [],
+      known: isObject(object.known)
+        ? (globalThis.Object.entries(object.known) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            globalThis.Object.defineProperty(acc, key, {
+              value: globalThis.String(value),
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return acc;
+          },
+          {},
+        )
+        : {},
+    };
+  },
+
+  toJSON(message: ReadProxyCertificatesRequest): unknown {
+    const obj: any = {};
+    if (message.hosts?.length) {
+      obj.hosts = message.hosts;
+    }
+    if (message.known) {
+      const entries = globalThis.Object.entries(message.known) as [string, string][];
+      if (entries.length > 0) {
+        obj.known = {};
+        entries.forEach(([k, v]) => {
+          obj.known[k] = v;
+        });
+      }
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadProxyCertificatesRequest>, I>>(base?: I): ReadProxyCertificatesRequest {
+    return ReadProxyCertificatesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadProxyCertificatesRequest>, I>>(object: I): ReadProxyCertificatesRequest {
+    const message = createBaseReadProxyCertificatesRequest();
+    message.hosts = object.hosts?.map((e) => e) || [];
+    message.known = (globalThis.Object.entries(object.known ?? {}) as [string, string][]).reduce(
+      (acc: { [key: string]: string }, [key, value]: [string, string]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.String(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    return message;
+  },
+};
+
+function createBaseReadProxyCertificatesRequest_KnownEntry(): ReadProxyCertificatesRequest_KnownEntry {
+  return { key: "", value: "" };
+}
+
+export const ReadProxyCertificatesRequest_KnownEntry: MessageFns<ReadProxyCertificatesRequest_KnownEntry> = {
+  encode(message: ReadProxyCertificatesRequest_KnownEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadProxyCertificatesRequest_KnownEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseReadProxyCertificatesRequest_KnownEntry();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.key = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.value = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ReadProxyCertificatesRequest_KnownEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.String(object.value) : "",
+    };
+  },
+
+  toJSON(message: ReadProxyCertificatesRequest_KnownEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== "") {
+      obj.value = message.value;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadProxyCertificatesRequest_KnownEntry>, I>>(
+    base?: I,
+  ): ReadProxyCertificatesRequest_KnownEntry {
+    return ReadProxyCertificatesRequest_KnownEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadProxyCertificatesRequest_KnownEntry>, I>>(
+    object: I,
+  ): ReadProxyCertificatesRequest_KnownEntry {
+    const message = createBaseReadProxyCertificatesRequest_KnownEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseProxyCertificate(): ProxyCertificate {
+  return { hosts: [], certPem: "", keyPem: "", sha256: "", notAfterUnixMs: 0 };
+}
+
+export const ProxyCertificate: MessageFns<ProxyCertificate> = {
+  encode(message: ProxyCertificate, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.hosts) {
+      writer.uint32(10).string(v!);
+    }
+    if (message.certPem !== "") {
+      writer.uint32(18).string(message.certPem);
+    }
+    if (message.keyPem !== "") {
+      writer.uint32(26).string(message.keyPem);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(34).string(message.sha256);
+    }
+    if (message.notAfterUnixMs !== 0) {
+      writer.uint32(40).int64(message.notAfterUnixMs);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProxyCertificate {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseProxyCertificate();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.hosts.push(reader.string());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.certPem = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.keyPem = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.sha256 = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.notAfterUnixMs = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ProxyCertificate {
+    return {
+      hosts: globalThis.Array.isArray(object?.hosts) ? object.hosts.map((e: any) => globalThis.String(e)) : [],
+      certPem: isSet(object.certPem)
+        ? globalThis.String(object.certPem)
+        : isSet(object.cert_pem)
+        ? globalThis.String(object.cert_pem)
+        : "",
+      keyPem: isSet(object.keyPem)
+        ? globalThis.String(object.keyPem)
+        : isSet(object.key_pem)
+        ? globalThis.String(object.key_pem)
+        : "",
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+      notAfterUnixMs: isSet(object.notAfterUnixMs)
+        ? globalThis.Number(object.notAfterUnixMs)
+        : isSet(object.not_after_unix_ms)
+        ? globalThis.Number(object.not_after_unix_ms)
+        : 0,
+    };
+  },
+
+  toJSON(message: ProxyCertificate): unknown {
+    const obj: any = {};
+    if (message.hosts?.length) {
+      obj.hosts = message.hosts;
+    }
+    if (message.certPem !== "") {
+      obj.certPem = message.certPem;
+    }
+    if (message.keyPem !== "") {
+      obj.keyPem = message.keyPem;
+    }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
+    if (message.notAfterUnixMs !== 0) {
+      obj.notAfterUnixMs = Math.round(message.notAfterUnixMs);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProxyCertificate>, I>>(base?: I): ProxyCertificate {
+    return ProxyCertificate.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProxyCertificate>, I>>(object: I): ProxyCertificate {
+    const message = createBaseProxyCertificate();
+    message.hosts = object.hosts?.map((e) => e) || [];
+    message.certPem = object.certPem ?? "";
+    message.keyPem = object.keyPem ?? "";
+    message.sha256 = object.sha256 ?? "";
+    message.notAfterUnixMs = object.notAfterUnixMs ?? 0;
+    return message;
+  },
+};
+
+function createBaseReadProxyCertificatesResponse(): ReadProxyCertificatesResponse {
+  return { certificates: [] };
+}
+
+export const ReadProxyCertificatesResponse: MessageFns<ReadProxyCertificatesResponse> = {
+  encode(message: ReadProxyCertificatesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.certificates) {
+      ProxyCertificate.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadProxyCertificatesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseReadProxyCertificatesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.certificates.push(ProxyCertificate.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ReadProxyCertificatesResponse {
+    return {
+      certificates: globalThis.Array.isArray(object?.certificates)
+        ? object.certificates.map((e: any) => ProxyCertificate.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ReadProxyCertificatesResponse): unknown {
+    const obj: any = {};
+    if (message.certificates?.length) {
+      obj.certificates = message.certificates.map((e) => ProxyCertificate.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadProxyCertificatesResponse>, I>>(base?: I): ReadProxyCertificatesResponse {
+    return ReadProxyCertificatesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadProxyCertificatesResponse>, I>>(
+    object: I,
+  ): ReadProxyCertificatesResponse {
+    const message = createBaseReadProxyCertificatesResponse();
+    message.certificates = object.certificates?.map((e) => ProxyCertificate.fromPartial(e)) || [];
     return message;
   },
 };
@@ -24388,13 +24977,16 @@ export const ClusterAnswerRefusal: MessageFns<ClusterAnswerRefusal> = {
 };
 
 function createBaseSetClusterForwardersResponse(): SetClusterForwardersResponse {
-  return { answerRefusals: [], held: 0, served: 0 };
+  return { answerRefusals: [], proxyRestarts: [], held: 0, served: 0 };
 }
 
 export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersResponse> = {
   encode(message: SetClusterForwardersResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     for (const v of message.answerRefusals) {
       ClusterAnswerRefusal.encode(v!, writer.uint32(26).fork()).join();
+    }
+    for (const v of message.proxyRestarts) {
+      ProxyRestart.encode(v!, writer.uint32(34).fork()).join();
     }
     if (message.held !== 0) {
       writer.uint32(8).int32(message.held);
@@ -24424,6 +25016,14 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
             }
 
             message.answerRefusals.push(ClusterAnswerRefusal.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.proxyRestarts.push(ProxyRestart.decode(reader, reader.uint32()));
             continue;
           }
           case 1: {
@@ -24461,6 +25061,11 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
         : globalThis.Array.isArray(object?.answer_refusals)
         ? object.answer_refusals.map((e: any) => ClusterAnswerRefusal.fromJSON(e))
         : [],
+      proxyRestarts: globalThis.Array.isArray(object?.proxyRestarts)
+        ? object.proxyRestarts.map((e: any) => ProxyRestart.fromJSON(e))
+        : globalThis.Array.isArray(object?.proxy_restarts)
+        ? object.proxy_restarts.map((e: any) => ProxyRestart.fromJSON(e))
+        : [],
       held: isSet(object.held) ? globalThis.Number(object.held) : 0,
       served: isSet(object.served) ? globalThis.Number(object.served) : 0,
     };
@@ -24470,6 +25075,9 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
     const obj: any = {};
     if (message.answerRefusals?.length) {
       obj.answerRefusals = message.answerRefusals.map((e) => ClusterAnswerRefusal.toJSON(e));
+    }
+    if (message.proxyRestarts?.length) {
+      obj.proxyRestarts = message.proxyRestarts.map((e) => ProxyRestart.toJSON(e));
     }
     if (message.held !== 0) {
       obj.held = Math.round(message.held);
@@ -24486,6 +25094,7 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
   fromPartial<I extends Exact<DeepPartial<SetClusterForwardersResponse>, I>>(object: I): SetClusterForwardersResponse {
     const message = createBaseSetClusterForwardersResponse();
     message.answerRefusals = object.answerRefusals?.map((e) => ClusterAnswerRefusal.fromPartial(e)) || [];
+    message.proxyRestarts = object.proxyRestarts?.map((e) => ProxyRestart.fromPartial(e)) || [];
     message.held = object.held ?? 0;
     message.served = object.served ?? 0;
     return message;
@@ -26099,6 +26708,22 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): SetClusterForwardersResponse => SetClusterForwardersResponse.decode(value),
   },
   /**
+   * The certificates this server's proxy holds for some hostnames (ADR-0048, Hello capability
+   * "cluster.answers.certificates"): its ACME store's and those a failover installed as files. One whose
+   * digest Deplo already holds comes back without its key.
+   */
+  readProxyCertificates: {
+    path: "/deplo.agent.v1.Agent/ReadProxyCertificates" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ReadProxyCertificatesRequest): Buffer =>
+      Buffer.from(ReadProxyCertificatesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ReadProxyCertificatesRequest => ReadProxyCertificatesRequest.decode(value),
+    responseSerialize: (value: ReadProxyCertificatesResponse): Buffer =>
+      Buffer.from(ReadProxyCertificatesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ReadProxyCertificatesResponse => ReadProxyCertificatesResponse.decode(value),
+  },
+  /**
    * Hand this member the cluster's replicated Apps. The member that runs one sends its Volumes and
    * Files to every other member as they change; each other member keeps a copy of its own, which a
    * failover restore marked from_replica puts in place. The full set each time; one not listed
@@ -26891,6 +27516,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   setClusterForwarders: handleUnaryCall<SetClusterForwardersRequest, SetClusterForwardersResponse>;
   /**
+   * The certificates this server's proxy holds for some hostnames (ADR-0048, Hello capability
+   * "cluster.answers.certificates"): its ACME store's and those a failover installed as files. One whose
+   * digest Deplo already holds comes back without its key.
+   */
+  readProxyCertificates: handleUnaryCall<ReadProxyCertificatesRequest, ReadProxyCertificatesResponse>;
+  /**
    * Hand this member the cluster's replicated Apps. The member that runs one sends its Volumes and
    * Files to every other member as they change; each other member keeps a copy of its own, which a
    * failover restore marked from_replica puts in place. The full set each time; one not listed
@@ -27679,6 +28310,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SetClusterForwardersResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * The certificates this server's proxy holds for some hostnames (ADR-0048, Hello capability
+   * "cluster.answers.certificates"): its ACME store's and those a failover installed as files. One whose
+   * digest Deplo already holds comes back without its key.
+   */
+  readProxyCertificates(
+    request: ReadProxyCertificatesRequest,
+    callback: (error: ServiceError | null, response: ReadProxyCertificatesResponse) => void,
+  ): ClientUnaryCall;
+  readProxyCertificates(
+    request: ReadProxyCertificatesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ReadProxyCertificatesResponse) => void,
+  ): ClientUnaryCall;
+  readProxyCertificates(
+    request: ReadProxyCertificatesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ReadProxyCertificatesResponse) => void,
   ): ClientUnaryCall;
   /**
    * Hand this member the cluster's replicated Apps. The member that runs one sends its Volumes and
