@@ -92,6 +92,21 @@ test("a stopped server still listed keeps the domain routed, and is still said",
     checkAnswerRecords({ a: ["203.0.113.3"], aaaa: [] }, set).status,
     "misconfigured",
   );
+  // A stopped server's agent cannot list its IPv6: its AAAA is unknown, not another host's.
+  const blind = answerRecordSet([
+    srv("a", "203.0.113.1", "2001:db8::1"),
+    srv("c", "203.0.113.3", "", { online: false, known: false }),
+  ]);
+  assert.equal(
+    checkAnswerRecords(
+      {
+        a: ["203.0.113.1", "203.0.113.3"],
+        aaaa: ["2001:db8::1", "2001:db8::3"],
+      },
+      blind,
+    ).status,
+    "valid",
+  );
   // A healthy server left out is a change to make, not a broken domain.
   assert.equal(
     checkAnswerRecords({ a: ["203.0.113.1"], aaaa: [] }, set).status,
