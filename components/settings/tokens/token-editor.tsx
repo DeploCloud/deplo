@@ -9,14 +9,9 @@ import {
   Trash2,
   ShieldAlert,
   FolderTree,
+  RefreshCw,
   ServerCog,
 } from "lucide-react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +32,11 @@ import { ScopePicker } from "@/components/settings/tokens/scope-picker/picker";
 import type { ScopeSelection } from "@/components/settings/tokens/scope-picker/selection";
 import { TokenCreated } from "@/components/settings/tokens/token-created";
 import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
+import { RerollTokenDialog } from "@/components/settings/tokens/reroll-token-dialog";
+import {
+  TOKEN_EXPIRY_CHOICES,
+  expiresAtFor,
+} from "@/components/settings/tokens/token-expiry";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types/identity";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
@@ -76,7 +76,9 @@ export function TokenEditor({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [revokeOpen, setRevokeOpen] = React.useState(false);
+  const [rerollOpen, setRerollOpen] = React.useState(false);
   const [created, setCreated] = React.useState<string | null>(null);
+  const [rerolled, setRerolled] = React.useState(false);
 
   const initial = React.useMemo(
     () => ({
@@ -188,6 +190,7 @@ export function TokenEditor({
   if (created)
     return (
       <TokenCreated
+        title={rerolled ? "Token rerolled" : undefined}
         raw={created}
         name={name.trim()}
         granted={granted}
@@ -253,49 +256,41 @@ export function TokenEditor({
                         : "Keep no expiry"}
                     </SelectItem>
                   )}
-                  <SelectItem value="30">In 30 days</SelectItem>
-                  <SelectItem value="90">In 90 days</SelectItem>
-                  <SelectItem value="365">In a year</SelectItem>
-                  <SelectItem value="never">Never</SelectItem>
+                  {TOKEN_EXPIRY_CHOICES.map((choice) => (
+                    <SelectItem key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             {canGrantInstanceAdmin && (
-              <Accordion type="single" collapsible>
-                <AccordionItem value="advanced" className="border-b-0">
-                  <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
-                    Advanced
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-2">
-                    <div className="flex items-start justify-between gap-4 rounded-lg border border-border px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-1.5 text-sm font-medium">
-                          <ServerCog className="size-3.5 text-muted-foreground" />
-                          Instance admin
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Lets this token administer the whole instance - every
-                          user, every team and every server, not just this team.
-                          Only turn it on for a token that manages Deplo itself.
-                        </p>
-                        {scoped && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            A token limited to projects can&apos;t administer
-                            the instance.
-                          </p>
-                        )}
-                      </div>
-                      <Switch
-                        checked={instanceAdmin}
-                        onCheckedChange={setInstanceAdmin}
-                        disabled={scoped}
-                        aria-label="Instance admin"
-                      />
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <ServerCog className="size-3.5 text-muted-foreground" />
+                    Instance admin
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Lets this token administer the whole instance - every user,
+                    every team and every server, not just this team. Only turn
+                    it on for a token that manages Deplo itself.
+                  </p>
+                  {scoped && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      A token limited to projects can&apos;t administer the
+                      instance.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  checked={instanceAdmin}
+                  onCheckedChange={setInstanceAdmin}
+                  disabled={scoped}
+                  aria-label="Instance admin"
+                />
+              </div>
             )}
           </CardContent>
         </Card>
@@ -491,6 +486,18 @@ export function TokenEditor({
               </p>
             )}
 
+            {mode === "edit" && token && !token.oauthClientName && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => setRerollOpen(true)}
+              >
+                <RefreshCw className="size-4" />
+                Reroll token
+              </Button>
+            )}
+
             {mode === "edit" && (
               <Button
                 type="button"
@@ -505,6 +512,20 @@ export function TokenEditor({
           </CardContent>
         </Card>
       </aside>
+
+      {mode === "edit" && token && !token.oauthClientName && (
+        <RerollTokenDialog
+          tokenId={token.id}
+          tokenName={token.name}
+          open={rerollOpen}
+          onOpenChange={setRerollOpen}
+          onRerolled={(raw) => {
+            setRerolled(true);
+            setCreated(raw);
+            router.refresh();
+          }}
+        />
+      )}
 
       {mode === "edit" && token && (
         <ConfirmAction
@@ -595,14 +616,6 @@ function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
     if (inTeam) return inTeam;
   }
   return null;
-}
-
-function expiresAtFor(choice: string): string | null | undefined {
-  if (choice === "keep") return undefined;
-  if (choice === "never") return null;
-  const days = Number(choice);
-  if (!Number.isFinite(days) || days <= 0) return null;
-  return new Date(Date.now() + days * 86_400_000).toISOString();
 }
 
 /** The editor while its token and scope tree load; `mode` comes from the address. */

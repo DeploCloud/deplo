@@ -7,12 +7,15 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { CommandLine } from "@/components/shared/code-block";
 
 export function TokenCreated({
+  title = "Token created",
   raw,
   name,
   granted,
   scope,
   publicUrl,
 }: {
+  /** "Token rerolled" after a reroll. */
+  title?: string;
   raw: string;
   name: string;
   granted: number;
@@ -25,7 +28,7 @@ export function TokenCreated({
       <div>
         <h2 className="flex items-center gap-2 text-lg font-medium">
           <Check className="size-5 text-[var(--success)]" />
-          Token created
+          {title}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Copy it now. Deplo stores only a hash of this token, so this is the

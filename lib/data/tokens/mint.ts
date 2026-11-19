@@ -58,7 +58,17 @@ async function reachOf(
 
 export const DEFAULT_TOKEN_DAYS = 90;
 
-async function defaultExpiry(): Promise<string> {
+/** A fresh `deplo_` secret, its display prefix and the hash that authenticates it. */
+export function mintSecret(): {
+  raw: string;
+  prefix: string;
+  tokenHash: string;
+} {
+  const raw = `deplo_${randomToken(24)}`;
+  return { raw, prefix: raw.slice(0, 12), tokenHash: sha256Hex(raw) };
+}
+
+export async function defaultExpiry(): Promise<string> {
   const ninety = Date.now() + DEFAULT_TOKEN_DAYS * 24 * 60 * 60 * 1000;
   // A token minted by a token never outlives it, so the default is the sooner of the two.
   const parent = await actingTokenExpiry();
@@ -66,7 +76,7 @@ async function defaultExpiry(): Promise<string> {
   return new Date(at).toISOString();
 }
 
-function cleanExpiry(raw: string | null | undefined): string | null {
+export function cleanExpiry(raw: string | null | undefined): string | null {
   const value = (raw ?? "").trim();
   if (!value) return null;
   const at = Date.parse(value);
@@ -104,7 +114,7 @@ export async function createToken(
   const reach = await reachOf(scope, userId);
   const capabilities = await ownerCeiling(userId, input.capabilities, reach);
 
-  const raw = `deplo_${randomToken(24)}`;
+  const { raw, prefix, tokenHash } = mintSecret();
   const id = newId("tok");
   const createdAt = nowIso();
   await getDb().transaction(async (tx) => {
@@ -112,8 +122,8 @@ export async function createToken(
       id,
       userId,
       name,
-      prefix: raw.slice(0, 12),
-      tokenHash: sha256Hex(raw),
+      prefix,
+      tokenHash,
       instanceAdmin,
       scoped,
       expiresAt,
@@ -133,7 +143,7 @@ export async function createToken(
     token: {
       id,
       name,
-      prefix: raw.slice(0, 12),
+      prefix,
       capabilities,
       scoped,
       teamIds: scope.teamIds,

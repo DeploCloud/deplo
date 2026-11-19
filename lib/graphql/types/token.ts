@@ -3,6 +3,7 @@ import { CapabilityEnum } from "./enums";
 import { listTokens, type ApiTokenDTO } from "@/lib/data/tokens/listing";
 import { createToken, updateToken } from "@/lib/data/tokens/mint";
 import { revokeToken } from "@/lib/data/tokens/revoke";
+import { rotateToken } from "@/lib/data/tokens/rotate";
 import type { Capability } from "@/lib/types/identity";
 
 export const ApiTokenRef = builder
@@ -172,7 +173,8 @@ builder.mutationFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Change one of your tokens' name, permissions or scope. The secret is " +
-      "unchanged, so tightening a live token costs no rotation. Returns true.",
+      "unchanged, so tightening a live token costs no rotation; " +
+      "`rotateToken` issues a new secret. Returns true.",
     args: { input: t.arg({ type: UpdateTokenInputType, required: true }) },
     resolve: async (_r, { input }) => {
       await updateToken({
@@ -189,6 +191,24 @@ builder.mutationFields((t) => ({
       });
       return true;
     },
+  }),
+  rotateToken: t.field({
+    type: CreateTokenPayloadRef,
+    extensions: { credential: true },
+    authScopes: { loggedIn: true },
+    description:
+      "Reroll one of your tokens: issue a new secret for the same token and " +
+      "restart its expiry. The old secret stops working on its next call, on " +
+      "the API, MCP and deploy hooks alike. Name, permissions and scope stay. " +
+      "`expiresAt` works as in `createToken`: omitted is 90 days, null is " +
+      "never. A bearer token can reroll only itself, never past its own " +
+      "expiry, and a connected AI client's token can't be rerolled. The new " +
+      "raw secret is returned once in the payload.",
+    args: {
+      id: t.arg.string({ required: true }),
+      expiresAt: t.arg.string({ required: false }),
+    },
+    resolve: (_r, { id, expiresAt }) => rotateToken(id, { expiresAt }),
   }),
   revokeToken: t.field({
     type: "Boolean",

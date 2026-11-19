@@ -264,6 +264,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "bearer key secret automation",
     defaultOn: true,
   },
+  token_rotated: {
+    label: "API token rerolled",
+    description:
+      "An API token got a new secret, and its old secret stopped working.",
+    keywords: "bearer key secret automation rotate reroll",
+    defaultOn: true,
+  },
   token_revoked: {
     label: "API token revoked",
     description: "An API token was revoked.",
@@ -413,6 +420,7 @@ export const ALERT_CATEGORIES: {
       "member_removed",
       "member_access_changed",
       "token_created",
+      "token_rotated",
       "token_revoked",
       "two_factor_policy_changed",
       "team_ownership_changed",
