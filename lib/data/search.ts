@@ -7,12 +7,12 @@ import {
   type RequestIdentity,
 } from "../auth/request-context";
 import { foldQuery, matchRank, matchesQuery } from "../match-query";
-import { getActiveTeamId } from "../membership";
+import { getActiveTeamId, isInstanceAdmin } from "../membership";
 import type { AppStatus } from "../types/app";
 import type { DatabaseStatus, DatabaseType } from "../types/database";
 import type { DomainStatus } from "../types/domain";
 import type { ID } from "../types/identity";
-import type { ServerStatus } from "../types/server";
+import type { Server, ServerStatus } from "../types/server";
 import { listCatalog } from "@/templates/catalog";
 import { listApps } from "./apps/listing";
 import { listTeamCronJobs } from "./crons/listing";
@@ -23,7 +23,7 @@ import { listFolders } from "./folders";
 import { listMembers } from "./members/roster";
 import { listProjects } from "./projects/read";
 import { listRoles } from "./roles/role-list";
-import { listServers } from "./servers/roster";
+import { listAllServers, listServers } from "./servers/roster";
 import { listMyTeams } from "./teams";
 import { experimentOn } from "./experiments";
 
@@ -218,6 +218,16 @@ function top<T>(rows: Ranked<T>[], key?: (hit: T) => string): T[] {
   return [...seen.values()].slice(0, MAX_HITS);
 }
 
+// An import machine has no page, so a hit on it would only 404.
+const rankServers = (rows: Server[], query: string, home: 0 | 1) =>
+  rank(
+    rows.filter((s) => !s.importOnly),
+    (s) => [s.name, s.host, s.id],
+    (s) => ({ id: s.id, name: s.name, host: s.host, status: s.status }),
+    query,
+    home,
+  );
+
 async function inTeam<T>(
   identity: RequestIdentity | null,
   userId: ID,
@@ -316,13 +326,7 @@ export async function search(
           query,
           home,
         ),
-        servers: rank(
-          servers,
-          (s) => [s.name, s.host, s.id],
-          (s) => ({ id: s.id, name: s.name, host: s.host, status: s.status }),
-          query,
-          home,
-        ),
+        servers: rankServers(servers, query, home),
         projects: rank(
           mine(projects),
           (p) => [p.name, p.slug, p.id],
@@ -420,6 +424,12 @@ export async function search(
     }),
   );
 
+  // An instance admin manages every server, granted to one of their teams or not.
+  const everyServer =
+    want.has("server") && (await isInstanceAdmin())
+      ? rankServers(await listAllServers(), query, 1)
+      : [];
+
   const templates = want.has("template")
     ? rank(
         await listCatalog().catch(() => []),
@@ -434,7 +444,7 @@ export async function search(
     apps: top(found.flatMap((f) => f.apps)),
     databases: top(found.flatMap((f) => f.databases)),
     servers: top(
-      found.flatMap((f) => f.servers),
+      [...found.flatMap((f) => f.servers), ...everyServer],
       (s) => s.id,
     ),
     projects: top(found.flatMap((f) => f.projects)),

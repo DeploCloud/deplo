@@ -266,3 +266,23 @@ test("asking for one kind reads only that kind", async () => {
     assert.deepEqual(found[kind], [], kind);
   }
 });
+
+test("an instance admin finds every server, and nobody finds an import machine", async () => {
+  await seedServer(db, "box_ungranted");
+  await seedServer(db, "box_import");
+  await pg.query(
+    `update servers set all_teams = false where id = 'box_ungranted'`,
+  );
+  await pg.query(
+    `update servers set import_only = true where id = 'box_import'`,
+  );
+  const ids = async () =>
+    (await asUser1(() => search("box", ["server"]))).servers.map((s) => s.id);
+
+  assert.deepEqual(await ids(), ["box_ungranted"], "USER_1 is an admin");
+
+  await pg.query(`update users set is_instance_admin = false where id = $1`, [
+    USER_1,
+  ]);
+  assert.deepEqual(await ids(), [], "granted to none of the caller's teams");
+});
