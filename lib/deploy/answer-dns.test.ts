@@ -23,14 +23,19 @@ const srv = (
 });
 
 test("the set names every healthy server once, its first address of each family", () => {
+  const { a, aaaa, members } = answerRecordSet([
+    srv("a", "203.0.113.2", "2001:db8::2"),
+    srv("b", "203.0.113.1"),
+    srv("c", "203.0.113.3", "", { online: false }),
+    srv("d", "203.0.113.4", "", { emptying: true }),
+  ]);
   assert.deepEqual(
-    answerRecordSet([
-      srv("a", "203.0.113.2", "2001:db8::2"),
-      srv("b", "203.0.113.1"),
-      srv("c", "203.0.113.3", "", { online: false }),
-      srv("d", "203.0.113.4", "", { emptying: true }),
-    ]),
+    { a, aaaa },
     { a: ["203.0.113.1", "203.0.113.2"], aaaa: ["2001:db8::2"] },
+  );
+  // Every server's addresses, stopped and emptied ones included, are the cluster's.
+  assert.ok(
+    members?.includes("203.0.113.3") && members.includes("203.0.113.4"),
   );
 });
 
@@ -59,6 +64,39 @@ test("DNS is valid only when it answers exactly the set", () => {
     },
   );
   assert.equal(checkAnswerRecords({ a: [], aaaa: [] }, set).status, "pending");
+});
+
+// Found on the lab: a stopped server's record flipped the domain to misconfigured, and the failover's reroute unrouted it.
+test("a stopped server still listed keeps the domain routed, and is still said", () => {
+  const set = answerRecordSet([
+    srv("a", "203.0.113.1"),
+    srv("b", "203.0.113.2"),
+    srv("c", "203.0.113.3", "", { online: false }),
+  ]);
+  const stale = checkAnswerRecords(
+    { a: ["203.0.113.1", "203.0.113.2", "203.0.113.3"], aaaa: [] },
+    set,
+  );
+  assert.deepEqual(stale, {
+    status: "valid",
+    missing: [],
+    extra: ["203.0.113.3"],
+  });
+  // Another host's address, or only stopped servers, does not reach the App.
+  assert.equal(
+    checkAnswerRecords({ a: ["203.0.113.1", "198.51.100.7"], aaaa: [] }, set)
+      .status,
+    "misconfigured",
+  );
+  assert.equal(
+    checkAnswerRecords({ a: ["203.0.113.3"], aaaa: [] }, set).status,
+    "misconfigured",
+  );
+  // A healthy server left out is a change to make, not a broken domain.
+  assert.equal(
+    checkAnswerRecords({ a: ["203.0.113.1"], aaaa: [] }, set).status,
+    "valid",
+  );
 });
 
 test("a provider gets only what differs, and a record Deplo did not write is never touched", () => {

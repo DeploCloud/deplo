@@ -144,7 +144,7 @@ async function checkByHand(
       .update(domainsTable)
       .set({ status, ssl: status === "valid" })
       .where(eq(domainsTable.id, d.id));
-  if (status === "valid" || d.status === status) return null;
+  if (check.missing.length === 0 && check.extra.length === 0) return null;
   const parts = [
     check.missing.length > 0 ? `add ${check.missing.join(", ")}` : "",
     check.extra.length > 0 ? `remove ${check.extra.join(", ")}` : "",
