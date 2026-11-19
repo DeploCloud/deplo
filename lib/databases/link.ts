@@ -48,20 +48,37 @@ export const REACH_LABEL: Record<DatabaseReach, string> = {
   "other-team": "In another team",
 };
 
+// `place` is "Project / Environment", null outside any.
+interface Side extends Placement {
+  name: string;
+  place: string | null;
+}
+
+type Exposure = { exposedPublicly: boolean; exposedPort: number | null };
+
+/** Why `app` cannot reach `db`, with the real names and what fixes it; null when it can. */
+export function reachHint(app: Side, db: Side & Exposure): string | null {
+  const reach = databaseReach(app, db);
+  if (reachable(reach)) return null;
+  if (reach === "other-team")
+    return `${db.name} belongs to another team. Connect one of this team's databases instead.`;
+  if (reach === "other-server")
+    return `${db.name} runs on another server than ${app.name} and is not publicly reachable. Move one of them next to the other, or turn on public access for ${db.name}.`;
+  const at = (place: string | null) =>
+    place ? `in ${place}` : "outside any environment";
+  const target = app.place
+    ? `in ${app.place}, the same environment as ${app.name}`
+    : `outside any environment, like ${app.name}`;
+  const apart =
+    app.serverId !== db.serverId &&
+    !(app.clusterId != null && app.clusterId === db.clusterId);
+  return `${db.name} is ${at(db.place)} and ${app.name} is ${at(app.place)}. To reach it, ${db.name} has to be ${target}${apart ? ", on the same server" : ""}, or have public access on.`;
+}
+
 export function unreachableMessage(
   key: string,
-  database: string,
-  reach: DatabaseReach,
+  app: Side,
+  db: Side & Exposure,
 ): string {
-  const where =
-    reach === "other-team"
-      ? "belongs to another team"
-      : reach === "other-server"
-        ? "runs on another server"
-        : "is in another environment";
-  const fix =
-    reach === "other-team"
-      ? "Disconnect it and connect one of this team's databases."
-      : "Move one of them next to the other, or turn on public access for the database.";
-  return `${key} comes from ${database}, which ${where} and is not publicly reachable. ${fix}`;
+  return `${key} comes from ${db.name}. ${reachHint(app, db) ?? ""}`.trim();
 }

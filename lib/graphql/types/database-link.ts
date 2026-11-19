@@ -3,6 +3,7 @@ import { DatabaseTypeEnum } from "./enums";
 import {
   connectDatabase,
   disconnectDatabase,
+  disconnectDatabaseFromAllApps,
   listDatabaseAppLinks,
   listDatabaseLinkOptionsForApp,
   type AppLinkOption,
@@ -35,6 +36,11 @@ const DatabaseLinkOptionRef = builder
       logo: t.exposeString("logo", { nullable: true }),
       place: t.exposeString("place"),
       reach: t.field({ type: DatabaseReachEnum, resolve: (d) => d.reach }),
+      hint: t.exposeString("hint", {
+        nullable: true,
+        description:
+          "Why it cannot be connected, naming both places and the fix. Null when reachable.",
+      }),
       connectedKeys: t.exposeStringList("connectedKeys", {
         description: "This app's variables already connected to it.",
       }),
@@ -52,6 +58,11 @@ const AppLinkOptionRef = builder
       logo: t.exposeString("logo", { nullable: true }),
       place: t.exposeString("place"),
       reach: t.field({ type: DatabaseReachEnum, resolve: (a) => a.reach }),
+      hint: t.exposeString("hint", {
+        nullable: true,
+        description:
+          "Why it cannot be connected, naming both places and the fix. Null when reachable.",
+      }),
     }),
   });
 
@@ -68,6 +79,11 @@ const DatabaseAppLinkRef = builder
       }),
       canManage: t.exposeBoolean("canManage"),
       reach: t.field({ type: DatabaseReachEnum, resolve: (l) => l.reach }),
+      hint: t.exposeString("hint", {
+        nullable: true,
+        description:
+          "Why it cannot be connected, naming both places and the fix. Null when reachable.",
+      }),
     }),
   });
 
@@ -140,5 +156,15 @@ builder.mutationFields((t) => ({
       await disconnectDatabase(args);
       return true;
     },
+  }),
+  disconnectDatabaseFromAllApps: t.field({
+    type: "Int",
+    authScopes: { capability: "manage_env" },
+    description:
+      "Disconnect a database from every app connected to it, so its environment " +
+      "can change. Refused before any change unless you have manage_env on all of " +
+      "them. Their variables keep the value they resolve to now. Returns how many apps.",
+    args: { databaseId: t.arg.string({ required: true }) },
+    resolve: (_r, { databaseId }) => disconnectDatabaseFromAllApps(databaseId),
   }),
 }));

@@ -11,20 +11,27 @@ import { encryptSecret } from "../crypto";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
+import {
+  environments as environmentsTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane/projects";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase, settleProvisioning } from "./backup-test-helpers";
 import { TRUNCATE } from "./databases/databases-test-helpers";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { appEnv, appEnvKeys } from "../deploy/build/deploy-env";
 import { listEnv, renameEnv, upsertEnv } from "./env";
+import { moveDatabaseToEnvironment } from "./databases/environment-move";
 import {
   connectDatabase,
   disconnectDatabase,
+  disconnectDatabaseFromAllApps,
   listDatabaseAppLinks,
   listDatabaseLinkOptionsForApp,
 } from "./database-links";
 
 const NO_REVEAL = "user_no_reveal";
+const VIEWER = "user_viewer";
 const asOwner = <T>(fn: () => Promise<T>) =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
@@ -55,6 +62,7 @@ describe("database links", () => {
           role: "member",
           capabilities: ["view", "manage_env"],
         },
+        { id: VIEWER, teamId: TEAM_A, role: "member", capabilities: ["view"] },
       ],
     });
     await seedServer(db);
@@ -175,6 +183,86 @@ describe("database links", () => {
       const linked = await listDatabaseAppLinks("db_far");
       assert.equal(linked?.links[0].reach, "internal");
     });
+  });
+
+  test("another environment is named on both sides, and a connected database keeps its environment until every app is disconnected", async () => {
+    const T0 = "2026-01-01T00:00:00.000Z";
+    await db.insert(projectsTable).values({
+      id: "prc_1",
+      teamId: TEAM_A,
+      name: "Shop",
+      slug: "shop",
+      position: 0,
+      createdAt: T0,
+      updatedAt: T0,
+    } as never);
+    await db.insert(environmentsTable).values(
+      ["Production", "Staging"].map((name, position) => ({
+        id: `environ_${name.toLowerCase()}`,
+        projectId: "prc_1",
+        name,
+        slug: name.toLowerCase(),
+        kind: position === 0 ? "production" : "custom",
+        isDefault: position === 0,
+        position,
+        createdAt: T0,
+        updatedAt: T0,
+      })) as never,
+    );
+    await seedApp(db, {
+      id: "prj_web",
+      projectId: "prc_1",
+      environmentId: "environ_production",
+    });
+    await db
+      .update(databasesTable)
+      .set({ environmentId: "environ_staging", status: "stopped" })
+      .where(eq(databasesTable.id, "db_hub"));
+    const hint =
+      "ia-hub is in Shop / Staging and prj_web is in Shop / Production. To reach it, ia-hub has to be in Shop / Production, the same environment as prj_web, or have public access on.";
+    await asOwner(async () => {
+      const options = await listDatabaseLinkOptionsForApp("prj_web");
+      assert.equal(options.find((o) => o.id === "db_hub")?.hint, hint);
+      await assert.rejects(
+        connectDatabase({ appId: "prj_web", databaseId: "db_hub", key: "X" }),
+        (e: Error) => e.message === `X comes from ia-hub. ${hint}`,
+      );
+
+      await moveDatabaseToEnvironment("db_hub", "environ_production");
+      await connectDatabase({
+        appId: "prj_web",
+        databaseId: "db_hub",
+        key: "DB",
+      });
+      assert.equal(
+        (await listDatabaseAppLinks("db_hub"))?.links[0]?.hint,
+        null,
+      );
+      await assert.rejects(
+        moveDatabaseToEnvironment("db_hub", "environ_staging"),
+        /ia-hub is connected to prj_web\. Disconnect every app/,
+      );
+
+      assert.equal(await disconnectDatabaseFromAllApps("db_hub"), 1);
+      assert.deepEqual((await listDatabaseAppLinks("db_hub"))?.links, []);
+      await moveDatabaseToEnvironment("db_hub", "environ_staging");
+    });
+    const [row] = await db
+      .select({ environmentId: databasesTable.environmentId })
+      .from(databasesTable)
+      .where(eq(databasesTable.id, "db_hub"));
+    assert.equal(row?.environmentId, "environ_staging");
+  });
+
+  test("disconnecting every app is refused before any change without manage_env on all of them", async () => {
+    await asOwner(() =>
+      connectDatabase({ appId: "prj_hub", databaseId: "db_hub", key: "DB" }),
+    );
+    await runWithIdentity({ userId: VIEWER, teamId: TEAM_A }, () =>
+      assert.rejects(disconnectDatabaseFromAllApps("db_hub"), /permission/),
+    );
+    const links = await asOwner(() => listDatabaseAppLinks("db_hub"));
+    assert.equal(links?.links.length, 1);
   });
 
   test("connecting needs reveal_secrets and a database of the active team", async () => {

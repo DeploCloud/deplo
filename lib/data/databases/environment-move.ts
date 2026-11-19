@@ -8,7 +8,7 @@ import { assembleDatabase } from "../backup-rows";
 import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability } from "../../membership";
 import { recordActivity } from "../activity";
-import { markLinkedAppsPending } from "../database-links";
+import { connectedAppsLabel, markLinkedAppsPending } from "../database-links";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
 import { environmentInTeam } from "../environments";
 import { mountsFor, requireDatabase } from "./rows";
@@ -26,6 +26,12 @@ export async function moveDatabaseToEnvironment(
     : null;
   if (environmentId && !env) throw new Error("Environment not found");
   if ((cur.environmentId ?? null) === (env?.id ?? null)) return;
+  // A connected app reaches it only from its own environment (ADR-0028).
+  const connected = await connectedAppsLabel(id, teamId);
+  if (connected)
+    throw new Error(
+      `${cur.name} is connected to ${connected}. Disconnect every app before changing its environment.`,
+    );
 
   await withNetworkLock(
     { teamId, environmentId: env?.id ?? null },

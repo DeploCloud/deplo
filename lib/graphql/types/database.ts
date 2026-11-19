@@ -352,7 +352,8 @@ builder.mutationFields((t) => ({
       "Move a database into an Environment, or out to the team's top level " +
       "(null). The placement is also the network it answers on, so the container " +
       "is brought up again on the new one before this returns - an app reaches " +
-      "`db-<slug>` only from the same Environment.",
+      "`db-<slug>` only from the same Environment. Refused while any app is " +
+      "connected to it: disconnectDatabaseFromAllApps first.",
     args: {
       id: t.arg.string({ required: true }),
       environmentId: t.arg.id({ required: false }),

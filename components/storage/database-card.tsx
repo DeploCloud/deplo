@@ -36,6 +36,7 @@ import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { RenameDialog } from "@/components/shared/rename-dialog";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { TransferDatabaseDialog } from "@/components/storage/transfer-database-dialog";
+import { DisconnectAppsDialog } from "@/components/storage/disconnect-apps-dialog";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { DatabaseLiveStatusProvider } from "@/components/storage/database-live-status";
 import {
@@ -43,7 +44,7 @@ import {
   DatabaseStatusDot,
 } from "@/components/storage/database-status-badge";
 import { OverlayLink } from "@/components/shared/overlay-link";
-import { gqlAction } from "@/lib/graphql-client";
+import { gql, gqlAction } from "@/lib/graphql-client";
 import { DatabaseLogo } from "./database-logo";
 import { DB_NAMES } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
@@ -326,6 +327,8 @@ function CardActions({
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [renameOpen, setRenameOpen] = React.useState(false);
+  const [lockedBy, setLockedBy] = React.useState<string[]>([]);
+  const [lockOpen, setLockOpen] = React.useState(false);
   const running = db.status === "running";
   const href = `/storage/databases/${db.id}`;
 
@@ -346,6 +349,27 @@ function CardActions({
   // An app reaches a database by name only from its own environment (ADR-0028).
   function moveToEnvironment(environmentId: string | null) {
     startTransition(async () => {
+      const linked = await gql<{
+        databaseAppLinks: { links: { appName: string }[] } | null;
+      }>(
+        /* GraphQL */ `
+          query ($id: String!) {
+            databaseAppLinks(databaseId: $id) {
+              links {
+                appName
+              }
+            }
+          }
+        `,
+        { id: db.id },
+      ).catch(() => null);
+      const apps = [
+        ...new Set(linked?.databaseAppLinks?.links.map((l) => l.appName)),
+      ];
+      if (apps.length > 0) {
+        setLockedBy(apps);
+        return setLockOpen(true);
+      }
       const res = await gqlAction(
         `mutation($id: String!, $environmentId: ID) {
            moveDatabaseToEnvironment(id: $id, environmentId: $environmentId)
@@ -496,6 +520,13 @@ function CardActions({
         databaseId={db.id}
         databaseName={db.name}
         onTransferred={() => router.refresh()}
+      />
+      <DisconnectAppsDialog
+        open={lockOpen}
+        onOpenChange={setLockOpen}
+        databaseId={db.id}
+        databaseName={db.name}
+        apps={lockedBy}
       />
       <DeleteDatabaseDialog
         open={confirmOpen}

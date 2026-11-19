@@ -36,6 +36,8 @@ export interface EnvDatabaseRef {
   type: DatabaseType;
   logo: string | null;
   reachable: boolean;
+  // Why this app cannot reach it, with the real names; null when it can.
+  hint: string | null;
 }
 
 export interface EnvVarDTO {

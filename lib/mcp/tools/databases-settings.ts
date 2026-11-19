@@ -208,7 +208,7 @@ export const DATABASES_SETTINGS: McpToolDef[] = [
     name: "move_database",
     title: "Move a database into an environment",
     description:
-      "Place a database in a project's environment (or null for the team top level), which decides the network it shares with apps.",
+      "Place a database in a project's environment (or null for the team top level), which decides the network it shares with apps. Refused while any app is connected to it: disconnect them first.",
     group: "Databases",
     requires: "configure_databases",
     idempotent: true,

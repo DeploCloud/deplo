@@ -51,6 +51,11 @@ const EnvDatabaseRefRef = builder
       name: t.exposeString("name"),
       type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
       reachable: t.exposeBoolean("reachable"),
+      hint: t.exposeString("hint", {
+        nullable: true,
+        description:
+          "Why the app cannot reach it, with the fix. Null when it can.",
+      }),
     }),
   });
 

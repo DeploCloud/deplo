@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { databaseReach } from "./link";
+import { databaseReach, reachHint } from "./link";
 
 const app = {
   teamId: "team_a",
@@ -46,4 +46,39 @@ test("one cluster does not join two Environments or two teams", () => {
     "other-team",
   );
   assert.equal(databaseReach(app, { ...db, teamId: "team_b" }), "other-team");
+});
+
+const named = { ...app, name: "web", place: "Shop / Production" };
+const store = {
+  ...db,
+  serverId: "srv_1",
+  environmentId: null,
+  name: "orders",
+  place: null,
+};
+
+test("an unreachable database names both places and the one it needs", () => {
+  assert.equal(
+    reachHint(named, { ...store, environmentId: "environ_1" }),
+    null,
+  );
+  assert.equal(
+    reachHint(named, store),
+    "orders is outside any environment and web is in Shop / Production. To reach it, orders has to be in Shop / Production, the same environment as web, or have public access on.",
+  );
+  assert.match(
+    reachHint(named, { ...store, clusterId: null, serverId: "srv_2" })!,
+    /the same environment as web, on the same server, or/,
+  );
+  assert.match(
+    reachHint(
+      { ...named, environmentId: null, place: null },
+      {
+        ...store,
+        environmentId: "environ_2",
+        place: "Shop / Staging",
+      },
+    )!,
+    /has to be outside any environment, like web/,
+  );
 });

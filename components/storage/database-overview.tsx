@@ -54,6 +54,9 @@ export function DatabaseOverview({
         canExposePorts={canExposePorts}
         environmentLabel={environmentLabel}
         environments={environments ?? []}
+        connectedApps={[
+          ...new Set(appLinks?.links.map((l) => l.appName) ?? []),
+        ]}
       />
 
       {appLinks && (

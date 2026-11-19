@@ -89,9 +89,7 @@ export function StandaloneRow({
               !row.detectedDatabase &&
               envNameLooksSensitive(row.key) && <LooksLikeSecretBadge />}
             {row.database && !row.database.reachable && (
-              <SimpleTooltip
-                content={`This app cannot reach ${row.database.name}, so its next deploy fails until one of them moves.`}
-              >
+              <SimpleTooltip content={row.database.hint}>
                 <Badge
                   variant="outline"
                   className="text-[10px] font-normal whitespace-nowrap text-destructive"

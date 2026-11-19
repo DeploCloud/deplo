@@ -22,6 +22,7 @@ interface Option {
   logo: string | null;
   place: string;
   reach: string;
+  hint: string | null;
   connectedKeys: string[];
 }
 
@@ -52,6 +53,7 @@ export function DatabaseTab({
             logo
             place
             reach
+            hint
             connectedKeys
           }
         }
@@ -71,6 +73,7 @@ export function DatabaseTab({
     logo: <DatabaseLogo type={o.type} logo={o.logo} size={28} />,
     place: o.place,
     reach: o.reach.replace(/_/g, "-") as DatabaseReach,
+    hint: o.hint,
     defaultKey: DEFAULT_LINK_KEY[o.type],
     takenKeys: appKeys,
     connectedKeys: o.connectedKeys,

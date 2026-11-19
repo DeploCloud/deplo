@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Check, Search } from "lucide-react";
+import { AlertTriangle, Check, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,8 @@ export interface LinkTarget {
   logo: React.ReactNode;
   place: string;
   reach: DatabaseReach;
+  // Why it cannot be connected, naming both places; shown once it is picked.
+  hint?: string | null;
   defaultKey: string;
   // Variable names on the app that already exist, so a clash asks first.
   takenKeys: string[];
@@ -57,6 +59,7 @@ export function DatabaseLinkForm({
   const shown = targets?.filter((t) => t.name.toLowerCase().includes(q));
   const trimmed = key.trim();
   const keyValid = KEY_RE.test(trimmed);
+  const blocked = selected !== null && !reachable(selected.reach);
 
   function pick(t: LinkTarget) {
     setSelected(t);
@@ -65,7 +68,7 @@ export function DatabaseLinkForm({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected || !keyValid) return;
+    if (!selected || blocked || !keyValid) return;
     const replaces =
       selected.takenKeys.includes(trimmed) &&
       !selected.connectedKeys?.includes(trimmed);
@@ -122,23 +125,36 @@ export function DatabaseLinkForm({
                 ))}
               </div>
             )}
-            {selected && (
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor={keyId}
-                  info="Your app reads the connection string from this variable. Production only."
-                >
-                  Variable name
-                </FieldLabel>
-                <Input
-                  id={keyId}
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  spellCheck={false}
-                  aria-invalid={trimmed !== "" && !keyValid}
-                  className="font-mono text-sm"
+            {blocked ? (
+              <p className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash p-3 text-sm">
+                <AlertTriangle
+                  className="mt-0.5 size-4 shrink-0 text-warning"
+                  aria-hidden
                 />
-              </div>
+                <span>
+                  {selected.hint ??
+                    `${selected.name} is ${REACH_LABEL[selected.reach].toLowerCase()}.`}
+                </span>
+              </p>
+            ) : (
+              selected && (
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor={keyId}
+                    info="Your app reads the connection string from this variable. Production only."
+                  >
+                    Variable name
+                  </FieldLabel>
+                  <Input
+                    id={keyId}
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    spellCheck={false}
+                    aria-invalid={trimmed !== "" && !keyValid}
+                    className="font-mono text-sm"
+                  />
+                </div>
+              )
             )}
           </>
         )}
@@ -147,7 +163,10 @@ export function DatabaseLinkForm({
         <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!selected || !keyValid || pending}>
+        <Button
+          type="submit"
+          disabled={!selected || blocked || !keyValid || pending}
+        >
           Connect
         </Button>
       </DialogFooter>
@@ -179,11 +198,10 @@ function TargetRow({
       type="button"
       role="radio"
       aria-checked={selected}
-      disabled={!ok}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-        ok ? "hover:bg-surface" : "cursor-not-allowed opacity-50",
+        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface",
+        !ok && "opacity-60",
         selected && "bg-surface",
       )}
     >

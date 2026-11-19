@@ -109,9 +109,7 @@ export function DatabaseConnectedApps({
                     )}
                   </div>
                   {!reachable(first.reach) && (
-                    <SimpleTooltip
-                      content={`${first.appName} cannot reach this database, so its next deploy fails until one of them moves.`}
-                    >
+                    <SimpleTooltip content={first.hint}>
                       <Badge
                         variant="outline"
                         className="text-[10px] font-normal whitespace-nowrap text-destructive"
@@ -163,6 +161,7 @@ export function DatabaseConnectedApps({
                 logo: <AppLogo logo={a.logo} size={28} />,
                 place: a.place,
                 reach: a.reach,
+                hint: a.hint,
                 defaultKey: DEFAULT_LINK_KEY[databaseType],
                 takenKeys: a.keys,
                 connectedKeys: connectedKeys(a.id),

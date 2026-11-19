@@ -20,10 +20,12 @@ import {
   tryDecryptSecret,
 } from "../crypto";
 import { newId, nowIso } from "../ids";
+import { joinNames } from "../utils";
 import { reachesWholeTeam, requireActiveTeamId } from "../membership";
 import {
   databaseReach,
   reachable,
+  reachHint,
   unreachableMessage,
   type DatabaseReach,
 } from "../databases/link";
@@ -64,6 +66,8 @@ export interface DatabaseLinkOption {
   logo: string | null;
   place: string;
   reach: DatabaseReach;
+  // Why it cannot be connected, with the real names; null when it can.
+  hint: string | null;
   connectedKeys: string[];
 }
 
@@ -74,6 +78,7 @@ export interface AppLinkOption {
   logo: string | null;
   place: string;
   reach: DatabaseReach;
+  hint: string | null;
   canConnect: boolean;
   // The app's variable names, so the picker can ask before replacing one.
   keys: string[];
@@ -88,6 +93,7 @@ export interface DatabaseAppLink {
   key: string;
   canManage: boolean;
   reach: DatabaseReach;
+  hint: string | null;
 }
 
 // What the variable holds, which carries the scheme its app reads (inSchemeOf).
@@ -96,8 +102,25 @@ function written(v: { valueEnc: string } | undefined): string {
   return value?.ok ? value.value : "";
 }
 
+function placeOf(project: string | null, env: string | null): string | null {
+  return project && env ? `${project} / ${env}` : null;
+}
+
 function placeLabel(project: string | null, env: string | null): string {
-  return project && env ? `${project} / ${env}` : "Top level";
+  return placeOf(project, env) ?? "Top level";
+}
+
+async function environmentPlace(
+  environmentId: string | null,
+): Promise<string | null> {
+  if (!environmentId) return null;
+  const [row] = await getDb()
+    .select({ env: environmentsTable.name, project: projectsTable.name })
+    .from(environmentsTable)
+    .leftJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
+    .where(eq(environmentsTable.id, environmentId))
+    .limit(1);
+  return row ? placeOf(row.project, row.env) : null;
 }
 
 const placedDatabases = () =>
@@ -131,7 +154,7 @@ const placedDatabases = () =>
 async function appPlacement(
   appId: string,
   teamId: string,
-): Promise<(Placement & { name: string }) | null> {
+): Promise<(Placement & { name: string; place: string | null }) | null> {
   const [row] = await getDb()
     .select({
       name: appsTable.name,
@@ -139,11 +162,20 @@ async function appPlacement(
       environmentId: appsTable.environmentId,
       serverId: appsTable.serverId,
       clusterId: appsTable.clusterId,
+      envName: environmentsTable.name,
+      projectName: projectsTable.name,
     })
     .from(appsTable)
+    .leftJoin(
+      environmentsTable,
+      eq(appsTable.environmentId, environmentsTable.id),
+    )
+    .leftJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
     .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  const { envName, projectName, ...placement } = row;
+  return { ...placement, place: placeOf(projectName, envName) };
 }
 
 export async function listDatabaseLinkOptionsForApp(
@@ -171,6 +203,7 @@ export async function listDatabaseLinkOptionsForApp(
       logo: d.logo,
       place: placeLabel(d.projectName, d.envName),
       reach: databaseReach(app, d),
+      hint: reachHint(app, { ...d, place: placeOf(d.projectName, d.envName) }),
       connectedKeys: linked
         .filter((l) => l.databaseId === d.id)
         .map((l) => l.key),
@@ -231,6 +264,9 @@ export async function listDatabaseAppLinks(databaseId: string): Promise<{
   ]);
   const linked = keys.filter((k) => k.databaseId === databaseId);
   const byId = new Map(rows.map((a) => [a.id, a] as const));
+  const dbSide = { ...db, place: await environmentPlace(db.environmentId) };
+  const hintFor = (a: (typeof rows)[number]) =>
+    reachHint({ ...a, place: placeOf(a.projectName, a.envName) }, dbSide);
   const links = linked.flatMap((l): DatabaseAppLink[] => {
     const a = byId.get(l.appId);
     if (!a) return [];
@@ -244,6 +280,7 @@ export async function listDatabaseAppLinks(databaseId: string): Promise<{
         key: canManage ? l.key : "",
         canManage,
         reach: databaseReach(a, db),
+        hint: hintFor(a),
       },
     ];
   });
@@ -257,6 +294,7 @@ export async function listDatabaseAppLinks(databaseId: string): Promise<{
         logo: a.logo,
         place: placeLabel(a.projectName, a.envName),
         reach: databaseReach(a, db),
+        hint: hintFor(a),
         canConnect:
           held.includes("manage_env") && held.includes("reveal_secrets"),
         keys: keys.filter((k) => k.appId === a.id).map((k) => k.key),
@@ -296,7 +334,12 @@ export async function connectDatabase(input: {
   if (!app) throw new Error("App not found");
   const reach = databaseReach(app, db);
   if (!reachable(reach))
-    throw new Error(unreachableMessage(key, db.name, reach));
+    throw new Error(
+      unreachableMessage(key, app, {
+        ...db,
+        place: await environmentPlace(db.environmentId),
+      }),
+    );
   const stored = decryptSecretOrThrow(
     db.connectionStringEnc,
     "The database password",
@@ -422,6 +465,61 @@ async function unlinkVars(appId: string, vars: EnvVar[]): Promise<void> {
   );
 }
 
+// Names only the apps the viewer's scope reaches; the rest are counted.
+export async function connectedAppsLabel(
+  databaseId: string,
+  teamId: string,
+): Promise<string | null> {
+  const linked = and(
+    eq(envVarsTable.databaseId, databaseId),
+    eq(appsTable.teamId, teamId),
+  );
+  const query = (where: typeof linked) =>
+    getDb()
+      .selectDistinct({ id: appsTable.id, name: appsTable.name })
+      .from(envVarsTable)
+      .innerJoin(appsTable, eq(envVarsTable.appId, appsTable.id))
+      .where(where);
+  const [all, seen] = await Promise.all([
+    query(linked),
+    query(and(linked, appScopeWhere())),
+  ]);
+  if (all.length === 0) return null;
+  const names = seen.map((a) => a.name).sort();
+  const others = all.length - seen.length;
+  if (others > 0) names.push(`${others} other app${others === 1 ? "" : "s"}`);
+  return joinNames(names);
+}
+
+// All or nothing: refused before any change when one of the apps is not the viewer's to edit.
+export async function disconnectDatabaseFromAllApps(
+  databaseId: string,
+): Promise<number> {
+  const teamId = await requireActiveTeamId();
+  const db = await loadDatabase(databaseId, teamId, { forRead: true });
+  if (!db) throw new Error("Database not found");
+  const rows = await getDb()
+    .selectDistinct({ appId: envVarsTable.appId })
+    .from(envVarsTable)
+    .innerJoin(appsTable, eq(envVarsTable.appId, appsTable.id))
+    .where(
+      and(
+        eq(envVarsTable.databaseId, databaseId),
+        eq(appsTable.teamId, teamId),
+      ),
+    );
+  const appIds = rows.map((r) => r.appId);
+  for (const appId of appIds) await requireAppCapability(appId, "manage_env");
+  for (const appId of appIds)
+    await unlinkVars(
+      appId,
+      (await loadEnvVarsForApp(appId)).filter(
+        (v) => v.databaseId === databaseId,
+      ),
+    );
+  return appIds.length;
+}
+
 // The connected database of each variable, and the one a hand-written value names by host.
 export async function envDatabaseRefs(
   appId: string,
@@ -452,6 +550,10 @@ export async function envDatabaseRefs(
         type: d.type as DatabaseType,
         logo: d.logo,
         reachable: reachable(databaseReach(app, d)),
+        hint: reachHint(app, {
+          ...d,
+          place: placeOf(d.projectName, d.envName),
+        }),
       },
     ]),
   );
@@ -496,6 +598,7 @@ export async function withLinkedValues(
   const [[app], dbs] = await Promise.all([
     getDb()
       .select({
+        name: appsTable.name,
         teamId: appsTable.teamId,
         environmentId: appsTable.environmentId,
         serverId: appsTable.serverId,
@@ -515,13 +618,13 @@ export async function withLinkedValues(
       ),
   ]);
   const byId = new Map(dbs.map((d) => [d.id, d] as const));
-  const unreachable: string[] = [];
+  const cutOff: { key: string; db: (typeof dbs)[number] }[] = [];
   const resolved = vars.map((v) => {
     const db = v.databaseId ? byId.get(v.databaseId) : undefined;
     if (!db || !app || !wanted(v)) return v;
     const reach = databaseReach(app, db);
     if (!reachable(reach)) {
-      unreachable.push(unreachableMessage(v.key, db.name, reach));
+      cutOff.push({ key: v.key, db });
       return v;
     }
     const stored = decryptSecretOrThrow(
@@ -545,6 +648,16 @@ export async function withLinkedValues(
       ),
     };
   });
+  if (cutOff.length === 0 || !app) return { vars: resolved, unreachable: [] };
+  const appSide = { ...app, place: await environmentPlace(app.environmentId) };
+  const unreachable = await Promise.all(
+    cutOff.map(async ({ key, db }) =>
+      unreachableMessage(key, appSide, {
+        ...db,
+        place: await environmentPlace(db.environmentId),
+      }),
+    ),
+  );
   return { vars: resolved, unreachable };
 }
 

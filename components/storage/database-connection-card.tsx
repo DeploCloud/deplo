@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Server as ServerIcon, Settings } from "lucide-react";
+import { Lock, Server as ServerIcon, Settings } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -18,6 +18,8 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { InfoTip } from "@/components/ui/info-tip";
+import { SimpleTooltip } from "@/components/ui/tooltip";
+import { DisconnectAppsDialog } from "@/components/storage/disconnect-apps-dialog";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import {
   useDatabaseExposure,
@@ -43,6 +45,7 @@ export function DatabaseConnectionCard({
   canExposePorts,
   environmentLabel,
   environments = [],
+  connectedApps = [],
 }: {
   db: DatabaseDTO;
   serverHost: string;
@@ -52,6 +55,8 @@ export function DatabaseConnectionCard({
   canExposePorts: boolean;
   environmentLabel?: string | null;
   environments?: EnvironmentOption[];
+  // Names of the apps connected to it: while there are any, the environment is locked.
+  connectedApps?: string[];
 }) {
   const exposure = useDatabaseExposure(db);
   const creds = ENGINE_CREDS[db.type];
@@ -162,6 +167,8 @@ export function DatabaseConnectionCard({
               environments={environments}
               canConfigure={canConfigure}
               databaseId={db.id}
+              databaseName={db.name}
+              connectedApps={connectedApps}
               label={environmentLabel ?? "No environment"}
             />
           </Field>
@@ -335,14 +342,19 @@ function EnvironmentPicker({
   environments,
   canConfigure,
   databaseId,
+  databaseName,
+  connectedApps,
   label,
 }: {
   value: string | null;
   environments: EnvironmentOption[];
   canConfigure: boolean;
   databaseId: string;
+  databaseName: string;
+  connectedApps: string[];
   label: string;
 }) {
+  const [lockOpen, setLockOpen] = React.useState(false);
   const { run, pending, error } = useGraphqlMutation(/* GraphQL */ `
     mutation ($id: String!, $environmentId: ID) {
       moveDatabaseToEnvironment(id: $id, environmentId: $environmentId)
@@ -353,6 +365,28 @@ function EnvironmentPicker({
   }, [error]);
   if (!canConfigure || environments.length === 0)
     return <p className="truncate text-sm">{label}</p>;
+  if (connectedApps.length > 0)
+    return (
+      <div className="mt-1">
+        <SimpleTooltip content="Connected to apps. Disconnect them to change the environment.">
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-2 font-normal"
+            onClick={() => setLockOpen(true)}
+          >
+            <Lock className="size-3.5 text-muted-foreground" />
+            <span className="truncate">{label}</span>
+          </Button>
+        </SimpleTooltip>
+        <DisconnectAppsDialog
+          open={lockOpen}
+          onOpenChange={setLockOpen}
+          databaseId={databaseId}
+          databaseName={databaseName}
+          apps={connectedApps}
+        />
+      </div>
+    );
   return (
     <div className="mt-1">
       <EnvironmentCombobox

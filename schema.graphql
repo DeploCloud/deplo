@@ -418,6 +418,10 @@ type AppFailover {
 
 """An app the viewer may connect a database to."""
 type AppLinkOption {
+  """
+  Why it cannot be connected, naming both places and the fix. Null when reachable.
+  """
+  hint: String
   id: ID
   logo: String
   name: String
@@ -2179,6 +2183,11 @@ type DatabaseAppLink {
   appSlug: String
   canManage: Boolean
 
+  """
+  Why it cannot be connected, naming both places and the fix. Null when reachable.
+  """
+  hint: String
+
   """Empty without manage_env on the app."""
   key: String
   reach: DatabaseReach
@@ -2194,6 +2203,11 @@ type DatabaseAppLinks {
 type DatabaseLinkOption {
   """This app's variables already connected to it."""
   connectedKeys: [String!]
+
+  """
+  Why it cannot be connected, naming both places and the fix. Null when reachable.
+  """
+  hint: String
   id: ID
   logo: String
   name: String
@@ -3137,6 +3151,8 @@ type EnvAutoLink {
 
 """The managed database a variable's value comes from."""
 type EnvDatabaseRef {
+  """Why the app cannot reach it, with the fix. Null when it can."""
+  hint: String
   id: ID
   name: String
   reachable: Boolean
@@ -4715,6 +4731,11 @@ type Mutation {
   disconnectDatabase(appId: String!, databaseId: String!): Boolean
 
   """
+  Disconnect a database from every app connected to it, so its environment can change. Refused before any change unless you have manage_env on all of them. Their variables keep the value they resolve to now. Returns how many apps.
+  """
+  disconnectDatabaseFromAllApps(databaseId: String!): Int
+
+  """
   Hide a name the app's .env.example asks for. It comes back when the file drops the name and lists it again. Returns true.
   """
   dismissEnvExampleKey(id: String!): Boolean
@@ -4894,7 +4915,7 @@ type Mutation {
   moveDatabaseToCluster(clusterId: String!, id: String!, serverId: String): Database
 
   """
-  Move a database into an Environment, or out to the team's top level (null). The placement is also the network it answers on, so the container is brought up again on the new one before this returns - an app reaches `db-<slug>` only from the same Environment.
+  Move a database into an Environment, or out to the team's top level (null). The placement is also the network it answers on, so the container is brought up again on the new one before this returns - an app reaches `db-<slug>` only from the same Environment. Refused while any app is connected to it: disconnectDatabaseFromAllApps first.
   """
   moveDatabaseToEnvironment(environmentId: ID, id: String!): Boolean
 
