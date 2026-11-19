@@ -88,6 +88,7 @@ import { resolveNewAppPlacement, resolvePlacement } from "./placement";
 import {
   ON_IMPORT_SOURCE,
   assertComposeSavable,
+  assertGitRepo,
   assertImageRef,
   scopeRepoCredentials,
 } from "./source-guards";
@@ -264,6 +265,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const { membership, userId } = await requireMembership();
   input = { ...input, name: cleanAppName(input.name) };
   assertImageRef(input.source, input.dockerImage);
+  assertGitRepo(input.source, input.repo);
 
   if (input.sharedVarIds?.length) await requireCapability("manage_env");
   const reach = await assertComposeSavable(input.compose);

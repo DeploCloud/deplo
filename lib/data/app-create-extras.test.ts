@@ -20,6 +20,7 @@ import {
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
+import { seedGithubApp, seedGithubInstallation } from "./infra-test-helpers";
 import { createApp } from "./apps/create";
 import { saveSharedVar } from "./shared-vars/authoring";
 import { loadAppGraph } from "./app-graph-load";
@@ -72,6 +73,34 @@ const newApp = (
     deploy: false,
     ...extra,
   });
+
+test("a git App needs its repository, and GitHub's installation number names the installation", async () => {
+  await assert.rejects(
+    asUser1(() => newApp({ source: "github", compose: null })),
+    /Choose the repository/,
+  );
+  await seedGithubApp(db, { id: "gha_1", teamId: TEAM_A });
+  await seedGithubInstallation(db, {
+    id: "ghi_1",
+    appId: "gha_1",
+    installationId: 155517332,
+  });
+  const app = await asUser1(() =>
+    newApp({
+      source: "github",
+      compose: null,
+      noWebhook: true,
+      repo: {
+        provider: "github",
+        url: "https://github.com/acme/web",
+        repo: "acme/web",
+        branch: "main",
+        installationId: "155517332",
+      },
+    }),
+  );
+  assert.equal((await loadAppGraph(app.id))?.repo?.installationId, "ghi_1");
+});
 
 test("extra compose flags are stored the way the deploy edge will send them", async () => {
   const app = await asUser1(() =>

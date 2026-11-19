@@ -93,6 +93,15 @@ export async function assertComposeSavable(
   return reach;
 }
 
+// Saved without one, the App only fails at its first deploy.
+export function assertGitRepo(
+  source: DeploySource,
+  repo: GitRepo | null | undefined,
+): void {
+  if ((source === "github" || source === "git") && !repo?.url?.trim())
+    throw new Error("Choose the repository this App deploys from.");
+}
+
 // Drops a credential from another team rather than cloning a private repo with it.
 export async function scopeRepoCredentials(
   repo: GitRepo | null,
@@ -102,8 +111,13 @@ export async function scopeRepoCredentials(
   const out: GitRepo = { ...repo };
   if (out.installationId) {
     const mine = await listGithubInstallations();
-    if (!mine.some((i) => i.id === out.installationId))
-      out.installationId = null;
+    // GitHub's own installation number names it too: list_git_sources shows both.
+    out.installationId =
+      mine.find(
+        (i) =>
+          i.id === out.installationId ||
+          String(i.installationId) === out.installationId,
+      )?.id ?? null;
   }
   const connHost = out.connectionId
     ? await gitConnectionHostInTeam(out.connectionId, teamId)

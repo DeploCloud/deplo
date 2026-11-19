@@ -75,6 +75,25 @@ test("explicit arguments win over the current values", () => {
   assert.equal(input.repo?.installationId, "inst_2");
 });
 
+test("a GitHub repo named by owner/name alone is cloned from GitHub, on create and on update", () => {
+  const { input } = updateSourceVariables(
+    { appId: "prj_1", source: "GITHUB", repo: "acme/web" },
+    { repo, dockerImage: null },
+  );
+  assert.equal(input.repo?.url, "https://github.com/acme/web");
+  const create = APPS_CONFIG.find((t) => t.name === "create_app")!;
+  const args = create.input.parse({
+    name: "web",
+    source: "GITHUB",
+    repo: "acme/web",
+  });
+  const vars = create.variables!(args) as {
+    input: { repo?: { url: string; repo: string } };
+  };
+  assert.equal(vars.input.repo?.url, "https://github.com/acme/web");
+  assert.equal(vars.input.repo?.repo, "acme/web");
+});
+
 test("an image app keeps its image on a server move", () => {
   const { input } = updateSourceVariables(
     { appId: "prj_1", source: "DOCKER_IMAGE", serverId: "srv_2" },

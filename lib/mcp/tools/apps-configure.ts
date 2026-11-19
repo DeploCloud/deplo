@@ -36,6 +36,17 @@ export const UPDATE_SOURCE = /* GraphQL */ `
   }
 `;
 
+// On GitHub owner/name is enough: the clone URL follows from it.
+function repoUrlOf(a: {
+  source: z.infer<typeof SOURCE>;
+  repoUrl?: string;
+  repo?: string;
+}): string | undefined {
+  if (a.repoUrl) return a.repoUrl;
+  if (a.source === "GITHUB" && a.repo?.trim())
+    return `https://github.com/${a.repo.trim()}`;
+}
+
 // Omitted fields keep the app's current value: updateAppSource rewrites the whole repo row.
 export function updateSourceVariables(
   a: z.infer<typeof UPDATE_SOURCE_INPUT>,
@@ -43,7 +54,7 @@ export function updateSourceVariables(
 ) {
   const git = a.source === "GIT" || a.source === "GITHUB";
   const was = current?.repo ?? null;
-  const url = a.repoUrl ?? was?.url;
+  const url = repoUrlOf(a) ?? was?.url;
   return {
     id: a.appId,
     input: {
@@ -143,7 +154,10 @@ export const APPS_CONFIG: McpToolDef[] = [
     input: z.object({
       name: z.string(),
       source: SOURCE,
-      repoUrl: z.string().optional().describe("Clone URL, for GIT/GITHUB."),
+      repoUrl: z
+        .string()
+        .optional()
+        .describe("Clone URL, for GIT. On GITHUB, repo alone is enough."),
       repo: z.string().optional().describe('Owner/name, e.g. "acme/api".'),
       branch: z.string().optional().describe("Defaults to main."),
       ...CREDENTIALS,
@@ -166,30 +180,33 @@ export const APPS_CONFIG: McpToolDef[] = [
         createApp(input: $input) { ${APP_FIELDS} }
       }
     `,
-    variables: (a) => ({
-      input: {
-        name: a.name,
-        source: a.source,
-        dockerImage: a.dockerImage,
-        compose: a.compose,
-        serverId: a.serverId,
-        clusterId: a.clusterId,
-        projectId: a.projectId,
-        environmentId: a.environmentId,
-        folderId: a.folderId,
-        autoDeploy: a.autoDeploy,
-        repo: a.repoUrl
-          ? {
-              url: a.repoUrl,
-              repo: a.repo ?? "",
-              branch: a.branch ?? "main",
-              provider: a.source === "GITHUB" ? "github" : "git",
-              installationId: a.installationId,
-              connectionId: a.connectionId,
-            }
-          : undefined,
-      },
-    }),
+    variables: (a) => {
+      const url = repoUrlOf(a);
+      return {
+        input: {
+          name: a.name,
+          source: a.source,
+          dockerImage: a.dockerImage,
+          compose: a.compose,
+          serverId: a.serverId,
+          clusterId: a.clusterId,
+          projectId: a.projectId,
+          environmentId: a.environmentId,
+          folderId: a.folderId,
+          autoDeploy: a.autoDeploy,
+          repo: url
+            ? {
+                url,
+                repo: a.repo ?? "",
+                branch: a.branch ?? "main",
+                provider: a.source === "GITHUB" ? "github" : "git",
+                installationId: a.installationId,
+                connectionId: a.connectionId,
+              }
+            : undefined,
+        },
+      };
+    },
   }),
   tool({
     name: "rename_app",

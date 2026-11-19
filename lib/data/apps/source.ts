@@ -47,6 +47,7 @@ import { recordActivity } from "../activity";
 import {
   ON_IMPORT_SOURCE,
   assertComposeSavable,
+  assertGitRepo,
   assertImageRef,
   scopeRepoCredentials,
 } from "./source-guards";
@@ -65,10 +66,11 @@ export interface UpdateSourceInput {
   compose?: string | null;
 }
 
-export function updateAppSource(
+export async function updateAppSource(
   id: string,
   input: UpdateSourceInput,
 ): Promise<void> {
+  assertGitRepo(input.source, input.repo);
   return writeAppSource(id, input);
 }
 
