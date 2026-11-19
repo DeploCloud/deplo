@@ -88,6 +88,14 @@ export interface FailoverBundle {
   keep?: FailoverKeep;
   /** Set while the workload keeps a standby copy: how its member makes that copy the workload (#218). */
   promote?: { container: string; user: string; command: string[] };
+  /** The certificates of its domains that answer on every server, keys included (ADR-0048, the one exception). */
+  certificates?: {
+    hosts: string[];
+    cert: string;
+    key: string;
+    sha256: string;
+    notAfter: string;
+  }[];
 }
 
 export function keyFingerprint(publicKey: string): string {
@@ -231,7 +239,7 @@ const NOT_TAKEN =
 type AppRow = { id: string; name: string; teamId: string };
 
 /** What the leader needs to place this App without Deplo: its size, its Environment, its image and whether it has a domain. */
-async function bundleMeta(
+export async function bundleMeta(
   appId: string,
   imageRef: string,
 ): Promise<BundleMeta> {
@@ -413,6 +421,13 @@ export async function pushFailoverBundle(input: {
     await recordOnce(app, cannotFailOver(app.name, cluster.name, UNREACHED));
   if (keys.length === 0) return;
   const tunnelToken = await loadAppConnectorToken(app.id);
+  // The certificates a deploy does not change stay with the App, for the domains still switched on.
+  const { keepCertificates } = await import("./answer-certs");
+  const { answeringApps } = await import("./answers");
+  const certificates = keepCertificates(
+    (await storedBundle(app.id))?.certificates,
+    (await answeringApps(cluster.id)).get(app.id) ?? [],
+  );
   const bundle: FailoverBundle = {
     v: 1,
     kind: KIND,
@@ -421,6 +436,7 @@ export async function pushFailoverBundle(input: {
     stack: tunnelToken ? { ...input.stack, tunnelToken } : input.stack,
     ...(input.restore ? { restore: input.restore } : {}),
     ...(input.keep ? { keep: input.keep } : {}),
+    ...(certificates.length > 0 ? { certificates } : {}),
   };
   const failed = await deliver(
     cluster,

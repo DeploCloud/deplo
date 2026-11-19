@@ -125,6 +125,25 @@ export interface ClusterForwarderTable {
   /** Per server: passed-on connections carried at once (a quarter may wait), and how many wait for one App. */
   answerMaxConns?: number;
   answerMaxWaiting?: number;
+  /** The newest proxy restart Deplo has recorded: the member forgets those up to it. */
+  proxyRestartsSeenMs?: number;
+}
+
+/** A restart of a member's proxy made so that a certificate's renewal can happen (ADR-0048). */
+export interface ProxyRestartReport {
+  atUnixMs: number;
+  hosts: string[];
+  /** It ran at once: no quiet hour was left before the renewal window. */
+  urgent: boolean;
+}
+
+/** A certificate a proxy serves for the hostnames in `hosts`; `keyPem` is empty when Deplo already holds it. */
+export interface ProxyCertificateReport {
+  hosts: string[];
+  certPem: string;
+  keyPem: string;
+  sha256: string;
+  notAfterUnixMs: number;
 }
 
 /** Connections a member turned away since its last table: `appId` empty, past its own cap; set, past that App's. */
@@ -376,7 +395,13 @@ export interface AgentConnection {
     held: number;
     served: number;
     answerRefusals: ClusterAnswerRefusal[];
+    proxyRestarts: ProxyRestartReport[];
   }>;
+  // Needs `cluster.answers.certificates` (ADR-0048): the newest pair this proxy serves for each hostname.
+  readProxyCertificates(
+    hosts: string[],
+    known: Record<string, string>,
+  ): Promise<ProxyCertificateReport[]>;
   // Needs `cluster.network` (ADR-0047): this server's place on its cluster's network; no peers takes it off.
   setClusterNetwork(table: ClusterNetworkTable): Promise<ClusterNetworkReport>;
   // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.
