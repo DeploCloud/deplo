@@ -386,7 +386,7 @@ test("every gate names a capability that exists", () => {
     ...staticEntries(),
     ...appPageEntries("blog"),
     ...dbPageEntries("db_1"),
-    ...teamPageEntries([{ id: "t2", name: "Acme" }], "t1"),
+    ...teamPageEntries([{ id: "t2", name: "Acme", slug: "acme" }], "t1"),
   ];
   const known = new Set<string>(ALL_CAPABILITIES);
   for (const row of rows) {
@@ -398,7 +398,10 @@ test("every gate names a capability that exists", () => {
 });
 
 test("a capability's words reach the row it gates, wherever the row is", () => {
-  const inTeam = teamPageEntries([{ id: "t2", name: "Acme" }], "t1");
+  const inTeam = teamPageEntries(
+    [{ id: "t2", name: "Acme", slug: "acme" }],
+    "t1",
+  );
   assert.deepEqual(
     matchEntries(inTeam, "manage registries").map((e) => e.label),
     ["Registries"],

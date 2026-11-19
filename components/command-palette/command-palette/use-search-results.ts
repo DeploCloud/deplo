@@ -4,16 +4,16 @@ import * as React from "react";
 
 import { gql } from "@/lib/graphql-client";
 import { SEARCH_QUERY } from "@/lib/command-palette/search-query";
-import { toHits, type Hit, type SearchData } from "./search-hits";
+import { toHits, type HitContext, type SearchData } from "./search-hits";
 
 export function useSearchResults(
   query: string,
   typing: boolean,
-  teamId: string,
+  { teamId, canManageMembers, isAdmin }: HitContext,
 ) {
   const [result, setResult] = React.useState<{
     q: string;
-    rows: Hit[];
+    data: SearchData;
   } | null>(null);
   const [failedQuery, setFailedQuery] = React.useState<string | null>(null);
 
@@ -27,7 +27,7 @@ export function useSearchResults(
           { q: query },
           controller.signal,
         );
-        setResult({ q: query, rows: toHits(data) });
+        setResult({ q: query, data });
         setFailedQuery((q) => (q === query ? null : q));
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -46,12 +46,15 @@ export function useSearchResults(
   const loading = typing && !answered && !failed;
 
   const [here, elsewhere] = React.useMemo(() => {
-    const rows = typing ? (result?.rows ?? []) : [];
+    const rows =
+      typing && result
+        ? toHits(result.data, { teamId, canManageMembers, isAdmin })
+        : [];
     return [
       rows.filter((h) => !h.team || h.team.id === teamId),
       rows.filter((h) => h.team && h.team.id !== teamId),
     ];
-  }, [result, typing, teamId]);
+  }, [result, typing, teamId, canManageMembers, isAdmin]);
 
   return { result, here, elsewhere, loading, failed };
 }

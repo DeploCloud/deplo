@@ -25,7 +25,12 @@ export function useEntryMatches({
   isAdmin,
 }: {
   query: string;
-  teams: { id: string; name: string; avatarUrl?: string | null }[];
+  teams: {
+    id: string;
+    name: string;
+    slug: string;
+    avatarUrl?: string | null;
+  }[];
   teamId: string;
   breadcrumb: BreadcrumbGraph;
   capabilities: string[];

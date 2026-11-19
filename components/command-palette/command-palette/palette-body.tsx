@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { toast } from "sonner";
 import { BookOpen, ChevronDown, History, Search } from "lucide-react";
 
 import {
@@ -14,7 +13,6 @@ import {
 } from "@/components/ui/command";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry } from "@/lib/command-palette/entries";
-import { gqlAction } from "@/lib/graphql-client";
 import { DOCS_BASE } from "@/lib/docs";
 import { PaletteEmptyGraphic } from "../palette-empty-graphic";
 import { PaletteKbd } from "../palette-kbd";
@@ -61,48 +59,32 @@ export function PaletteBody({
   const { result, here, elsewhere, loading, failed } = useSearchResults(
     query,
     typing,
-    team.id,
+    {
+      teamId: team.id,
+      canManageMembers: capabilities.includes("manage_members"),
+      isAdmin,
+    },
   );
 
-  function runEntry(entry: Entry) {
+  // Every href already names its team, so going there is all a switch needs.
+  function go(id: string, label: string, href: string) {
     closePalette();
-    if (entry.team) {
-      void switchTeamAndGo(entry.team, entry.href);
-      return;
-    }
-    remember({
-      id: entry.id,
-      label: entry.owner ? `${entry.owner.name} / ${entry.label}` : entry.label,
-      href: entry.href,
-    });
-    router.push(entry.href);
+    remember({ id, label, href });
+    router.push(href);
+  }
+
+  function runEntry(entry: Entry) {
+    const from = entry.owner ?? entry.team;
+    go(
+      entry.id,
+      from ? `${from.name} / ${entry.label}` : entry.label,
+      entry.href,
+    );
   }
 
   function openHit(hit: Hit) {
-    closePalette();
-    remember({ id: hit.id, label: hit.label, href: hit.href });
-    if (!hit.team || hit.team.id === team.id) {
-      router.push(hit.href);
-      return;
-    }
-    void switchTeamAndGo(hit.team, hit.href);
-  }
-
-  async function switchTeamAndGo(
-    to: { id: string; name: string },
-    href: string,
-  ) {
-    const res = await gqlAction(
-      `mutation($teamId: String!) { switchTeam(teamId: $teamId) }`,
-      { teamId: to.id },
-    );
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    toast.success(`Switched to ${to.name}`);
-    router.replace(href);
-    router.refresh();
+    const away = hit.team && hit.team.id !== team.id;
+    go(hit.id, away ? `${hit.team!.name} / ${hit.label}` : hit.label, hit.href);
   }
 
   const showRecents = !query && recents.length > 0;
@@ -202,10 +184,7 @@ export function PaletteBody({
               <CommandItem
                 key={r.id}
                 value={`recent:${r.id}`}
-                onSelect={() => {
-                  closePalette();
-                  router.push(r.href);
-                }}
+                onSelect={() => go(r.id, r.label, r.href)}
               >
                 <History className="size-4 shrink-0 text-muted-foreground" />
                 <span className="truncate">{r.label}</span>

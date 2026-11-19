@@ -9,6 +9,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -20,6 +21,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -34,6 +36,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -45,6 +48,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -54,6 +58,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -65,6 +70,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -77,6 +83,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -87,6 +94,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }
@@ -99,6 +107,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          slug
           avatarUrl
         }
       }

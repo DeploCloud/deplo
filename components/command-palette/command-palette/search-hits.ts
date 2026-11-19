@@ -16,11 +16,13 @@ import {
   projectHref,
   templateHref,
 } from "@/lib/overview-links";
+import { withTeam } from "@/lib/team-path";
 import type { DatabaseType } from "@/lib/types/database";
 
 export interface HitTeam {
   id: string;
   name: string;
+  slug: string;
   avatarUrl: string | null;
 }
 
@@ -93,7 +95,16 @@ export interface Hit {
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-export function toHits(data: SearchData): Hit[] {
+export interface HitContext {
+  teamId: string;
+  canManageMembers: boolean;
+  isAdmin: boolean;
+}
+
+// A hit's href names its own team: another team's app is never a path in the active one.
+const at = (team: HitTeam, path: string) => withTeam(path, team.slug);
+
+export function toHits(data: SearchData, ctx: HitContext): Hit[] {
   const s = data.search;
   return [
     ...s.apps.map((a) => ({
@@ -101,7 +112,7 @@ export function toHits(data: SearchData): Hit[] {
       label: a.name,
       hint: a.slug,
       group: "Apps",
-      href: `/apps/${a.slug}`,
+      href: at(a.team, `/apps/${a.slug}`),
       team: a.team,
       logo: { kind: "app" as const, logo: a.logo },
     })),
@@ -110,11 +121,11 @@ export function toHits(data: SearchData): Hit[] {
       label: d.name,
       hint: d.type,
       group: "Databases",
-      href: `/storage/databases/${d.id}`,
+      href: at(d.team, `/storage/databases/${d.id}`),
       team: d.team,
       logo: { kind: "database" as const, logo: d.logo, type: d.type },
     })),
-    ...s.servers.map((v) => ({
+    ...(ctx.isAdmin ? s.servers : []).map((v) => ({
       id: `server:${v.id}`,
       label: v.name,
       hint: v.host,
@@ -127,7 +138,7 @@ export function toHits(data: SearchData): Hit[] {
       id: `project:${p.id}`,
       label: p.name,
       group: "Projects",
-      href: projectHref(p.id),
+      href: at(p.team, projectHref(p.id)),
       team: p.team,
       icon: Layers,
     })),
@@ -136,7 +147,10 @@ export function toHits(data: SearchData): Hit[] {
       label: e.name,
       hint: e.projectName,
       group: "Environments",
-      href: placementHref({ projectId: e.projectId, environmentId: e.id }),
+      href: at(
+        e.team,
+        placementHref({ projectId: e.projectId, environmentId: e.id }),
+      ),
       team: e.team,
       icon: Braces,
     })),
@@ -144,7 +158,7 @@ export function toHits(data: SearchData): Hit[] {
       id: `folder:${f.id}`,
       label: f.name,
       group: "Folders",
-      href: folderHref(f.id),
+      href: at(f.team, folderHref(f.id)),
       team: f.team,
       icon: FolderTree,
     })),
@@ -153,7 +167,7 @@ export function toHits(data: SearchData): Hit[] {
       label: d.name,
       hint: d.appName,
       group: "Domains",
-      href: `/apps/${d.appSlug}/domains`,
+      href: at(d.team, `/apps/${d.appSlug}/domains`),
       team: d.team,
       icon: Globe,
     })),
@@ -162,7 +176,12 @@ export function toHits(data: SearchData): Hit[] {
       label: m.name,
       hint: m.username,
       group: "Members",
-      href: `/settings/members/${m.userId}`,
+      href: at(
+        m.team,
+        ctx.canManageMembers && m.team.id === ctx.teamId
+          ? `/settings/members/${m.userId}`
+          : "/settings/members",
+      ),
       team: m.team,
       logo: {
         kind: "person" as const,
@@ -175,7 +194,7 @@ export function toHits(data: SearchData): Hit[] {
       label: r.name,
       hint: `${r.memberCount} ${r.memberCount === 1 ? "member" : "members"}`,
       group: "Roles",
-      href: `/settings/roles/${r.id}`,
+      href: at(r.team, `/settings/roles/${r.id}`),
       team: r.team,
       icon: ShieldCheck,
     })),
@@ -184,10 +203,12 @@ export function toHits(data: SearchData): Hit[] {
       label: c.name,
       hint: c.targetName,
       group: "Cron jobs",
-      href:
+      href: at(
+        c.team,
         c.targetKind === "database"
           ? `/storage/databases/${c.targetRef}/cron-jobs`
           : `/apps/${c.targetRef}/cron-jobs`,
+      ),
       team: c.team,
       icon: Clock,
     })),

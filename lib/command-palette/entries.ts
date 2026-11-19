@@ -25,6 +25,7 @@ import { SETTINGS_NAV } from "@/components/layout/nav-config/settings-nav";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { foldQuery } from "@/lib/match-query";
 import { newAppHref } from "@/lib/overview-links";
+import { withTeam } from "@/lib/team-path";
 import type { DatabaseType } from "@/lib/types/database";
 import type { Capability } from "@/lib/types/identity";
 
@@ -185,7 +186,12 @@ export function staticEntries(): Entry[] {
 }
 
 export function teamPageEntries(
-  teams: { id: string; name: string; avatarUrl?: string | null }[],
+  teams: {
+    id: string;
+    name: string;
+    slug: string;
+    avatarUrl?: string | null;
+  }[],
   activeTeamId: string,
 ): Entry[] {
   const team = SETTINGS_NAV.find((s) => s.title === "Team");
@@ -195,6 +201,7 @@ export function teamPageEntries(
     .flatMap((t) =>
       fromSections([team], () => "Settings", `team:${t.id}`).map((entry) => ({
         ...entry,
+        href: withTeam(entry.href, t.slug),
         hint: t.name,
         team: { id: t.id, name: t.name, avatarUrl: t.avatarUrl ?? null },
       })),

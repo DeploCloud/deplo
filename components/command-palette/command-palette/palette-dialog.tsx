@@ -23,7 +23,12 @@ import { PaletteBody } from "./palette-body";
 export interface CommandPaletteProps {
   userId: string;
   team: TeamIdentity;
-  teams: { id: string; name: string; avatarUrl?: string | null }[];
+  teams: {
+    id: string;
+    name: string;
+    slug: string;
+    avatarUrl?: string | null;
+  }[];
   breadcrumb: BreadcrumbGraph;
   capabilities: string[];
   isAdmin: boolean;

@@ -10,8 +10,9 @@ export interface Recent {
 
 const CAP = 5;
 
+// v2: v1 stored another team's hits as paths in this one, which 404.
 const keyFor = (userId: string, teamId: string) =>
-  `deplo:palette-recent:${userId}:${teamId}`;
+  `deplo:palette-recent:v2:${userId}:${teamId}`;
 
 export function readRecents(key: string): Recent[] {
   try {
