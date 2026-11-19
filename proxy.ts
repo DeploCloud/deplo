@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { templatesApiBase } from "@/templates/api-base";
+import { templatesApiBase } from "@/lib/templates/api-base";
 import { isWildcardDnsHost } from "@/lib/www-redirect";
 import {
   ACTIVE_TEAM_COOKIE,

@@ -12,7 +12,7 @@ on:
     tags: ["v*.*"]
     # The CLA bot commits a signature here on every new contributor. Nothing in
     # lint, tests or tsc can see that file.
-    paths-ignore: ["signatures/**"]
+    paths-ignore: [".github/cla/**"]
   pull_request:
   # So a newly-published advisory turns the repo red on its own, without waiting
   # for somebody to push. The audit job is the only one that finds work when the
@@ -115,7 +115,7 @@ jobs:
       - run: bunx next typegen
       - run: bunx tsc --noEmit
       # schema.graphql is generated, and the MCP tool test and the API docs both read it.
-      - run: bun run gen:schema && git diff --exit-code schema.graphql
+      - run: bun run gen:schema && git diff --exit-code lib/graphql/schema.graphql
 
   # The answers' routes are a contract with the server agent (docs/agents/cluster-rollout.md §7). The agent changes
   # first, so this repo's reference must be the agent's, and what it renders must pass the agent release this panel

@@ -13,7 +13,7 @@ import type { DatabaseStatus, DatabaseType } from "../types/database";
 import type { DomainStatus } from "../types/domain";
 import type { ID } from "../types/identity";
 import type { Server, ServerStatus } from "../types/server";
-import { listCatalog } from "@/templates/catalog";
+import { listCatalog } from "@/lib/templates/catalog";
 import { listApps } from "./apps/listing";
 import { listTeamCronJobs } from "./crons/listing";
 import { listDatabases } from "./databases/rows";

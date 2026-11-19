@@ -19,7 +19,9 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 test("every inline GraphQL document in the client is valid", () => {
-  const schema = buildSchema(readFileSync("schema.graphql", "utf8"));
+  const schema = buildSchema(
+    readFileSync("lib/graphql/schema.graphql", "utf8"),
+  );
   const failures: string[] = [];
   let checked = 0;
 

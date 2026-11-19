@@ -33,7 +33,7 @@ test("a variable named in the SELECTION does not count as declared", () => {
 
 let cached: GraphQLSchema | undefined;
 const sdl = () =>
-  (cached ??= buildSchema(readFileSync("schema.graphql", "utf8")));
+  (cached ??= buildSchema(readFileSync("lib/graphql/schema.graphql", "utf8")));
 
 function sources(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

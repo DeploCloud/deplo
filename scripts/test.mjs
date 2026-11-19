@@ -18,8 +18,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const SUITE = [
   "lib/**/*.test.ts",
   "components/**/*.test.ts",
-  "templates/**/*.test.ts",
-  "*.test.ts",
+  "tests/**/*.test.ts",
 ];
 
 const args = process.argv.slice(2);

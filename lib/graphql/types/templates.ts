@@ -7,7 +7,7 @@ import {
   createAppFromTemplate,
   type CreateAppFromTemplateInput,
 } from "@/lib/data/apps/create";
-import { listCatalog } from "@/templates/catalog";
+import { listCatalog } from "@/lib/templates/catalog";
 import { AppRef } from "./app/app-object";
 
 interface TemplateVariantSummary {

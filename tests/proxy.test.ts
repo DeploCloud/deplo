@@ -2,7 +2,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 
-import { config, proxy } from "./proxy";
+import { config, proxy } from "../proxy";
 
 const PANEL = "https://deplo.example.com";
 const previous = process.env.DEPLO_PUBLIC_URL;

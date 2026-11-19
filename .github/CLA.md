@@ -102,7 +102,7 @@ I have read the CLA Document and I hereby sign the CLA
 ```
 
 Your GitHub username, user ID, the pull request and the timestamp are recorded in
-`signatures/version1/cla.json` in this repository. That record is the signature.
+`.github/cla/signatures.json` in this repository. That record is the signature.
 
 If you send us a Contribution some other way, an issue, a discussion or an email, we ask you to
 agree to this document before we use it.

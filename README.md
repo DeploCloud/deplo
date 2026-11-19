@@ -73,7 +73,7 @@ You can sponsor us [here](https://github.com/sponsors/IdraDev)
 
 ## Contributing
 
-Deplo is open source, and contributions are welcome: fixes, features, integrations. See [CONTRIBUTING.md](CONTRIBUTING.md). The documentation lives in [DeploCloud/docs](https://github.com/DeploCloud/docs).
+Deplo is open source, and contributions are welcome: fixes, features, integrations. See [CONTRIBUTING.md](.github/CONTRIBUTING.md). The documentation lives in [DeploCloud/docs](https://github.com/DeploCloud/docs).
 
 ## License
 

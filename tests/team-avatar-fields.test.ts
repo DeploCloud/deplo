@@ -24,7 +24,9 @@ function walk(dir: string, out: string[] = []) {
 }
 
 test("a document that selects a name selects the picture with it", () => {
-  const schema = buildSchema(readFileSync("schema.graphql", "utf8"));
+  const schema = buildSchema(
+    readFileSync("lib/graphql/schema.graphql", "utf8"),
+  );
   const offenders: string[] = [];
   for (const file of [...walk("app"), ...walk("components")]) {
     if (file.includes(".test.")) continue;

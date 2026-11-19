@@ -76,8 +76,11 @@ import { serverWildcardIp } from "../servers/addresses";
 import { isValidLogoValue } from "../../apps/logo-shared";
 import { logoToneFromDataUri } from "../../apps/logo-tone";
 import { getTemplateBlueprint } from "../../templates-blueprint";
-import { DEFAULT_VARIANT_SLUG } from "@/templates/types";
-import { getTemplateVariant, templateLogoDataUri } from "@/templates/catalog";
+import { DEFAULT_VARIANT_SLUG } from "@/lib/templates/types";
+import {
+  getTemplateVariant,
+  templateLogoDataUri,
+} from "@/lib/templates/catalog";
 import { syncAppWebhook } from "../git-connections";
 import { insertEnvVars, loadAppGraph } from "../app-graph-load";
 import { appToRow, mountsToRows } from "../app-graph-rows/app";

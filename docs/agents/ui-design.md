@@ -24,7 +24,7 @@
   what the thing does or what to do next; don't restate the control's own label, don't narrate
   implementation, don't explain Docker. If it needs a paragraph to make sense, the UI is wrong, not
   the copy. Errors and server messages are the exception: surface those verbatim.
-- **The copy caps are a TEST, not a taste.** `copy-length.test.ts` fails the build over
+- **The copy caps are a TEST, not a taste.** `tests/copy-length.test.ts` fails the build over
   **120** characters in a modal description, **160** in an `info=` / `content=` tooltip and
   **200** in a muted paragraph - counted per BRANCH, so a ternary cannot hide a paragraph
   behind a condition. Over the cap means the sentence is carrying something the manual
@@ -98,7 +98,7 @@
   after a fetch (a field revealed by a choice, an error, a warning, a step) grows and shrinks the
   dialog smoothly. A plain `DialogContent` does it on its own (`AnimatedHeight` inside its scroll
   area), so nothing is needed there. A `selfManaged` dialog wraps the changing part in
-  `AnimatedHeight`, or uses `SlidingPanels`, or has a fixed height - `dialog-height.test.ts` fails
+  `AnimatedHeight`, or uses `SlidingPanels`, or has a fixed height - `tests/dialog-height.test.ts` fails
   on one that does none of them. A nested `AnimatedHeight` steps aside, so wrapping twice is
   harmless.
 - **A page that is a header plus a tab bar has ONE vertical rhythm: `space-y-3`,
@@ -149,7 +149,7 @@
   `--background` with `color-mix` in `app/globals.css`, so they are real colours, not veils.
   The ONLY alpha backgrounds left are the ones that must show what they cover: `bg-black/*`
   (a dialog or sheet backdrop) and `bg-background/*` / `bg-popover/*` (a sticky bar behind
-  `backdrop-blur`). `filled-backgrounds.test.ts` fails on anything else. Same rule for a
+  `backdrop-blur`). `tests/filled-backgrounds.test.ts` fails on anything else. Same rule for a
   container: a panel or a table on a page owns a background (`Table` carries `bg-card`
   itself), it does not borrow the page's.
 - **An illustration NEVER draws a grey as white-with-alpha.** Every `*-graphic.tsx` and every

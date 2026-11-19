@@ -6,6 +6,4 @@ node_modules
 npm-debug.log*
 .env*
 README.md
-info.md
-templates/.patches
 dist

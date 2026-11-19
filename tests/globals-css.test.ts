@@ -11,7 +11,7 @@ const css = [
     (f) => `components/iso/styles/${f}`,
   ),
 ]
-  .map((f) => readFileSync(new URL(`./${f}.css`, import.meta.url), "utf8"))
+  .map((f) => readFileSync(new URL(`../${f}.css`, import.meta.url), "utf8"))
   .join("\n");
 
 test("entrance animations release their fill", () => {

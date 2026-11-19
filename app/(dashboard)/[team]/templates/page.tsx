@@ -7,7 +7,7 @@ import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
 import { templateAccents } from "@/lib/templates/logo-color";
-import { listCatalog } from "@/templates/catalog";
+import { listCatalog } from "@/lib/templates/catalog";
 
 export const metadata = { title: "Templates" };
 

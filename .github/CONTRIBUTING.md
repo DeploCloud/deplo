@@ -59,7 +59,7 @@ If you touched anything in `lib/graphql/types/*`, regenerate the SDL:
 NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx scripts/gen-schema.ts
 ```
 
-`schema.graphql` is generated output. Never hand-edit it.
+`lib/graphql/schema.graphql` is generated output. Never hand-edit it.
 
 **New behaviour arrives with tests.** A feature or a bug fix comes with the tests that cover
 it, in the same pull request - a data layer change gets its `lib/data/*.test.ts` next to it.
@@ -69,12 +69,12 @@ If something genuinely cannot be tested, say so in the pull request and why.
 
 Deplo has strong opinions and they are written down. Before changing anything structural:
 
-- **[AGENTS.md](AGENTS.md)** - the architecture, the two planes, and the rules that hold
+- **[AGENTS.md](../AGENTS.md)** - the architecture, the two planes, and the rules that hold
   them apart.
-- **[CONTEXT.md](CONTEXT.md)** - the vocabulary. An App is not a service, a Project is not
+- **[CONTEXT.md](../CONTEXT.md)** - the vocabulary. An App is not a service, a Project is not
   a folder, a Capability is not a permission. Use the words in there.
-- **[docs/adr/](docs/adr/)** - 25 numbered decisions, indexed in
-  [docs/adr/README.md](docs/adr/README.md). If your change contradicts one, say so in the
+- **[docs/adr/](../docs/adr/)** - the numbered decisions, indexed in
+  [docs/adr/README.md](../docs/adr/README.md). If your change contradicts one, say so in the
   pull request instead of quietly overriding it.
 - **[deplo.build/docs](https://deplo.build/docs)** - the user manual, and it is **not in this
   repository**: it lives in [DeploCloud/docs](https://github.com/DeploCloud/docs). A change that

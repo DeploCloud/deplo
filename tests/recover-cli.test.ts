@@ -5,7 +5,7 @@ import { copyFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { hiddenEcho } from "./scripts/recover";
+import { hiddenEcho } from "../scripts/recover";
 
 const build = spawnSync(process.execPath, ["scripts/build-recover.mjs"], {
   encoding: "utf8",

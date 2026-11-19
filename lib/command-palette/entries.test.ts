@@ -167,7 +167,7 @@ test("no two rows wear the same label", () => {
 
 test("the palette's own query is valid against the schema", () => {
   const errors = validate(
-    buildSchema(readFileSync("schema.graphql", "utf8")),
+    buildSchema(readFileSync("lib/graphql/schema.graphql", "utf8")),
     parse(SEARCH_QUERY),
   );
   assert.deepEqual(

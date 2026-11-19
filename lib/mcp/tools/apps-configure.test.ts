@@ -113,7 +113,9 @@ test("leaving git drops the repo", () => {
 });
 
 test("the merged variables coerce against the schema", async () => {
-  const schema = buildSchema(readFileSync("schema.graphql", "utf8"));
+  const schema = buildSchema(
+    readFileSync("lib/graphql/schema.graphql", "utf8"),
+  );
   const document = parse(UPDATE_SOURCE);
   assert.deepEqual(validate(schema, document), []);
   const result = await execute({
@@ -150,7 +152,7 @@ test("create_app_from_template places the App on a cluster, as create_app does",
   const variables = tool.variables!(args) as { input: { clusterId?: string } };
   assert.equal(variables.input.clusterId, "clu_1");
   const result = await execute({
-    schema: buildSchema(readFileSync("schema.graphql", "utf8")),
+    schema: buildSchema(readFileSync("lib/graphql/schema.graphql", "utf8")),
     document: parse(tool.query!),
     variableValues: variables,
     contextValue: {},

@@ -15,7 +15,7 @@ import { ALL_CAPABILITIES } from "../types/identity";
 
 let cached: GraphQLSchema | undefined;
 function sdl(): GraphQLSchema {
-  cached ??= buildSchema(readFileSync("schema.graphql", "utf8"));
+  cached ??= buildSchema(readFileSync("lib/graphql/schema.graphql", "utf8"));
   return cached;
 }
 

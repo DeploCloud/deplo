@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { dataDir } from "./lib/data-dir";
+import { dataDir } from "../lib/data-dir";
 
 // `const X = process.env.DEPLO_DATA_DIR || "/data"` at module scope, in any form.
 const CAPTURED =

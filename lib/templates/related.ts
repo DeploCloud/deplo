@@ -1,4 +1,4 @@
-import { defaultVariant, type CatalogTemplate } from "@/templates/types";
+import { defaultVariant, type CatalogTemplate } from "@/lib/templates/types";
 
 function offset(slug: string): number {
   let h = 0x811c9dc5;

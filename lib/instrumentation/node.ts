@@ -1,8 +1,8 @@
-import { UpdateRefusedError } from "./lib/db/update-stops";
+import { UpdateRefusedError } from "@/lib/db/update-stops";
 
 export async function register(): Promise<void> {
   try {
-    const { runMigrations } = await import("./lib/db/migrate");
+    const { runMigrations } = await import("@/lib/db/migrate");
     await runMigrations();
   } catch (e) {
     // A refused update has already logged the one line the installer reads (ADR-0041).
@@ -15,14 +15,14 @@ export async function register(): Promise<void> {
   }
   // Before the door opens, so server status hears every link come and go.
   try {
-    const { startServerLinkStatus } = await import("./lib/data/server-health");
+    const { startServerLinkStatus } = await import("@/lib/data/server-health");
     startServerLinkStatus();
   } catch (e) {
     console.error("[deplo] server status could not follow agent links:", e);
   }
   try {
     const { startLinkAddressSync } =
-      await import("./lib/data/servers/link-addresses");
+      await import("@/lib/data/servers/link-addresses");
     startLinkAddressSync();
   } catch (e) {
     console.error(
@@ -31,7 +31,7 @@ export async function register(): Promise<void> {
     );
   }
   try {
-    const { startTraefikPin } = await import("./lib/data/servers/traefik-pin");
+    const { startTraefikPin } = await import("@/lib/data/servers/traefik-pin");
     startTraefikPin();
   } catch (e) {
     console.error("[deplo] Traefik could not be kept on its pin:", e);
@@ -39,17 +39,17 @@ export async function register(): Promise<void> {
   // Early, so servers relink while the jobs below make their first calls (ADR-0040).
   try {
     const { startAgentLinkListener } =
-      await import("./lib/infra/agent-link/listener");
+      await import("@/lib/infra/agent-link/listener");
     await startAgentLinkListener();
   } catch (e) {
     console.error("[deplo] agent link listener could not start:", e);
   }
   try {
     const { hydratePublicBaseUrl } =
-      await import("./lib/data/instance-settings/settings-store");
+      await import("@/lib/data/instance-settings/settings-store");
     await hydratePublicBaseUrl();
     const { reconcileOAuthResources } =
-      await import("./lib/auth/oauth-resources");
+      await import("@/lib/auth/oauth-resources");
     await reconcileOAuthResources();
   } catch (e) {
     console.error(
@@ -59,20 +59,20 @@ export async function register(): Promise<void> {
   }
   // After the panel address: a resumed Deplo move sends it to the old Deplo.
   try {
-    const { resumeDeploMoves } = await import("./lib/data/deplo-move/runner");
+    const { resumeDeploMoves } = await import("@/lib/data/deplo-move/runner");
     await resumeDeploMoves();
   } catch (e) {
     console.error("[deplo] could not resume a Deplo move:", e);
   }
   try {
-    const { logSetupLink } = await import("./lib/auth/setup");
+    const { logSetupLink } = await import("@/lib/auth/setup");
     await logSetupLink();
   } catch (e) {
     console.error("[deplo] could not check for a first account:", e);
   }
   try {
     const { ensureDeploHostServer } =
-      await import("./lib/data/servers/enrollment");
+      await import("@/lib/data/servers/enrollment");
     await ensureDeploHostServer();
   } catch (e) {
     console.error("[deplo] could not register this host as a server:", e);
@@ -80,7 +80,7 @@ export async function register(): Promise<void> {
   // After this host is a server: a move `deplo recover panel-address` left rides its own link.
   try {
     const { applyRecoveredPanelAddress } =
-      await import("./lib/data/instance-settings/panel-route");
+      await import("@/lib/data/instance-settings/panel-route");
     void applyRecoveredPanelAddress().catch((e) =>
       console.error(
         "[deplo] could not move the panel as deplo recover asked; Deplo tries again at its next start:",
@@ -91,13 +91,13 @@ export async function register(): Promise<void> {
     console.error("[deplo] could not read a move deplo recover asked for:", e);
   }
   try {
-    const { ensureTakeoverFromEnv } = await import("./lib/data/takeover");
+    const { ensureTakeoverFromEnv } = await import("@/lib/data/takeover");
     await ensureTakeoverFromEnv();
   } catch (e) {
     console.error("[deplo] could not read the takeover this install is:", e);
   }
   try {
-    const { retireInstalledPlugins } = await import("./lib/plugins/retire");
+    const { retireInstalledPlugins } = await import("@/lib/plugins/retire");
     void retireInstalledPlugins().catch((e) =>
       console.error("[deplo] plugin retirement sweep failed:", e),
     );
@@ -106,8 +106,8 @@ export async function register(): Promise<void> {
   }
   try {
     const { reconcileInFlightDeployments } =
-      await import("./lib/deploy/build/deployment-state");
-    const { startDeployQueue } = await import("./lib/deploy/deploy-queue");
+      await import("@/lib/deploy/build/deployment-state");
+    const { startDeployQueue } = await import("@/lib/deploy/deploy-queue");
     void reconcileInFlightDeployments()
       .then(() => startDeployQueue())
       .catch((e) =>
@@ -118,19 +118,19 @@ export async function register(): Promise<void> {
   }
   try {
     const { reconcileInFlightBackupRuns } =
-      await import("./lib/data/backups/orphan-sweep");
+      await import("@/lib/data/backups/orphan-sweep");
     await reconcileInFlightBackupRuns();
-    const { startBackupScheduler } = await import("./lib/backups/scheduler");
+    const { startBackupScheduler } = await import("@/lib/backups/scheduler");
     startBackupScheduler();
   } catch (e) {
     console.error("[deplo] backup reconcile/scheduler startup failed:", e);
   }
   try {
     const { reconcileInFlightCleanupRuns } =
-      await import("./lib/data/docker-cleanup/run-history");
+      await import("@/lib/data/docker-cleanup/run-history");
     await reconcileInFlightCleanupRuns();
     const { startDockerCleanupScheduler } =
-      await import("./lib/docker-cleanup/scheduler");
+      await import("@/lib/docker-cleanup/scheduler");
     startDockerCleanupScheduler();
   } catch (e) {
     console.error(
@@ -139,11 +139,11 @@ export async function register(): Promise<void> {
     );
   }
   // Skipped while a move has this Deplo paused; the move picks them up when it ends (ADR-0035).
-  const frozenAtBoot = await import("./lib/data/deplo-move/freeze")
+  const frozenAtBoot = await import("@/lib/data/deplo-move/freeze")
     .then((m) => m.instanceFrozen())
     .catch(() => null);
   try {
-    const { resumeAppDeletes } = await import("./lib/data/apps/delete");
+    const { resumeAppDeletes } = await import("@/lib/data/apps/delete");
     if (!frozenAtBoot)
       void resumeAppDeletes().catch((e) =>
         console.error(
@@ -156,7 +156,7 @@ export async function register(): Promise<void> {
   }
   try {
     const { runNetworkIsolationSweep } =
-      await import("./lib/deploy/network-migration");
+      await import("@/lib/deploy/network-migration");
     if (!frozenAtBoot)
       void runNetworkIsolationSweep().catch((e) =>
         console.error("[deplo] network isolation sweep failed:", e),
@@ -166,59 +166,59 @@ export async function register(): Promise<void> {
   }
   try {
     const { startAgentRollout } =
-      await import("./lib/data/servers/agent-rollout");
+      await import("@/lib/data/servers/agent-rollout");
     await startAgentRollout();
   } catch (e) {
     console.error("[deplo] agent rollout startup failed:", e);
   }
   try {
-    const { startPreviewReaper } = await import("./lib/previews/reaper");
+    const { startPreviewReaper } = await import("@/lib/previews/reaper");
     startPreviewReaper();
   } catch (e) {
     console.error("[deplo] preview reaper startup failed:", e);
   }
   try {
     const { startClusterWatch } =
-      await import("./lib/data/clusters/watch-scheduler");
+      await import("@/lib/data/clusters/watch-scheduler");
     startClusterWatch();
   } catch (e) {
     console.error("[deplo] cluster watch startup failed:", e);
   }
   try {
-    const { startPubSubBridge } = await import("./lib/graphql/pubsub");
+    const { startPubSubBridge } = await import("@/lib/graphql/pubsub");
     startPubSubBridge();
   } catch (e) {
     console.error("[deplo] live-update bridge startup failed:", e);
   }
   try {
     const { startMigrationRunner } =
-      await import("./lib/data/migration-runner/run-loop");
+      await import("@/lib/data/migration-runner/run-loop");
     startMigrationRunner();
   } catch (e) {
     console.error("[deplo] migration runner startup failed:", e);
   }
   try {
-    const { startCronScheduler } = await import("./lib/crons/scheduler");
+    const { startCronScheduler } = await import("@/lib/crons/scheduler");
     startCronScheduler();
   } catch (e) {
     console.error("[deplo] cron scheduler startup failed:", e);
   }
   try {
     const { startSecurityUpdatesScheduler } =
-      await import("./lib/security-updates/scheduler");
+      await import("@/lib/security-updates/scheduler");
     startSecurityUpdatesScheduler();
   } catch (e) {
     console.error("[deplo] security updates scheduler startup failed:", e);
   }
   try {
     const { startAutoUpdateScheduler } =
-      await import("./lib/auto-updates/scheduler");
+      await import("@/lib/auto-updates/scheduler");
     startAutoUpdateScheduler();
   } catch (e) {
     console.error("[deplo] automatic updates startup failed:", e);
   }
   try {
-    const { startMetricsStreams } = await import("./lib/monitoring/supervisor");
+    const { startMetricsStreams } = await import("@/lib/monitoring/supervisor");
     startMetricsStreams();
   } catch (e) {
     console.error("[deplo] metrics stream supervisor startup failed:", e);
@@ -226,7 +226,7 @@ export async function register(): Promise<void> {
   // Never frozen-gated: a workload lent to a Deplo move starts again here once its lease lapses.
   try {
     const { startPauseSweep } =
-      await import("./lib/data/deplo-move/source-pauses");
+      await import("@/lib/data/deplo-move/source-pauses");
     startPauseSweep();
   } catch (e) {
     console.error("[deplo] Deplo move pause sweep startup failed:", e);
@@ -237,20 +237,20 @@ export async function register(): Promise<void> {
     if (!g.__deploTunnelRestore) {
       g.__deploTunnelRestore = true;
       const run = async () => {
-        const { instanceFrozen } = await import("./lib/data/deplo-move/freeze");
+        const { instanceFrozen } = await import("@/lib/data/deplo-move/freeze");
         if (await instanceFrozen()) return;
         const { restoreTunnelConnectors } =
-          await import("./lib/data/dns-providers/tunnels");
+          await import("@/lib/data/dns-providers/tunnels");
         const n = await restoreTunnelConnectors();
         if (n > 0)
           console.log(`[deplo] restored ${n} Cloudflare Tunnel connector(s)`);
         // A cluster App's own tunnel: taken in, and switched once its connector is connected.
         const { reconcileAppTunnels } =
-          await import("./lib/data/clusters/app-tunnel");
+          await import("@/lib/data/clusters/app-tunnel");
         await reconcileAppTunnels();
         // A hostname follows its App to the server it runs on, and every tunnel routes as Deplo derives it.
         const { reconcileTunnelDomains } =
-          await import("./lib/data/dns-providers/follow");
+          await import("@/lib/data/dns-providers/follow");
         await reconcileTunnelDomains();
       };
       const tick = () =>
@@ -267,9 +267,9 @@ export async function register(): Promise<void> {
       g.__deploCertSweep = true;
       try {
         const { sweepExpiringAgentCerts } =
-          await import("./lib/agent/cert-renewal");
+          await import("@/lib/agent/cert-renewal");
         const { runMaintenanceSweep } =
-          await import("./lib/notify/maintenance");
+          await import("@/lib/notify/maintenance");
         const run = () => {
           void sweepExpiringAgentCerts().catch((e) =>
             console.error("[cert-renewal] sweep failed:", e),
@@ -285,44 +285,44 @@ export async function register(): Promise<void> {
       }
     }
   }
-  const { holdExitUntil } = await import("./lib/hold-exit");
-  const { stopAcquiringLeases } = await import("./lib/backups/lease");
+  const { holdExitUntil } = await import("@/lib/hold-exit");
+  const { stopAcquiringLeases } = await import("@/lib/backups/lease");
   for (const sig of ["SIGTERM", "SIGINT"] as const) {
     process.once(sig, () => {
       // A recreated container has a new hostname, so a lease left behind blocks its successor for 2h.
       stopAcquiringLeases();
       const done = Promise.allSettled([
-        import("./lib/monitoring/supervisor").then(({ stopMetricsStreams }) =>
+        import("@/lib/monitoring/supervisor").then(({ stopMetricsStreams }) =>
           stopMetricsStreams(),
         ),
-        import("./lib/backups/scheduler").then(
+        import("@/lib/backups/scheduler").then(
           ({ releaseBackupSchedulerLease }) => releaseBackupSchedulerLease(),
         ),
-        import("./lib/docker-cleanup/scheduler").then(
+        import("@/lib/docker-cleanup/scheduler").then(
           ({ releaseDockerCleanupLease }) => releaseDockerCleanupLease(),
         ),
-        import("./lib/previews/reaper").then(({ releasePreviewReaperLease }) =>
+        import("@/lib/previews/reaper").then(({ releasePreviewReaperLease }) =>
           releasePreviewReaperLease(),
         ),
-        import("./lib/data/clusters/watch-scheduler").then(
+        import("@/lib/data/clusters/watch-scheduler").then(
           ({ releaseClusterWatchLease }) => releaseClusterWatchLease(),
         ),
-        import("./lib/crons/scheduler").then(({ releaseCronSchedulerLease }) =>
+        import("@/lib/crons/scheduler").then(({ releaseCronSchedulerLease }) =>
           releaseCronSchedulerLease(),
         ),
-        import("./lib/security-updates/scheduler").then(
+        import("@/lib/security-updates/scheduler").then(
           ({ releaseSecurityUpdatesLease }) => releaseSecurityUpdatesLease(),
         ),
-        import("./lib/auto-updates/scheduler").then(
+        import("@/lib/auto-updates/scheduler").then(
           ({ releaseAutoUpdateLease }) => releaseAutoUpdateLease(),
         ),
-        import("./lib/data/migration-runner/run-loop").then(
+        import("@/lib/data/migration-runner/run-loop").then(
           ({ releaseMigrationRunnerLease }) => releaseMigrationRunnerLease(),
         ),
-        import("./lib/graphql/pubsub").then(({ stopPubSubBridge }) =>
+        import("@/lib/graphql/pubsub").then(({ stopPubSubBridge }) =>
           stopPubSubBridge(),
         ),
-        import("./lib/infra/agent-link/listener").then(
+        import("@/lib/infra/agent-link/listener").then(
           ({ stopAgentLinkListener }) => stopAgentLinkListener(),
         ),
       ]);

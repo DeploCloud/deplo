@@ -1,7 +1,7 @@
 import "server-only";
 
-import { templateImageBytes } from "@/templates/catalog";
-import type { CatalogTemplate } from "@/templates/types";
+import { templateImageBytes } from "@/lib/templates/catalog";
+import type { CatalogTemplate } from "@/lib/templates/types";
 
 const MIN_CHROMA = 0.04;
 const BUCKETS = 24;

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { LogoTile } from "@/components/templates/logo-tile";
 import { veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
-import { defaultVariant, type CatalogTemplate } from "@/templates/types";
+import { defaultVariant, type CatalogTemplate } from "@/lib/templates/types";
 
 export interface StoreTemplate {
   slug: string;

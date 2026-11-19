@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { pickRelated } from "./related";
-import type { CatalogTemplate } from "@/templates/types";
+import type { CatalogTemplate } from "@/lib/templates/types";
 
 function tpl(slug: string, category: string): CatalogTemplate {
   return {

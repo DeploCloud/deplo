@@ -31,7 +31,7 @@ import {
   getTemplateVariant,
   templateAssetUrl,
   templateLogoDataUri,
-} from "@/templates/catalog";
+} from "@/lib/templates/catalog";
 import { templateAccent } from "@/lib/templates/logo-color";
 import { loadComposeFromUrl } from "@/lib/templates/from-url";
 import {

@@ -30,7 +30,7 @@ test("a table cell keeps its label and its row on one line", async () => {
   const React = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
   const { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } =
-    await import("./components/ui/table");
+    await import("../components/ui/table");
   const html = renderToStaticMarkup(
     React.createElement(Table, null, [
       React.createElement(

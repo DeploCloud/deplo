@@ -29,8 +29,8 @@ import {
   getTemplate,
   listCatalog,
   templateAssetUrl,
-} from "@/templates/catalog";
-import { defaultVariant } from "@/templates/types";
+} from "@/lib/templates/catalog";
+import { defaultVariant } from "@/lib/templates/types";
 import { titleClass } from "@/components/shared/page-header";
 import { DeployButton, Row, TopBar } from "./template-parts";
 
