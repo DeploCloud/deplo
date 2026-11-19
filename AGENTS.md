@@ -6,14 +6,14 @@ on the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root): authoritative glossary / ubiquitous language. Single-context repo.
 - **`docs/adr/`**: numbered decisions, indexed in its `README.md`. Contradicting one? Surface it, don't silently override.
-- **`schema.graphql`** (root): generated SDL, the API contract.
+- **`lib/graphql/schema.graphql`**: generated SDL, the API contract.
 - **The USER manual is NOT in this repo.** It is [`DeploCloud/docs`](https://github.com/DeploCloud/docs),
   served at <https://deplo.build/docs>. Never add a user-facing page here.
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`, `cluster-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (46 Capabilities, 145 tables, 210 MCP
-tools, 45 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+**Every count in this file is a snapshot of a moving tree** (46 Capabilities, 145 tables, 211 MCP
+tools, 49 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -262,36 +262,54 @@ Next.js 16 App Router · React 19 · TypeScript (strict) · Tailwind v4 (CSS-fir
 (package manager + runtime). **Better Auth IS the live login path** (ADR-0014) - its `user` model
 is remapped onto the control-plane `users` table. Deploy execution is the Go agent over gRPC/mTLS.
 
-## Project layout
+## Repository layout - where a file goes
 
-- `app/(dashboard)/[team]/`: RSC pages, ALL of them under the team's slug (ADR-0031). Overview
-  `page.tsx` is the one grid (projects → folders → apps) with drill-ins via
-  `?project=&env=&folder=&q=&view=`. Sections: `apps/[slug]`, `deployments`, `logs`,
-  `monitoring`, `storage`, `variables`, `members`, `activity`, `apps`, `templates`, `servers`,
-  `settings/*`, plus `app/(focus)/[team]/new`. `app/(auth)/` - login/setup. Flat and outside the
-  prefix: `/login`, `/setup`, `/register/*`, `/oauth/*`, `/welcome`, `/takeover`, `/api/*`, and
-  `app/<section>/[[...rest]]` - one stub per legacy section, which redirects a pre-team address
-  into the team that owns the resource (`lib/legacy-redirect.ts`).
+`tests/repo-layout.test.ts` holds the tree to this section: a new root entry, a flat `app/` folder,
+a loose `lib/` file or a script nothing runs fails the suite. **Pick the folder before writing the
+file**; widening an allowlist there is a decision to state in the commit, never a way to go green.
+
+- **Root: only what a tool, GitHub or a public URL needs there** - the `ROOT` map in that test,
+  each entry with its reason. `install.sh`, `install-agent.sh` and `uninstall.sh` stay because
+  deplo.build and every installed panel fetch `raw.githubusercontent.com/.../main/<file>`.
+- **`app/`**: route groups, which never change a URL. `app/(dashboard)/[team]/` - every RSC page,
+  under the team's slug (ADR-0031); Overview `page.tsx` is the one grid (projects → folders → apps)
+  with drill-ins via `?project=&env=&folder=&q=&view=`. `app/(focus)/[team]/new` - the creation
+  funnel. `app/(auth)/` - login. `app/(legacy)/<section>/[[...rest]]` - one stub per pre-team
+  address, redirected into the team that owns the resource (`lib/legacy-redirect.ts`).
+  `app/(scripts)/` - the install and uninstall scripts the panel serves. Flat, a fixed list:
+  `api/`, `.well-known/`, `/setup`, `/register/*`, `/oauth/*`, `/welcome`, `/takeover`, `/moving`.
 - `app/api/graphql/route.ts`: the single API endpoint. Other `app/api/*/route.ts` are the REST exceptions (below).
-- `lib/data/*`: data layer (`import "server-only"`), **the security boundary**.
-- `lib/graphql/*`: Pothos builder, context, schema, and `types/*` domain modules.
-- `lib/deploy/*`: compose/label/port rendering · `lib/infra/*` - agent client ·
-  `lib/agent/*`: mTLS PKI + generated ts-proto stubs.
-- `lib/db/*`: Drizzle client + `schema/` (`control-plane`, `auth`, `scheduler`, `columns`).
+- **`lib/<domain>/`**: every new module goes in the domain folder it belongs to (or a new one
+  named for the domain). The loose `lib/*.ts` files predate the rule and are a ratchet
+  (`LOOSE_LIB`): the list only shrinks, so take a file off it when you move it.
+  - `lib/data/*`: data layer (`import "server-only"`), **the security boundary**.
+  - `lib/graphql/*`: Pothos builder, context, schema, `types/*` domain modules and the SDL.
+  - `lib/deploy/*`: compose/label/port rendering · `lib/infra/*` - agent client ·
+    `lib/agent/*`: mTLS PKI + generated ts-proto stubs.
+  - `lib/db/*`: Drizzle client + `schema/` (`control-plane`, `auth`, `scheduler`, `columns`).
+  - `lib/templates/*`: the template catalog client · `lib/instrumentation/` - what boot runs.
 - `components/`: UI: `ui/` (shadcn primitives), `layout/`, feature folders.
+- **Tests sit beside the module they test** (`foo.ts` + `foo.test.ts`). `tests/` is only for a
+  guard that reads the whole tree (copy caps, font weight, the lockfile, this layout).
+- **`scripts/`: only commands something runs** - `package.json`, the Dockerfile, CI or a doc
+  names each one. A one-off probe, a benchmark or a rollout helper goes in the ignored `.scratch/`
+  and is never committed; neither are test results, harness output or notes about one machine.
+- **Contributor files live in `.github/`**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
+  `CLA.md`, and the CLA bot's `cla/signatures.json`. Agent docs live in `docs/agents/`, decisions
+  in `docs/adr/`, the user manual in `DeploCloud/docs`.
 
 ## Commands (Bun) & environment
 
 - `bun install` · `bun run dev` · `bun run build` · `bun run lint` (eslint).
 - **Two TypeScripts, on purpose.** `tsc` is 7 (`@typescript/native`); the `typescript` package is
-  the 6.0 API (`@typescript/typescript6`), which typescript-eslint, Next and `font-weight.test.ts`
+  the 6.0 API (`@typescript/typescript6`), which typescript-eslint, Next and `tests/font-weight.test.ts`
   still need. Bump with **Bun 1.4+**: 1.3 resolves that alias onto itself.
 - **Formatting is Prettier, and it is automatic** - `bun run format` / `format:check`. The
   pre-commit hook (`.githooks/pre-commit` → lint-staged, wired by `bun install`) formats what
   you stage, and CI's lint job re-checks it, so **never hand-align code to match a file**: write
   it and let the hook settle the wrapping. `prettier-plugin-tailwindcss` also sorts the classes
   in `className`, `cn()` and `cva()`. Generated output is out of scope (`.prettierignore`:
-  `schema.graphql`, `lib/agent/gen/`, `lib/db/migrations/`), and the one-time sweep that
+  `lib/graphql/schema.graphql`, `lib/agent/gen/`, `lib/db/migrations/`), and the one-time sweep that
   reformatted the tree is listed in `.git-blame-ignore-revs`.
 - **Required env to boot:** `DEPLO_DATABASE_URL` (Postgres - the app **fail-fasts at module
   load** if unset), `DEPLO_SECRET` (≥16 chars; derives every crypto key), `DEPLO_PUBLIC_URL`
@@ -337,7 +355,7 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
     other's types.
   - **Dedupe is now a TEST, not a pin.** The three `@codemirror/*` overrides went in September
     2026 once the tree deduped on its own, and `sharp` + `source-map-js` followed on 8 Oct 2026
-    with the bump to `next@16.3.8`; `lockfile-single-copy.test.ts` fails if a second copy comes
+    with the bump to `next@16.3.8`; `tests/lockfile-single-copy.test.ts` fails if a second copy comes
     back, which a stale override would never have told anyone.
     **Re-check every pin when you bump anything** - the rule is empirical, not historical: drop the
     override, `bun install`, and read `bun audit` (bare, not `--audit-level=high`, or a moderate
@@ -366,7 +384,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   real entrypoint throws outside a Next build, and it is the same shim the test
   runner preloads), and `NODE_TEST_CONTEXT` answers the fail-fast in `lib/db/pg.ts`,
   which throws at module load without a database URL.
-  `schema.graphql` is generated output, **never hand-edit**. No hook runs it; CI's Types job
+  `lib/graphql/schema.graphql` is generated output, **never hand-edit**. No hook runs it; CI's Types job
   regenerates it and fails on any drift.
 - Validation = **Pothos arg requiredness** + hand-rolled cleaners (`cleanName`,
   `normalizeHexColor`, `validateUsername`). Zod is for **schemas a machine reads**: every
@@ -412,8 +430,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     against the same schema via `lib/mcp/execute.ts`, so the gates are literally the same code.
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
-    document against `schema.graphql`, which is what stops a renamed field from silently
-    breaking all 210 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
+    document against `lib/graphql/schema.graphql`, which is what stops a renamed field from silently
+    breaking all 211 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
 
 ## Data & mutations (the security boundary)
 
