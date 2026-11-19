@@ -54,6 +54,7 @@ export async function clusterAnswerRecordSet(
         emptying: Boolean(m.emptying),
         v4: addresses.v4,
         v6: addresses.v6,
+        known: addresses.v6Known,
       };
     }),
   );

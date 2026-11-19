@@ -9,6 +9,8 @@ export interface AnswerServer {
   emptying: boolean;
   v4: string[];
   v6: string[];
+  /** False when its agent could not list its addresses: a stopped server's IPv6 is then unknown. */
+  known?: boolean;
 }
 
 export interface AnswerRecordSet {
@@ -16,6 +18,8 @@ export interface AnswerRecordSet {
   aaaa: string[];
   /** Every address of every server of the cluster, healthy or not: a record naming one still reaches the cluster. */
   members?: string[];
+  /** Every server's addresses were known: only then is an address outside `members` another host's. */
+  complete?: boolean;
 }
 
 /** TTL of each record Deplo writes: a stopped server drops out of answers within a minute. */
@@ -30,6 +34,7 @@ export function answerRecordSet(servers: AnswerServer[]): AnswerRecordSet {
     a: sorted(healthy.flatMap((s) => s.v4.slice(0, 1))),
     aaaa: sorted(healthy.flatMap((s) => s.v6.slice(0, 1))),
     members: sorted(servers.flatMap((s) => [...s.v4, ...s.v6])),
+    complete: servers.every((s) => s.known !== false),
   };
 }
 
@@ -68,7 +73,8 @@ export function checkAnswerRecords(
   const healthy = new Set([...set.a, ...set.aaaa]);
   const answered = [...answers.a, ...answers.aaaa];
   const reaches = members
-    ? answered.every((ip) => members.has(ip) || healthy.has(ip)) &&
+    ? (set.complete === false ||
+        answered.every((ip) => members.has(ip) || healthy.has(ip))) &&
       answered.some((ip) => healthy.has(ip))
     : missing.length === 0 && extra.length === 0;
   return { status: reaches ? "valid" : "misconfigured", missing, extra };
