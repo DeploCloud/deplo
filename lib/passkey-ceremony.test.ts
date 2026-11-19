@@ -153,7 +153,8 @@ test("a ceremony with no user verification is refused at registration", async ()
         body: { response: attestation, name: "No PIN" },
         headers: new Headers({ cookie }),
       }),
-    /did not verify it was you/,
+    // The plugin refuses it first since 1.7.26; requireUserVerified stays as the backstop.
+    /Failed to verify registration/,
   );
   assert.equal(
     (await db.select({ id: passkeyTable.id }).from(passkeyTable)).length,
@@ -363,7 +364,7 @@ test("a sign-in with no user verification is refused", async () => {
         },
         headers: new Headers({ cookie }),
       }),
-    /did not verify it was you/,
+    /Authentication failed/,
     "the guard has to hold on the sign-in path too, not just registration",
   );
 });

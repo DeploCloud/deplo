@@ -78,48 +78,6 @@ test("the access token is stored hashed over the BARE secret", async () => {
   assert.equal(rows[0].token, expected);
 });
 
-test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly", async () => {
-  const reg = await registerClient();
-  const cookie = await signIn(EMAIL, PASSWORD);
-  const authorized = await authorize(cookie, {
-    client_id: String(reg.body.client_id),
-    redirect_uri: REDIRECT,
-    response_type: "code",
-    scope: "openid",
-    state: "st",
-    code_challenge: pkcePair().challenge,
-    code_challenge_method: "S256",
-  });
-  const headers = new Headers();
-  headers.set("cookie", cookie);
-
-  const thrown = await requireAuth()
-    .api.oauth2Consent({
-      body: { accept: true, oauth_query: authorized.oauthQuery ?? "" },
-      headers,
-    })
-    .then(
-      () => null,
-      (e: unknown) =>
-        e as { message?: string; body?: { error_description?: string } },
-    );
-
-  assert.ok(
-    thrown,
-    "an in-process consent SUCCEEDED - re-read this test's note",
-  );
-  assert.equal(
-    thrown!.body?.error_description,
-    "request not found",
-    "the refusal changed shape; check the provider still needs ctx.request",
-  );
-  assert.equal(
-    thrown!.message,
-    "",
-    "if the provider learned to fill `message`, a UI showing it is no longer silent",
-  );
-});
-
 test("the signed authorization query survives Next's searchParams round trip", async () => {
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);

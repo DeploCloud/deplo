@@ -90,9 +90,8 @@ builder.mutationFields((t) => ({
     description:
       "Approve an AI client: mint a personal API token with the chosen " +
       "capabilities and scope, and link it to the client. It cannot grant more " +
-      "than the approver holds. The OAuth handshake itself is then finished by " +
-      "the browser posting to `/api/auth/oauth2/consent` - that endpoint " +
-      "refuses a server-side call, so it cannot be done here. `teamIds` names " +
+      "than the approver holds. The OAuth handshake itself is finished by the " +
+      "browser posting to `/api/auth/oauth2/consent`. `teamIds` names " +
       "the teams the connection may work in, each gated on `manage_mcp` there; " +
       "naming nothing means every team the approver may connect agents to, live.",
     args: {

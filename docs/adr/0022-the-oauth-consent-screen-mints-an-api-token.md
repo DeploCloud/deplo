@@ -149,16 +149,12 @@ brings zero new transitive packages.
   someone mid-flow inside a third-party product.
 - The consent page lives at `app/oauth/consent`, **not** under `app/(auth)` - that layout redirects
   a signed-in user to the dashboard, which is everyone who reaches consent.
-- **Deplo mints; the BROWSER posts the consent.** Not a preference: `POST /oauth2/consent` funnels
-  into the provider's `authorizeEndpoint`, which opens with
-  `if (!ctx.request) throw UNAUTHORIZED("request not found")`, and an in-process
-  `auth.api.*({ body, headers })` call has no `ctx.request` by construction. Calling it from a
-  resolver fails every time, and fails with an `APIError` whose `message` is **empty**, the reason
-  living in `body.error_description`, so a UI showing `e.message` shows an error notification with
-  nothing written inside it. Both halves are pinned by a test that asserts the in-process call is
-  refused, and one that drives register → sign in → authorize → mint → consent → exchange → tool
-  call in production's own order. Anything that reaches `auth.api` from `lib/data/*` on this path is
-  the same bug returning.
+- **Deplo mints; the BROWSER posts the consent.** Until `@better-auth/oauth-provider` 1.7.26 there
+  was no other way: `POST /oauth2/consent` refused an in-process `auth.api.*({ body, headers })`
+  call with `request not found` and an EMPTY `message`, so a UI showing `e.message` showed a blank
+  error. 1.7.26 accepts that call (19 Nov 2026) and the split stays: the page posts the consent
+  first and the mint requires that record (point 6). One test still drives the whole flow in
+  production's own order.
 - **The issuer carries a path, and every document has to say so.** Better Auth builds its issuer as
   `<origin><basePath>`, so Deplo's is `https://host/api/auth` and not the bare origin. RFC 8414 §3.3
   makes a client check the `issuer` it reads back against the identifier it built the discovery URL
