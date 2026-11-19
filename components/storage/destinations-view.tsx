@@ -3,15 +3,8 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { HardDrive, PlugZap, Trash2 } from "lucide-react";
+import { CircleDot, HardDrive, PlugZap, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useCardSelection } from "@/components/shared/use-card-selection";
@@ -22,6 +15,7 @@ import {
   useSelectionShortcuts,
 } from "@/components/shared/card-selection";
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
+import { countBy, inAny } from "@/components/shared/facet-filtering";
 import { OptimisticList } from "@/components/shared/optimistic-list";
 import {
   PendingCards,
@@ -44,6 +38,13 @@ const STATUS_LABELS: Record<DestinationStatus, string> = {
   error: "Error",
   unverified: "Unverified",
 };
+const STATUS_OPTIONS = (Object.keys(STATUS_LABELS) as DestinationStatus[]).map(
+  (s) => ({ value: s, label: STATUS_LABELS[s] }),
+);
+const KIND_OPTIONS = [
+  { value: "server", label: "Server" },
+  { value: "s3", label: "S3 bucket" },
+];
 
 export function DestinationsView({
   destinations,
@@ -56,8 +57,8 @@ export function DestinationsView({
 }) {
   const { pending } = usePendingCreate();
   const [query, setQuery] = React.useState("");
-  const [kind, setKind] = React.useState<"all" | "server" | "s3">("all");
-  const [status, setStatus] = React.useState<DestinationStatus | "all">("all");
+  const [kinds, setKinds] = React.useState<string[]>([]);
+  const [statuses, setStatuses] = React.useState<string[]>([]);
   const [view, setView] = React.useState<ListView>("grid");
   const [live, setLive] = React.useState<Record<string, Live>>({});
   const router = useRouter();
@@ -90,8 +91,8 @@ export function DestinationsView({
   const fresh = destinations.map((d) => ({ ...d, ...live[d.id] }));
   const q = query.trim().toLowerCase();
   const filtered = fresh.filter((d) => {
-    if (kind !== "all" && d.kind !== kind) return false;
-    if (status !== "all" && d.status !== status) return false;
+    if (!inAny(kinds, [d.kind])) return false;
+    if (!inAny(statuses, [d.status])) return false;
     if (!q) return true;
     return [d.name, d.serverName, d.bucket, d.endpoint, d.resolvedPath].some(
       (v) => v?.toLowerCase().includes(q),
@@ -144,52 +145,30 @@ export function DestinationsView({
         query={query}
         onQuery={setQuery}
         placeholder="Search destinations"
-        filterSheet={{
-          active: Number(kind !== "all") + Number(status !== "all"),
-          onClear: () => {
-            setKind("all");
-            setStatus("all");
+        facets={[
+          {
+            id: "kind",
+            label: "Kind",
+            icon: HardDrive,
+            options: KIND_OPTIONS,
+            values: kinds,
+            counts: countBy(fresh, (d) => d.kind),
+            onChange: setKinds,
           },
-        }}
+          {
+            id: "status",
+            label: "Status",
+            icon: CircleDot,
+            options: STATUS_OPTIONS,
+            values: statuses,
+            counts: countBy(fresh, (d) => d.status),
+            onChange: setStatuses,
+          },
+        ]}
         view={view}
         onView={setView}
         listLabel="Table view"
         action={createButton}
-        filters={
-          <>
-            <Select
-              value={kind}
-              onValueChange={(v) => setKind(v as typeof kind)}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Kind" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All kinds</SelectItem>
-                <SelectItem value="server">Server</SelectItem>
-                <SelectItem value="s3">S3 bucket</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={status}
-              onValueChange={(v) => setStatus(v as typeof status)}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {(Object.keys(STATUS_LABELS) as DestinationStatus[]).map(
-                  (s) => (
-                    <SelectItem key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </SelectItem>
-                  ),
-                )}
-              </SelectContent>
-            </Select>
-          </>
-        }
       />
 
       <SelectionCanvas canvasRef={canvasRef} marqueeRef={marqueeRef}>

@@ -16,7 +16,10 @@ const DATE_WINDOWS: { value: string; label: string; within: number }[] = [
   { value: "30d", label: "Last 30 days", within: 30 * DAY },
 ];
 const OLDER = "older";
-const OLDER_LABEL = "More than 30 days ago";
+const DATE_OPTIONS = [
+  ...DATE_WINDOWS.map((w) => ({ value: w.value, label: w.label })),
+  { value: OLDER, label: "More than 30 days ago" },
+];
 
 export function matchesDateWindow(
   createdAt: string,
@@ -54,6 +57,34 @@ export function searchHaystack(d: DeploymentRow): string {
 
 type SortDir = "newest" | "oldest";
 
+export type DeploymentFacet = "server" | "app" | "status" | "date";
+type Picked = Record<DeploymentFacet, string[]>;
+const NONE: Picked = { server: [], app: [], status: [], date: [] };
+
+// The server sweeps one app, server and status at most; more than one of any goes by ids.
+export function serverSweep(
+  picked: Pick<Picked, "app" | "server" | "status">,
+  scopeAppId?: string,
+): {
+  appId: string | null;
+  serverId: string | null;
+  status: string | null;
+} | null {
+  if (
+    picked.app.length > 1 ||
+    picked.server.length > 1 ||
+    picked.status.length > 1
+  )
+    return null;
+  return {
+    appId: scopeAppId ?? picked.app[0] ?? null,
+    serverId: picked.server[0] ?? null,
+    status: picked.status[0] ?? null,
+  };
+}
+
+const plural = (n: number, noun: string) => (n === 1 ? noun : `${noun}s`);
+
 export type DeploymentFilters = ReturnType<typeof useDeploymentFilters>;
 
 export function useDeploymentFilters({
@@ -67,11 +98,7 @@ export function useDeploymentFilters({
   scopeAppId?: string;
   showServer: boolean;
 }) {
-  const [serverFilter, setServerFilter] = React.useState<string | null>(null);
-  const [appFilter, setAppFilter] = React.useState<string | null>(null);
-  const [statusFilter, setStatusFilter] =
-    React.useState<DeploymentStatus | null>(null);
-  const [dateFilter, setDateFilter] = React.useState<string | null>(null);
+  const [picked, setPicked] = React.useState<Picked>(NONE);
   const [now] = React.useState(() => Date.now());
   const [query, setQuery] = React.useState("");
   const [sortDir, setSortDir] = React.useState<SortDir>("newest");
@@ -87,26 +114,38 @@ export function useDeploymentFilters({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [deployments]);
   const appOptions = React.useMemo(() => {
-    const m = new Map<string, string>();
+    const m = new Map<string, { name: string; logo?: string | null }>();
     for (const d of deployments)
-      if (!m.has(d.appId)) m.set(d.appId, d.serviceName || d.appId);
+      if (!m.has(d.appId))
+        m.set(d.appId, { name: d.serviceName || d.appId, logo: d.appLogo });
     return [...m]
-      .map(([id, name]) => ({ id, name }))
+      .map(([id, v]) => ({ id, ...v }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [deployments]);
-  const statusOptions = React.useMemo(() => {
-    const present = new Set(deployments.map((d) => d.status));
-    return STATUS_ORDER.filter((s) => present.has(s));
-  }, [deployments]);
-  const { dateOptions, dateMatches } = React.useMemo(() => {
-    const matches = (d: DeploymentRow, value: string) =>
-      matchesDateWindow(d.createdAt, value, now);
-    const options = [
-      ...DATE_WINDOWS.map((w) => ({ value: w.value, label: w.label })),
-      { value: OLDER, label: OLDER_LABEL },
-    ].filter((o) => deployments.some((d) => matches(d, o.value)));
-    return { dateOptions: options, dateMatches: matches };
-  }, [deployments, now]);
+  const dateMatches = React.useCallback(
+    (d: DeploymentRow, value: string) =>
+      matchesDateWindow(d.createdAt, value, now),
+    [now],
+  );
+
+  const counts = React.useMemo(() => {
+    const out: Record<DeploymentFacet, Record<string, number>> = {
+      server: {},
+      app: {},
+      status: {},
+      date: {},
+    };
+    const bump = (k: DeploymentFacet, v: string) =>
+      (out[k][v] = (out[k][v] ?? 0) + 1);
+    for (const d of deployments) {
+      if (d.serverId) bump("server", d.serverId);
+      bump("app", d.appId);
+      bump("status", d.status);
+      for (const o of DATE_OPTIONS)
+        if (dateMatches(d, o.value)) bump("date", o.value);
+    }
+    return out;
+  }, [deployments, dateMatches]);
 
   const haystacks = React.useMemo(() => {
     const m = new Map<string, string>();
@@ -118,45 +157,37 @@ export function useDeploymentFilters({
     [query],
   );
 
-  const effectiveServerFilter =
-    serverFilter && serverOptions.some((s) => s.id === serverFilter)
-      ? serverFilter
-      : null;
-  const effectiveAppFilter =
-    appFilter && appOptions.some((s) => s.id === appFilter) ? appFilter : null;
-  const effectiveStatusFilter =
-    statusFilter && statusOptions.includes(statusFilter) ? statusFilter : null;
-  const effectiveDateFilter =
-    dateFilter && dateOptions.some((o) => o.value === dateFilter)
-      ? dateFilter
-      : null;
-  const hasClientNarrower = terms.length > 0 || effectiveDateFilter != null;
+  // A server or app whose rows are all gone leaves the list, so it filters nothing either.
+  const effective = React.useMemo<Picked>(
+    () => ({
+      ...picked,
+      server: picked.server.filter((v) =>
+        serverOptions.some((s) => s.id === v),
+      ),
+      app: picked.app.filter((v) => appOptions.some((s) => s.id === v)),
+    }),
+    [picked, serverOptions, appOptions],
+  );
+  const sweep = serverSweep(effective, scopeAppId);
+  const hasClientNarrower =
+    terms.length > 0 || effective.date.length > 0 || sweep === null;
   const hasFilter =
-    effectiveServerFilter != null ||
-    effectiveAppFilter != null ||
-    effectiveStatusFilter != null ||
-    hasClientNarrower;
+    terms.length > 0 || Object.values(effective).some((v) => v.length > 0);
 
   const visible = React.useMemo(
     () =>
       remaining.filter(
         (d) =>
-          (!effectiveServerFilter || d.serverId === effectiveServerFilter) &&
-          (!effectiveAppFilter || d.appId === effectiveAppFilter) &&
-          (!effectiveStatusFilter || d.status === effectiveStatusFilter) &&
-          (!effectiveDateFilter || dateMatches(d, effectiveDateFilter)) &&
+          (effective.server.length === 0 ||
+            effective.server.includes(d.serverId ?? "")) &&
+          (effective.app.length === 0 || effective.app.includes(d.appId)) &&
+          (effective.status.length === 0 ||
+            effective.status.includes(d.status)) &&
+          (effective.date.length === 0 ||
+            effective.date.some((v) => dateMatches(d, v))) &&
           terms.every((t) => haystacks.get(d.id)?.includes(t)),
       ),
-    [
-      remaining,
-      effectiveServerFilter,
-      effectiveAppFilter,
-      effectiveStatusFilter,
-      effectiveDateFilter,
-      dateMatches,
-      terms,
-      haystacks,
-    ],
+    [remaining, effective, dateMatches, terms, haystacks],
   );
 
   const sorted = React.useMemo(
@@ -181,29 +212,31 @@ export function useDeploymentFilters({
     // `shown` is a dep on purpose: a sentinel still in view never crosses the threshold again.
   }, [hasMore, shown]);
 
-  const sweepAppId = scopeAppId ?? effectiveAppFilter ?? null;
-  const sweepServerId = effectiveServerFilter ?? null;
-  const sweepStatus = effectiveStatusFilter ?? null;
-  const activeAppName = effectiveAppFilter
-    ? (appOptions.find((s) => s.id === effectiveAppFilter)?.name ?? null)
+  const nameOf = (opts: { id: string; name: string }[], id: string) =>
+    opts.find((o) => o.id === id)?.name ?? id;
+  const appNames = effective.app.map((id) => nameOf(appOptions, id));
+  const serverNames = effective.server.map((id) => nameOf(serverOptions, id));
+  const appPart = appNames.length
+    ? `${plural(appNames.length, "app")} ${appNames.join(", ")}`
     : null;
-  const activeServerName = effectiveServerFilter
-    ? (serverOptions.find((s) => s.id === effectiveServerFilter)?.name ?? null)
+  const serverPart = serverNames.length
+    ? `${plural(serverNames.length, "server")} ${serverNames.join(", ")}`
     : null;
   const scopeWho = scopeAppId
     ? "this app"
-    : activeAppName && activeServerName
-      ? `app ${activeAppName} on server ${activeServerName}`
-      : activeAppName
-        ? `app ${activeAppName}`
-        : activeServerName
-          ? `server ${activeServerName}`
-          : "all your apps";
+    : appPart && serverPart
+      ? `${appPart} on ${serverPart}`
+      : (appPart ?? serverPart ?? "all your apps");
   const scopeQualifiers = [
-    effectiveStatusFilter ? STATUS_LABELS[effectiveStatusFilter] : null,
-    effectiveDateFilter
-      ? (dateOptions.find((o) => o.value === effectiveDateFilter)?.label ??
-        null)
+    effective.status.length
+      ? effective.status
+          .map((s) => STATUS_LABELS[s as DeploymentStatus])
+          .join(" or ")
+      : null,
+    effective.date.length
+      ? effective.date
+          .map((v) => DATE_OPTIONS.find((o) => o.value === v)?.label ?? v)
+          .join(" or ")
       : null,
     terms.length > 0 ? `matching "${query.trim()}"` : null,
   ].filter(Boolean);
@@ -212,20 +245,8 @@ export function useDeploymentFilters({
       ? `${scopeWho} (${scopeQualifiers.join(", ")})`
       : scopeWho;
 
-  function applyServerFilter(v: string) {
-    setServerFilter(v === ALL ? null : v);
-    setShown(PAGE_SIZE);
-  }
-  function applyAppFilter(v: string) {
-    setAppFilter(v === ALL ? null : v);
-    setShown(PAGE_SIZE);
-  }
-  function applyStatusFilter(v: string) {
-    setStatusFilter(v === ALL ? null : (v as DeploymentStatus));
-    setShown(PAGE_SIZE);
-  }
-  function applyDateFilter(v: string) {
-    setDateFilter(v === ALL ? null : v);
+  function applyFacet(key: DeploymentFacet, values: string[]) {
+    setPicked((p) => ({ ...p, [key]: values }));
     setShown(PAGE_SIZE);
   }
   function applyQuery(v: string) {
@@ -236,60 +257,33 @@ export function useDeploymentFilters({
     setSortDir(v as SortDir);
     setShown(PAGE_SIZE);
   }
-  function clearFilters() {
-    setServerFilter(null);
-    setAppFilter(null);
-    setStatusFilter(null);
-    setDateFilter(null);
-    setQuery("");
+  function clearFacets() {
+    setPicked(NONE);
     setShown(PAGE_SIZE);
   }
-
-  const showServerFilter = showServer && serverOptions.length >= 1;
-  const showAppFilter = showServer && appOptions.length >= 2;
-  const showStatusFilter = statusOptions.length >= 2;
-  const showDateFilter = dateOptions.length >= 2;
-  const showSearch = deployments.length > 1;
-  const showSort = deployments.length > 1;
-  const showNarrowers =
-    showServerFilter || showAppFilter || showStatusFilter || showDateFilter;
-  const showFilters = showNarrowers || showSearch || showSort;
 
   return {
     query,
     sortDir,
-    serverOptions,
-    appOptions,
-    statusOptions,
-    dateOptions,
-    effectiveServerFilter,
-    effectiveAppFilter,
-    effectiveStatusFilter,
-    effectiveDateFilter,
+    statusOptions: STATUS_ORDER,
+    dateOptions: DATE_OPTIONS,
+    serverOptions: showServer ? serverOptions : [],
+    appOptions: showServer ? appOptions : [],
+    counts,
+    picked: effective,
     hasClientNarrower,
     hasFilter,
     visible,
     paged,
     hasMore,
     sentinelRef,
-    sweepAppId,
-    sweepServerId,
-    sweepStatus,
+    sweepAppId: sweep?.appId ?? null,
+    sweepServerId: sweep?.serverId ?? null,
+    sweepStatus: sweep?.status ?? null,
     scopeText,
-    applyServerFilter,
-    applyAppFilter,
-    applyStatusFilter,
-    applyDateFilter,
+    applyFacet,
     applyQuery,
     applySort,
-    clearFilters,
-    showServerFilter,
-    showAppFilter,
-    showStatusFilter,
-    showDateFilter,
-    showSearch,
-    showSort,
-    showNarrowers,
-    showFilters,
+    clearFacets,
   };
 }

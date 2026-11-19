@@ -84,7 +84,6 @@ export function DeploymentsTable({
     sweepAppId,
     sweepServerId,
     sweepStatus,
-    showFilters,
   } = filters;
   const openDeployment = useOpenDeployment();
 
@@ -224,44 +223,49 @@ export function DeploymentsTable({
       inert={loading || undefined}
       aria-busy={loading || undefined}
     >
-      {(header || actions || showStopAll || showDeleteAll) && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {(header || actions) && (
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">{header}</div>
-          {(actions || showStopAll || showDeleteAll) && (
+          {actions && (
             <Bone box loading={loading}>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {showStopAll && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCancelAllOpen(true)}
-                  >
-                    <CircleStop className="size-4" />
-                    Stop all builds
-                    <span className="text-muted-foreground">
-                      ({inProgressCount})
-                    </span>
-                  </Button>
-                )}
-                {showDeleteAll && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteAllOpen(true)}
-                  >
-                    <Trash2 className="size-4" />
-                    Delete all
-                  </Button>
-                )}
-                {actions}
-              </div>
+              <div className="flex shrink-0 items-center gap-2">{actions}</div>
             </Bone>
           )}
         </div>
       )}
 
-      {showFilters && <DeploymentFilterBar filters={filters} />}
+      <DeploymentFilterBar
+        filters={filters}
+        action={
+          (showStopAll || showDeleteAll) && (
+            <Bone box loading={loading}>
+              <div className="flex items-center gap-2">
+                {showStopAll && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setCancelAllOpen(true)}
+                  >
+                    <CircleStop />
+                    Stop all builds
+                    <span className="grid h-5 min-w-5 place-items-center rounded-full bg-warning-wash-strong px-1.5 text-xs text-warning tabular-nums">
+                      {inProgressCount}
+                    </span>
+                  </Button>
+                )}
+                {showDeleteAll && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => setDeleteAllOpen(true)}
+                  >
+                    <Trash2 />
+                    Delete all
+                  </Button>
+                )}
+              </div>
+            </Bone>
+          )
+        }
+      />
 
       <Card className="overflow-hidden p-0">
         <Table className="max-md:block max-md:[&_td]:whitespace-normal">

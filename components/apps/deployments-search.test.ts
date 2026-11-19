@@ -5,6 +5,7 @@ import type { DeploymentRow } from "./deployments-table/deployment-row";
 import {
   matchesDateWindow,
   searchHaystack,
+  serverSweep,
 } from "./deployments-table/use-deployment-filters";
 
 const row: DeploymentRow = {
@@ -57,4 +58,24 @@ test("the Created windows split at their edge, and 'older' is the complement", (
   assert.ok(!matchesDateWindow(at(24 * 31), "30d", now));
   assert.ok(matchesDateWindow(at(24 * 31), "older", now));
   assert.ok(!matchesDateWindow(at(1), "older", now));
+});
+
+test("Delete all sweeps on the server only while each filter holds one value", () => {
+  assert.deepEqual(
+    serverSweep({ app: [], server: ["srv_1"], status: ["error"] }),
+    {
+      appId: null,
+      serverId: "srv_1",
+      status: "error",
+    },
+  );
+  assert.equal(
+    serverSweep({ app: [], server: [], status: ["error", "canceled"] }),
+    null,
+  );
+  assert.equal(serverSweep({ app: ["a", "b"], server: [], status: [] }), null);
+  assert.equal(
+    serverSweep({ app: [], server: [], status: [] }, "prj_1")?.appId,
+    "prj_1",
+  );
 });

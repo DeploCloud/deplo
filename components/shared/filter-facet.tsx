@@ -1,11 +1,7 @@
 "use client";
 
-import * as React from "react";
-
-import { FacetCombobox } from "@/components/env/env-filters/facet-combobox";
 import type { EnvFacet, FacetOption } from "@/components/env/env-filters/types";
 import { useSearchParams } from "@/lib/nav";
-import { cn } from "@/lib/utils";
 
 const MATCH_ALL = () => true;
 
@@ -27,43 +23,6 @@ export function listFacet(
     persistent: true,
     searchable: true,
   };
-}
-
-export function FilterFacet({
-  id,
-  label,
-  allLabel,
-  icon,
-  options,
-  values,
-  counts,
-  onChange,
-  className,
-}: {
-  id: string;
-  label: string;
-  allLabel: string;
-  icon: EnvFacet<never>["icon"];
-  options: FacetOption[];
-  values: string[];
-  counts?: Record<string, number>;
-  onChange: (values: string[]) => void;
-  className?: string;
-}) {
-  const facet = React.useMemo(
-    () => listFacet(id, label, allLabel, icon, options),
-    [id, label, allLabel, icon, options],
-  );
-  return (
-    <div className={cn("flex min-w-0 sm:w-40", className)}>
-      <FacetCombobox
-        facet={facet}
-        values={values}
-        counts={counts}
-        onChange={onChange}
-      />
-    </div>
-  );
 }
 
 // Filters kept in the address (?team=a,b), so a shared link opens already narrowed.

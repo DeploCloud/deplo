@@ -17,7 +17,7 @@ import { AppLogo } from "@/components/shared/project-logo";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { StatusIndicator } from "@/components/apps/app-status-dot/status-renderer";
 import { DB_LOGOS, DB_NAMES } from "@/components/storage/db-engines";
-import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
+import { useUrlFacets } from "@/components/shared/filter-facet";
 import { countBy, teamFacetOptions } from "@/components/shared/facet-filtering";
 import {
   Table,
@@ -181,40 +181,36 @@ export function ServerWorkloads({
         query={query}
         onQuery={setQuery}
         placeholder="Search apps or teams"
-        filters={
-          <>
-            <FilterFacet
-              id="team"
-              label="Team"
-              allLabel="Any team"
-              icon={Users}
-              options={teams.options}
-              counts={teams.counts}
-              values={picked.team}
-              onChange={(v) => setPicked("team", v)}
-            />
-            <FilterFacet
-              id="status"
-              label="Status"
-              allLabel="Any status"
-              icon={CircleDot}
-              options={STATUS_OPTIONS}
-              counts={countBy(list, (w) => statusGroup(w) ?? "")}
-              values={picked.status}
-              onChange={(v) => setPicked("status", v)}
-            />
-            <FilterFacet
-              id="type"
-              label="Type"
-              allLabel="Any type"
-              icon={Shapes}
-              options={KIND_OPTIONS}
-              counts={countBy(list, (w) => w.kind)}
-              values={picked.type}
-              onChange={(v) => setPicked("type", v)}
-            />
-          </>
-        }
+        facets={[
+          {
+            id: "team",
+            label: "Team",
+            icon: Users,
+            options: teams.options,
+            counts: teams.counts,
+            values: picked.team,
+            onChange: (v) => setPicked("team", v),
+            searchable: true,
+          },
+          {
+            id: "status",
+            label: "Status",
+            icon: CircleDot,
+            options: STATUS_OPTIONS,
+            counts: countBy(list, (w) => statusGroup(w) ?? ""),
+            values: picked.status,
+            onChange: (v) => setPicked("status", v),
+          },
+          {
+            id: "type",
+            label: "Type",
+            icon: Shapes,
+            options: KIND_OPTIONS,
+            counts: countBy(list, (w) => w.kind),
+            values: picked.type,
+            onChange: (v) => setPicked("type", v),
+          },
+        ]}
       />
 
       <div className="overflow-x-auto rounded-xl border border-border">

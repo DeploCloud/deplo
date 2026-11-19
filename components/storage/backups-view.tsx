@@ -3,15 +3,16 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { CalendarClock, Ban, Play, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Ban,
+  Boxes,
+  CalendarClock,
+  CircleDot,
+  HardDrive,
+  Play,
+  Trash2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -29,6 +30,7 @@ import {
   useSelectionShortcuts,
 } from "@/components/shared/card-selection";
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
+import { countBy, inAny } from "@/components/shared/facet-filtering";
 import { OptimisticList } from "@/components/shared/optimistic-list";
 import { BackupRow } from "@/components/storage/backup-row";
 import { BackupCard } from "@/components/storage/backup-card";
@@ -36,14 +38,20 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups/schedules";
 import type { DestinationOption } from "@/lib/data/destinations/dto";
 
-const ALL = "__all__";
-
 const STATUS_LABELS: Record<string, string> = {
   success: "Succeeded",
   failed: "Failed",
   running: "Running",
   never: "Never run",
 };
+const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+const TARGET_OPTIONS = [
+  { value: "app", label: "Apps" },
+  { value: "database", label: "Databases" },
+];
 
 export function BackupsView({
   backups,
@@ -61,17 +69,17 @@ export function BackupsView({
   createButton: React.ReactNode;
 }) {
   const [query, setQuery] = React.useState("");
-  const [target, setTarget] = React.useState<"all" | "app" | "database">("all");
-  const [status, setStatus] = React.useState<string>("all");
-  const [destination, setDestination] = React.useState<string>(ALL);
+  const [targets, setTargets] = React.useState<string[]>([]);
+  const [statuses, setStatuses] = React.useState<string[]>([]);
+  const [picked, setPicked] = React.useState<string[]>([]);
   const [view, setView] = React.useState<ListView>("grid");
   const router = useRouter();
 
   const q = query.trim().toLowerCase();
   const filtered = backups.filter((b) => {
-    if (target !== "all" && b.targetKind !== target) return false;
-    if (status !== "all" && b.lastStatus !== status) return false;
-    if (destination !== ALL && b.destinationId !== destination) return false;
+    if (!inAny(targets, [b.targetKind])) return false;
+    if (!inAny(statuses, [b.lastStatus])) return false;
+    if (!inAny(picked, [b.destinationId])) return false;
     if (!q) return true;
     return [b.name, b.serviceName, b.databaseName, b.destinationName].some(
       (v) => v?.toLowerCase().includes(q),
@@ -126,64 +134,40 @@ export function BackupsView({
         query={query}
         onQuery={setQuery}
         placeholder="Search backups"
-        filterSheet={{
-          active:
-            Number(target !== "all") +
-            Number(status !== "all") +
-            Number(destination !== ALL),
-          onClear: () => {
-            setTarget("all");
-            setStatus("all");
-            setDestination(ALL);
+        facets={[
+          {
+            id: "target",
+            label: "Target",
+            icon: Boxes,
+            options: TARGET_OPTIONS,
+            values: targets,
+            counts: countBy(backups, (b) => b.targetKind),
+            onChange: setTargets,
           },
-        }}
+          {
+            id: "status",
+            label: "Last run",
+            icon: CircleDot,
+            options: STATUS_OPTIONS,
+            values: statuses,
+            counts: countBy(backups, (b) => b.lastStatus),
+            onChange: setStatuses,
+          },
+          {
+            id: "destination",
+            label: "Destination",
+            icon: HardDrive,
+            options: destinations.map((d) => ({ value: d.id, label: d.name })),
+            values: picked,
+            counts: countBy(backups, (b) => b.destinationId),
+            onChange: setPicked,
+            searchable: true,
+          },
+        ]}
         view={view}
         onView={setView}
         listLabel="Table view"
         action={createButton}
-        filters={
-          <>
-            <Select
-              value={target}
-              onValueChange={(v) => setTarget(v as typeof target)}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Target" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All targets</SelectItem>
-                <SelectItem value="app">Apps</SelectItem>
-                <SelectItem value="database">Databases</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Last run" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any last run</SelectItem>
-                {Object.entries(STATUS_LABELS).map(([id, label]) => (
-                  <SelectItem key={id} value={id}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={destination} onValueChange={setDestination}>
-              <SelectTrigger className="w-full sm:w-44">
-                <SelectValue placeholder="Destination" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All destinations</SelectItem>
-                {destinations.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </>
-        }
       />
 
       <SelectionCanvas canvasRef={canvasRef} marqueeRef={marqueeRef}>

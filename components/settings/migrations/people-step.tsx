@@ -7,7 +7,6 @@ import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FilterFacet } from "@/components/shared/filter-facet";
 import { toggleValue } from "@/components/env/env-filters/facet-options";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
@@ -89,21 +88,18 @@ export function PeopleStep({
               query={query}
               onQuery={setQuery}
               placeholder="Search people"
-              filters={
-                teams.length > 1 && (
-                  <FilterFacet
-                    id="team"
-                    label="Team"
-                    allLabel="Any team"
-                    icon={Users}
-                    options={teamOptions}
-                    counts={teamCounts}
-                    values={picked}
-                    onChange={setPicked}
-                    className="sm:w-44"
-                  />
-                )
-              }
+              facets={[
+                {
+                  id: "team",
+                  label: "Team",
+                  icon: Users,
+                  options: teamOptions,
+                  counts: teamCounts,
+                  values: picked,
+                  onChange: setPicked,
+                  searchable: true,
+                },
+              ]}
               action={
                 anyLink && (
                   <div className="flex gap-2">

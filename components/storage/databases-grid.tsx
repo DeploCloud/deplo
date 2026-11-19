@@ -22,6 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  CircleDot,
   GripVertical,
   Database,
   Play,
@@ -30,15 +31,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { scopeListenersToSubtree } from "@/lib/portal-event-scope";
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
+import { countBy, inAny } from "@/components/shared/facet-filtering";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useCardSelection } from "@/components/shared/use-card-selection";
@@ -63,7 +58,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { reorderBlock } from "@/lib/reorder-block";
 import { cn } from "@/lib/utils";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
-import type { DatabaseStatus, DatabaseType } from "@/lib/types/database";
+import type { DatabaseStatus } from "@/lib/types/database";
 import type { EnvironmentOption } from "./environment-combobox";
 
 type View = ListView;
@@ -101,8 +96,8 @@ export function DatabasesGrid({
   const router = useRouter();
   const { pending } = usePendingCreate();
   const [query, setQuery] = React.useState("");
-  const [engine, setEngine] = React.useState<DatabaseType | "all">("all");
-  const [status, setStatus] = React.useState<DatabaseStatus | "all">("all");
+  const [engines, setEngines] = React.useState<string[]>([]);
+  const [statuses, setStatuses] = React.useState<string[]>([]);
   const [view, setView] = React.useState<View>("grid");
 
   const [order, setOrder] = React.useState<string[]>(() =>
@@ -118,10 +113,10 @@ export function DatabasesGrid({
     .filter(Boolean) as DatabaseDTO[];
 
   const q = query.trim().toLowerCase();
-  const filtering = q !== "" || engine !== "all" || status !== "all";
+  const filtering = q !== "" || engines.length > 0 || statuses.length > 0;
   const filtered = ordered.filter((d) => {
-    if (engine !== "all" && d.type !== engine) return false;
-    if (status !== "all" && d.status !== status) return false;
+    if (!inAny(engines, [d.type])) return false;
+    if (!inAny(statuses, [d.status])) return false;
     if (!q) return true;
     return (
       d.name.toLowerCase().includes(q) ||
@@ -217,10 +212,14 @@ export function DatabasesGrid({
         <DatabasesToolbar
           query={query}
           onQuery={setQuery}
-          engine={engine}
-          onEngine={setEngine}
-          status={status}
-          onStatus={setStatus}
+          engines={engines}
+          onEngines={setEngines}
+          statuses={statuses}
+          onStatuses={setStatuses}
+          counts={{
+            engine: countBy(databases, (d) => d.type),
+            status: countBy(databases, (d) => d.status),
+          }}
           view={view}
           onView={setView}
           createButton={createButton}
@@ -536,23 +535,34 @@ function SortableCard({
   );
 }
 
+const ENGINE_OPTIONS = DB_TYPES.map((t) => ({
+  value: t.id,
+  label: t.name,
+  leading: <DatabaseLogo type={t.id} size={16} />,
+}));
+const STATUS_OPTIONS = (Object.keys(STATUS_LABELS) as DatabaseStatus[]).map(
+  (s) => ({ value: s, label: STATUS_LABELS[s] }),
+);
+
 export function DatabasesToolbar({
   query,
   onQuery,
-  engine,
-  onEngine,
-  status,
-  onStatus,
+  engines,
+  onEngines,
+  statuses,
+  onStatuses,
+  counts,
   view,
   onView,
   createButton,
 }: {
   query: string;
   onQuery: (v: string) => void;
-  engine: DatabaseType | "all";
-  onEngine: (v: DatabaseType | "all") => void;
-  status: DatabaseStatus | "all";
-  onStatus: (v: DatabaseStatus | "all") => void;
+  engines: string[];
+  onEngines: (v: string[]) => void;
+  statuses: string[];
+  onStatuses: (v: string[]) => void;
+  counts?: { engine: Record<string, number>; status: Record<string, number> };
   view: View;
   onView: (v: View) => void;
   createButton?: React.ReactNode;
@@ -562,55 +572,29 @@ export function DatabasesToolbar({
       query={query}
       onQuery={onQuery}
       placeholder="Search databases"
-      filterSheet={{
-        active: Number(engine !== "all") + Number(status !== "all"),
-        onClear: () => {
-          onEngine("all");
-          onStatus("all");
+      facets={[
+        {
+          id: "engine",
+          label: "Engine",
+          icon: Database,
+          options: ENGINE_OPTIONS,
+          values: engines,
+          counts: counts?.engine,
+          onChange: onEngines,
         },
-      }}
+        {
+          id: "status",
+          label: "Status",
+          icon: CircleDot,
+          options: STATUS_OPTIONS,
+          values: statuses,
+          counts: counts?.status,
+          onChange: onStatuses,
+        },
+      ]}
       view={view}
       onView={onView}
       action={createButton}
-      filters={
-        <>
-          <Select
-            value={engine}
-            onValueChange={(v) => onEngine(v as DatabaseType | "all")}
-          >
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue placeholder="Engine" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All engines</SelectItem>
-              {DB_TYPES.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  <span className="flex items-center gap-2">
-                    <DatabaseLogo type={t.id} size={16} />
-                    {t.name}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={status}
-            onValueChange={(v) => onStatus(v as DatabaseStatus | "all")}
-          >
-            <SelectTrigger className="w-full sm:w-36">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {(Object.keys(STATUS_LABELS) as DatabaseStatus[]).map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </>
-      }
     />
   );
 }

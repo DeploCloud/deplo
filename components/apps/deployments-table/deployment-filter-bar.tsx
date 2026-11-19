@@ -1,8 +1,13 @@
 "use client";
 
-import { ListFilter, ArrowUpDown, CalendarClock, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import type * as React from "react";
+import {
+  AppWindow,
+  ArrowUpDown,
+  CalendarClock,
+  CircleDot,
+  Server,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -10,181 +15,93 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { FilterSheet } from "@/components/shared/filter-sheet";
+import { ListToolbar } from "@/components/shared/list-toolbar";
+import { AppLogo } from "@/components/shared/project-logo";
 import { STATUS_LABELS } from "./deployment-status";
-import { ALL, type DeploymentFilters } from "./use-deployment-filters";
+import type { DeploymentFilters } from "./use-deployment-filters";
 
 export function DeploymentFilterBar({
   filters,
+  action,
 }: {
   filters: DeploymentFilters;
+  action?: React.ReactNode;
 }) {
-  const {
-    query,
-    sortDir,
-    serverOptions,
-    appOptions,
-    statusOptions,
-    dateOptions,
-    effectiveServerFilter,
-    effectiveAppFilter,
-    effectiveStatusFilter,
-    effectiveDateFilter,
-    hasFilter,
-    applyServerFilter,
-    applyAppFilter,
-    applyStatusFilter,
-    applyDateFilter,
-    applyQuery,
-    applySort,
-    clearFilters,
-    showServerFilter,
-    showAppFilter,
-    showStatusFilter,
-    showDateFilter,
-    showSearch,
-    showSort,
-    showNarrowers,
-  } = filters;
-
-  const serverSelect = showServerFilter && (
-    <Select
-      value={effectiveServerFilter ?? ALL}
-      onValueChange={applyServerFilter}
-    >
-      <SelectTrigger className="w-[170px]" aria-label="Filter by server">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>All servers</SelectItem>
-        {serverOptions.map((s) => (
-          <SelectItem key={s.id} value={s.id}>
-            {s.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-  const appSelect = showAppFilter && (
-    <Select value={effectiveAppFilter ?? ALL} onValueChange={applyAppFilter}>
-      <SelectTrigger className="w-[180px]" aria-label="Filter by app">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>All apps</SelectItem>
-        {appOptions.map((s) => (
-          <SelectItem key={s.id} value={s.id}>
-            {s.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-  const statusSelect = showStatusFilter && (
-    <Select
-      value={effectiveStatusFilter ?? ALL}
-      onValueChange={applyStatusFilter}
-    >
-      <SelectTrigger className="w-[150px]" aria-label="Filter by status">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>All statuses</SelectItem>
-        {statusOptions.map((s) => (
-          <SelectItem key={s} value={s}>
-            {STATUS_LABELS[s]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-  const dateSelect = showDateFilter && (
-    <Select value={effectiveDateFilter ?? ALL} onValueChange={applyDateFilter}>
-      <SelectTrigger className="w-[205px]" aria-label="Filter by created date">
-        <span className="flex! items-center gap-2">
-          <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
-          <SelectValue />
-        </span>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>Any time</SelectItem>
-        {dateOptions.map((o) => (
-          <SelectItem key={o.value} value={o.value}>
-            {o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-  const sortSelect = showSort && (
-    <Select value={sortDir} onValueChange={applySort}>
-      <SelectTrigger className="w-[150px]" aria-label="Sort by created date">
-        <span className="flex! items-center gap-2">
-          <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-          <SelectValue />
-        </span>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="newest">Newest first</SelectItem>
-        <SelectItem value="oldest">Oldest first</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-  const active = [
-    effectiveServerFilter,
-    effectiveAppFilter,
-    effectiveStatusFilter,
-    effectiveDateFilter,
-  ].filter((v) => v != null && v !== ALL).length;
-
+  const { picked, counts, applyFacet } = filters;
   return (
-    <div className="flex min-h-9 flex-wrap items-center gap-2 max-md:flex-nowrap">
-      {showSearch && (
-        <div className="relative w-full min-w-0 max-md:flex-1 sm:w-64">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => applyQuery(e.target.value)}
-            placeholder="Search deployments"
-            aria-label="Search deployments"
-            className="h-9 pl-9"
-          />
-        </div>
-      )}
-      {showNarrowers && (
-        <FilterSheet active={active} onClear={clearFilters}>
-          {serverSelect}
-          {appSelect}
-          {statusSelect}
-          {dateSelect}
-          {sortSelect}
-        </FilterSheet>
-      )}
-      <div className={cn("contents", showNarrowers && "max-md:hidden")}>
-        {showNarrowers && (
-          <ListFilter className="size-4 text-muted-foreground" />
-        )}
-        {serverSelect}
-        {appSelect}
-        {statusSelect}
-        {dateSelect}
-        {hasFilter && (
-          <Button variant="ghost" onClick={clearFilters}>
-            Clear filters
-          </Button>
-        )}
-        {showSort && (
-          <div
-            className={cn(
-              "flex items-center gap-2",
-              showNarrowers && "sm:ml-auto",
-            )}
+    <ListToolbar
+      query={filters.query}
+      onQuery={filters.applyQuery}
+      placeholder="Search deployments"
+      onClear={filters.clearFacets}
+      facets={[
+        {
+          id: "server",
+          label: "Server",
+          icon: Server,
+          options: filters.serverOptions.map((s) => ({
+            value: s.id,
+            label: s.name,
+          })),
+          values: picked.server,
+          counts: counts.server,
+          onChange: (v) => applyFacet("server", v),
+          searchable: true,
+        },
+        {
+          id: "app",
+          label: "App",
+          icon: AppWindow,
+          options: filters.appOptions.map((a) => ({
+            value: a.id,
+            label: a.name,
+            leading: <AppLogo logo={a.logo ?? null} size={16} />,
+          })),
+          values: picked.app,
+          counts: counts.app,
+          onChange: (v) => applyFacet("app", v),
+          searchable: true,
+        },
+        {
+          id: "status",
+          label: "Status",
+          icon: CircleDot,
+          options: filters.statusOptions.map((s) => ({
+            value: s,
+            label: STATUS_LABELS[s],
+          })),
+          values: picked.status,
+          counts: counts.status,
+          onChange: (v) => applyFacet("status", v),
+        },
+        {
+          id: "date",
+          label: "Created",
+          icon: CalendarClock,
+          options: filters.dateOptions,
+          values: picked.date,
+          counts: counts.date,
+          onChange: (v) => applyFacet("date", v),
+        },
+      ]}
+      sort={
+        <Select value={filters.sortDir} onValueChange={filters.applySort}>
+          <SelectTrigger
+            className="w-[150px] shrink-0"
+            aria-label="Sort by created date"
           >
-            {sortSelect}
-          </div>
-        )}
-      </div>
-    </div>
+            <span className="flex! items-center gap-2">
+              <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="newest">Newest first</SelectItem>
+            <SelectItem value="oldest">Oldest first</SelectItem>
+          </SelectContent>
+        </Select>
+      }
+      action={action}
+    />
   );
 }

@@ -4,7 +4,6 @@ import * as React from "react";
 import { Server as ServerIcon, Users } from "lucide-react";
 
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
-import { FilterFacet } from "@/components/shared/filter-facet";
 import {
   inAny,
   type teamFacetOptions,
@@ -80,30 +79,27 @@ export function ServersToolbar({
       placeholder="Search servers"
       view={view}
       onView={onView}
-      filters={
-        <>
-          <FilterFacet
-            id="team"
-            label="Team"
-            allLabel="Any team"
-            icon={Users}
-            options={teams.options}
-            counts={teams.counts}
-            values={picked.team}
-            onChange={(v) => onPick("team", v)}
-          />
-          <FilterFacet
-            id="use"
-            label="Used for"
-            allLabel="Any use"
-            icon={ServerIcon}
-            options={USE_OPTIONS}
-            counts={useCounts}
-            values={picked.use}
-            onChange={(v) => onPick("use", v)}
-          />
-        </>
-      }
+      facets={[
+        {
+          id: "team",
+          label: "Team",
+          icon: Users,
+          options: teams.options,
+          counts: teams.counts,
+          values: picked.team,
+          onChange: (v) => onPick("team", v),
+          searchable: true,
+        },
+        {
+          id: "use",
+          label: "Used for",
+          icon: ServerIcon,
+          options: USE_OPTIONS,
+          counts: useCounts,
+          values: picked.use,
+          onChange: (v) => onPick("use", v),
+        },
+      ]}
     />
   );
 }

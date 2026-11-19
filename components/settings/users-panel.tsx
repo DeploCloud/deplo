@@ -18,7 +18,7 @@ import {
   CircleDot,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
+import { useUrlFacets } from "@/components/shared/filter-facet";
 import { countBy, teamFacetOptions } from "@/components/shared/facet-filtering";
 import {
   ACCESS_OPTIONS,
@@ -290,40 +290,36 @@ function UsersToolbar({
       view={view}
       onView={onView}
       listLabel="Table view"
-      filters={
-        <>
-          <FilterFacet
-            id="team"
-            label="Team"
-            allLabel="Any team"
-            icon={Users}
-            options={teams.options}
-            counts={teams.counts}
-            values={picked.team}
-            onChange={(v) => onPick("team", v)}
-          />
-          <FilterFacet
-            id="access"
-            label="Access"
-            allLabel="Any access"
-            icon={ShieldCheck}
-            options={ACCESS_OPTIONS}
-            counts={accessCounts}
-            values={picked.access}
-            onChange={(v) => onPick("access", v)}
-          />
-          <FilterFacet
-            id="status"
-            label="Status"
-            allLabel="Any status"
-            icon={CircleDot}
-            options={USER_STATUS_OPTIONS}
-            counts={statusCounts}
-            values={picked.status}
-            onChange={(v) => onPick("status", v)}
-          />
-        </>
-      }
+      facets={[
+        {
+          id: "team",
+          label: "Team",
+          icon: Users,
+          options: teams.options,
+          counts: teams.counts,
+          values: picked.team,
+          onChange: (v) => onPick("team", v),
+          searchable: true,
+        },
+        {
+          id: "access",
+          label: "Access",
+          icon: ShieldCheck,
+          options: ACCESS_OPTIONS,
+          counts: accessCounts,
+          values: picked.access,
+          onChange: (v) => onPick("access", v),
+        },
+        {
+          id: "status",
+          label: "Status",
+          icon: CircleDot,
+          options: USER_STATUS_OPTIONS,
+          counts: statusCounts,
+          values: picked.status,
+          onChange: (v) => onPick("status", v),
+        },
+      ]}
     />
   );
 }

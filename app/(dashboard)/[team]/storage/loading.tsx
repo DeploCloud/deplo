@@ -49,10 +49,10 @@ export default function Loading() {
             <DatabasesToolbar
               query=""
               onQuery={noop}
-              engine="all"
-              onEngine={noop}
-              status="all"
-              onStatus={noop}
+              engines={[]}
+              onEngines={noop}
+              statuses={[]}
+              onStatuses={noop}
               view="grid"
               onView={noop}
               createButton={

@@ -30,13 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { countBy, inAny } from "@/components/shared/facet-filtering";
 import type { MemberDTO } from "@/lib/data/members/roster";
 
 export function MembersManager({
@@ -55,7 +49,7 @@ export function MembersManager({
   const [addOpen, setAddOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [role, setRole] = React.useState("all");
+  const [roles, setRoles] = React.useState<string[]>([]);
   const [view, setView] = React.useState<ListView>("grid");
   const viewerIsOwner = members.some(
     (m) => m.userId === currentUserId && m.role === "owner",
@@ -67,7 +61,7 @@ export function MembersManager({
   const q = query.trim().toLowerCase();
   const shown = members.filter(
     (m) =>
-      (role === "all" || (m.roleName ?? "Custom") === role) &&
+      inAny(roles, [m.roleName ?? "Custom"]) &&
       (!q ||
         m.username.toLowerCase().includes(q) ||
         m.name.toLowerCase().includes(q)),
@@ -132,23 +126,17 @@ export function MembersManager({
           view={view}
           onView={setView}
           listLabel="Table view"
-          filters={
-            roleNames.length > 1 && (
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger className="w-full sm:w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All roles</SelectItem>
-                  {roleNames.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )
-          }
+          facets={[
+            {
+              id: "role",
+              label: "Role",
+              icon: ShieldCheck,
+              options: roleNames.map((r) => ({ value: r, label: r })),
+              counts: countBy(members, (m) => m.roleName ?? "Custom"),
+              values: roles,
+              onChange: setRoles,
+            },
+          ]}
         />
       )}
 

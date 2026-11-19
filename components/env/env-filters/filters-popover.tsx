@@ -10,26 +10,28 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { FacetOptionList, toggleValue } from "./facet-options";
-import type { EnvFacet, EnvFilterState, FacetOption } from "./types";
+import type { EnvFacet, FacetOption } from "./types";
 
 // Past this many people a facet gets its own search box.
 const SEARCH_FROM = 7;
-
-export function activeFacets(state: EnvFilterState): number {
-  return Object.values(state.facets).filter((v) => v?.length).length;
-}
 
 function matches(opt: FacetOption, q: string): boolean {
   return `${opt.label} ${opt.hint ?? ""}`.toLowerCase().includes(q);
 }
 
-function FacetSection<T>({
+// What a section reads of a facet: an env facet and a toolbar facet both fit.
+export type SectionFacet = Pick<
+  EnvFacet<never>,
+  "label" | "icon" | "options" | "searchable"
+>;
+
+export function FacetSection({
   facet,
   values,
   counts,
   onChange,
 }: {
-  facet: EnvFacet<T>;
+  facet: SectionFacet;
   values: string[];
   counts?: Record<string, number>;
   onChange: (values: string[]) => void;
@@ -47,6 +49,7 @@ function FacetSection<T>({
     ...shown.filter((o) => !values.includes(o.value)),
   ];
   const Icon = facet.icon;
+  const noun = people ? "people" : `${facet.label.toLowerCase()}s`;
   return (
     <div className="px-1 pt-1 pb-2">
       <p className="flex items-center gap-2 px-2 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
@@ -59,7 +62,7 @@ function FacetSection<T>({
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={`Search ${facet.options.length} ${people ? "people" : facet.label.toLowerCase()}`}
+            placeholder={`Search ${facet.options.length} ${noun}`}
             aria-label={`Search ${facet.label.toLowerCase()}`}
             className="h-8 pl-8 text-sm"
           />
@@ -75,42 +78,11 @@ function FacetSection<T>({
         empty={
           ordered.length === 0 && (
             <p className="px-2 py-1.5 text-sm text-muted-foreground">
-              No one matches.
+              {people ? "No one matches." : "Nothing matches."}
             </p>
           )
         }
       />
-    </div>
-  );
-}
-
-export function FacetSections<T>({
-  facets,
-  state,
-  counts,
-  onChange,
-}: {
-  facets: EnvFacet<T>[];
-  state: EnvFilterState;
-  counts?: Record<string, Record<string, number>>;
-  onChange: (next: EnvFilterState) => void;
-}) {
-  return (
-    <div className="divide-y divide-border">
-      {facets.map((facet) => (
-        <FacetSection
-          key={facet.id}
-          facet={facet}
-          values={state.facets[facet.id] ?? []}
-          counts={counts?.[facet.id]}
-          onChange={(values) =>
-            onChange({
-              ...state,
-              facets: { ...state.facets, [facet.id]: values },
-            })
-          }
-        />
-      ))}
     </div>
   );
 }

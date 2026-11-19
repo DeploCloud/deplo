@@ -5,7 +5,7 @@ import { Code, Scale } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { countBy } from "@/components/shared/facet-filtering";
-import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
+import { useUrlFacets } from "@/components/shared/filter-facet";
 import { ListToolbar } from "@/components/shared/list-toolbar";
 import { GitHubIcon, NpmIcon } from "@/components/shared/brand-icons";
 import { Badge } from "@/components/ui/badge";
@@ -57,18 +57,19 @@ function LicensesToolbar({
       query={query}
       onQuery={onQuery}
       placeholder="Search packages"
-      filters={
-        <FilterFacet
-          id="license"
-          label="License"
-          allLabel="Any license"
-          icon={Scale}
-          options={options}
-          counts={counts}
-          values={values}
-          onChange={onChange}
-        />
-      }
+      facets={[
+        {
+          id: "license",
+          label: "License",
+          icon: Scale,
+          options,
+          counts,
+          values,
+          onChange,
+          searchable: true,
+          persistent: true,
+        },
+      ]}
     />
   );
 }
