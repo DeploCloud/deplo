@@ -61,6 +61,7 @@ export type AlertKey =
   | "member_removed"
   | "member_access_changed"
   | "token_created"
+  | "token_rotated"
   | "token_revoked"
   | "two_factor_policy_changed"
   | "team_ownership_changed"
@@ -110,6 +111,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "member_removed",
   "member_access_changed",
   "token_created",
+  "token_rotated",
   "token_revoked",
   "two_factor_policy_changed",
   "team_ownership_changed",
