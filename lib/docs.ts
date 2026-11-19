@@ -232,6 +232,7 @@ export const DOCS = {
   "tokens.scope":
     "advanced/api-tokens-and-oauth#scope-and-the-rule-that-surprises-people",
   "tokens.expiry": "advanced/api-tokens-and-oauth#expiry",
+  "tokens.reroll": "advanced/api-tokens-and-oauth#reroll-a-token",
   "tokens.oauth": "advanced/api-tokens-and-oauth#connected-clients-and-oauth",
   "mcp.overview": "guides/mcp-server",
   "mcp.connect": "guides/mcp-server#connect-an-agent",

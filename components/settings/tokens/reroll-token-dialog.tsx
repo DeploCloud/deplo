@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DocsLink } from "@/components/ui/docs-link";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
@@ -45,7 +46,7 @@ export function RerollTokenDialog({
       description={
         <>
           <strong>{tokenName}</strong> gets a new secret. Its name, permissions
-          and access stay the same.
+          and access stay the same. <DocsLink topic="tokens.reroll" />
         </>
       }
       consequence="The current secret stops working immediately, everywhere it is used."
@@ -55,6 +56,7 @@ export function RerollTokenDialog({
           <FieldLabel
             htmlFor={selectId}
             info="The new secret's expiry, counted from now. Rerolling an expired token brings it back."
+            docs="tokens.reroll"
           >
             Expires
           </FieldLabel>
