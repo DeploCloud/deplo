@@ -86,16 +86,20 @@ export async function serverWildcardIp(
 ): Promise<string | null> {
   const family = server?.generatedAddressFamily ?? null;
   const deploHost = onDeploHost(server);
-  // Automatic on the Deplo host is the kind the installer chose, not the address the row was enrolled at.
-  if (deploHost && !family) return instanceHost();
+  // Automatic on the Deplo host is the kind the installer chose. Its address is the row's once
+  // Settings moved it: DEPLO_SERVER_IP stays where the installer saw the machine.
+  const kind =
+    family ??
+    (deploHost ? (parseHostAddress(instanceHost())?.kind ?? "ipv4") : "ipv4");
   const literal = parseHostAddress(server?.ip);
   if (
     literal &&
-    literal.kind === (family ?? "ipv4") &&
+    literal.kind === kind &&
     isWildcardIp(literal.host) &&
     !isLoopbackIp(literal.host)
   )
     return literal.host;
+  if (deploHost && !family) return instanceHost();
   if (deploHost) {
     const own = instanceAddresses();
     const chosen = family === "ipv6" ? own.v6 : own.v4;

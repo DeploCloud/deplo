@@ -173,6 +173,11 @@ test("automatic on the Deplo host follows the installer, not the address its row
   }
 });
 
+test("a Deplo host moved to a new address in Settings names its apps there, not where the installer saw it", async () => {
+  const moved = { ...choosing("198.51.100.50", null, false), host: PANEL_IP };
+  assert.equal(await serverWildcardIp(moved), "198.51.100.50");
+});
+
 test("an IPv6-only server's deplo-clat IPv4 never names it", async () => {
   __setAgentAddressesForTest(async () => ["192.0.0.1", "2001:db8::9"]);
   assert.deepEqual((await serverAddresses(at("2001:db8::9", true))).v4, []);
