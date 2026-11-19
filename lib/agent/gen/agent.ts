@@ -3192,6 +3192,11 @@ export interface ProxyRestart {
   hosts: string[];
   /** True when it ran at once: no quiet hour was left before the renewal window. */
   urgent: boolean;
+  /**
+   * True when it took out of the store the certificate of an App that now runs elsewhere (hosts), so that this
+   * server never renews it.
+   */
+  dropped: boolean;
 }
 
 export interface ReadProxyCertificatesRequest {
@@ -24144,7 +24149,7 @@ export const SetClusterForwardersRequest: MessageFns<SetClusterForwardersRequest
 };
 
 function createBaseProxyRestart(): ProxyRestart {
-  return { atUnixMs: 0, hosts: [], urgent: false };
+  return { atUnixMs: 0, hosts: [], urgent: false, dropped: false };
 }
 
 export const ProxyRestart: MessageFns<ProxyRestart> = {
@@ -24157,6 +24162,9 @@ export const ProxyRestart: MessageFns<ProxyRestart> = {
     }
     if (message.urgent !== false) {
       writer.uint32(24).bool(message.urgent);
+    }
+    if (message.dropped !== false) {
+      writer.uint32(32).bool(message.dropped);
     }
     return writer;
   },
@@ -24198,6 +24206,14 @@ export const ProxyRestart: MessageFns<ProxyRestart> = {
             message.urgent = reader.bool();
             continue;
           }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.dropped = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -24219,6 +24235,7 @@ export const ProxyRestart: MessageFns<ProxyRestart> = {
         : 0,
       hosts: globalThis.Array.isArray(object?.hosts) ? object.hosts.map((e: any) => globalThis.String(e)) : [],
       urgent: isSet(object.urgent) ? globalThis.Boolean(object.urgent) : false,
+      dropped: isSet(object.dropped) ? globalThis.Boolean(object.dropped) : false,
     };
   },
 
@@ -24233,6 +24250,9 @@ export const ProxyRestart: MessageFns<ProxyRestart> = {
     if (message.urgent !== false) {
       obj.urgent = message.urgent;
     }
+    if (message.dropped !== false) {
+      obj.dropped = message.dropped;
+    }
     return obj;
   },
 
@@ -24244,6 +24264,7 @@ export const ProxyRestart: MessageFns<ProxyRestart> = {
     message.atUnixMs = object.atUnixMs ?? 0;
     message.hosts = object.hosts?.map((e) => e) || [];
     message.urgent = object.urgent ?? false;
+    message.dropped = object.dropped ?? false;
     return message;
   },
 };

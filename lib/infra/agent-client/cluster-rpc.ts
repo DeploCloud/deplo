@@ -133,6 +133,7 @@ export function clusterRpc(
           atUnixMs: Number(p.atUnixMs),
           hosts: p.hosts ?? [],
           urgent: p.urgent === true,
+          dropped: p.dropped === true,
         })),
       };
     },
