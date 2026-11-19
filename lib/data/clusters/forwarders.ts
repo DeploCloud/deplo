@@ -209,6 +209,27 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
 }
 
 /** After a deploy or a placement change: off the caller's lane, and it never throws. */
+/**
+ * A domain just switched on: every proxy of the cluster passes it on first, and only then does the App's router ask
+ * for a certificate, so the order's check reaches a proxy that is up wherever it lands (ADR-0048).
+ */
+export async function routeAfterAnswers(
+  clusterId: string,
+  appId: string,
+  deps: {
+    sync?: (clusterId: string) => Promise<void>;
+    reroute?: (appId: string) => Promise<unknown>;
+  } = {},
+): Promise<void> {
+  const sync = deps.sync ?? syncNameForwarders;
+  const reroute =
+    deps.reroute ??
+    (async (id: string) =>
+      (await import("../../deploy/build/reroute")).rerouteApp(id));
+  await sync(clusterId);
+  await reroute(appId);
+}
+
 export function syncNameForwardersSoon(clusterId: string): void {
   void syncNameForwarders(clusterId).catch((e) =>
     console.warn(`[cluster-forwarders] ${clusterId}: ${message(e)}`),

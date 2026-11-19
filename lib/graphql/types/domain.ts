@@ -18,7 +18,10 @@ import { setDomainAnswersEverywhere } from "@/lib/data/domains/answer-switch";
 import { answerCertificatesMissing } from "@/lib/data/clusters/answer-certs";
 import { syncClusterAnswerDnsSoon } from "@/lib/data/clusters/answer-dns";
 import { loadAppGraph } from "@/lib/data/app-graph-load";
-import { syncNameForwardersSoon } from "@/lib/data/clusters/forwarders";
+import {
+  routeAfterAnswers,
+  syncNameForwardersSoon,
+} from "@/lib/data/clusters/forwarders";
 
 const CertProviderEnum = builder.enumType("CertProvider", {
   values: ["letsencrypt", "cloudflare", "none", "custom"] as const,
@@ -308,12 +311,19 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, on }) => {
       const appId = await setDomainAnswersEverywhere(id, on);
-      await applyRouting(appId);
-      const app = await loadAppGraph(appId);
-      if (app?.clusterId) {
-        syncNameForwardersSoon(app.clusterId);
-        syncClusterAnswerDnsSoon(app.clusterId);
+      const clusterId = (await loadAppGraph(appId))?.clusterId;
+      if (on && clusterId)
+        // The proxies first, the App's router after: a certificate order's check may land on any server.
+        void routeAfterAnswers(clusterId, appId).catch((e) =>
+          console.warn(
+            `[answer-switch] ${appId}: ${e instanceof Error ? e.message : String(e)}`,
+          ),
+        );
+      else {
+        await applyRouting(appId);
+        if (clusterId) syncNameForwardersSoon(clusterId);
       }
+      if (clusterId) syncClusterAnswerDnsSoon(clusterId);
       return reloadDomain(id, appId);
     },
   }),
