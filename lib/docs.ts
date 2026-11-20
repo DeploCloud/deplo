@@ -203,6 +203,8 @@ export const DOCS = {
   "clusters.dnsZoneDomains":
     "operations/clusters/dns-zone#point-a-domain-at-it",
   "clusters.dnsZoneApex": "operations/clusters/dns-zone#a-bare-domain",
+  "clusters.dnsZoneNearest":
+    "operations/clusters/dns-zone#nearest-servers-first",
   "clusters.dnsZoneTimes":
     "operations/clusters/dns-zone#how-fast-a-stopped-server-leaves",
   "clusters.privateNetwork": "operations/clusters/private-network",

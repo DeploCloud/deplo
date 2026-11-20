@@ -81,7 +81,12 @@ export interface FakeClusterHost {
   networkPath: (fingerprint: string) => "direct" | "relay" | "none";
   /** Every DNS zone table it was handed (ADR-0049), and what its agent answers to one. */
   zoneTables: SetClusterZoneRequest[];
-  zoneReport: (table: SetClusterZoneRequest) => ClusterZoneReport;
+  zoneReport: (
+    table: SetClusterZoneRequest,
+  ) => Omit<ClusterZoneReport, "geoSha256">;
+  /** The location table its agent holds, by digest, and every one it was handed (ADR-0049 phase 2). */
+  geoSha256: string;
+  geoTables: { sha256: string; bytes: number }[];
   /** Every replication table this host's agent was handed, in order, and what it says of its copies (ADR-0046). */
   replicaTables: ClusterReplicaTable[];
   replicaReports: ClusterReplicaReport[];
@@ -430,7 +435,13 @@ export function fakeClusterHosts(): {
       setClusterZone: (table) =>
         guard(() => {
           h.zoneTables.push(table);
-          return h.zoneReport(table);
+          return { ...h.zoneReport(table), geoSha256: h.geoSha256 };
+        }),
+      setGeoTable: (sha256, tableGz) =>
+        guard(() => {
+          h.geoTables.push({ sha256, bytes: tableGz.length });
+          h.geoSha256 = sha256;
+          return { sha256, release: 20261101 };
         }),
       setClusterReplicas: (table) =>
         guard(() => {
@@ -494,6 +505,8 @@ export function fakeClusterHosts(): {
                 answering: [],
                 heard: 0,
               },
+        geoSha256: "",
+        geoTables: [],
         replicaTables: [],
         replicaReports: [],
         deploys: [],

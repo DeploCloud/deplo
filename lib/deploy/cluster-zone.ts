@@ -97,6 +97,8 @@ export type ZoneServer = {
   v4: string[];
   v6: string[];
   emptying: boolean;
+  /** Where it is (phase 2): a visitor is answered with the servers nearest it; null when Deplo cannot say. */
+  place?: { lat: number; lon: number } | null;
 };
 
 export type ClusterZoneInput = {
@@ -125,6 +127,9 @@ export function renderClusterZone(
       fingerprint: s.fingerprint,
       addresses: [...s.v4, ...s.v6].slice(0, 8),
       emptying: s.emptying,
+      located: s.place != null,
+      latitude: s.place ? round2(s.place.lat) : 0,
+      longitude: s.place ? round2(s.place.lon) : 0,
     })),
     nameServers: input.nameServers,
     answerTtlSeconds: input.ttl,
@@ -154,6 +159,17 @@ export function delegationRecords(
       out.push({ name: `ns${i + 1}.${zone}`, type: "AAAA", value: a });
   });
   return out;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Whether coordinates typed for a server are a place on the globe, and why not. */
+export function placeRefusal(lat: number, lon: number): string | null {
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90)
+    return "A latitude is between -90 and 90.";
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180)
+    return "A longitude is between -180 and 180.";
+  return null;
 }
 
 /** Whether a time a person typed is one the agent takes, and why not. */

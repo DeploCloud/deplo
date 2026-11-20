@@ -9,6 +9,7 @@ import {
   cleanZoneName,
   delegationRecords,
   dnsTimesRefusal,
+  placeRefusal,
   renderClusterZone,
   zoneTarget,
 } from "./cluster-zone";
@@ -149,8 +150,15 @@ function goldenRequest() {
         v4: ["203.0.113.10"],
         v6: ["2001:db8::10"],
         emptying: false,
+        place: { lat: 45.4642, lon: 9.1896 },
       },
-      { fingerprint: FP("2"), v4: ["203.0.113.11"], v6: [], emptying: false },
+      {
+        fingerprint: FP("2"),
+        v4: ["203.0.113.11"],
+        v6: [],
+        emptying: false,
+        place: { lat: 40.71, lon: -74.01 },
+      },
       { fingerprint: FP("3"), v4: ["203.0.113.12"], v6: [], emptying: true },
     ],
     nameServers: [FP("1"), FP("2")],
@@ -181,6 +189,26 @@ test("the records to add at the registrar: NS, then each name server's addresses
       { name: "ns2.go.example.com", type: "A", value: "203.0.113.11" },
     ],
   );
+});
+
+test("a server's place goes to the agent to hundredths of a degree, and none says it has none", () => {
+  const req = goldenRequest();
+  assert.deepEqual(
+    req.servers.map((s) => [s.located, s.latitude, s.longitude]),
+    [
+      [true, 45.46, 9.19],
+      [true, 40.71, -74.01],
+      [false, 0, 0],
+    ],
+  );
+});
+
+test("coordinates typed for a server must be on the globe", () => {
+  assert.equal(placeRefusal(45.46, 9.19), null);
+  assert.equal(placeRefusal(-90, 180), null);
+  assert.match(placeRefusal(90.1, 0)!, /latitude/);
+  assert.match(placeRefusal(0, -180.5)!, /longitude/);
+  assert.match(placeRefusal(Number.NaN, 0)!, /latitude/);
 });
 
 test("the two times keep to the agent's ranges", () => {

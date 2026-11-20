@@ -1090,6 +1090,17 @@ type CertificateAccount {
   unavailable: String
 }
 
+"""A city of the release's location table, to place a server in."""
+type City {
+  """ISO 3166 code."""
+  country: String
+  label: String
+  latitude: Float
+  longitude: Float
+  name: String
+  region: String
+}
+
 """
 An account or group on one of the team's git connections where Deplo can create a repository.
 """
@@ -1284,7 +1295,11 @@ type ClusterDns {
   Seconds a server unheard on the private network stays in the answers (5 to 60).
   """
   dropAfter: Int
+  geo: ClusterGeoTable
   nameServers: [ClusterNameServer!]
+
+  """Where each server of the cluster is."""
+  places: [ClusterServerPlace!]
   servers: [ClusterZoneServer!]
   zones: [ClusterDnsZone!]
 }
@@ -1325,6 +1340,27 @@ type ClusterEmptying {
 
   """How many Apps and databases it held at the start."""
   total: Int
+}
+
+"""
+The location table this release of Deplo carries: IP geolocation by DB-IP (https://db-ip.com), CC BY 4.0.
+"""
+type ClusterGeoTable {
+  problem: String
+
+  """DB-IP's release it was built from, as 2026-11."""
+  release: String
+
+  """
+  The Deplo release whose copy this one carries, when DB-IP's download failed as it was built.
+  """
+  reusedFrom: String
+
+  """Older than three months: updating Deplo brings a newer one."""
+  stale: Boolean
+
+  """ready, missing (this build carries none) or damaged."""
+  state: String
 }
 
 """
@@ -1571,6 +1607,15 @@ type ClusterReplicationProgress {
   upToDateAt: String
 }
 
+type ClusterServerPlace {
+  """
+  Null when nothing places it: no city set, and its address has no place in the table.
+  """
+  place: ServerPlace
+  serverId: ID
+  serverName: String
+}
+
 """
 Which teams may use a cluster. allTeams: true opens it to every team; false restricts it to teamIds.
 """
@@ -1592,6 +1637,11 @@ type ClusterZoneServer {
 
   """How many servers of the cluster it hears, itself included."""
   heard: Int
+
+  """
+  It answers each visitor with the servers nearest it: it holds the release's location table and every server has a place.
+  """
+  nearest: Boolean
   problem: String
   serverId: ID
   serverName: String
@@ -5731,6 +5781,11 @@ type Mutation {
   setServerDeployConcurrency(concurrency: Int!, id: String!): Server
 
   """
+  Places a server for its cluster's DNS zone: a city (label and its position) or bare coordinates. Without coordinates, Deplo places it by its own address again.
+  """
+  setServerPlace(label: String, latitude: Float, longitude: Float, serverId: String!): Boolean
+
+  """
   Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host. "import" is not settable and a migration source is not convertible: the install command is the way in and the way out.
   """
   setServerRole(id: String!, role: String!): Server
@@ -6818,6 +6873,11 @@ type Query {
     q: String!
   ): SearchResults
 
+  """
+  Cities of the release's location table whose name, region or country hold every word typed, biggest first.
+  """
+  searchCities(query: String!): [City!]
+
   """Search registered users (by username/display name) to add to the team."""
   searchUsers(query: String!): [UserSearchResult!]
 
@@ -7882,6 +7942,21 @@ type ServerMetrics {
   traefik: Boolean
   ts: Float
   uptimeSec: Int
+}
+
+"""
+Where a server is, for a cluster's DNS zone to answer each visitor with the nearest servers.
+"""
+type ServerPlace {
+  """The city, or the coordinates."""
+  label: String
+  latitude: Float
+  longitude: Float
+
+  """
+  city or coordinates when an instance admin set it, address when Deplo placed the server by its own address.
+  """
+  source: String
 }
 
 """

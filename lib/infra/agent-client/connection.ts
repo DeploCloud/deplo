@@ -97,6 +97,8 @@ export interface ClusterZoneReport {
   /** The members it names now, by certificate. */
   answering: string[];
   heard: number;
+  /** The location table it places visitors with (ADR-0049 phase 2), by digest; "" for none. */
+  geoSha256: string;
 }
 
 /** What one cluster member is handed to run its name forwarders (#200). */
@@ -420,6 +422,11 @@ export interface AgentConnection {
   setClusterNetwork(table: ClusterNetworkTable): Promise<ClusterNetworkReport>;
   // Needs `dns.zone` (ADR-0049): the zones delegated to its cluster; none stops it answering for the cluster.
   setClusterZone(table: SetClusterZoneRequest): Promise<ClusterZoneReport>;
+  // Needs `dns.geo`: the release's location table, gzip'd, named by the digest of the table itself.
+  setGeoTable(
+    sha256: string,
+    tableGz: Buffer,
+  ): Promise<{ sha256: string; release: number }>;
   // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.
   setClusterReplicas(table: ClusterReplicaTable): Promise<{ entries: number }>;
   clusterReplicaStatus(): Promise<ClusterReplicaReport[]>;

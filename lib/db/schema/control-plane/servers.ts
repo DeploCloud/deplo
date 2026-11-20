@@ -3,6 +3,7 @@ import {
   text,
   integer,
   boolean,
+  doublePrecision,
   primaryKey,
   uniqueIndex,
   index,
@@ -63,6 +64,11 @@ export const servers = pgTable(
     deployConcurrency: integer("deploy_concurrency").notNull().default(1),
     // Where an admin dragged it on the Servers page; null = never placed, after the placed ones.
     position: integer("position"),
+    // Where it is in the world (ADR-0049), as an instance admin set it; null = found from its address.
+    geoLatitude: doublePrecision("geo_latitude"),
+    geoLongitude: doublePrecision("geo_longitude"),
+    // The city picked, as the picker named it; null when typed as coordinates.
+    geoPlace: text("geo_place"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

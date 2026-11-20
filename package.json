@@ -23,6 +23,7 @@
     "usage-report:send": "node --require ./lib/test/server-only-shim.cjs --import tsx scripts/usage-report-send.ts",
     "gen:schema": "NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx scripts/gen-schema.ts",
     "test": "node scripts/test.mjs",
+    "geo:build": "bun scripts/geo-table.mts geo",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

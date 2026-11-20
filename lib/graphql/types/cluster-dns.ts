@@ -4,13 +4,18 @@ import {
   appDnsZones,
   checkClusterDnsZone,
   clusterDnsView,
+  placeClusterServer,
   removeClusterDnsZone,
   setClusterDnsTimes,
   setDomainDnsZone,
 } from "@/lib/data/clusters/dns-zone";
+import { findCities } from "@/lib/data/clusters/server-place";
+import type { CityMatch } from "@/lib/geo/cities";
 import type {
   ClusterDnsView,
   ClusterDnsZoneView,
+  ClusterGeoTable,
+  ClusterServerPlace,
   ClusterZoneServerState,
   DelegationCheck,
 } from "@/lib/types/cluster-dns";
@@ -72,8 +77,84 @@ const ClusterZoneServerRef = builder
           "How many servers of the cluster it hears, itself included.",
       }),
       checkedAt: t.exposeString("checkedAt"),
+      nearest: t.exposeBoolean("nearest", {
+        description:
+          "It answers each visitor with the servers nearest it: it holds the release's location table and every server has a place.",
+      }),
     }),
   });
+
+type Place = NonNullable<ClusterServerPlace["place"]>;
+
+const ServerPlaceRef = builder.objectRef<Place>("ServerPlace").implement({
+  description:
+    "Where a server is, for a cluster's DNS zone to answer each visitor with the nearest servers.",
+  fields: (t) => ({
+    latitude: t.exposeFloat("latitude"),
+    longitude: t.exposeFloat("longitude"),
+    label: t.exposeString("label", {
+      description: "The city, or the coordinates.",
+    }),
+    source: t.exposeString("source", {
+      description:
+        "city or coordinates when an instance admin set it, address when Deplo placed the server by its own address.",
+    }),
+  }),
+});
+
+const ClusterServerPlaceRef = builder
+  .objectRef<ClusterServerPlace>("ClusterServerPlace")
+  .implement({
+    fields: (t) => ({
+      serverId: t.exposeID("serverId"),
+      serverName: t.exposeString("serverName"),
+      place: t.field({
+        type: ServerPlaceRef,
+        nullable: true,
+        description:
+          "Null when nothing places it: no city set, and its address has no place in the table.",
+        resolve: (p) => p.place,
+      }),
+    }),
+  });
+
+const ClusterGeoTableRef = builder
+  .objectRef<ClusterGeoTable>("ClusterGeoTable")
+  .implement({
+    description:
+      "The location table this release of Deplo carries: IP geolocation by DB-IP (https://db-ip.com), CC BY 4.0.",
+    fields: (t) => ({
+      state: t.exposeString("state", {
+        description: "ready, missing (this build carries none) or damaged.",
+      }),
+      release: t.exposeString("release", {
+        nullable: true,
+        description: "DB-IP's release it was built from, as 2026-11.",
+      }),
+      stale: t.exposeBoolean("stale", {
+        description:
+          "Older than three months: updating Deplo brings a newer one.",
+      }),
+      reusedFrom: t.exposeString("reusedFrom", {
+        nullable: true,
+        description:
+          "The Deplo release whose copy this one carries, when DB-IP's download failed as it was built.",
+      }),
+      problem: t.exposeString("problem"),
+    }),
+  });
+
+const CityRef = builder.objectRef<CityMatch>("City").implement({
+  description: "A city of the release's location table, to place a server in.",
+  fields: (t) => ({
+    name: t.exposeString("name"),
+    region: t.exposeString("region"),
+    country: t.exposeString("country", { description: "ISO 3166 code." }),
+    label: t.exposeString("label"),
+    latitude: t.exposeFloat("latitude"),
+    longitude: t.exposeFloat("longitude"),
+  }),
+});
 
 const ClusterNameServerRef = builder
   .objectRef<ClusterDnsView["nameServers"][number]>("ClusterNameServer")
@@ -100,6 +181,12 @@ const ClusterDnsRef = builder
         type: [ClusterZoneServerRef],
         resolve: (v) => v.servers,
       }),
+      places: t.field({
+        type: [ClusterServerPlaceRef],
+        description: "Where each server of the cluster is.",
+        resolve: (v) => v.places,
+      }),
+      geo: t.field({ type: ClusterGeoTableRef, resolve: (v) => v.geo }),
       answerTtl: t.exposeInt("answerTtl", {
         description: "Seconds a resolver keeps an answer (10 to 300).",
       }),
@@ -161,6 +248,14 @@ builder.queryFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => checkClusterDnsZone(id),
   }),
+  searchCities: t.field({
+    type: [CityRef],
+    authScopes: { instanceAdmin: true },
+    description:
+      "Cities of the release's location table whose name, region or country hold every word typed, biggest first.",
+    args: { query: t.arg.string({ required: true }) },
+    resolve: (_r, { query }) => findCities(query),
+  }),
   appDnsZones: t.field({
     type: [AppDnsZoneRef],
     authScopes: { loggedIn: true },
@@ -200,6 +295,28 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { clusterId, answerTtl, dropAfter }) => {
       await setClusterDnsTimes(clusterId, answerTtl, dropAfter);
+      return true;
+    },
+  }),
+  setServerPlace: t.boolean({
+    authScopes: { instanceAdmin: true },
+    description:
+      "Places a server for its cluster's DNS zone: a city (label and its position) or bare coordinates. Without coordinates, Deplo places it by its own address again.",
+    args: {
+      serverId: t.arg.string({ required: true }),
+      latitude: t.arg.float({ required: false }),
+      longitude: t.arg.float({ required: false }),
+      label: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { serverId, latitude, longitude, label }) => {
+      if ((latitude == null) !== (longitude == null))
+        throw new Error("A place needs both a latitude and a longitude.");
+      await placeClusterServer(
+        serverId,
+        latitude != null && longitude != null
+          ? { latitude, longitude, label }
+          : null,
+      );
       return true;
     },
   }),

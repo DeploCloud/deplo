@@ -49,6 +49,7 @@ import {
   CLUSTER_IMAGES_CAPABILITY,
   CLUSTER_NETWORK_CAPABILITY,
   CLUSTER_ZONE_CAPABILITY,
+  CLUSTER_ZONE_GEO_CAPABILITY,
   CLUSTER_STANDBY_CAPABILITY,
 } from "./hello-capabilities";
 
@@ -452,10 +453,14 @@ export async function setClusterNetwork(
   }
 }
 
-/** Hands a member its cluster's DNS zones (ADR-0049); refused before the RPC when its agent is too old. */
+/**
+ * Hands a member its cluster's DNS zones (ADR-0049); refused before the RPC when its agent is too old. The release's
+ * location table follows when the agent places visitors (`dns.geo`) and holds another one.
+ */
 export async function setClusterZone(
   serverId: string,
   table: SetClusterZoneRequest,
+  geo?: { sha256: string; tableGz: Buffer } | null,
 ): Promise<ClusterZoneReport> {
   const conn = await connectAgent(serverId);
   try {
@@ -464,7 +469,25 @@ export async function setClusterZone(
       throw new AgentClusterZoneUnsupportedError(
         "The server agent on this server is too old to answer for the cluster's DNS zone.",
       );
-    return await conn.setClusterZone(table);
+    const report = await conn.setClusterZone(table);
+    if (
+      geo &&
+      table.zones.length > 0 &&
+      report.geoSha256 !== geo.sha256 &&
+      hello.capabilities.includes(CLUSTER_ZONE_GEO_CAPABILITY)
+    ) {
+      try {
+        report.geoSha256 = (
+          await conn.setGeoTable(geo.sha256, geo.tableGz)
+        ).sha256;
+      } catch (e) {
+        // The zone still answers, every healthy server to everyone; the next pass hands the table again.
+        console.warn(
+          `[cluster-zone] ${serverId}: the location table was not taken: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    return report;
   } finally {
     conn.close();
   }
