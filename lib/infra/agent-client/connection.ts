@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  ClusterZoneCertificateState,
   HelloResponse,
   HostMetrics,
   ContainerStat,
@@ -99,6 +100,8 @@ export interface ClusterZoneReport {
   heard: number;
   /** The location table it places visitors with (ADR-0049 phase 2), by digest; "" for none. */
   geoSha256: string;
+  /** How each zone certificate stands there (phase 3); a pair only when it holds another than Deplo's. */
+  certificates?: ClusterZoneCertificateState[];
 }
 
 /** What one cluster member is handed to run its name forwarders (#200). */
@@ -151,6 +154,8 @@ export interface ProxyRestartReport {
   urgent: boolean;
   /** It took a moved App's certificate out of the store, so this server never renews it. */
   dropped?: boolean;
+  /** The certificate it took out was a zone's, now served from Deplo's copy here (ADR-0049 phase 3). */
+  zone?: boolean;
 }
 
 /** A certificate a proxy serves for the hostnames in `hosts`; `keyPem` is empty when Deplo already holds it. */

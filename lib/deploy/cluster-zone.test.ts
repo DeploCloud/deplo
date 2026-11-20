@@ -13,6 +13,12 @@ import {
   renderClusterZone,
   zoneTarget,
 } from "./cluster-zone";
+import {
+  domainModes,
+  zoneCertificatesFor,
+  zoneChallenges,
+  type ZoneCertDomain,
+} from "./zone-certs";
 
 // ADR-0049: what Deplo renders for a cluster's DNS zone, and the name servers it picks.
 
@@ -130,6 +136,42 @@ test("name servers stay where they are, and only a leaving one is replaced", () 
 const GOLDEN = join(process.cwd(), "lib", "deploy", "cluster-zone.golden.json");
 const FP = (d: string) => d.repeat(64);
 
+const goldenDomains: ZoneCertDomain[] = [
+  {
+    id: "d1",
+    name: "go.example.com",
+    zoneId: "z1",
+    zone: "go.example.com",
+    inside: true,
+    cnameSeen: false,
+    serverId: "srv1",
+  },
+  {
+    id: "d2",
+    name: "shop.example.com",
+    zoneId: "z1",
+    zone: "go.example.com",
+    inside: false,
+    cnameSeen: true,
+    serverId: "srv2",
+  },
+];
+const GOLDEN_CERTS = {
+  zones: [
+    {
+      id: "z1",
+      name: "go.example.com",
+      renewerServerId: "srv1",
+      sha256: "ab".repeat(32),
+      notAfter: "2999-01-01T00:00:00.000Z",
+      pair: null,
+    },
+  ],
+  domains: goldenDomains,
+  modes: domainModes(goldenDomains, { wildcard: true, eligible: true }),
+  fingerprintOf: (id: string) => ({ srv1: FP("1"), srv2: FP("2") })[id] ?? null,
+};
+
 function goldenRequest() {
   return renderClusterZone({
     clusterId: "cl_golden",
@@ -164,6 +206,13 @@ function goldenRequest() {
     nameServers: [FP("1"), FP("2")],
     ttl: 30,
     dropAfter: 10,
+    challenges: zoneChallenges(GOLDEN_CERTS),
+    certificates: zoneCertificatesFor({
+      ...GOLDEN_CERTS,
+      serverId: "srv1",
+      reported: () => "ab".repeat(32),
+      now: 0,
+    }),
   });
 }
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import * as yaml from "js-yaml";
 
-import { hasAnswerSupport, withAnswerSupport } from "./traefik-stack";
+import { hasAnswerSupport, withAnswerSupport } from "./traefik-cluster";
 import { INSTALLED_WITH_PANEL, parse } from "./traefik-stack-test-helpers";
 
 // What install-agent.sh writes on a server: no file provider, no configs.

@@ -62,7 +62,7 @@ import { MAX_ANSWER_SLOT, answerPorts } from "../deploy/answer";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { setClusterAnswerLimits } from "./clusters/manage";
 import { syncAnsweringClusters } from "./clusters/forwarders";
-import { hasAnswerSupport } from "../deploy/traefik-stack";
+import { hasAnswerSupport } from "../deploy/traefik-cluster";
 import {
   INSTALLED_WITH_PANEL,
   parse,

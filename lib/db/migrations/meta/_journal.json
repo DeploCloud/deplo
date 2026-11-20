@@ -1814,6 +1814,13 @@
       "when": 1796062800000,
       "tag": "0269_server_places",
       "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1796062900000,
+      "tag": "0270_zone_certificate",
+      "breakpoints": true
     }
   ]
 }

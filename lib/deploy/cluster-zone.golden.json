@@ -33,5 +33,26 @@
     "2222222222222222222222222222222222222222222222222222222222222222"
   ],
   "answerTtlSeconds": 30,
-  "dropAfterSeconds": 10
+  "dropAfterSeconds": 10,
+  "challenges": [
+    {
+      "asked": "_acme-challenge.go.example.com",
+      "at": "_acme-challenge.go.example.com",
+      "ownerFingerprint": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "asked": "_acme-challenge.shop.example.com",
+      "at": "_acme-challenge.shop-example-com.go.example.com",
+      "ownerFingerprint": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "certificates": [
+    {
+      "zone": "go.example.com",
+      "renew": true,
+      "order": true,
+      "sha256": "abababababababababababababababababababababababababababababababab",
+      "covered": ["go.example.com"]
+    }
+  ]
 }

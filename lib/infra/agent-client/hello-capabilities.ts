@@ -132,6 +132,8 @@ export const CLUSTER_NETWORK_CAPABILITY = "cluster.network";
 export const CLUSTER_ZONE_CAPABILITY = "dns.zone";
 // SetGeoTable and a server's place in SetClusterZone: the name server answers a visitor with the nearest servers.
 export const CLUSTER_ZONE_GEO_CAPABILITY = "dns.geo";
+// Certificate checks over DNS set by the proxy through its agent, and a zone's own certificate (ADR-0049 phase 3).
+export const DNS_CHALLENGE_CAPABILITY = "dns.challenge";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
 export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
 // The agent starts a cluster's databases and Apps with stored data itself, under their lease (deplo#237): their

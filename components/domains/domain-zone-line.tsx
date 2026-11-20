@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { ChevronDown, Globe } from "lucide-react";
+import { ChevronDown, Globe, ShieldCheck } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { Button } from "@/components/ui/button";
 import { DocsLink } from "@/components/ui/docs-link";
+import { InfoTip } from "@/components/ui/info-tip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +25,20 @@ const SET_ZONE = /* GraphQL */ `
   }
 `;
 
-export type DomainZone = { zone: string; target: string | null };
+const CHECK_CNAME = /* GraphQL */ `
+  mutation CheckDomainAcmeCname($id: String!) {
+    checkDomainAcmeCname(id: $id)
+  }
+`;
+
+export type DomainZone = {
+  zone: string;
+  target: string | null;
+  cert?: {
+    mode: "zone" | "dns" | "http";
+    check: { name: string; target: string; seen: boolean } | null;
+  };
+};
 
 /** Under a domain that answers on every server: whether the cluster's zone answers it, and the one record it needs. */
 export function DomainZoneLine({
@@ -86,6 +100,14 @@ export function DomainZoneLine({
             Use my own records
           </Button>
         )}
+        {native.cert && (
+          <DomainCertLine
+            domainId={domain.id}
+            zone={native.zone}
+            cert={native.cert}
+            canManage={canManage}
+          />
+        )}
       </div>
     );
   }
@@ -124,5 +146,78 @@ export function DomainZoneLine({
         </DropdownMenu>
       )}
     </div>
+  );
+}
+
+/** How the domain's certificate is checked through the zone, and for a name outside it the optional CNAME that does it. */
+function DomainCertLine({
+  domainId,
+  zone,
+  cert,
+  canManage,
+}: {
+  domainId: string;
+  zone: string;
+  cert: NonNullable<DomainZone["cert"]>;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const check = () =>
+    startTransition(async () => {
+      const res = await gqlAction<{ checkDomainAcmeCname: boolean }>(
+        CHECK_CNAME,
+        { id: domainId },
+      );
+      if (!res.ok) return void toast.error(res.error);
+      if (res.data?.checkDomainAcmeCname)
+        toast.success("Found it: the certificate is checked through the zone");
+      else toast.error("That record is not there yet");
+      router.refresh();
+    });
+  if (cert.mode === "zone")
+    return (
+      <span className="flex basis-full items-center gap-1.5">
+        <ShieldCheck className="size-3.5 shrink-0" />
+        Covered by the zone&apos;s certificate for{" "}
+        <span className="font-mono text-foreground">*.{zone}</span>
+      </span>
+    );
+  if (!cert.check)
+    return cert.mode === "dns" ? (
+      <span className="flex basis-full items-center gap-1.5">
+        <ShieldCheck className="size-3.5 shrink-0" />
+        Its certificate is checked through the zone.
+      </span>
+    ) : null;
+  if (cert.check.seen)
+    return (
+      <span className="flex basis-full items-center gap-1.5">
+        <ShieldCheck className="size-3.5 shrink-0" />
+        Its certificate is checked through the zone.
+      </span>
+    );
+  return (
+    <span className="flex basis-full flex-wrap items-center gap-x-1.5 gap-y-1">
+      <ShieldCheck className="size-3.5 shrink-0" />
+      <span>
+        Optional: a{" "}
+        <span className="font-medium text-foreground">CNAME record</span> for{" "}
+        <span className="font-mono text-foreground">{cert.check.name}</span> →
+      </span>
+      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
+        {cert.check.target}
+      </code>
+      <CopyButton value={cert.check.target} className="size-6" />
+      <InfoTip
+        content="With it, the certificate is checked through the zone instead of over HTTP."
+        docs="clusters.dnsZoneCertCname"
+      />
+      {canManage && (
+        <Button variant="outline" size="sm" disabled={pending} onClick={check}>
+          Check
+        </Button>
+      )}
+    </span>
   );
 }

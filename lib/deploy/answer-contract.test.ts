@@ -11,7 +11,7 @@ import {
   answerPorts,
   answerRoutes,
 } from "./answer";
-import { ANSWER_ROUTES_FILE } from "./traefik-stack";
+import { ANSWER_ROUTES_FILE } from "./traefik-cluster";
 
 // The routes this renders and the forms the server agent accepts are one contract across two repos
 // (docs/agents/cluster-rollout.md): the agent keeps the same file and parses it as its own test.

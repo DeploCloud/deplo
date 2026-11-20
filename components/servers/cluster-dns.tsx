@@ -45,6 +45,7 @@ import type {
   DelegationCheck,
 } from "@/lib/types/cluster-dns";
 import { DNS_DROP_AFTER, DNS_TTL } from "@/lib/deploy/cluster-zone";
+import { ZoneCertificateLine, ZoneWildcardSwitch } from "./zone-certificate";
 
 // A cluster's own DNS zone (ADR-0049): https://deplo.build/docs/operations/clusters/dns-zone
 
@@ -278,43 +279,50 @@ function ZoneRow({
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   return (
-    <div className="flex items-center gap-2">
-      <span className="min-w-0 flex-1 truncate font-mono text-sm">
-        {zone.name}
-      </span>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        Records
-      </Button>
-      <ConfirmAction
-        trigger={
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`Remove ${zone.name}`}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        }
-        title={`Remove ${zone.name}?`}
-        description="The cluster stops answering for this zone."
-        consequence={
-          zone.names.length > 0
-            ? `${zone.names.length === 1 ? "A domain" : `${zone.names.length} domains`} answered by it stop resolving until their records point at the servers again.`
-            : undefined
-        }
-        confirmLabel="Remove"
-        successMessage={`Removed ${zone.name}`}
-        onConfirm={async () => {
-          const res = await gqlAction(REMOVE_ZONE, { id: zone.id });
-          if (res.ok) router.refresh();
-          return res;
-        }}
-      />
-      <DelegateDialog
-        zone={zone}
-        dns={dns}
-        open={open}
-        onOpenChange={setOpen}
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-sm">
+          {zone.name}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+          Records
+        </Button>
+        <ConfirmAction
+          trigger={
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove ${zone.name}`}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          }
+          title={`Remove ${zone.name}?`}
+          description="The cluster stops answering for this zone."
+          consequence={
+            zone.names.length > 0
+              ? `${zone.names.length === 1 ? "A domain" : `${zone.names.length} domains`} answered by it stop resolving until their records point at the servers again.`
+              : undefined
+          }
+          confirmLabel="Remove"
+          successMessage={`Removed ${zone.name}`}
+          onConfirm={async () => {
+            const res = await gqlAction(REMOVE_ZONE, { id: zone.id });
+            if (res.ok) router.refresh();
+            return res;
+          }}
+        />
+        <DelegateDialog
+          zone={zone}
+          dns={dns}
+          open={open}
+          onOpenChange={setOpen}
+        />
+      </div>
+      <ZoneCertificateLine
+        zone={zone.name}
+        cert={zone.certificate}
+        wildcard={dns.wildcard}
       />
     </div>
   );
@@ -719,7 +727,10 @@ export function ClusterDnsRow({
                 </span>
               }
             >
-              <TimesForm clusterId={cluster.id} dns={dns} />
+              <div className="space-y-4">
+                <TimesForm clusterId={cluster.id} dns={dns} />
+                <ZoneWildcardSwitch clusterId={cluster.id} on={dns.wildcard} />
+              </div>
             </AdvancedSection>
           )}
         </div>

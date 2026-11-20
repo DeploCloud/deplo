@@ -1,15 +1,21 @@
 import { builder } from "../builder";
 import {
   addClusterDnsZone,
-  appDnsZones,
   checkClusterDnsZone,
   clusterDnsView,
   placeClusterServer,
   removeClusterDnsZone,
   setClusterDnsTimes,
-  setDomainDnsZone,
 } from "@/lib/data/clusters/dns-zone";
+import {
+  appDnsZones,
+  setDomainDnsZone,
+} from "@/lib/data/clusters/zone-domains";
 import { findCities } from "@/lib/data/clusters/server-place";
+import {
+  checkDomainAcmeCname,
+  setClusterDnsWildcard,
+} from "@/lib/data/clusters/zone-certs";
 import type { CityMatch } from "@/lib/geo/cities";
 import type {
   ClusterDnsView,
@@ -18,6 +24,7 @@ import type {
   ClusterServerPlace,
   ClusterZoneServerState,
   DelegationCheck,
+  ZoneCertificateView,
 } from "@/lib/types/cluster-dns";
 import type { DelegationRecord } from "@/lib/deploy/cluster-zone";
 
@@ -32,6 +39,54 @@ const DelegationRecordRef = builder
       name: t.exposeString("name"),
       type: t.exposeString("type", { description: "NS, A or AAAA." }),
       value: t.exposeString("value"),
+    }),
+  });
+
+const ZoneCertificateRenewerRef = builder
+  .objectRef<NonNullable<ZoneCertificateView["renewer"]>>(
+    "ZoneCertificateRenewer",
+  )
+  .implement({
+    fields: (t) => ({
+      serverId: t.exposeString("serverId"),
+      serverName: t.exposeString("serverName"),
+    }),
+  });
+
+const ZoneCertificateRef = builder
+  .objectRef<ZoneCertificateView>("ZoneCertificate")
+  .implement({
+    description:
+      "A zone's own certificate: ordered once over DNS, renewed by one server of the cluster, held by every other.",
+    fields: (t) => ({
+      names: t.exposeStringList("names", {
+        description:
+          "The names on it: the zone and every name one label below.",
+      }),
+      serves: t.exposeStringList("serves", {
+        description: "The domains it serves now.",
+      }),
+      validUntil: t.exposeString("validUntil", { nullable: true }),
+      valid: t.exposeBoolean("valid", { description: "It has not expired." }),
+      issuedAt: t.exposeString("issuedAt", { nullable: true }),
+      renewedAt: t.exposeString("renewedAt", { nullable: true }),
+      renewer: t.field({
+        type: ZoneCertificateRenewerRef,
+        nullable: true,
+        description: "The one server that orders and renews it.",
+        resolve: (c) => c.renewer,
+      }),
+      ordering: t.exposeBoolean("ordering", {
+        description: "The renewing server is asking for it now.",
+      }),
+      error: t.exposeString("error", {
+        description:
+          "Why the last order failed, in plain words; empty when it did not.",
+      }),
+      errorDetail: t.exposeString("errorDetail", {
+        description: "The same failure as the certificate authority said it.",
+      }),
+      errorAt: t.exposeString("errorAt", { nullable: true }),
     }),
   });
 
@@ -52,6 +107,10 @@ const ClusterDnsZoneRef = builder
       names: t.exposeStringList("names", {
         description:
           "The names it answers: each domain answered by it, as its name in the zone.",
+      }),
+      certificate: t.field({
+        type: ZoneCertificateRef,
+        resolve: (z) => z.certificate,
       }),
     }),
   });
@@ -194,6 +253,10 @@ const ClusterDnsRef = builder
         description:
           "Seconds a server unheard on the private network stays in the answers (5 to 60).",
       }),
+      wildcard: t.exposeBoolean("wildcard", {
+        description:
+          "Each zone has one certificate for every name one label below it; off, each name gets its own over DNS.",
+      }),
     }),
   });
 
@@ -297,6 +360,28 @@ builder.mutationFields((t) => ({
       await setClusterDnsTimes(clusterId, answerTtl, dropAfter);
       return true;
     },
+  }),
+  setClusterDnsWildcard: t.boolean({
+    authScopes: { instanceAdmin: true },
+    description:
+      "On (the default), each of the cluster's zones gets one certificate for itself and every name one label below it. Off, each name gets a certificate of its own over DNS.",
+    args: {
+      clusterId: t.arg.string({ required: true }),
+      on: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { clusterId, on }) => {
+      await setClusterDnsWildcard(clusterId, on);
+      return true;
+    },
+  }),
+  checkDomainAcmeCname: t.boolean({
+    authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t change this domain with your current team role. Ask a team admin for the Manage domains capability.",
+    description:
+      "Looks up the domain's _acme-challenge CNAME into its cluster's zone now. Once it is seen, the domain's certificate is checked over DNS from the zone. Returns whether it was seen.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => checkDomainAcmeCname(id),
   }),
   setServerPlace: t.boolean({
     authScopes: { instanceAdmin: true },

@@ -50,6 +50,7 @@ function assemble(r: Row): Cluster {
     answerMaxWaiting: r.answerMaxWaiting,
     dnsAnswerTtl: r.dnsAnswerTtl,
     dnsDropAfter: r.dnsDropAfter,
+    dnsWildcard: r.dnsWildcard,
     createdAt: r.createdAt,
   };
 }

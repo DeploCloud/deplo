@@ -51,6 +51,8 @@ export const clusters = pgTable("clusters", {
   // The cluster's DNS zone (ADR-0049): how long resolvers keep an answer, and how long a silent server stays in it.
   dnsAnswerTtl: integer("dns_answer_ttl").notNull().default(30),
   dnsDropAfter: integer("dns_drop_after").notNull().default(10),
+  // On: each zone gets one certificate for itself and every name one label below it (ADR-0049 phase 3).
+  dnsWildcard: boolean("dns_wildcard").notNull().default(true),
   // Where an admin dragged it on the Servers page; null = never placed, after the placed ones.
   position: integer("position"),
   createdAt: isoTimestamptz("created_at").notNull(),
@@ -316,6 +318,28 @@ export const clusterNameServers = pgTable(
   // No unique key on the server: a Deplo move may place two old servers on one, and the choice is redone each pass.
   (t) => [primaryKey({ columns: [t.clusterId, t.position] })],
 );
+
+// A zone's own certificate (ADR-0049 phase 3): ordered once, renewed by one server of the cluster, held by the rest.
+export const clusterZoneCerts = pgTable("cluster_zone_certs", {
+  zoneId: text("zone_id")
+    .primaryKey()
+    .references(() => clusterDnsZones.id, { onDelete: "cascade" }),
+  renewerServerId: text("renewer_server_id").references(() => servers.id, {
+    onDelete: "set null",
+  }),
+  // When the renewer was first found unreachable: past a while another server takes it over.
+  renewerLostAt: isoTimestamptz("renewer_lost_at"),
+  certPem: text("cert_pem"),
+  keyEnc: text("key_enc"),
+  sha256: text("sha256"),
+  notAfter: isoTimestamptz("not_after"),
+  issuedAt: isoTimestamptz("issued_at"),
+  renewedAt: isoTimestamptz("renewed_at"),
+  // The renewer's proxy's last failed order, as it said it.
+  error: text("error").notNull().default(""),
+  errorAt: isoTimestamptz("error_at"),
+  ordering: boolean("ordering").notNull().default(false),
+});
 
 // How each server answers for its cluster's zone, as its agent last said. No foreign key to the cluster: a deleted
 // cluster's rows are how the sweep finds the servers to stop.

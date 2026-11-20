@@ -200,7 +200,7 @@ export async function syncClusterAnswerDns(clusterId: string): Promise<void> {
     const set = await clusterAnswerRecordSet(clusterId);
     // A set with no server is a cluster Deplo cannot see: the records stay as they are rather than go empty.
     if (set.a.length === 0 && set.aaaa.length === 0) return;
-    const { domainNativeZone } = await import("./dns-zone");
+    const { domainNativeZone } = await import("./zone-domains");
     for (const d of domains) {
       const native = await domainNativeZone(clusterId, d);
       if (native) {
@@ -251,8 +251,8 @@ export async function answerDomainStatus(
     .from(domainsTable)
     .where(eq(domainsTable.name, name))
     .limit(1);
-  const { domainNativeZone, clusterMemberAddresses } =
-    await import("./dns-zone");
+  const { clusterMemberAddresses } = await import("./dns-zone");
+  const { domainNativeZone } = await import("./zone-domains");
   if (
     await domainNativeZone(clusterId, { name, zoneId: row?.zoneId ?? null })
   ) {

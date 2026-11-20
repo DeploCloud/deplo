@@ -2,6 +2,7 @@ import "server-only";
 
 import { domainTlsConfig, domainScheme } from "../../deploy/domains";
 import { ANSWER_ENTRYPOINT } from "../../deploy/answer";
+import { DNS_CHALLENGE_RESOLVER } from "../../deploy/dns-challenge";
 import { isRoutableDomain } from "../../deploy/cloudflare";
 import { loadDomainsForApp } from "../app-graph-load";
 import type {
@@ -61,6 +62,14 @@ export function toRoutableDomain(
   // Passed on by every server of the cluster, it reaches the App's proxy on the internal entrypoint (ADR-0048).
   if (d.answersEverywhere && tls.tls)
     tls.entrypoint = `${tls.entrypoint},${ANSWER_ENTRYPOINT}`;
+  // The cluster's zone checks its certificate over DNS: its own certificate serves it, or one ordered over DNS.
+  if (
+    d.answersEverywhere &&
+    d.certChallenge &&
+    tls.tls &&
+    (d.certProvider ?? "letsencrypt") === "letsencrypt"
+  )
+    tls.certResolver = d.certChallenge === "zone" ? "" : DNS_CHALLENGE_RESOLVER;
   return {
     name: d.name,
     port: d.port ?? null,
