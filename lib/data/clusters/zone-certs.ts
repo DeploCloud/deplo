@@ -275,7 +275,13 @@ export async function zoneCertPass(input: {
         const z = zones.find((x) => x.name === st.zone);
         if (!z) continue;
         if (st.sha256) reported().set(`${serverId} ${z.name}`, st.sha256);
-        if (st.certPem && st.keyPem && (await takePair(z, st, input)))
+        // Only the renewer's: a server back from a power cut may have renewed a pair it no longer renews.
+        if (
+          z.renewerServerId === serverId &&
+          st.certPem &&
+          st.keyPem &&
+          (await takePair(z, st, input))
+        )
           fresh = true;
         if (z.renewerServerId === serverId)
           await recordOrder(z, st, input).catch((e) =>
