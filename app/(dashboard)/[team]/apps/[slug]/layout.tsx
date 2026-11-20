@@ -25,6 +25,7 @@ import {
   type LiveApp,
 } from "@/components/apps/app-live-status";
 import { AppHeader } from "@/components/apps/app-header";
+import { AppRenameProvider, AppTitle } from "@/components/apps/app-title";
 import { WaitingForRoom } from "@/components/shared/waiting-for-room";
 import { appWaitingNote } from "@/lib/data/clusters/placement";
 import { getAppRuntime } from "@/lib/data/console";
@@ -111,66 +112,71 @@ export default async function AppLayout(
             },
           }}
           header={
-            <AppHeader
-              logo={
-                <LogoEditLink
-                  href={`/apps/${slug}/settings`}
-                  label="General settings"
-                >
-                  <AppLogo
-                    logo={project.logo}
-                    tone={project.logoTone}
-                    size={44}
-                  />
-                </LogoEditLink>
-              }
-              name={project.name}
-              status={<AppStatusBadge status={project.status} />}
-              subtitle={
-                waiting ? (
-                  <WaitingForRoom note={waiting} />
-                ) : project.productionUrl ? (
-                  <a
-                    href={project.productionUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            <AppRenameProvider appId={project.id} name={project.name}>
+              <AppHeader
+                logo={
+                  <LogoEditLink
+                    href={`/apps/${slug}/settings`}
+                    label="General settings"
                   >
-                    {project.productionUrl.replace(/^https?:\/\//, "")}
-                  </a>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {appTypeLabel(project)}
-                  </p>
-                )
-              }
-              actions={
-                <>
-                  {buildsOwnImage ? (
-                    <AppRollbackButton slug={project.slug} target={rollback} />
-                  ) : (
-                    <AppLifecycleButtons
-                      appId={project.id}
-                      status={project.status}
+                    <AppLogo
+                      logo={project.logo}
+                      tone={project.logoTone}
+                      size={44}
                     />
-                  )}
-                  <RedeployButton
-                    appId={project.id}
-                    slug={project.slug}
-                    variant="default"
-                  />
-                  <AppControls
-                    appId={project.id}
-                    slug={project.slug}
-                    name={project.name}
-                    status={project.status}
-                    productionUrl={project.productionUrl ?? null}
-                    repoUrl={repoWebUrl(project.repo)}
-                    showLifecycle={buildsOwnImage}
-                  />
-                </>
-              }
-            />
+                  </LogoEditLink>
+                }
+                name={<AppTitle />}
+                status={<AppStatusBadge status={project.status} />}
+                subtitle={
+                  waiting ? (
+                    <WaitingForRoom note={waiting} />
+                  ) : project.productionUrl ? (
+                    <a
+                      href={project.productionUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      {project.productionUrl.replace(/^https?:\/\//, "")}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {appTypeLabel(project)}
+                    </p>
+                  )
+                }
+                actions={
+                  <>
+                    {buildsOwnImage ? (
+                      <AppRollbackButton
+                        slug={project.slug}
+                        target={rollback}
+                      />
+                    ) : (
+                      <AppLifecycleButtons
+                        appId={project.id}
+                        status={project.status}
+                      />
+                    )}
+                    <RedeployButton
+                      appId={project.id}
+                      slug={project.slug}
+                      variant="default"
+                    />
+                    <AppControls
+                      appId={project.id}
+                      slug={project.slug}
+                      name={project.name}
+                      status={project.status}
+                      productionUrl={project.productionUrl ?? null}
+                      repoUrl={repoWebUrl(project.repo)}
+                      showLifecycle={buildsOwnImage}
+                    />
+                  </>
+                }
+              />
+            </AppRenameProvider>
           }
           sidecars={
             <AppNavSync

@@ -31,14 +31,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
 import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { cn, readableTextColor } from "@/lib/utils";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
+import {
+  RenameInput,
+  useInlineRename,
+} from "@/components/shared/inline-rename";
 import { gqlAction } from "@/lib/graphql-client";
 import { projectHref } from "@/lib/overview-links";
 
@@ -81,12 +83,15 @@ export function ProjectContainerCard({
   onRestored?: () => void;
 }) {
   const router = useRouter();
-  const [renameOpen, setRenameOpen] = React.useState(false);
   const [colorOpen, setColorOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deleteApps, setDeleteApps] = React.useState(false);
-  const [name, setName] = React.useState(project.name);
-  const [shownName, applyName] = useOptimisticValue(project.name);
+  const rename = useInlineRename(
+    project.id,
+    project.name,
+    `mutation($id: ID!, $name: String!) { renameProject(id: $id, name: $name) }`,
+    "Project renamed",
+  );
   const [shownColor, applyColor] = useOptimisticValue<string | null>(
     project.color ?? null,
   );
@@ -119,29 +124,6 @@ export function ProjectContainerCard({
       }
     : undefined;
 
-  function onRenameSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    rename();
-  }
-
-  function rename() {
-    const next = name.trim();
-    if (!next || next === project.name) {
-      setRenameOpen(false);
-      return;
-    }
-    setRenameOpen(false);
-    applyName(
-      next,
-      () =>
-        gqlAction(
-          `mutation($id: ID!, $name: String!) { renameProject(id: $id, name: $name) }`,
-          { id: project.id, name: next },
-        ),
-      { success: "Project renamed" },
-    );
-  }
-
   function onColorSubmit(e: React.FormEvent) {
     e.preventDefault();
     changeColor();
@@ -172,12 +154,7 @@ export function ProjectContainerCard({
       {bulk.items(K)}
       {canManage && (
         <>
-          <K.Item
-            onSelect={() => {
-              setName(project.name);
-              setRenameOpen(true);
-            }}
-          >
+          <K.Item onSelect={rename.start}>
             <Pencil className="size-4" />
             Rename
           </K.Item>
@@ -232,7 +209,7 @@ export function ProjectContainerCard({
   const overlayLink = (
     <Link
       href={href}
-      aria-label={`Open project ${shownName}`}
+      aria-label={`Open project ${rename.name}`}
       tabIndex={dragActive ? -1 : undefined}
       aria-hidden={dragActive || undefined}
       className={cn(
@@ -254,43 +231,14 @@ export function ProjectContainerCard({
     </div>
   );
 
+  const title = rename.editing ? (
+    <RenameInput rename={rename} label="Project name" />
+  ) : (
+    <span className="block truncate font-medium">{rename.name}</span>
+  );
+
   const dialogs = canManage ? (
     <>
-      <Dialog
-        open={renameOpen}
-        onOpenChange={(o) => {
-          setRenameOpen(o);
-          if (!o) setName(project.name);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename project</DialogTitle>
-          </DialogHeader>
-          <form className="grid gap-4" onSubmit={onRenameSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor={`rename-project-${project.id}`}>
-                Project name
-              </Label>
-              <Input
-                id={`rename-project-${project.id}`}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRenameOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!name.trim()}>
-                Save
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       <Dialog
         open={colorOpen}
         onOpenChange={(o) => {
@@ -381,7 +329,7 @@ export function ProjectContainerCard({
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
           {tile}
           <div className="min-w-0 flex-1">
-            <span className="truncate font-medium">{shownName}</span>
+            {title}
             <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
           </div>
         </div>
@@ -401,7 +349,7 @@ export function ProjectContainerCard({
           <div className="flex min-w-0 items-center gap-3">
             {tile}
             <div className="min-w-0">
-              <span className="block truncate font-medium">{shownName}</span>
+              {title}
               <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>

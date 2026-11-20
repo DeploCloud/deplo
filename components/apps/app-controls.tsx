@@ -27,11 +27,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
-import { RenameDialog } from "@/components/shared/rename-dialog";
 import { TransferTeamDialog } from "@/components/apps/settings/transfer-team-dialog";
 import { SecurityUpdatesDialog } from "@/components/security-updates/security-updates-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppLifecycle } from "@/components/apps/app-lifecycle";
+import { useAppRename } from "@/components/apps/app-title";
 import { needsCapability, useAppCan } from "@/components/apps/app-capabilities";
 import type { AppStatus } from "@/lib/types/app";
 import type { Capability } from "@/lib/types/identity";
@@ -56,7 +56,7 @@ export function AppControls({
   const router = useRouter();
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [renameOpen, setRenameOpen] = React.useState(false);
+  const rename = useAppRename();
   const [securityOpen, setSecurityOpen] = React.useState(false);
   const { state, pending, canControl, start, stop, reload } = useAppLifecycle(
     appId,
@@ -92,10 +92,7 @@ export function AppControls({
             )}
             side="left"
           >
-            <DropdownMenuItem
-              onSelect={() => setRenameOpen(true)}
-              disabled={!canConfigure}
-            >
+            <DropdownMenuItem onSelect={rename.start} disabled={!canConfigure}>
               <Pencil className="size-4" />
               Rename
             </DropdownMenuItem>
@@ -250,18 +247,6 @@ export function AppControls({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <RenameDialog
-        open={renameOpen}
-        onOpenChange={setRenameOpen}
-        noun="app"
-        name={name}
-        rename={(next) =>
-          gqlAction(
-            `mutation($id: String!, $name: String!) { renameApp(id: $id, name: $name) { id } }`,
-            { id: appId, name: next },
-          )
-        }
-      />
       <SecurityUpdatesDialog
         open={securityOpen}
         onOpenChange={setSecurityOpen}

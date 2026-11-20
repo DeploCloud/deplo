@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { titleClass } from "@/components/shared/page-header";
+import { cn } from "@/lib/utils";
 
 // The App page header; the layout fills the slots, the loading state bones them.
 export function AppHeader({
@@ -23,9 +24,9 @@ export function AppHeader({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           {logo}
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className={titleClass.page}>{name}</h1>
+              <h1 className={cn(titleClass.page, "min-w-0")}>{name}</h1>
               {status}
             </div>
             {subtitle}

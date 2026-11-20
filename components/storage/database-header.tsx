@@ -14,7 +14,15 @@ import { DatabaseLogo } from "@/components/storage/database-logo";
 import { DatabaseStatusBadge } from "@/components/storage/database-status-badge";
 import { DatabaseControls } from "@/components/storage/database-controls";
 import { DatabaseRedeployButton } from "@/components/storage/database-redeploy-button";
-import { DatabaseActionsMenu } from "@/components/storage/database-actions-menu";
+import {
+  DatabaseActionsMenu,
+  RENAME_DATABASE,
+} from "@/components/storage/database-actions-menu";
+import {
+  RenameInput,
+  useInlineRename,
+} from "@/components/shared/inline-rename";
+import { cn } from "@/lib/utils";
 import type { DatabaseStatus, DatabaseType } from "@/lib/types/database";
 
 export type DatabaseHeaderData = {
@@ -36,6 +44,12 @@ export function DatabaseHeader({
   canConfigure?: boolean;
   canDelete?: boolean;
 }) {
+  const rename = useInlineRename(
+    db?.id ?? "",
+    db?.name ?? "",
+    RENAME_DATABASE,
+    "Database renamed",
+  );
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
@@ -49,10 +63,16 @@ export function DatabaseHeader({
         ) : (
           <Skeleton className="size-11 shrink-0 rounded-md" />
         )}
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className={titleClass.page}>
-              {db ? db.name : <Bone>database</Bone>}
+            <h1 className={cn(titleClass.page, "min-w-0")}>
+              {!db ? (
+                <Bone>database</Bone>
+              ) : rename.editing ? (
+                <RenameInput rename={rename} label="Database name" />
+              ) : (
+                rename.name
+              )}
             </h1>
             {db ? (
               <DatabaseStatusBadge id={db.id} status={db.status} />
@@ -89,6 +109,7 @@ export function DatabaseHeader({
               name={db.name}
               canConfigure={canConfigure}
               canDelete={canDelete}
+              onRename={rename.start}
             />
           </>
         ) : (

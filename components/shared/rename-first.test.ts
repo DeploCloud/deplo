@@ -19,6 +19,7 @@ for (const [file, start] of MENUS) {
     );
     assert.ok(first, "no menu item found");
     assert.match(first[0], /\bRename\b/);
-    assert.match(src, /<RenameDialog\b/);
+    // It turns the title into its field, never a dialog.
+    assert.match(first[0], /onSelect=\{(?:rename\.start|onRename)\}/);
   });
 }

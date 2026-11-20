@@ -13,24 +13,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { RenameDialog } from "@/components/shared/rename-dialog";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { needsCapability } from "@/components/apps/app-capabilities";
-import { gqlAction } from "@/lib/graphql-client";
+
+export const RENAME_DATABASE = `mutation($id: String!, $name: String!) { renameDatabase(id: $id, name: $name) { id } }`;
 
 export function DatabaseActionsMenu({
   id,
   name,
   canConfigure,
   canDelete,
+  onRename,
 }: {
   id: string;
   name: string;
   canConfigure: boolean;
   canDelete: boolean;
+  onRename: () => void;
 }) {
   const router = useRouter();
-  const [renameOpen, setRenameOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   return (
@@ -54,10 +55,7 @@ export function DatabaseActionsMenu({
             }
             side="left"
           >
-            <DropdownMenuItem
-              onSelect={() => setRenameOpen(true)}
-              disabled={!canConfigure}
-            >
+            <DropdownMenuItem onSelect={onRename} disabled={!canConfigure}>
               <Pencil className="size-4" />
               Rename
             </DropdownMenuItem>
@@ -94,18 +92,6 @@ export function DatabaseActionsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <RenameDialog
-        open={renameOpen}
-        onOpenChange={setRenameOpen}
-        noun="database"
-        name={name}
-        rename={(next) =>
-          gqlAction(
-            `mutation($id: String!, $name: String!) { renameDatabase(id: $id, name: $name) { id } }`,
-            { id: id, name: next },
-          )
-        }
-      />
       <DeleteDatabaseDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

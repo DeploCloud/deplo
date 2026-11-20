@@ -33,8 +33,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SimpleTooltip, MenuSubTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
@@ -43,6 +41,10 @@ import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
 import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { cn, readableTextColor } from "@/lib/utils";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
+import {
+  RenameInput,
+  useInlineRename,
+} from "@/components/shared/inline-rename";
 import { gqlAction } from "@/lib/graphql-client";
 import { folderHref } from "@/lib/overview-links";
 
@@ -99,13 +101,16 @@ export function FolderCard({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  const [renameOpen, setRenameOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deleteApps, setDeleteApps] = React.useState(false);
   const [colorOpen, setColorOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
-  const [name, setName] = React.useState(folder.name);
-  const [shownName, applyName] = useOptimisticValue(folder.name);
+  const rename = useInlineRename(
+    folder.id,
+    folder.name,
+    `mutation($id: ID!, $name: String!) { renameFolder(id: $id, name: $name) }`,
+    "Folder renamed",
+  );
   const [shownColor, applyColor] = useOptimisticValue<string | null>(
     folder.color ?? null,
   );
@@ -183,29 +188,6 @@ export function FolderCard({
     });
   }
 
-  function onRenameSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    rename();
-  }
-
-  function rename() {
-    const next = name.trim();
-    if (!next || next === folder.name) {
-      setRenameOpen(false);
-      return;
-    }
-    setRenameOpen(false);
-    applyName(
-      next,
-      () =>
-        gqlAction(
-          `mutation($id: ID!, $name: String!) { renameFolder(id: $id, name: $name) }`,
-          { id: folder.id, name: next },
-        ),
-      { success: "Folder renamed" },
-    );
-  }
-
   const menu = (K: MenuKit) => (
     <>
       <SimpleTooltip content="Open this folder" side="left">
@@ -220,12 +202,7 @@ export function FolderCard({
       {canManageThisFolder && (
         <>
           <SimpleTooltip content="Rename this folder" side="left">
-            <K.Item
-              onSelect={() => {
-                setName(folder.name);
-                setRenameOpen(true);
-              }}
-            >
+            <K.Item onSelect={rename.start}>
               <Pencil className="size-4" />
               Rename
             </K.Item>
@@ -341,7 +318,7 @@ export function FolderCard({
   const overlayLink = (
     <Link
       href={href}
-      aria-label={`Open folder ${shownName}`}
+      aria-label={`Open folder ${rename.name}`}
       tabIndex={dragActive ? -1 : undefined}
       aria-hidden={dragActive || undefined}
       className={cn(
@@ -351,49 +328,17 @@ export function FolderCard({
     />
   );
 
+  const title = rename.editing ? (
+    <RenameInput rename={rename} label="Folder name" />
+  ) : (
+    <span className="block truncate font-medium">{rename.name}</span>
+  );
+
   const dialogs =
     canManageThisFolder || canShare ? (
       <>
         {canManageThisFolder && (
           <>
-            <Dialog
-              open={renameOpen}
-              onOpenChange={(o) => {
-                setRenameOpen(o);
-                if (!o) setName(folder.name);
-              }}
-            >
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Rename folder</DialogTitle>
-                </DialogHeader>
-                <form className="grid gap-4" onSubmit={onRenameSubmit}>
-                  <div className="space-y-2">
-                    <Label htmlFor={`rename-folder-${folder.id}`}>
-                      Folder name
-                    </Label>
-                    <Input
-                      id={`rename-folder-${folder.id}`}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => setRenameOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={!name.trim()}>
-                      Save
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-
             <Dialog
               open={colorOpen}
               onOpenChange={(o) => {
@@ -506,7 +451,7 @@ export function FolderCard({
             <Folder className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
-            <span className="block truncate font-medium">{shownName}</span>
+            {title}
             <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
           </div>
         </div>
@@ -533,7 +478,7 @@ export function FolderCard({
               <Folder className="size-4.5" />
             </div>
             <div className="min-w-0">
-              <span className="block truncate font-medium">{shownName}</span>
+              {title}
               <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>

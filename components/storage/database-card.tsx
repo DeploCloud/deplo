@@ -33,7 +33,12 @@ import {
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
-import { RenameDialog } from "@/components/shared/rename-dialog";
+import {
+  RenameInput,
+  useInlineRename,
+  type InlineRename,
+} from "@/components/shared/inline-rename";
+import { RENAME_DATABASE } from "@/components/storage/database-actions-menu";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { TransferDatabaseDialog } from "@/components/storage/transfer-database-dialog";
 import { DisconnectAppsDialog } from "@/components/storage/disconnect-apps-dialog";
@@ -154,6 +159,18 @@ export function DatabaseCard({
   );
 }
 
+function useDatabaseRename(db: DatabaseDTO) {
+  return useInlineRename(db.id, db.name, RENAME_DATABASE, "Database renamed");
+}
+
+function DatabaseTitle({ rename }: { rename: InlineRename }) {
+  return rename.editing ? (
+    <RenameInput rename={rename} label="Database name" />
+  ) : (
+    <p className="truncate font-medium">{rename.name}</p>
+  );
+}
+
 interface Inner {
   db: DatabaseDTO;
   serverName?: string;
@@ -178,16 +195,17 @@ function DatabaseCardGrid({
   canMove = false,
 }: Inner) {
   const href = `/storage/databases/${db.id}`;
+  const rename = useDatabaseRename(db);
   return (
     <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
-      <OverlayLink href={href} label={db.name} inert={dragActive} />
+      <OverlayLink href={href} label={rename.name} inert={dragActive} />
 
       <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <DatabaseLogo type={db.type} logo={db.logo} size={36} />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{db.name}</p>
+              <DatabaseTitle rename={rename} />
               <p className="mt-1 truncate text-xs text-muted-foreground">
                 {DB_NAMES[db.type] ?? db.type} · v{db.version}
               </p>
@@ -201,6 +219,7 @@ function DatabaseCardGrid({
             db={db}
             dragHandle={dragHandle}
             pollMs={pollMs}
+            onRename={rename.start}
           />
         </div>
 
@@ -238,13 +257,14 @@ function DatabaseCardList({
   canMove = false,
 }: Inner) {
   const href = `/storage/databases/${db.id}`;
+  const rename = useDatabaseRename(db);
   return (
     <Card className="group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20">
-      <OverlayLink href={href} label={db.name} inert={dragActive} />
+      <OverlayLink href={href} label={rename.name} inert={dragActive} />
       <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
         <DatabaseLogo type={db.type} logo={db.logo} size={36} />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{db.name}</p>
+          <DatabaseTitle rename={rename} />
           <p className="mt-1 truncate text-xs text-muted-foreground">
             {DB_NAMES[db.type] ?? db.type} · v{db.version} ·{" "}
             <span className="font-mono">
@@ -276,6 +296,7 @@ function DatabaseCardList({
         dragHandle={dragHandle}
         pollMs={pollMs}
         listView
+        onRename={rename.start}
       />
     </Card>
   );
@@ -313,6 +334,7 @@ function CardActions({
   environments,
   canConfigure,
   canMove,
+  onRename,
 }: {
   db: DatabaseDTO;
   dragHandle?: React.ReactNode;
@@ -321,12 +343,12 @@ function CardActions({
   environments: EnvironmentOption[];
   canConfigure: boolean;
   canMove: boolean;
+  onRename: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [transferOpen, setTransferOpen] = React.useState(false);
-  const [renameOpen, setRenameOpen] = React.useState(false);
   const [lockedBy, setLockedBy] = React.useState<string[]>([]);
   const [lockOpen, setLockOpen] = React.useState(false);
   const running = db.status === "running";
@@ -413,10 +435,7 @@ function CardActions({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem
-              onSelect={() => setRenameOpen(true)}
-              disabled={!canConfigure}
-            >
+            <DropdownMenuItem onSelect={onRename} disabled={!canConfigure}>
               <Pencil className="size-4" />
               Rename
             </DropdownMenuItem>
@@ -502,18 +521,6 @@ function CardActions({
         </DropdownMenu>
       </div>
 
-      <RenameDialog
-        open={renameOpen}
-        onOpenChange={setRenameOpen}
-        noun="database"
-        name={db.name}
-        rename={(next) =>
-          gqlAction(
-            `mutation($id: String!, $name: String!) { renameDatabase(id: $id, name: $name) { id } }`,
-            { id: db.id, name: next },
-          )
-        }
-      />
       <TransferDatabaseDialog
         open={transferOpen}
         onOpenChange={setTransferOpen}

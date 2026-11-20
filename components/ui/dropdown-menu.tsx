@@ -70,7 +70,14 @@ const DropdownMenuContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(
   (
-    { className, sideOffset = 4, children, onPointerDownOutside, ...props },
+    {
+      className,
+      sideOffset = 4,
+      children,
+      onPointerDownOutside,
+      onCloseAutoFocus,
+      ...props
+    },
     ref,
   ) => {
     const sheet = useSheetDrag();
@@ -98,6 +105,12 @@ const DropdownMenuContent = React.forwardRef<
           onPointerDownOutside={(event) => {
             onPointerDownOutside?.(event);
             if (!event.defaultPrevented) swallowGhostClick();
+          }}
+          onCloseAutoFocus={(event) => {
+            onCloseAutoFocus?.(event);
+            // A field the chosen item opened (an inline rename) keeps its focus.
+            if (document.activeElement?.matches("input, textarea"))
+              event.preventDefault();
           }}
           {...props}
         >

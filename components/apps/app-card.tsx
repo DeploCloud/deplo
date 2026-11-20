@@ -40,7 +40,11 @@ import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
 import { AppStatusIndicator } from "@/components/apps/app-status-dot/status-renderer";
 import type { OverviewAppStateView } from "./apps-grid/overview-state";
-import { RenameDialog } from "@/components/shared/rename-dialog";
+import {
+  RenameInput,
+  useInlineRename,
+} from "@/components/shared/inline-rename";
+import { RENAME_APP } from "@/components/apps/app-title";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import {
   appTypeLabel,
@@ -130,7 +134,12 @@ export function AppCard({
   const router = useRouter();
   const [pending, startAction] = useAction();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [renameOpen, setRenameOpen] = React.useState(false);
+  const rename = useInlineRename(
+    project.id,
+    project.name,
+    RENAME_APP,
+    "App renamed",
+  );
   const dep = project.latestDeployment;
   const caps = project.capabilities;
   const can = (c: Capability) => !caps || caps.includes(c);
@@ -245,10 +254,7 @@ export function AppCard({
   const menu = (K: MenuKit) => (
     <>
       <SimpleTooltip content="Change this app's name" side="left">
-        <K.Item
-          onSelect={() => setRenameOpen(true)}
-          disabled={!can("configure_apps")}
-        >
+        <K.Item onSelect={rename.start} disabled={!can("configure_apps")}>
           <Pencil className="size-4" />
           Rename
         </K.Item>
@@ -489,18 +495,6 @@ export function AppCard({
 
   const confirm = (
     <>
-      <RenameDialog
-        open={renameOpen}
-        onOpenChange={setRenameOpen}
-        noun="app"
-        name={project.name}
-        rename={(next) =>
-          gqlAction(
-            `mutation($id: String!, $name: String!) { renameApp(id: $id, name: $name) { id } }`,
-            { id: project.id, name: next },
-          )
-        }
-      />
       <DeleteWithArtifacts
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -527,10 +521,16 @@ export function AppCard({
     </>
   );
 
+  const title = rename.editing ? (
+    <RenameInput rename={rename} label="App name" />
+  ) : (
+    <span className="block truncate font-medium">{rename.name}</span>
+  );
+
   const overlayLink = (
     <Link
       href={href}
-      aria-label={`Open ${project.name}`}
+      aria-label={`Open ${rename.name}`}
       tabIndex={dragActive ? -1 : undefined}
       aria-hidden={dragActive || undefined}
       className={cn(
@@ -583,7 +583,7 @@ export function AppCard({
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
           <AppLogo logo={project.logo} tone={project.logoTone} size={36} />
           <div className="min-w-0 flex-1">
-            <span className="block truncate font-medium">{project.name}</span>
+            {title}
             {subtitle}
           </div>
 
@@ -625,9 +625,7 @@ export function AppCard({
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <AppLogo logo={project.logo} tone={project.logoTone} size={36} />
               <div className="min-w-0 flex-1">
-                <span className="block truncate font-medium">
-                  {project.name}
-                </span>
+                {title}
                 {subtitle}
               </div>
             </div>
