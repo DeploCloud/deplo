@@ -1,11 +1,11 @@
 # ADR-0048: A cluster domain can answer on every server
 
-**Status**: proposed. Builds on [ADR-0047](0047-a-cluster-shares-a-private-network-over-wireguard.md) (the private network carries the traffic) and amends [ADR-0045](0045-a-cluster-leader-holds-sealed-failover-bundles.md) (the bundle carries the certificate). [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md) is the path that removes the hand-written records.
+**Status**: accepted; every step built. Builds on [ADR-0047](0047-a-cluster-shares-a-private-network-over-wireguard.md) (the private network carries the traffic) and amends [ADR-0045](0045-a-cluster-leader-holds-sealed-failover-bundles.md) (the bundle carries the certificate). [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md) is the path that removes the hand-written records.
 
 **Steps** (Rollout below):
 
 - **1, the proxy change and the answer table: done**, hidden. Panel #227 (migrations 0259 and 0260), agent DeploCloud/deplo-agent#47, released in agent v0.5.3-canary.7.
-- **2, the certificate in the failover bundle: done** (#231). Agent DeploCloud/deplo-agent#63 (Hello `cluster.answers.certificates`, agent v0.5.3-canary.14), leader DeploCloud/deplo-cluster#8 (v0.1.0-canary.7).
+- **2, the certificate in the failover bundle: done** (#231). Agent DeploCloud/deplo-agent#63 (Hello `cluster.answers.certificates`, agent v0.5.3-canary.14), leader DeploCloud/deplo-cluster#8 (v0.1.0-canary.7); lab fixes in agent #64 and #65 (v0.5.3-canary.16) and panel #260, #261, #262, #263.
 - **3, the DNS record set: done** (#255).
 - **4, the switch shown: done** (#230), with every refusal below, past 200 Apps included.
 
@@ -79,6 +79,7 @@ How it is built (step 2):
 - **Every start the agent makes is the store's moment**: the configuration change, the restart button and its own. It stops the proxy, writes the store (in one rename), takes the moved pairs out of the routes file, and starts it. A start the agent did not make (a reboot, a crash) changes nothing: the file keeps serving.
 - **The restart** comes at the last occurrence of the quiet hour that leaves a day before the window (an hour when the window is under two days away), or at once when none is left, which the record says. A restart that stored nothing waits an hour before the next try, and a pair of an App that does not run here never causes one: it leaves the routes file, live, once it is 15 minutes old (a failover installs it a moment before the App starts), as does an expired one.
 - **Deplo reads the pair from the App's server** on the cluster watch, every two minutes, naming the digest it holds per hostname: an unchanged pair comes back without its key. A new one is sealed into every stored copy of the bundle and sent to the leaders; a domain whose switch goes off takes its pair out, and a new deploy keeps the pairs of the domains still on. The restarts come back with the next table and are acknowledged in the one after.
+- **A server the App left drops the entry itself.** Once the leader has run the App on another server for 2 minutes, that server's agent restarts its proxy once to take the entry out, and says so (`ProxyRestart.dropped`). Kept, the entry is renewed **with no check at all**: an ACME account reuses a valid authorization it earned while the App ran there (Let's Encrypt does too), so passing every check on to the App's server cannot stop it. While a server is still coming back it answers no passed-on domain itself.
 - **Duplicate limit**: nothing in this path orders a certificate. A failover installs the one it carries before the App's router appears (3 s for the proxy to load it), and a server the App left drops its stale entry at its next start, so it does not even try a renewal that would fail.
 
 ### DNS lists every healthy server
@@ -88,6 +89,28 @@ Deplo computes the record set (one A, and one AAAA where there is IPv6, per serv
 - **a connected provider** (Cloudflare today, `DnsProviderKind`): Deplo writes the set as plain records (`pointAtAddress` writes one today), TTL 60 s, and rewrites it when a server joins, leaves, goes offline or comes back.
 - **manual**: the domain lists every address to add, verification checks that each one is there, and a change of the cluster flags the domain until its records match again.
 - **native**: [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md). The backend is a per-domain choice, so it plugs in without changing the rest.
+
+### What the lab showed (step 2)
+
+Traefik 3.7.17, Pebble with 30-minute certificates (`certificatesduration=1`), three servers, a lab DNS standing in for a
+connected provider (the stopped server's records removed at the cut); released agent v0.5.3-canary.16, leader
+v0.1.0-canary.7, panel v0.8.2-canary.42. Each run powered off the server running the App.
+
+- **The next server answered with the same certificate at once** in every run: 24 s after the power cut (the probe's
+  resolution), no certificate ordered meanwhile, and it renewed that certificate itself, once, under its own account
+  (after 61 s, 471 s and 74 s: Traefik renews a 30-minute certificate early). Its proxy restarted once for the store and
+  Activity said so.
+- **The key was nowhere else**: not in any server's journal, the panel's log, any proxy's log, or the leaders' bundle
+  files; on disk only in the App's server's ACME store and, between a failover and that restart, its routes file, both `0600`.
+- **What the lab found and is fixed**: a stale record kept a domain from being routed (the DNS sweep, and the record
+  check while a stopped server's IPv6 is unknown), the switch routed the App before the proxies were ready, and a server
+  the App left renewed its stale entry every 10 minutes on its account's earlier authorization.
+- **What remains**: a server that comes back after its stale certificate entered its renewal window renews it once at
+  boot, before its agent can drop it (Traefik renews at start). With Let's Encrypt's 90-day certificates that needs a
+  server away for weeks; it costs one certificate of the five a week, never more, as the entry goes 2 minutes later.
+  How that boot-time check passed is not explained: it had a fresh check, and every path the code allows passes it on.
+- **Records kept by hand slow a renewal**: while a stopped server stays listed, a certificate check can land on it and
+  fail; the proxy retries, and it goes through once the record is removed or the server is back.
 
 ## Rollout
 
