@@ -1,4 +1,5 @@
 import { clustersWithAnswers } from "@/lib/data/clusters/answers";
+import { clusterDnsView } from "@/lib/data/clusters/dns-zone";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { Server as ServerIcon } from "lucide-react";
@@ -253,6 +254,8 @@ export default async function ServersPage(
 
   if (open) {
     const card = clusterCards.find((c) => c.id === open.cluster.id)!;
+    const answering = (await clustersWithAnswers()).includes(open.cluster.id);
+    const dns = await clusterDnsView(open.cluster.id);
     return (
       <ServerHealthProvider seed={healthSeed}>
         <AutoRefresh active={changing} />
@@ -266,7 +269,8 @@ export default async function ServersPage(
             replicationEnabled: open.cluster.replicationEnabled,
             loadBalancingEnabled: open.cluster.loadBalancingEnabled,
             loadBalancingMode: open.cluster.loadBalancingMode,
-            ...((await clustersWithAnswers()).includes(open.cluster.id)
+            ...(answering || dns.zones.length > 0 ? { dns } : {}),
+            ...(answering
               ? {
                   answerLimits: {
                     maxConnections: open.cluster.answerMaxConnections,

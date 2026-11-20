@@ -3299,6 +3299,54 @@ export interface ClusterNetworkPeerState {
   lastHandshakeUnix: number;
 }
 
+export interface SetClusterZoneRequest {
+  clusterId: string;
+  /** The certificate of the server this is sent to, as its member entry names it. */
+  selfFingerprint: string;
+  zones: ClusterZone[];
+  /** Every member of the cluster. */
+  servers: ClusterZoneServer[];
+  /** ns1 to ns4 of every zone, in that order, by member certificate. */
+  nameServers: string[];
+  /**
+   * How long resolvers keep an answer (10 to 300 s), and how long a member may be silent before it
+   * leaves the answers (5 to 60 s); 0 is the default, 30 s and 10 s.
+   */
+  answerTtlSeconds: number;
+  dropAfterSeconds: number;
+}
+
+export interface ClusterZone {
+  /** The zone itself, "go.example.com". */
+  name: string;
+  /** The names answered with the cluster's healthy servers; the zone itself may be one. */
+  names: string[];
+}
+
+export interface ClusterZoneServer {
+  fingerprint: string;
+  /** Its public addresses, IPv4 and IPv6, as the answers name it. */
+  addresses: string[];
+  /** Being emptied: it leaves the answers and still counts toward the majority. */
+  emptying: boolean;
+}
+
+export interface SetClusterZoneResponse {
+  /** Where this server answers, "address:53". */
+  listening: string[];
+  /** Why it answers on none of its addresses, or not on all of them. */
+  problem: string;
+  /**
+   * "answer", "stale" (exactly half heard: the last agreed set), "fail" (fewer than half: SERVFAIL)
+   * or "warming" (just started).
+   */
+  state: string;
+  /** The members it names now, by certificate. */
+  answering: string[];
+  /** How many members it hears, itself included. */
+  heard: number;
+}
+
 export interface SetClusterReplicasRequest {
   clusterId: string;
   /** Every member of the cluster, by the server id the leader's placement names it with. */
@@ -25598,6 +25646,526 @@ export const ClusterNetworkPeerState: MessageFns<ClusterNetworkPeerState> = {
   },
 };
 
+function createBaseSetClusterZoneRequest(): SetClusterZoneRequest {
+  return {
+    clusterId: "",
+    selfFingerprint: "",
+    zones: [],
+    servers: [],
+    nameServers: [],
+    answerTtlSeconds: 0,
+    dropAfterSeconds: 0,
+  };
+}
+
+export const SetClusterZoneRequest: MessageFns<SetClusterZoneRequest> = {
+  encode(message: SetClusterZoneRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.clusterId !== "") {
+      writer.uint32(10).string(message.clusterId);
+    }
+    if (message.selfFingerprint !== "") {
+      writer.uint32(18).string(message.selfFingerprint);
+    }
+    for (const v of message.zones) {
+      ClusterZone.encode(v!, writer.uint32(26).fork()).join();
+    }
+    for (const v of message.servers) {
+      ClusterZoneServer.encode(v!, writer.uint32(34).fork()).join();
+    }
+    for (const v of message.nameServers) {
+      writer.uint32(42).string(v!);
+    }
+    if (message.answerTtlSeconds !== 0) {
+      writer.uint32(48).uint32(message.answerTtlSeconds);
+    }
+    if (message.dropAfterSeconds !== 0) {
+      writer.uint32(56).uint32(message.dropAfterSeconds);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterZoneRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterZoneRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.selfFingerprint = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.zones.push(ClusterZone.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.servers.push(ClusterZoneServer.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.nameServers.push(reader.string());
+            continue;
+          }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.answerTtlSeconds = reader.uint32();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.dropAfterSeconds = reader.uint32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterZoneRequest {
+    return {
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      selfFingerprint: isSet(object.selfFingerprint)
+        ? globalThis.String(object.selfFingerprint)
+        : isSet(object.self_fingerprint)
+        ? globalThis.String(object.self_fingerprint)
+        : "",
+      zones: globalThis.Array.isArray(object?.zones) ? object.zones.map((e: any) => ClusterZone.fromJSON(e)) : [],
+      servers: globalThis.Array.isArray(object?.servers)
+        ? object.servers.map((e: any) => ClusterZoneServer.fromJSON(e))
+        : [],
+      nameServers: globalThis.Array.isArray(object?.nameServers)
+        ? object.nameServers.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.name_servers)
+        ? object.name_servers.map((e: any) => globalThis.String(e))
+        : [],
+      answerTtlSeconds: isSet(object.answerTtlSeconds)
+        ? globalThis.Number(object.answerTtlSeconds)
+        : isSet(object.answer_ttl_seconds)
+        ? globalThis.Number(object.answer_ttl_seconds)
+        : 0,
+      dropAfterSeconds: isSet(object.dropAfterSeconds)
+        ? globalThis.Number(object.dropAfterSeconds)
+        : isSet(object.drop_after_seconds)
+        ? globalThis.Number(object.drop_after_seconds)
+        : 0,
+    };
+  },
+
+  toJSON(message: SetClusterZoneRequest): unknown {
+    const obj: any = {};
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.selfFingerprint !== "") {
+      obj.selfFingerprint = message.selfFingerprint;
+    }
+    if (message.zones?.length) {
+      obj.zones = message.zones.map((e) => ClusterZone.toJSON(e));
+    }
+    if (message.servers?.length) {
+      obj.servers = message.servers.map((e) => ClusterZoneServer.toJSON(e));
+    }
+    if (message.nameServers?.length) {
+      obj.nameServers = message.nameServers;
+    }
+    if (message.answerTtlSeconds !== 0) {
+      obj.answerTtlSeconds = Math.round(message.answerTtlSeconds);
+    }
+    if (message.dropAfterSeconds !== 0) {
+      obj.dropAfterSeconds = Math.round(message.dropAfterSeconds);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterZoneRequest>, I>>(base?: I): SetClusterZoneRequest {
+    return SetClusterZoneRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterZoneRequest>, I>>(object: I): SetClusterZoneRequest {
+    const message = createBaseSetClusterZoneRequest();
+    message.clusterId = object.clusterId ?? "";
+    message.selfFingerprint = object.selfFingerprint ?? "";
+    message.zones = object.zones?.map((e) => ClusterZone.fromPartial(e)) || [];
+    message.servers = object.servers?.map((e) => ClusterZoneServer.fromPartial(e)) || [];
+    message.nameServers = object.nameServers?.map((e) => e) || [];
+    message.answerTtlSeconds = object.answerTtlSeconds ?? 0;
+    message.dropAfterSeconds = object.dropAfterSeconds ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterZone(): ClusterZone {
+  return { name: "", names: [] };
+}
+
+export const ClusterZone: MessageFns<ClusterZone> = {
+  encode(message: ClusterZone, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(10).string(message.name);
+    }
+    for (const v of message.names) {
+      writer.uint32(18).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterZone {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterZone();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.names.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterZone {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      names: globalThis.Array.isArray(object?.names) ? object.names.map((e: any) => globalThis.String(e)) : [],
+    };
+  },
+
+  toJSON(message: ClusterZone): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.names?.length) {
+      obj.names = message.names;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterZone>, I>>(base?: I): ClusterZone {
+    return ClusterZone.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterZone>, I>>(object: I): ClusterZone {
+    const message = createBaseClusterZone();
+    message.name = object.name ?? "";
+    message.names = object.names?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseClusterZoneServer(): ClusterZoneServer {
+  return { fingerprint: "", addresses: [], emptying: false };
+}
+
+export const ClusterZoneServer: MessageFns<ClusterZoneServer> = {
+  encode(message: ClusterZoneServer, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.fingerprint !== "") {
+      writer.uint32(10).string(message.fingerprint);
+    }
+    for (const v of message.addresses) {
+      writer.uint32(18).string(v!);
+    }
+    if (message.emptying !== false) {
+      writer.uint32(24).bool(message.emptying);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterZoneServer {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterZoneServer();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.fingerprint = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.addresses.push(reader.string());
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.emptying = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterZoneServer {
+    return {
+      fingerprint: isSet(object.fingerprint) ? globalThis.String(object.fingerprint) : "",
+      addresses: globalThis.Array.isArray(object?.addresses)
+        ? object.addresses.map((e: any) => globalThis.String(e))
+        : [],
+      emptying: isSet(object.emptying) ? globalThis.Boolean(object.emptying) : false,
+    };
+  },
+
+  toJSON(message: ClusterZoneServer): unknown {
+    const obj: any = {};
+    if (message.fingerprint !== "") {
+      obj.fingerprint = message.fingerprint;
+    }
+    if (message.addresses?.length) {
+      obj.addresses = message.addresses;
+    }
+    if (message.emptying !== false) {
+      obj.emptying = message.emptying;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterZoneServer>, I>>(base?: I): ClusterZoneServer {
+    return ClusterZoneServer.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterZoneServer>, I>>(object: I): ClusterZoneServer {
+    const message = createBaseClusterZoneServer();
+    message.fingerprint = object.fingerprint ?? "";
+    message.addresses = object.addresses?.map((e) => e) || [];
+    message.emptying = object.emptying ?? false;
+    return message;
+  },
+};
+
+function createBaseSetClusterZoneResponse(): SetClusterZoneResponse {
+  return { listening: [], problem: "", state: "", answering: [], heard: 0 };
+}
+
+export const SetClusterZoneResponse: MessageFns<SetClusterZoneResponse> = {
+  encode(message: SetClusterZoneResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.listening) {
+      writer.uint32(10).string(v!);
+    }
+    if (message.problem !== "") {
+      writer.uint32(18).string(message.problem);
+    }
+    if (message.state !== "") {
+      writer.uint32(26).string(message.state);
+    }
+    for (const v of message.answering) {
+      writer.uint32(34).string(v!);
+    }
+    if (message.heard !== 0) {
+      writer.uint32(40).int32(message.heard);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterZoneResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterZoneResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.listening.push(reader.string());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.problem = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.state = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.answering.push(reader.string());
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.heard = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterZoneResponse {
+    return {
+      listening: globalThis.Array.isArray(object?.listening)
+        ? object.listening.map((e: any) => globalThis.String(e))
+        : [],
+      problem: isSet(object.problem) ? globalThis.String(object.problem) : "",
+      state: isSet(object.state) ? globalThis.String(object.state) : "",
+      answering: globalThis.Array.isArray(object?.answering)
+        ? object.answering.map((e: any) => globalThis.String(e))
+        : [],
+      heard: isSet(object.heard) ? globalThis.Number(object.heard) : 0,
+    };
+  },
+
+  toJSON(message: SetClusterZoneResponse): unknown {
+    const obj: any = {};
+    if (message.listening?.length) {
+      obj.listening = message.listening;
+    }
+    if (message.problem !== "") {
+      obj.problem = message.problem;
+    }
+    if (message.state !== "") {
+      obj.state = message.state;
+    }
+    if (message.answering?.length) {
+      obj.answering = message.answering;
+    }
+    if (message.heard !== 0) {
+      obj.heard = Math.round(message.heard);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterZoneResponse>, I>>(base?: I): SetClusterZoneResponse {
+    return SetClusterZoneResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterZoneResponse>, I>>(object: I): SetClusterZoneResponse {
+    const message = createBaseSetClusterZoneResponse();
+    message.listening = object.listening?.map((e) => e) || [];
+    message.problem = object.problem ?? "";
+    message.state = object.state ?? "";
+    message.answering = object.answering?.map((e) => e) || [];
+    message.heard = object.heard ?? 0;
+    return message;
+  },
+};
+
 function createBaseSetClusterReplicasRequest(): SetClusterReplicasRequest {
   return { clusterId: "", members: [], entries: [] };
 }
@@ -26788,6 +27356,22 @@ export const AgentService = {
       Buffer.from(SetClusterNetworkResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): SetClusterNetworkResponse => SetClusterNetworkResponse.decode(value),
   },
+  /**
+   * Hand this member the DNS zones delegated to its cluster. It answers for them on port 53 from an
+   * unprivileged process, naming the members it hears over the private network. The full set each
+   * time; no zones stops it answering for the cluster. Kept on disk, so it answers with Deplo down.
+   */
+  setClusterZone: {
+    path: "/deplo.agent.v1.Agent/SetClusterZone" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterZoneRequest): Buffer =>
+      Buffer.from(SetClusterZoneRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterZoneRequest => SetClusterZoneRequest.decode(value),
+    responseSerialize: (value: SetClusterZoneResponse): Buffer =>
+      Buffer.from(SetClusterZoneResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterZoneResponse => SetClusterZoneResponse.decode(value),
+  },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
     path: "/deplo.agent.v1.Agent/Backup" as const,
@@ -27556,6 +28140,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * it off with no peers. The full set each time; it answers with its key and how each peer is reached.
    */
   setClusterNetwork: handleUnaryCall<SetClusterNetworkRequest, SetClusterNetworkResponse>;
+  /**
+   * Hand this member the DNS zones delegated to its cluster. It answers for them on port 53 from an
+   * unprivileged process, naming the members it hears over the private network. The full set each
+   * time; no zones stops it answering for the cluster. Kept on disk, so it answers with Deplo down.
+   */
+  setClusterZone: handleUnaryCall<SetClusterZoneRequest, SetClusterZoneResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -28407,6 +28997,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SetClusterNetworkResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Hand this member the DNS zones delegated to its cluster. It answers for them on port 53 from an
+   * unprivileged process, naming the members it hears over the private network. The full set each
+   * time; no zones stops it answering for the cluster. Kept on disk, so it answers with Deplo down.
+   */
+  setClusterZone(
+    request: SetClusterZoneRequest,
+    callback: (error: ServiceError | null, response: SetClusterZoneResponse) => void,
+  ): ClientUnaryCall;
+  setClusterZone(
+    request: SetClusterZoneRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterZoneResponse) => void,
+  ): ClientUnaryCall;
+  setClusterZone(
+    request: SetClusterZoneRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterZoneResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

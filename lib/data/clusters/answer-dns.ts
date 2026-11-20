@@ -67,6 +67,7 @@ type AnswerDomain = {
   appId: string;
   teamId: string;
   status: string;
+  zoneId: string | null;
 };
 
 async function answeringDomains(clusterId: string): Promise<AnswerDomain[]> {
@@ -78,6 +79,7 @@ async function answeringDomains(clusterId: string): Promise<AnswerDomain[]> {
       appId: domainsTable.appId,
       teamId: appsTable.teamId,
       status: domainsTable.status,
+      zoneId: domainsTable.dnsZoneId,
     })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
@@ -153,6 +155,39 @@ async function checkByHand(
   return `${d.name} must list every server of its cluster that answers: ${parts.join(" and ")}`;
 }
 
+/** Whether resolved addresses are the cluster's: every one a member's, at least one. */
+export function nativeStatus(
+  resolved: string[],
+  members: Set<string>,
+): "valid" | "misconfigured" | "pending" {
+  if (resolved.length === 0) return "pending";
+  return resolved.every((a) => members.has(a)) ? "valid" : "misconfigured";
+}
+
+/** Answered by the cluster's own zone (ADR-0049): nothing to write, only whether the name reaches the zone yet. */
+async function checkNative(
+  d: AnswerDomain,
+  clusterId: string,
+  native: { zone: string; target: string },
+): Promise<string | null> {
+  const { clusterMemberAddresses } = await import("./dns-zone");
+  const [a, aaaa, members] = await Promise.all([
+    resolveHostIpv4(d.name),
+    resolveHostIpv6(d.name),
+    clusterMemberAddresses(clusterId),
+  ]);
+  const status = nativeStatus([...a, ...aaaa], members);
+  if (status !== d.status)
+    await getDb()
+      .update(domainsTable)
+      .set({ status, ssl: status === "valid" })
+      .where(eq(domainsTable.id, d.id));
+  if (status === "valid") return null;
+  return native.target === d.name
+    ? `${d.name} does not reach the cluster yet: delegate ${native.zone} to it where the domain was bought`
+    : `${d.name} does not point at the cluster yet: add the CNAME record ${d.name} → ${native.target}`;
+}
+
 /**
  * Puts every domain of the cluster that answers on every server on the cluster's healthy servers: written at its
  * connected provider, or checked against what a person wrote. Called when a server joins, leaves, stops or is back.
@@ -165,7 +200,23 @@ export async function syncClusterAnswerDns(clusterId: string): Promise<void> {
     const set = await clusterAnswerRecordSet(clusterId);
     // A set with no server is a cluster Deplo cannot see: the records stay as they are rather than go empty.
     if (set.a.length === 0 && set.aaaa.length === 0) return;
+    const { domainNativeZone } = await import("./dns-zone");
     for (const d of domains) {
+      const native = await domainNativeZone(clusterId, d);
+      if (native) {
+        let problem: string | null;
+        try {
+          problem = await checkNative(d, clusterId, native);
+        } catch (e) {
+          problem = `Deplo could not check the DNS of ${d.name}: ${messageOf(e)}`;
+        }
+        if (!problem) said.delete(d.id);
+        else if (said.get(d.id) !== problem) {
+          said.set(d.id, problem);
+          await recordActivity("domain", problem, "Deplo", d.appId, d.teamId);
+        }
+        continue;
+      }
       const [row] = await getDb()
         .select({
           providerId: domainDnsRecords.providerId,
@@ -195,6 +246,23 @@ export async function answerDomainStatus(
   name: string,
   clusterId: string,
 ): Promise<"valid" | "misconfigured" | "pending"> {
+  const [row] = await getDb()
+    .select({ zoneId: domainsTable.dnsZoneId })
+    .from(domainsTable)
+    .where(eq(domainsTable.name, name))
+    .limit(1);
+  const { domainNativeZone, clusterMemberAddresses } =
+    await import("./dns-zone");
+  if (
+    await domainNativeZone(clusterId, { name, zoneId: row?.zoneId ?? null })
+  ) {
+    const [a, aaaa, members] = await Promise.all([
+      resolveHostIpv4(name),
+      resolveHostIpv6(name),
+      clusterMemberAddresses(clusterId),
+    ]);
+    return nativeStatus([...a, ...aaaa], members);
+  }
   const [set, a, aaaa] = await Promise.all([
     clusterAnswerRecordSet(clusterId),
     resolveHostIpv4(name),
@@ -208,4 +276,6 @@ export function syncClusterAnswerDnsSoon(clusterId: string): void {
   void syncClusterAnswerDns(clusterId).catch((e) =>
     console.warn(`[answer-dns] ${clusterId}: ${messageOf(e)}`),
   );
+  // The cluster's own zone names the same servers, so the same changes move it.
+  void import("./dns-zone").then((m) => m.syncClusterZoneSoon(clusterId));
 }

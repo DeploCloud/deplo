@@ -33,6 +33,7 @@ import type {
   UpdateControlPlaneRequest,
   UpdateControlPlaneResponse,
   LinkAddresses,
+  SetClusterZoneRequest,
 } from "../../agent/gen/agent";
 export type {
   HostInfoResponse,
@@ -85,6 +86,17 @@ export interface ClusterNetworkReport {
   port: number;
   addresses: string[];
   peers: { fingerprint: string; path: "direct" | "relay" | "none" }[];
+}
+
+/** How a member answers for its cluster's DNS zone (ADR-0049), as its agent says after taking the table. */
+export interface ClusterZoneReport {
+  /** "address:53" for each address it answers on. */
+  listening: string[];
+  problem: string;
+  state: string;
+  /** The members it names now, by certificate. */
+  answering: string[];
+  heard: number;
 }
 
 /** What one cluster member is handed to run its name forwarders (#200). */
@@ -406,6 +418,8 @@ export interface AgentConnection {
   ): Promise<ProxyCertificateReport[]>;
   // Needs `cluster.network` (ADR-0047): this server's place on its cluster's network; no peers takes it off.
   setClusterNetwork(table: ClusterNetworkTable): Promise<ClusterNetworkReport>;
+  // Needs `dns.zone` (ADR-0049): the zones delegated to its cluster; none stops it answering for the cluster.
+  setClusterZone(table: SetClusterZoneRequest): Promise<ClusterZoneReport>;
   // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.
   setClusterReplicas(table: ClusterReplicaTable): Promise<{ entries: number }>;
   clusterReplicaStatus(): Promise<ClusterReplicaReport[]>;

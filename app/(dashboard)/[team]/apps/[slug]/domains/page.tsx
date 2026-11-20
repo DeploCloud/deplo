@@ -6,6 +6,7 @@ import { domainDnsHints } from "@/lib/data/domains/dns-check";
 import { autoDnsZones } from "@/lib/data/dns-providers/provision";
 import { domainsLeftOnServer } from "@/lib/data/clusters/app-tunnel";
 import { answerCertificatesMissing } from "@/lib/data/clusters/answer-certs";
+import { appDnsZones, domainZoneTargets } from "@/lib/data/clusters/dns-zone";
 import { productionDomain } from "@/lib/deploy/domains";
 import { composeServiceNames } from "@/lib/deploy/compose-stack/compose-read";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
@@ -32,13 +33,16 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  const [listed, serverIp, zones, staysOn, certWaits] = await Promise.all([
-    listDomains(project.id),
-    serverIpForApp(project.id),
-    autoDnsZones(),
-    domainsLeftOnServer(project),
-    answerCertificatesMissing(project.id),
-  ]);
+  const [listed, serverIp, zones, staysOn, certWaits, dnsZones, native] =
+    await Promise.all([
+      listDomains(project.id),
+      serverIpForApp(project.id),
+      autoDnsZones(),
+      domainsLeftOnServer(project),
+      answerCertificatesMissing(project.id),
+      appDnsZones(project.id),
+      domainZoneTargets(project.id),
+    ]);
   const domains = listed.map((d) =>
     d.answersEverywhere && certWaits.includes(d.name)
       ? { ...d, failoverWaitsForCertificate: true }
@@ -116,6 +120,8 @@ export default async function AppDomainsPage(
             serverIpv6={hints.serverIpv6}
             strays={hints.strays}
             staysOn={staysOn}
+            native={Object.fromEntries(native)}
+            dnsZones={dnsZones}
             noHealthCheck={project.healthCheck == null}
           >
             <PendingRows columns={showContainer ? 4 : 3} />

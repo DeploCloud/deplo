@@ -57,6 +57,7 @@ import { deriveWwwRedirect } from "@/lib/www-redirect";
 import type { Domain } from "@/lib/types/domain";
 import type { StrayRecord } from "@/lib/deploy/cloudflare";
 import { DocsLink } from "@/components/ui/docs-link";
+import { DomainZoneLine, type DomainZone } from "./domain-zone-line";
 
 type Row = Domain & {
   serviceName: string;
@@ -72,15 +73,18 @@ export function DomainRows({
   domains,
   strays = {},
   staysOn = {},
+  native = {},
   siblings = domains,
   ...rest
 }: {
   domains: Row[];
   strays?: Record<string, StrayRecord>;
   staysOn?: Record<string, string>;
+  /** Domains answered by the cluster's own DNS zone, by id (ADR-0049). */
+  native?: Record<string, DomainZone>;
 } & Omit<
   React.ComponentProps<typeof DomainRow>,
-  "domain" | "stray" | "staysOn"
+  "domain" | "stray" | "staysOn" | "native"
 >) {
   return (
     <OptimisticList>
@@ -91,6 +95,7 @@ export function DomainRows({
           siblings={siblings}
           stray={strays[d.id] ?? null}
           staysOn={staysOn[d.id] ?? null}
+          native={native[d.id] ?? null}
           {...rest}
         />
       ))}
@@ -121,8 +126,14 @@ export function DomainRow({
   staysOn,
   noHealthCheck = false,
   siblings = [],
+  native = null,
+  dnsZones = [],
 }: {
   domain: Row;
+  /** Answered by the cluster's own DNS zone (ADR-0049), and the CNAME it needs when outside it. */
+  native?: DomainZone | null;
+  /** The zones of the App's cluster it could be answered through. */
+  dnsZones?: { id: string; name: string }[];
   /** The App has no health check, so a failover counts it ready 3 s after it starts. */
   noHealthCheck?: boolean;
   /** The server a cluster App's domain stays pointed at through a failover; null when it follows the App. */
@@ -461,6 +472,7 @@ export function DomainRow({
           )}
         </div>
         {!proxied &&
+          !native &&
           (domain.status === "misconfigured" ||
             domain.status === "pending") && (
             <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
@@ -586,6 +598,14 @@ export function DomainRow({
               </Button>
             )}
           </div>
+        )}
+        {domain.answersEverywhere && (
+          <DomainZoneLine
+            domain={domain}
+            native={native}
+            zones={dnsZones}
+            canManage={canManage}
+          />
         )}
         {domain.failoverWaitsForCertificate && (
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">

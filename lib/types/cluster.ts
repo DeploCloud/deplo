@@ -22,6 +22,9 @@ export interface Cluster {
   /** Per server, for its domains that answer on every server: connections carried at once, and waiting per App. */
   answerMaxConnections: number;
   answerMaxWaiting: number;
+  /** The cluster's DNS zone (ADR-0049): how long resolvers keep an answer, and how long a silent server stays in it. */
+  dnsAnswerTtl: number;
+  dnsDropAfter: number;
   createdAt: string;
 }
 

@@ -892,6 +892,14 @@ is "the cluster's private network"; a server whose pair goes through the relay r
 ([ADR-0047](docs/adr/0047-a-cluster-shares-a-private-network-over-wireguard.md)).
 _Avoid_: VPN, mesh, overlay, tunnel (that is Cloudflare's), WireGuard (in copy).
 
+**Cluster DNS zone**:
+A DNS zone delegated to a **cluster** (`go.example.com`): every member answers for it on port 53
+and names only the members it hears on the **cluster network**, so a domain pointed into it needs
+no record edited when a server stops. Its **name servers** are the up to four members named at the
+registrar. In copy it is "DNS zone", and the answer comes from "the cluster"
+([ADR-0049](docs/adr/0049-a-cluster-can-answer-for-its-own-dns-zone.md)).
+_Avoid_: nameserver mode, DNS backend (in copy), native DNS (in copy).
+
 **Name forwarder**:
 The small forwarder on an Environment's network that holds a workload's name on every **cluster**
 member and carries each connection to the member running it, over the **cluster network**, so

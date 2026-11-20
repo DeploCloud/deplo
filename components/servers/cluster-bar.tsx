@@ -35,7 +35,9 @@ import type { DocsTopic } from "@/lib/docs";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
 import type { LoadBalancingMode } from "@/lib/types/cluster";
+import type { ClusterDnsView } from "@/lib/types/cluster-dns";
 import { ClusterActions } from "./cluster-actions";
+import { ClusterDnsRow } from "./cluster-dns";
 import { DeleteClusterButton } from "./cluster-delete";
 import type { TeamOption } from "./server-team-access";
 
@@ -83,6 +85,8 @@ export type ClusterBarData = {
   loadBalancingMode: LoadBalancingMode;
   /** Set when a domain of the cluster answers on every server: the caps each server carries them with. */
   answerLimits?: { maxConnections: number; maxWaiting: number };
+  /** Set when a domain answers on every server or a zone is already delegated: the cluster's own DNS (ADR-0049). */
+  dns?: ClusterDnsView;
 };
 
 const SET_ANSWER_LIMITS = /* GraphQL */ `
@@ -384,6 +388,7 @@ export function ClusterSettings({ cluster }: { cluster: ClusterBarData }) {
       {cluster.answerLimits && (
         <AnswerLimitsRow cluster={cluster} limits={cluster.answerLimits} />
       )}
+      {cluster.dns && <ClusterDnsRow cluster={cluster} dns={cluster.dns} />}
     </Card>
   );
 }

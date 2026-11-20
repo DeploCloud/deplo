@@ -107,6 +107,9 @@ export const CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE =
 /** An agent without `cluster.network`: it stays off its cluster's network and its streams take the relay. */
 export class AgentClusterNetworkUnsupportedError extends Error {}
 
+/** An agent without `dns.zone`: it answers for none of its cluster's zones, and is no name server. */
+export class AgentClusterZoneUnsupportedError extends Error {}
+
 export class ClusterReleaseUnavailableError extends Error {}
 
 /** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */

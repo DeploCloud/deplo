@@ -7,6 +7,7 @@ import {
   ContractVersion,
   type DeployRequest,
   type RestoreRequest,
+  type SetClusterZoneRequest,
   HelloResponse,
   HostInfoResponse,
   TraefikConfigResponse,
@@ -19,6 +20,7 @@ import type {
   ClusterReplicaReport,
   ClusterReplicaTable,
   ClusterNetworkTable,
+  ClusterZoneReport,
   ClusterAnswerRefusal,
   ProxyCertificateReport,
   ProxyRestartReport,
@@ -77,6 +79,9 @@ export interface FakeClusterHost {
   /** Every network table this host's agent was handed, in order, and how it says it reaches a peer (ADR-0047). */
   networkTables: ClusterNetworkTable[];
   networkPath: (fingerprint: string) => "direct" | "relay" | "none";
+  /** Every DNS zone table it was handed (ADR-0049), and what its agent answers to one. */
+  zoneTables: SetClusterZoneRequest[];
+  zoneReport: (table: SetClusterZoneRequest) => ClusterZoneReport;
   /** Every replication table this host's agent was handed, in order, and what it says of its copies (ADR-0046). */
   replicaTables: ClusterReplicaTable[];
   replicaReports: ClusterReplicaReport[];
@@ -422,6 +427,11 @@ export function fakeClusterHosts(): {
             })),
           };
         }),
+      setClusterZone: (table) =>
+        guard(() => {
+          h.zoneTables.push(table);
+          return h.zoneReport(table);
+        }),
       setClusterReplicas: (table) =>
         guard(() => {
           h.replicaTables.push(table);
@@ -467,6 +477,23 @@ export function fakeClusterHosts(): {
         forwarders: [],
         networkTables: [],
         networkPath: () => "direct",
+        zoneTables: [],
+        zoneReport: (table) =>
+          table.zones.length > 0
+            ? {
+                listening: [`192.0.2.${hosts.size}:53`],
+                problem: "",
+                state: "answer",
+                answering: [],
+                heard: table.servers.length,
+              }
+            : {
+                listening: [],
+                problem: "",
+                state: "",
+                answering: [],
+                heard: 0,
+              },
         replicaTables: [],
         replicaReports: [],
         deploys: [],

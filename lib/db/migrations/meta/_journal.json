@@ -1800,6 +1800,13 @@
       "when": 1796062600000,
       "tag": "0267_server_agent_capabilities",
       "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1796062700000,
+      "tag": "0268_cluster_dns_zone",
+      "breakpoints": true
     }
   ]
 }

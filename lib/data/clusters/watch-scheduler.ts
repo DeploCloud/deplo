@@ -12,6 +12,7 @@ import { shipChangeLogs } from "./change-log";
 import { runClusterRollout } from "./binary-rollout";
 import { syncAnsweringClusters } from "./forwarders";
 import { reconcileClusterNetworks } from "./network";
+import { reconcileClusterZones } from "./dns-zone";
 import { runEmptyingPass } from "./empty";
 import { reconcileClusterImages } from "./images";
 import { runLoadBalancingPass } from "./load-balancing";
@@ -35,6 +36,8 @@ const CHANGE_LOG_EVERY_MS = 60_000;
 const ROLLOUT_EVERY_MS = 60_000;
 const IMAGES_EVERY_MS = 2 * 60_000;
 const NETWORK_EVERY_MS = 2 * 60_000;
+// A cluster's DNS zone (ADR-0049): each agent keeps answering on its own; this hands over what changed and reads back.
+const ZONE_EVERY_MS = 60_000;
 const WARNINGS_EVERY_MS = 30_000;
 const BALANCE_EVERY_MS = 30_000;
 // How soon a server's turned-away visitors reach Activity (ADR-0048).
@@ -61,6 +64,8 @@ interface State {
   /** When every cluster's private network was last put right, and whether a pass still runs. */
   networkAt?: number;
   networking?: boolean;
+  zoneAt?: number;
+  zoning?: boolean;
   /** When the clusters' warnings were last worked out, and whether a pass still runs. */
   warningsAt?: number;
   warning?: boolean;
@@ -184,6 +189,13 @@ export async function runClusterWatchTick(): Promise<void> {
       void reconcileClusterNetworks()
         .catch((e) => console.error("[cluster-network] pass failed:", e))
         .finally(() => (state.networking = false));
+    }
+    if (!state.zoning && Date.now() - (state.zoneAt ?? 0) >= ZONE_EVERY_MS) {
+      state.zoneAt = Date.now();
+      state.zoning = true;
+      void reconcileClusterZones()
+        .catch((e) => console.error("[cluster-zone] pass failed:", e))
+        .finally(() => (state.zoning = false));
     }
     // The Servers page reads what this stored, so it never waits on a leader.
     if (

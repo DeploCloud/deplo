@@ -17,15 +17,18 @@ import type {
   ClusterLeaderPins,
   ClusterNetworkReport,
   ClusterNetworkTable,
+  ClusterZoneReport,
   ProxyCertificateReport,
   ProxyRestartReport,
 } from "./connection";
+import type { SetClusterZoneRequest } from "../../agent/gen/agent";
 import {
   AgentClusterForwardersUnsupportedError,
   AgentClusterImagesUnsupportedError,
   AgentClusterMemberUnsupportedError,
   AgentClusterNetworkUnsupportedError,
   AgentClusterUnsupportedError,
+  AgentClusterZoneUnsupportedError,
   AgentTooOldError,
   CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE,
   CLUSTER_HOST_UNSUPPORTED_MESSAGE,
@@ -45,6 +48,7 @@ import {
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
   CLUSTER_NETWORK_CAPABILITY,
+  CLUSTER_ZONE_CAPABILITY,
   CLUSTER_STANDBY_CAPABILITY,
 } from "./hello-capabilities";
 
@@ -443,6 +447,24 @@ export async function setClusterNetwork(
         "The server agent on this server is too old for its cluster's private network.",
       );
     return await conn.setClusterNetwork(table);
+  } finally {
+    conn.close();
+  }
+}
+
+/** Hands a member its cluster's DNS zones (ADR-0049); refused before the RPC when its agent is too old. */
+export async function setClusterZone(
+  serverId: string,
+  table: SetClusterZoneRequest,
+): Promise<ClusterZoneReport> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_ZONE_CAPABILITY))
+      throw new AgentClusterZoneUnsupportedError(
+        "The server agent on this server is too old to answer for the cluster's DNS zone.",
+      );
+    return await conn.setClusterZone(table);
   } finally {
     conn.close();
   }

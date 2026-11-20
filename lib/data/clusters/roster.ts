@@ -48,6 +48,8 @@ function assemble(r: Row): Cluster {
     loadBalancingMode: cleanModeOrNearest(r.loadBalancingMode),
     answerMaxConnections: r.answerMaxConnections,
     answerMaxWaiting: r.answerMaxWaiting,
+    dnsAnswerTtl: r.dnsAnswerTtl,
+    dnsDropAfter: r.dnsDropAfter,
     createdAt: r.createdAt,
   };
 }

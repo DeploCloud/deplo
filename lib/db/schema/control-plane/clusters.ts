@@ -6,6 +6,7 @@ import {
   bigint,
   primaryKey,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
@@ -47,6 +48,9 @@ export const clusters = pgTable("clusters", {
     .notNull()
     .default(2048),
   answerMaxWaiting: integer("answer_max_waiting").notNull().default(128),
+  // The cluster's DNS zone (ADR-0049): how long resolvers keep an answer, and how long a silent server stays in it.
+  dnsAnswerTtl: integer("dns_answer_ttl").notNull().default(30),
+  dnsDropAfter: integer("dns_drop_after").notNull().default(10),
   // Where an admin dragged it on the Servers page; null = never placed, after the placed ones.
   position: integer("position"),
   createdAt: isoTimestamptz("created_at").notNull(),
@@ -277,6 +281,60 @@ export const clusterNetworkPeers = pgTable(
     primaryKey({ columns: [t.clusterId, t.serverId] }),
     index("cluster_network_peers_server_idx").on(t.serverId),
   ],
+);
+
+// A DNS zone delegated to a cluster (ADR-0049): its servers answer for it. A zone belongs to one cluster.
+export const clusterDnsZones = pgTable(
+  "cluster_dns_zones",
+  {
+    id: text("id").primaryKey(),
+    clusterId: text("cluster_id")
+      .notNull()
+      .references(() => clusters.id, { onDelete: "cascade" }),
+    // Lower case, no trailing dot: "go.example.com".
+    name: text("name").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("cluster_dns_zones_name_uq").on(t.name),
+    index("cluster_dns_zones_cluster_idx").on(t.clusterId),
+  ],
+);
+
+// ns1 to ns4 of every zone of a cluster: kept as chosen, so the records at the registrar stay right.
+export const clusterNameServers = pgTable(
+  "cluster_name_servers",
+  {
+    clusterId: text("cluster_id")
+      .notNull()
+      .references(() => clusters.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+  },
+  // No unique key on the server: a Deplo move may place two old servers on one, and the choice is redone each pass.
+  (t) => [primaryKey({ columns: [t.clusterId, t.position] })],
+);
+
+// How each server answers for its cluster's zone, as its agent last said. No foreign key to the cluster: a deleted
+// cluster's rows are how the sweep finds the servers to stop.
+export const clusterZoneStates = pgTable(
+  "cluster_zone_states",
+  {
+    clusterId: text("cluster_id").notNull(),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    // Port 53 open on at least one of its addresses.
+    serving: boolean("serving").notNull().default(false),
+    problem: text("problem").notNull().default(""),
+    // "answer" | "stale" | "fail" | "warming" | "unsupported" | "unreachable"
+    state: text("state").notNull(),
+    heard: integer("heard").notNull().default(0),
+    checkedAt: isoTimestamptz("checked_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.clusterId, t.serverId] })],
 );
 
 // How one server of a cluster reaches another through the network, as its agent last said.
