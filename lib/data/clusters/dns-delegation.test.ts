@@ -9,7 +9,7 @@ import {
   encodeQuery,
   QTYPE,
   type QType,
-} from "../../dns-wire";
+} from "../../dns/wire";
 import {
   askNameServer,
   checkDelegation,
@@ -49,7 +49,7 @@ function fakeServer(book: Book) {
     if (a) udp.send(a, from.port, from.address);
   });
   const tcp = net.createServer((c) => {
-    c.once("data", (d) => {
+    c.once("data", (d: Buffer) => {
       const a = answer(d.subarray(2), true);
       if (!a) return void c.destroy();
       const len = Buffer.alloc(2);

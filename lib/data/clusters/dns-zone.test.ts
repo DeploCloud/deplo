@@ -3,21 +3,21 @@ import assert from "node:assert/strict";
 
 import { and, eq } from "drizzle-orm";
 
-import { encryptSecret } from "../crypto";
-import { nowIso } from "../ids";
-import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { encryptSecret } from "../../crypto";
+import { nowIso } from "../../ids";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   clusterMembers,
   clusterNameServers,
   clusterZoneStates,
-} from "../db/schema/control-plane/clusters";
+} from "../../db/schema/control-plane/clusters";
 import {
   dnsProviders,
   domainDnsRecords,
-} from "../db/schema/control-plane/dns-providers";
-import { domains as domainsTable } from "../db/schema/control-plane/domains";
-import { CLUSTER_ZONE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
-import { seedApp } from "./app-graph-test-helpers";
+} from "../../db/schema/control-plane/dns-providers";
+import { domains as domainsTable } from "../../db/schema/control-plane/domains";
+import { CLUSTER_ZONE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import { seedApp } from "../app-graph-test-helpers";
 import {
   MEMBERS,
   FP,
@@ -27,8 +27,8 @@ import {
   db,
   dissolveHarness,
   hosts,
-} from "./cluster-dissolve-test-helpers";
-import { nativeStatus } from "./clusters/answer-dns";
+} from "../cluster-dissolve-test-helpers";
+import { nativeStatus } from "./answer-dns";
 import {
   __setApexCheckForTest,
   addClusterDnsZone,
@@ -39,12 +39,12 @@ import {
   setClusterDnsTimes,
   setDomainDnsZone,
   syncClusterZone,
-} from "./clusters/dns-zone";
+} from "./dns-zone";
 import {
   __resetAgentAddressesForTest,
   __setAgentAddressesForTest,
-} from "./servers/addresses";
-import { USER_1 } from "./identity-test-helpers";
+} from "../servers/addresses";
+import { USER_1 } from "../identity-test-helpers";
 
 // ADR-0049 phase 1: a cluster answers for its own DNS zone; Deplo hands every member the zone and picks name servers.
 dissolveHarness();
@@ -324,15 +324,13 @@ test("a domain points at the zone only when it can: on every server, of this clu
       updatedAt: nowIso(),
     });
   await answeringDomain(eu.id, "dom_cf", "cf.example.com");
-  await db()
-    .insert(domainDnsRecords)
-    .values({
-      domainId: "dom_cf",
-      providerId: "dnsp_1",
-      zoneId: "z1",
-      recordId: "r1",
-      createdAt: nowIso(),
-    });
+  await db().insert(domainDnsRecords).values({
+    domainId: "dom_cf",
+    providerId: "dnsp_1",
+    zoneId: "z1",
+    recordId: "r1",
+    createdAt: nowIso(),
+  });
   await assert.rejects(
     asAdmin(() => setDomainDnsZone("dom_cf", zone.id)),
     /connected DNS provider/,

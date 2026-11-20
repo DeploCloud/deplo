@@ -12,7 +12,7 @@ import {
   QTYPE,
   type QType,
   type WireAnswer,
-} from "../../dns-wire";
+} from "../../dns/wire";
 
 // Whether a zone is delegated to its cluster (ADR-0049): https://deplo.build/docs/operations/clusters/dns-zone
 
