@@ -25,6 +25,8 @@ export interface Cluster {
   /** The cluster's DNS zone (ADR-0049): how long resolvers keep an answer, and how long a silent server stays in it. */
   dnsAnswerTtl: number;
   dnsDropAfter: number;
+  /** Each zone gets one certificate for itself and every name one label below it (ADR-0049 phase 3). */
+  dnsWildcard: boolean;
   createdAt: string;
 }
 

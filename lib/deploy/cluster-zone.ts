@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
-import type { SetClusterZoneRequest } from "../agent/gen/agent";
+import type {
+  ClusterZoneCertificate,
+  ClusterZoneChallenge,
+  SetClusterZoneRequest,
+} from "../agent/gen/agent";
 import { zoneCovers } from "../dns-zone";
 
 // A cluster's own DNS zone (ADR-0049): https://deplo.build/docs/operations/clusters/dns-zone
@@ -111,6 +115,9 @@ export type ClusterZoneInput = {
   nameServers: string[];
   ttl: number;
   dropAfter: number;
+  /** The certificate checks answered from the zone, and this server's part in each zone's own certificate. */
+  challenges?: ClusterZoneChallenge[];
+  certificates?: ClusterZoneCertificate[];
 };
 
 /** What one server agent is handed: the same for every member but `selfFingerprint`. */
@@ -134,6 +141,8 @@ export function renderClusterZone(
     nameServers: input.nameServers,
     answerTtlSeconds: input.ttl,
     dropAfterSeconds: input.dropAfter,
+    challenges: input.challenges ?? [],
+    certificates: input.certificates ?? [],
   };
 }
 

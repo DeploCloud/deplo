@@ -4,6 +4,7 @@ import { and, eq, gte } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { failoverBundlePushes as pushes } from "../../db/schema/control-plane/clusters";
 import { decryptSecretOrThrow, encryptSecret } from "../../crypto";
 import type { ProxyRestartReport } from "../../infra/agent-client/connection";
@@ -65,6 +66,21 @@ async function storedBundleOf(appId: string): Promise<FailoverBundle | null> {
     : null;
 }
 
+/** Names the zone's own certificate serves: every server holds it already, so no bundle carries it (ADR-0049). */
+async function zoneServedHosts(clusterId: string): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
+    .where(
+      and(
+        eq(appsTable.clusterId, clusterId),
+        eq(domainsTable.certChallenge, "zone"),
+      ),
+    );
+  return new Set(rows.map((r) => r.name));
+}
+
 /** The hostnames of the App's switched-on domains whose failover waits for their certificate. */
 export async function answerCertificatesMissing(
   appId: string,
@@ -75,7 +91,10 @@ export async function answerCertificatesMissing(
     .where(eq(appsTable.id, appId))
     .limit(1);
   if (!app?.clusterId) return [];
-  const hosts = (await answeringApps(app.clusterId)).get(appId) ?? [];
+  const zoneServed = await zoneServedHosts(app.clusterId);
+  const hosts = ((await answeringApps(app.clusterId)).get(appId) ?? []).filter(
+    (h) => !zoneServed.has(h),
+  );
   if (hosts.length === 0) return [];
   return uncarriedHosts((await storedBundleOf(appId))?.certificates, hosts);
 }
@@ -91,6 +110,7 @@ export async function syncAnswerCertificates(clusterId: string): Promise<void> {
   const { readProxyCertificates } =
     await import("../../infra/agent-client/cluster-host");
   const byApp = await answeringApps(clusterId);
+  const zoneServed = await zoneServedHosts(clusterId);
   const rows = await getDb()
     .select({ id: appsTable.id, serverId: appsTable.serverId })
     .from(appsTable)
@@ -98,7 +118,9 @@ export async function syncAnswerCertificates(clusterId: string): Promise<void> {
   for (const app of rows) {
     const bundle = await storedBundleOf(app.id);
     if (!bundle) continue;
-    const hosts = [...new Set(byApp.get(app.id) ?? [])];
+    const hosts = [...new Set(byApp.get(app.id) ?? [])].filter(
+      (h) => !zoneServed.has(h),
+    );
     const current = bundle.certificates ?? [];
     let next = keepCertificates(current, hosts);
     if (hosts.length > 0 && app.serverId) {
@@ -170,6 +192,8 @@ export function proxyRestartMessage(
   r: ProxyRestartReport,
 ): string {
   const names = r.hosts.join(", ");
+  if (r.dropped && r.zone)
+    return `Deplo restarted the proxy on ${server} ${at(r.atUnixMs)} so another server renews the certificate of ${names}; ${server} keeps serving it. Visitors' open connections to that server reconnected.`;
   if (r.dropped)
     return `Deplo restarted the proxy on ${server} ${at(r.atUnixMs)} to remove the certificate of ${names}, whose App now runs on another server, so ${server} never renews it. Visitors' open connections to that server reconnected.`;
   const when = r.urgent

@@ -1301,6 +1301,11 @@ type ClusterDns {
   """Where each server of the cluster is."""
   places: [ClusterServerPlace!]
   servers: [ClusterZoneServer!]
+
+  """
+  Each zone has one certificate for every name one label below it; off, each name gets its own over DNS.
+  """
+  wildcard: Boolean
   zones: [ClusterDnsZone!]
 }
 
@@ -1308,6 +1313,7 @@ type ClusterDns {
 A DNS zone delegated to a cluster: its servers answer for it, naming the healthy ones.
 """
 type ClusterDnsZone {
+  certificate: ZoneCertificate
   id: ID
   name: String
 
@@ -4634,6 +4640,11 @@ type Mutation {
   checkDnsProvider(apiToken: String!, provider: DnsProviderKind!, zone: String!): DnsProviderCheck
 
   """
+  Looks up the domain's _acme-challenge CNAME into its cluster's zone now. Once it is seen, the domain's certificate is checked over DNS from the zone. Returns whether it was seen.
+  """
+  checkDomainAcmeCname(id: String!): Boolean
+
+  """
   Re-run the upstream release check ignoring the cache, and expire the changelog beside it.
   """
   checkForUpdates: UpdateInfo
@@ -5599,6 +5610,11 @@ type Mutation {
   How long resolvers keep the cluster's DNS answers (10 to 300 s, default 30), and how long a server unheard on the private network stays in them (5 to 60 s, default 10).
   """
   setClusterDnsTimes(answerTtl: Int!, clusterId: String!, dropAfter: Int!): Boolean
+
+  """
+  On (the default), each of the cluster's zones gets one certificate for itself and every name one label below it. Off, each name gets a certificate of its own over DNS.
+  """
+  setClusterDnsWildcard(clusterId: String!, on: Boolean!): Boolean
 
   """
   Turn a cluster's failover on or off. Off, its leader holds nothing to restart elsewhere, so a server that stops keeps its Apps and databases until it comes back.
@@ -8950,4 +8966,39 @@ type WorkloadContainer {
 
   """Docker's state: "running", "restarting", "exited", ..."""
   state: String
+}
+
+"""
+A zone's own certificate: ordered once over DNS, renewed by one server of the cluster, held by every other.
+"""
+type ZoneCertificate {
+  """Why the last order failed, in plain words; empty when it did not."""
+  error: String
+  errorAt: String
+
+  """The same failure as the certificate authority said it."""
+  errorDetail: String
+  issuedAt: String
+
+  """The names on it: the zone and every name one label below."""
+  names: [String!]
+
+  """The renewing server is asking for it now."""
+  ordering: Boolean
+  renewedAt: String
+
+  """The one server that orders and renews it."""
+  renewer: ZoneCertificateRenewer
+
+  """The domains it serves now."""
+  serves: [String!]
+
+  """It has not expired."""
+  valid: Boolean
+  validUntil: String
+}
+
+type ZoneCertificateRenewer {
+  serverId: String
+  serverName: String
 }

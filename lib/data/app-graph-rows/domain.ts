@@ -52,6 +52,9 @@ export function assembleDomain(
     ...(row.proxied != null ? { proxied: row.proxied } : {}),
     ...(row.tunnel ? { tunnel: true } : {}),
     ...(row.answersEverywhere ? { answersEverywhere: true } : {}),
+    ...(row.certChallenge === "zone" || row.certChallenge === "dns"
+      ? { certChallenge: row.certChallenge }
+      : {}),
     ...(row.importedFrom != null ? { importedFrom: row.importedFrom } : {}),
     createdAt: row.createdAt,
   };

@@ -38,12 +38,33 @@ export type ClusterGeoTable = {
   problem: string;
 };
 
+/** A zone's own certificate (ADR-0049 phase 3), as the cluster's settings show it. */
+export type ZoneCertificateView = {
+  /** The names on it: the zone and every name one label below. */
+  names: string[];
+  /** The domains it serves now. */
+  serves: string[];
+  validUntil: string | null;
+  /** It has not expired. */
+  valid: boolean;
+  issuedAt: string | null;
+  renewedAt: string | null;
+  /** The one server that orders and renews it. */
+  renewer: { serverId: string; serverName: string } | null;
+  ordering: boolean;
+  /** The last failed order in plain words, and as the certificate authority said it. */
+  error: string;
+  errorDetail: string;
+  errorAt: string | null;
+};
+
 export type ClusterDnsZoneView = {
   id: string;
   name: string;
   records: DelegationRecord[];
   /** The domains it answers, as each one's name in the zone. */
   names: string[];
+  certificate: ZoneCertificateView;
 };
 
 export type ClusterDnsView = {
@@ -54,6 +75,8 @@ export type ClusterDnsView = {
   geo: ClusterGeoTable;
   answerTtl: number;
   dropAfter: number;
+  /** One certificate per zone for every name one label below it; off, each name gets its own. */
+  wildcard: boolean;
 };
 
 export type DelegationCheck = {

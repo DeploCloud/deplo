@@ -136,6 +136,7 @@ export function clusterRpc(
           hosts: p.hosts ?? [],
           urgent: p.urgent === true,
           dropped: p.dropped === true,
+          zone: p.zone === true,
         })),
       };
     },
@@ -185,6 +186,7 @@ export function clusterRpc(
         answering: r.answering ?? [],
         heard: r.heard,
         geoSha256: r.geoSha256 ?? "",
+        certificates: r.certificates ?? [],
       };
     },
     async setGeoTable(sha256, tableGz) {

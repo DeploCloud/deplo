@@ -205,6 +205,9 @@ export const DOCS = {
   "clusters.dnsZoneApex": "operations/clusters/dns-zone#a-bare-domain",
   "clusters.dnsZoneNearest":
     "operations/clusters/dns-zone#nearest-servers-first",
+  "clusters.dnsZoneCertificates": "operations/clusters/dns-zone#certificates",
+  "clusters.dnsZoneCertCname":
+    "operations/clusters/dns-zone#a-name-outside-the-zone",
   "clusters.dnsZoneTimes":
     "operations/clusters/dns-zone#how-fast-a-stopped-server-leaves",
   "clusters.privateNetwork": "operations/clusters/private-network",

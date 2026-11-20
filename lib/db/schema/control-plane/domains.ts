@@ -42,6 +42,10 @@ export const domains = pgTable(
     dnsZoneId: text("dns_zone_id").references(() => clusterDnsZones.id, {
       onDelete: "set null",
     }),
+    // Its "_acme-challenge" CNAME into that zone was last seen right then; null when not (ADR-0049 phase 3).
+    acmeCnameSeenAt: isoTimestamptz("acme_cname_seen_at"),
+    // How its certificate is checked as Deplo last routed it: "zone", "dns", or null for HTTP-01.
+    certChallenge: text("cert_challenge"),
     securityHeaders: boolean("security_headers").notNull().default(true),
     importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),

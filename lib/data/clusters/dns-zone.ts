@@ -25,6 +25,7 @@ import {
   type NameServerChoice,
   type ZoneServer,
 } from "../../deploy/cluster-zone";
+import { challengeName, type CertChallenge } from "../../deploy/dns-challenge";
 import { zoneCovers } from "../../dns-zone";
 import { GEO_STALE_MONTHS, geoAgeMonths, shippedGeo } from "../../geo/shipped";
 import { newId, nowIso } from "../../ids";
@@ -42,6 +43,15 @@ import { getServerById } from "../servers/roster";
 import type { ClusterDnsView, DelegationCheck } from "../../types/cluster-dns";
 import { recordClusterActivity } from "./cluster-activity";
 import { checkDelegation } from "./dns-delegation";
+import { refreshAcmeCnames } from "./zone-cnames";
+import {
+  applyCertModes,
+  dropDnsChallengeProxy,
+  zoneCertificateViews,
+  zoneCertMembers,
+  zoneCertPass,
+  type ZoneCertDomainRow,
+} from "./zone-certs";
 import {
   placeOf,
   placeRows,
@@ -109,13 +119,18 @@ type ZoneRow = typeof clusterDnsZones.$inferSelect;
 async function zoneDomains(
   clusterId: string,
   zones: ZoneRow[],
-): Promise<Map<string, { domainId: string; name: string; target: string }[]>> {
+): Promise<Map<string, ZoneDomain[]>> {
   const rows = await getDb()
     .select({
       id: domainsTable.id,
       name: domainsTable.name,
       zoneId: domainsTable.dnsZoneId,
       tunnel: domainsTable.tunnel,
+      appId: domainsTable.appId,
+      serverId: appsTable.serverId,
+      certProvider: domainsTable.certProvider,
+      acmeCnameSeenAt: domainsTable.acmeCnameSeenAt,
+      certChallenge: domainsTable.certChallenge,
     })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
@@ -125,12 +140,7 @@ async function zoneDomains(
         eq(domainsTable.answersEverywhere, true),
       ),
     );
-  const out = new Map(
-    zones.map((z) => [
-      z.id,
-      [] as { domainId: string; name: string; target: string }[],
-    ]),
-  );
+  const out = new Map(zones.map((z) => [z.id, [] as ZoneDomain[]]));
   for (const d of rows) {
     if (d.tunnel === true) continue;
     const zone = nativeZoneOf(d, zones);
@@ -139,10 +149,20 @@ async function zoneDomains(
         domainId: d.id,
         name: d.name,
         target: zoneTarget(d.name, zone.name),
+        zoneId: zone.id,
+        zone: zone.name,
+        inside: zoneCovers(zone.name, d.name),
+        appId: d.appId,
+        serverId: d.serverId,
+        certProvider: d.certProvider,
+        acmeCnameSeenAt: d.acmeCnameSeenAt,
+        certChallenge: d.certChallenge,
       });
   }
   return out;
 }
+
+type ZoneDomain = ZoneCertDomainRow & { target: string };
 
 /** The zone that answers a domain: the deepest zone it is in, else the one its CNAME was pointed at. */
 export function nativeZoneOf<Z extends { id: string; name: string }>(
@@ -210,6 +230,8 @@ const STOP = (clusterId: string) => ({
   nameServers: [],
   answerTtlSeconds: 0,
   dropAfterSeconds: 0,
+  challenges: [],
+  certificates: [],
 });
 
 type ZoneState = {
@@ -226,6 +248,7 @@ type ZoneState = {
  */
 export async function syncClusterZone(clusterId: string): Promise<void> {
   if (await instanceFrozen()) return;
+  let routes: (() => Promise<void>) | null = null;
   await withKeyedLock(`cluster-zone:${clusterId}`, async () => {
     const cluster = await getClusterById(clusterId);
     const zones = cluster ? await zonesOf(clusterId) : [];
@@ -235,6 +258,8 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
       if (keep.has(st.serverId)) continue;
       try {
         await setClusterZone(st.serverId, STOP(clusterId));
+        // Out of the zone, its proxy no longer needs the resolver that checks over DNS.
+        await dropDnsChallengeProxy(st.serverId);
       } catch (e) {
         if (!(e instanceof AgentClusterZoneUnsupportedError)) {
           console.warn(
@@ -273,6 +298,22 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           }
         : null;
     const fpOf = new Map(members.map((m) => [m.serverId, m.fingerprint]));
+    const heard = new Map(
+      (await statesOf(clusterId)).map((s) => [s.serverId, s.state]),
+    );
+    const certDomains = [...byZone.values()].flat();
+    await refreshAcmeCnames(certDomains);
+    const certs = await zoneCertPass({
+      clusterId,
+      clusterName: cluster.name,
+      wildcard: cluster.dnsWildcard,
+      zones,
+      domains: certDomains,
+      members: await zoneCertMembers(
+        members,
+        (id) => !["unreachable", "unsupported"].includes(heard.get(id) ?? ""),
+      ),
+    });
 
     const pick = async (current: NameServerChoice[]) => {
       const states = new Map(
@@ -303,7 +344,8 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
       const prev = new Map(
         (await statesOf(clusterId)).map((s) => [s.serverId, s]),
       );
-      for (const m of members) {
+      let fresh = false;
+      for (const m of certs.order(members)) {
         if (!m.fingerprint) continue;
         const req = renderClusterZone({
           clusterId,
@@ -316,9 +358,13 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           nameServers,
           ttl: cluster.dnsAnswerTtl,
           dropAfter: cluster.dnsDropAfter,
+          challenges: certs.challenges,
+          certificates: certs.certificatesFor(m.serverId),
         });
         try {
           const r = await setClusterZone(m.serverId, req, table);
+          if (await certs.record(m.serverId, r.certificates ?? []))
+            fresh = true;
           await saveState(clusterId, m.serverId, {
             serving: r.listening.length > 0,
             problem: r.problem,
@@ -340,19 +386,23 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           });
         }
       }
+      return fresh;
     };
 
     const before = await currentChoice(clusterId);
     let choice = await pick(before);
     if (!sameChoice(before, choice)) await saveChoice(clusterId, choice);
-    await send(choice);
+    let fresh = await send(choice);
     // A server just found able to answer may fill a free place: hand everyone the new list at once.
     const after = await pick(choice);
     if (!sameChoice(after, choice)) {
       choice = after;
       await saveChoice(clusterId, choice);
-      await send(choice);
+      fresh = (await send(choice)) || fresh;
     }
+    // A pair the renewer just got reaches every other server now, not a minute later.
+    if (fresh) await send(choice);
+    routes = () => applyCertModes(certDomains, certs.modes);
     // A name server gone or renumbered changes records at the registrar; one added in a free place only adds one.
     const moved = before.filter(
       (b) =>
@@ -368,6 +418,8 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
       );
     }
   });
+  // Outside the lock: routing an App again may itself ask for the zone to be synced.
+  if (routes) await (routes as () => Promise<void>)();
 }
 
 /** Fire-and-forget for a change that moves what the zone answers. */
@@ -415,12 +467,18 @@ export async function clusterDnsView(
   const digest = geo.state === "ready" ? geo.bundle.table.digest : null;
   const everyonePlaced =
     members.length > 0 && members.every((m) => m.place != null);
+  const certs = await zoneCertificateViews(
+    zones,
+    (id) => byId.get(id)?.name ?? id,
+  );
   return {
+    wildcard: cluster.dnsWildcard,
     zones: zones.map((z) => ({
       id: z.id,
       name: z.name,
       records: delegationRecords(z.name, ns),
       names: byZone.get(z.id)!.map((d) => d.target),
+      certificate: certs.get(z.id)!,
     })),
     nameServers: choice.map((c) => ({
       position: c.position,
@@ -723,12 +781,22 @@ export async function setDomainDnsZone(
   return d.appId;
 }
 
+export type DomainZoneInfo = {
+  zone: string;
+  target: string | null;
+  /** How its certificate is checked as routed now, and for a name outside the zone the CNAME that moves it to DNS. */
+  cert: {
+    mode: CertChallenge;
+    check: { name: string; target: string; seen: boolean } | null;
+  };
+};
+
 /** The record a domain answered by the cluster needs, if any: the CNAME into the zone, or none inside it. */
 export async function domainZoneTargets(
   appId: string,
-): Promise<Map<string, { zone: string; target: string | null }>> {
+): Promise<Map<string, DomainZoneInfo>> {
   const app = await loadAppGraph(appId);
-  const out = new Map<string, { zone: string; target: string | null }>();
+  const out = new Map<string, DomainZoneInfo>();
   if (!app?.clusterId) return out;
   const zones = await zonesOf(app.clusterId);
   if (zones.length === 0) return out;
@@ -737,6 +805,8 @@ export async function domainZoneTargets(
       id: domainsTable.id,
       name: domainsTable.name,
       zoneId: domainsTable.dnsZoneId,
+      certChallenge: domainsTable.certChallenge,
+      seenAt: domainsTable.acmeCnameSeenAt,
     })
     .from(domainsTable)
     .where(
@@ -747,11 +817,27 @@ export async function domainZoneTargets(
     );
   for (const d of rows) {
     const z = nativeZoneOf(d, zones);
-    if (z)
-      out.set(d.id, {
-        zone: z.name,
-        target: zoneCovers(z.name, d.name) ? null : zoneTarget(d.name, z.name),
-      });
+    if (!z) continue;
+    const target = zoneCovers(z.name, d.name)
+      ? null
+      : zoneTarget(d.name, z.name);
+    out.set(d.id, {
+      zone: z.name,
+      target,
+      cert: {
+        mode:
+          d.certChallenge === "zone" || d.certChallenge === "dns"
+            ? d.certChallenge
+            : "http",
+        check: target
+          ? {
+              name: challengeName(d.name),
+              target: challengeName(target),
+              seen: d.seenAt != null,
+            }
+          : null,
+      },
+    });
   }
   return out;
 }

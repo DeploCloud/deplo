@@ -184,11 +184,25 @@ test("every member is handed the zone under its own certificate; the name server
   assert.deepEqual(targets.get("dom_in"), {
     zone: "go.example.com",
     target: null,
+    cert: { mode: "http", check: null },
   });
   assert.deepEqual(targets.get("dom_out"), {
     zone: "go.example.com",
     target: "shop-example-com.go.example.com",
+    cert: {
+      mode: "http",
+      check: {
+        name: "_acme-challenge.shop.example.com",
+        target: "_acme-challenge.shop-example-com.go.example.com",
+        seen: false,
+      },
+    },
   });
+  // No server takes checks over DNS here: nothing is set through the zone.
+  for (const id of MEMBERS) {
+    assert.deepEqual(lastTable(id)!.challenges, []);
+    assert.deepEqual(lastTable(id)!.certificates, []);
+  }
 });
 
 test("a server whose port 53 is taken, or whose agent is too old, is no name server; the chosen ones keep their place", async () => {
