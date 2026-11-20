@@ -1,6 +1,6 @@
 # ADR-0049: A cluster can answer for its own DNS zone
 
-**Status**: accepted with the owner's four amendments (20 Nov 2026: the name server runs unprivileged, how a visitor is placed without ECS, how the location database is updated, the apex in the manual); phase 1 in progress. Follows from [ADR-0048](0048-a-cluster-domain-answers-on-every-server.md), whose third DNS backend (`native`) it is.
+**Status**: accepted with the owner's four amendments (20 Nov 2026: the name server runs unprivileged, how a visitor is placed without ECS, how the location database is updated, the apex in the manual). **Phase 1 built and checked on the lab**: agent DeploCloud/deplo-agent#66 (Hello `dns.zone`, released in v0.5.3-canary.17), panel #267 (migration 0268, released in v0.8.2-canary.47), manual DeploCloud/docs#12. Phases 2 and 3 not built. Follows from [ADR-0048](0048-a-cluster-domain-answers-on-every-server.md), whose third DNS backend (`native`) it is.
 
 A domain that answers on every server (ADR-0048) needs one DNS record per healthy server. With a connected provider Deplo keeps them; without one, a person types them and edits them again on every change of the cluster, which is exactly the DNS work the mission keeps off the happy path. **The servers of a cluster answer for a DNS zone themselves: the person delegates a zone (or points one name into it) once, and from then on the cluster's own answers name its healthy servers, with no record to edit, Deplo up or down.**
 
@@ -65,6 +65,17 @@ The zone is served unsigned, and the delegation must carry no `DS` record (the s
 1. **Health-aware answers, no geography.** The unprivileged name server and `SetClusterZone`; the `native` backend in the domain screen with the delegation check; the majority and the last agreed set; the two times in the cluster's settings. The agent ships first behind `dns.zone`, then the panel.
 2. **Geography.** Server regions, the DB-IP table shipped in the image and handed with the zone, ECS or the resolver's address, nearest-first answers.
 3. **Certificate checks over DNS (DNS-01).** `_acme-challenge.<name>` points into the zone (a `CNAME` once, or nothing for a delegated whole zone), and each agent serves on its own loopback the endpoint Traefik's HTTP-request DNS provider calls to set a TXT record; the agent hands it to every other name server over the private network within a second. No DNS provider's token reaches any server. It reopens what ADR-0048 rejected: wildcard certificates, and a certificate on every server that runs a replica (#228, load balancing without Cloudflare), still ordered once and carried as ADR-0048 carries it, so the duplicate limit is not spent per server.
+
+## What the lab showed (phase 1)
+
+Released agent v0.5.3-canary.17, panel v0.8.2-canary.47, leader v0.1.0-canary.7; three servers, `lab.test` delegated to them through a lab resolver (unbound with a stub zone, since the lab owns no public domain), default times (removal 10 s, TTL 30 s). A prober on the LAN asked each name server and the resolver every 0.5 s.
+
+- **Normal answers**: 160 of 160 named exactly the three servers, from each name server and through the resolver; A, AAAA and NS as specified.
+- **A server powered off** (three runs): it left each other name server's answers 9.4 to 11.0 s after the cut (the removal time, plus up to one 2 s "alive" interval), and the resolver's after 21.2 to 21.7 s, when its cached answer expired; never an error or an empty answer from a healthy server.
+- **A server isolated from the others** (three runs): it answered `SERVFAIL` 11.5 to 12.0 s after the cut, the other two dropped it after 10.0 to 12.0 s and the resolver after 20.7 to 21.2 s, and none of them ever answered an error. Back on the network, it was answering and named by every server again within 2 to 4 s.
+- **The process on a lab server**: `nobody`, no supplementary group, no capability, `NoNewPrivs`, its root a directory holding only its binary, its own network namespace; on the server's own IPv4 and IPv6, beside Deplo's DNS cache on `10.201.0.1:53`.
+- **An ADR-0048 failover** (power cut of the Apps' server), the non-regression check: the Volume App took writes on its new server about 41 s after the cut, the database never stopped, and no two copies took writes at once.
+- **Seen, not a fault**: an agent's first seconds log "answers fail, hearing 3 of 3": just started with nothing agreed yet, it answers `SERVFAIL` for one removal time, as decided above.
 
 ## Test plan
 
