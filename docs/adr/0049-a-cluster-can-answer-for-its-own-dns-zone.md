@@ -1,6 +1,6 @@
 # ADR-0049: A cluster can answer for its own DNS zone
 
-**Status**: accepted with the owner's four amendments (20 Nov 2026: the name server runs unprivileged, how a visitor is placed without ECS, how the location database is updated, the apex in the manual). **Phase 1 built and checked on the lab**: agent DeploCloud/deplo-agent#66 (Hello `dns.zone`, released in v0.5.3-canary.17), panel #267 (migration 0268, released in v0.8.2-canary.47), manual DeploCloud/docs#12. **Phase 2 built** (geography, with the owner's three decisions of 20 Nov 2026 below). Phase 3 not built. Follows from [ADR-0048](0048-a-cluster-domain-answers-on-every-server.md), whose third DNS backend (`native`) it is.
+**Status**: accepted with the owner's four amendments (20 Nov 2026: the name server runs unprivileged, how a visitor is placed without ECS, how the location database is updated, the apex in the manual). **Phase 1 built and checked on the lab**: agent DeploCloud/deplo-agent#66 (Hello `dns.zone`, released in v0.5.3-canary.17), panel #267 (migration 0268, released in v0.8.2-canary.47), manual DeploCloud/docs#12. **Phase 2 built and checked on the lab** (geography, with the owner's three decisions of 20 Nov 2026 below): agent DeploCloud/deplo-agent#67 (Hello `dns.geo`, released in v0.5.3-canary.18), panel #269 (migration 0269, released in v0.8.2-canary.48), manual DeploCloud/docs#13. Phase 3 not built. Follows from [ADR-0048](0048-a-cluster-domain-answers-on-every-server.md), whose third DNS backend (`native`) it is.
 
 A domain that answers on every server (ADR-0048) needs one DNS record per healthy server. With a connected provider Deplo keeps them; without one, a person types them and edits them again on every change of the cluster, which is exactly the DNS work the mission keeps off the happy path. **The servers of a cluster answer for a DNS zone themselves: the person delegates a zone (or points one name into it) once, and from then on the cluster's own answers name its healthy servers, with no record to edit, Deplo up or down.**
 
@@ -79,6 +79,15 @@ Released agent v0.5.3-canary.17, panel v0.8.2-canary.47, leader v0.1.0-canary.7;
 - **The process on a lab server**: `nobody`, no supplementary group, no capability, `NoNewPrivs`, its root a directory holding only its binary, its own network namespace; on the server's own IPv4 and IPv6, beside Deplo's DNS cache on `10.201.0.1:53`.
 - **An ADR-0048 failover** (power cut of the Apps' server), the non-regression check: the Volume App took writes on its new server about 41 s after the cut, the database never stopped, and no two copies took writes at once.
 - **Seen, not a fault**: an agent's first seconds log "answers fail, hearing 3 of 3": just started with nothing agreed yet, it answers `SERVFAIL` for one removal time, as decided above.
+
+## What the lab showed (phase 2)
+
+Released agent v0.5.3-canary.18, panel v0.8.2-canary.48 (DB-IP table of 2026-11), leader v0.1.0-canary.7; the three servers placed with the city picker in Milan, New York and Tokyo; the lab resolver (unbound with its subnet module) passing EDNS Client Subnet on. A prober on the lab network asked each name server and the resolver every 0.5 s, from subnets the table places in each city.
+
+- **Nearest first** (three runs): 1,440 of 1,440 answers were the two nearest servers in order (Milan: Milan, New York; New York: New York, Milan; Tokyo: Tokyo, Milan), from each name server and through the resolver, each carrying the subnet back with scope 24.
+- **The nearest server powered off** (three runs, Tokyo's, with a Tokyo subnet asking): the other name servers answered Milan, New York 9.0 to 12.0 s after its first unanswered query (the removal time plus up to one "alive" interval, as in phase 1), and the resolver after 21.0 to 27.1 s, when its cached answer expired; always two servers, never an error or an empty answer, and a Milan subnet's answers never changed. Back on, Tokyo was first again for every answer.
+- **No ECS** (one run): every answer named all three servers, since the prober's and the resolver's addresses are private and the table places neither; the name servers varied the order, the resolver kept the one it cached.
+- **Seen, not a fault**: Alpine's unbound is built without the subnet module, so the lab resolver runs on Debian's.
 
 ## Test plan
 
