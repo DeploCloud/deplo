@@ -192,8 +192,11 @@ export function proxyRestartMessage(
   r: ProxyRestartReport,
 ): string {
   const names = r.hosts.join(", ");
+  // The zone's own pair handed to another renewer, or a name's own certificate the zone's now serves.
   if (r.dropped && r.zone)
-    return `Deplo restarted the proxy on ${server} ${at(r.atUnixMs)} so another server renews the certificate of ${names}; ${server} keeps serving it. Visitors' open connections to that server reconnected.`;
+    return r.hosts.some((h) => h.startsWith("*."))
+      ? `Deplo restarted the proxy on ${server} ${at(r.atUnixMs)} so another server renews the certificate of ${names}; ${server} keeps serving it. Visitors' open connections to that server reconnected.`
+      : `Deplo restarted the proxy on ${server} ${at(r.atUnixMs)} to remove the certificate of ${names}, which its DNS zone's certificate serves now. Visitors' open connections to that server reconnected.`;
   if (r.dropped)
     return `Deplo restarted the proxy on ${server} ${at(r.atUnixMs)} to remove the certificate of ${names}, whose App now runs on another server, so ${server} never renews it. Visitors' open connections to that server reconnected.`;
   const when = r.urgent

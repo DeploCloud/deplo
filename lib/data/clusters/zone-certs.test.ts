@@ -380,4 +380,14 @@ test("a zone certificate handed to another server is said as such", () => {
     }),
     /restarted the proxy on eu-1 2026-11-20 at 03:00 UTC so another server renews the certificate of go\.example\.com, \*\.go\.example\.com; eu-1 keeps serving it/,
   );
+  assert.match(
+    proxyRestartMessage("eu-1", {
+      atUnixMs: Date.parse("2026-11-20T03:00:00Z"),
+      hosts: ["shop.go.example.com"],
+      urgent: false,
+      dropped: true,
+      zone: true,
+    }),
+    /to remove the certificate of shop\.go\.example\.com, which its DNS zone's certificate serves now/,
+  );
 });
