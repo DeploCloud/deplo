@@ -1807,6 +1807,13 @@
       "when": 1796062700000,
       "tag": "0268_cluster_dns_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1796062800000,
+      "tag": "0269_server_places",
+      "breakpoints": true
     }
   ]
 }

@@ -130,6 +130,8 @@ export const CLUSTER_ANSWER_CERTIFICATES_CAPABILITY =
 export const CLUSTER_NETWORK_CAPABILITY = "cluster.network";
 // The cluster's DNS zone (ADR-0049): an unprivileged name server on port 53, answered from what the agent hears.
 export const CLUSTER_ZONE_CAPABILITY = "dns.zone";
+// SetGeoTable and a server's place in SetClusterZone: the name server answers a visitor with the nearest servers.
+export const CLUSTER_ZONE_GEO_CAPABILITY = "dns.geo";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
 export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
 // The agent starts a cluster's databases and Apps with stored data itself, under their lease (deplo#237): their

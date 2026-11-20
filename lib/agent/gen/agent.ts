@@ -3329,6 +3329,13 @@ export interface ClusterZoneServer {
   addresses: string[];
   /** Being emptied: it leaves the answers and still counts toward the majority. */
   emptying: boolean;
+  /**
+   * Where it is, in degrees, when Deplo knows (ADR-0049 phase 2): a visitor is answered with the
+   * servers nearest it, when every server of the answer has a place. An older agent ignores them.
+   */
+  located: boolean;
+  latitude: number;
+  longitude: number;
 }
 
 export interface SetClusterZoneResponse {
@@ -3345,6 +3352,20 @@ export interface SetClusterZoneResponse {
   answering: string[];
   /** How many members it hears, itself included. */
   heard: number;
+  /** The location table it places visitors with, by the SHA-256 of the table; empty when it holds none. */
+  geoSha256: string;
+}
+
+export interface SetGeoTableRequest {
+  /** The table, gzip-compressed, and the SHA-256 of the table itself, not of the compressed bytes. */
+  tableGz: Uint8Array;
+  sha256: string;
+}
+
+export interface SetGeoTableResponse {
+  sha256: string;
+  /** DB-IP's release it was built from, YYYYMMDD. */
+  release: number;
 }
 
 export interface SetClusterReplicasRequest {
@@ -25927,7 +25948,7 @@ export const ClusterZone: MessageFns<ClusterZone> = {
 };
 
 function createBaseClusterZoneServer(): ClusterZoneServer {
-  return { fingerprint: "", addresses: [], emptying: false };
+  return { fingerprint: "", addresses: [], emptying: false, located: false, latitude: 0, longitude: 0 };
 }
 
 export const ClusterZoneServer: MessageFns<ClusterZoneServer> = {
@@ -25940,6 +25961,15 @@ export const ClusterZoneServer: MessageFns<ClusterZoneServer> = {
     }
     if (message.emptying !== false) {
       writer.uint32(24).bool(message.emptying);
+    }
+    if (message.located !== false) {
+      writer.uint32(32).bool(message.located);
+    }
+    if (message.latitude !== 0) {
+      writer.uint32(41).double(message.latitude);
+    }
+    if (message.longitude !== 0) {
+      writer.uint32(49).double(message.longitude);
     }
     return writer;
   },
@@ -25981,6 +26011,30 @@ export const ClusterZoneServer: MessageFns<ClusterZoneServer> = {
             message.emptying = reader.bool();
             continue;
           }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.located = reader.bool();
+            continue;
+          }
+          case 5: {
+            if (tag !== 41) {
+              break;
+            }
+
+            message.latitude = reader.double();
+            continue;
+          }
+          case 6: {
+            if (tag !== 49) {
+              break;
+            }
+
+            message.longitude = reader.double();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -26000,6 +26054,9 @@ export const ClusterZoneServer: MessageFns<ClusterZoneServer> = {
         ? object.addresses.map((e: any) => globalThis.String(e))
         : [],
       emptying: isSet(object.emptying) ? globalThis.Boolean(object.emptying) : false,
+      located: isSet(object.located) ? globalThis.Boolean(object.located) : false,
+      latitude: isSet(object.latitude) ? globalThis.Number(object.latitude) : 0,
+      longitude: isSet(object.longitude) ? globalThis.Number(object.longitude) : 0,
     };
   },
 
@@ -26014,6 +26071,15 @@ export const ClusterZoneServer: MessageFns<ClusterZoneServer> = {
     if (message.emptying !== false) {
       obj.emptying = message.emptying;
     }
+    if (message.located !== false) {
+      obj.located = message.located;
+    }
+    if (message.latitude !== 0) {
+      obj.latitude = floatToJson(message.latitude);
+    }
+    if (message.longitude !== 0) {
+      obj.longitude = floatToJson(message.longitude);
+    }
     return obj;
   },
 
@@ -26025,12 +26091,15 @@ export const ClusterZoneServer: MessageFns<ClusterZoneServer> = {
     message.fingerprint = object.fingerprint ?? "";
     message.addresses = object.addresses?.map((e) => e) || [];
     message.emptying = object.emptying ?? false;
+    message.located = object.located ?? false;
+    message.latitude = object.latitude ?? 0;
+    message.longitude = object.longitude ?? 0;
     return message;
   },
 };
 
 function createBaseSetClusterZoneResponse(): SetClusterZoneResponse {
-  return { listening: [], problem: "", state: "", answering: [], heard: 0 };
+  return { listening: [], problem: "", state: "", answering: [], heard: 0, geoSha256: "" };
 }
 
 export const SetClusterZoneResponse: MessageFns<SetClusterZoneResponse> = {
@@ -26049,6 +26118,9 @@ export const SetClusterZoneResponse: MessageFns<SetClusterZoneResponse> = {
     }
     if (message.heard !== 0) {
       writer.uint32(40).int32(message.heard);
+    }
+    if (message.geoSha256 !== "") {
+      writer.uint32(50).string(message.geoSha256);
     }
     return writer;
   },
@@ -26106,6 +26178,14 @@ export const SetClusterZoneResponse: MessageFns<SetClusterZoneResponse> = {
             message.heard = reader.int32();
             continue;
           }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.geoSha256 = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -26129,6 +26209,11 @@ export const SetClusterZoneResponse: MessageFns<SetClusterZoneResponse> = {
         ? object.answering.map((e: any) => globalThis.String(e))
         : [],
       heard: isSet(object.heard) ? globalThis.Number(object.heard) : 0,
+      geoSha256: isSet(object.geoSha256)
+        ? globalThis.String(object.geoSha256)
+        : isSet(object.geo_sha256)
+        ? globalThis.String(object.geo_sha256)
+        : "",
     };
   },
 
@@ -26149,6 +26234,9 @@ export const SetClusterZoneResponse: MessageFns<SetClusterZoneResponse> = {
     if (message.heard !== 0) {
       obj.heard = Math.round(message.heard);
     }
+    if (message.geoSha256 !== "") {
+      obj.geoSha256 = message.geoSha256;
+    }
     return obj;
   },
 
@@ -26162,6 +26250,181 @@ export const SetClusterZoneResponse: MessageFns<SetClusterZoneResponse> = {
     message.state = object.state ?? "";
     message.answering = object.answering?.map((e) => e) || [];
     message.heard = object.heard ?? 0;
+    message.geoSha256 = object.geoSha256 ?? "";
+    return message;
+  },
+};
+
+function createBaseSetGeoTableRequest(): SetGeoTableRequest {
+  return { tableGz: new Uint8Array(0), sha256: "" };
+}
+
+export const SetGeoTableRequest: MessageFns<SetGeoTableRequest> = {
+  encode(message: SetGeoTableRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.tableGz.length !== 0) {
+      writer.uint32(10).bytes(message.tableGz);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(18).string(message.sha256);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetGeoTableRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetGeoTableRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.tableGz = reader.bytes();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.sha256 = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetGeoTableRequest {
+    return {
+      tableGz: isSet(object.tableGz)
+        ? bytesFromBase64(object.tableGz)
+        : isSet(object.table_gz)
+        ? bytesFromBase64(object.table_gz)
+        : new Uint8Array(0),
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+    };
+  },
+
+  toJSON(message: SetGeoTableRequest): unknown {
+    const obj: any = {};
+    if (message.tableGz.length !== 0) {
+      obj.tableGz = base64FromBytes(message.tableGz);
+    }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetGeoTableRequest>, I>>(base?: I): SetGeoTableRequest {
+    return SetGeoTableRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetGeoTableRequest>, I>>(object: I): SetGeoTableRequest {
+    const message = createBaseSetGeoTableRequest();
+    message.tableGz = object.tableGz ?? new Uint8Array(0);
+    message.sha256 = object.sha256 ?? "";
+    return message;
+  },
+};
+
+function createBaseSetGeoTableResponse(): SetGeoTableResponse {
+  return { sha256: "", release: 0 };
+}
+
+export const SetGeoTableResponse: MessageFns<SetGeoTableResponse> = {
+  encode(message: SetGeoTableResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.sha256 !== "") {
+      writer.uint32(10).string(message.sha256);
+    }
+    if (message.release !== 0) {
+      writer.uint32(16).uint32(message.release);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetGeoTableResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetGeoTableResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.sha256 = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.release = reader.uint32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetGeoTableResponse {
+    return {
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+      release: isSet(object.release) ? globalThis.Number(object.release) : 0,
+    };
+  },
+
+  toJSON(message: SetGeoTableResponse): unknown {
+    const obj: any = {};
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
+    if (message.release !== 0) {
+      obj.release = Math.round(message.release);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetGeoTableResponse>, I>>(base?: I): SetGeoTableResponse {
+    return SetGeoTableResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetGeoTableResponse>, I>>(object: I): SetGeoTableResponse {
+    const message = createBaseSetGeoTableResponse();
+    message.sha256 = object.sha256 ?? "";
+    message.release = object.release ?? 0;
     return message;
   },
 };
@@ -27372,6 +27635,19 @@ export const AgentService = {
       Buffer.from(SetClusterZoneResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): SetClusterZoneResponse => SetClusterZoneResponse.decode(value),
   },
+  /**
+   * Hand this server the location table its name server places visitors with (ADR-0049 phase 2), as
+   * Deplo's release carries it; gated on Hello "dns.geo". Kept on disk; no server fetches one itself.
+   */
+  setGeoTable: {
+    path: "/deplo.agent.v1.Agent/SetGeoTable" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetGeoTableRequest): Buffer => Buffer.from(SetGeoTableRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetGeoTableRequest => SetGeoTableRequest.decode(value),
+    responseSerialize: (value: SetGeoTableResponse): Buffer => Buffer.from(SetGeoTableResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetGeoTableResponse => SetGeoTableResponse.decode(value),
+  },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
     path: "/deplo.agent.v1.Agent/Backup" as const,
@@ -28146,6 +28422,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    * time; no zones stops it answering for the cluster. Kept on disk, so it answers with Deplo down.
    */
   setClusterZone: handleUnaryCall<SetClusterZoneRequest, SetClusterZoneResponse>;
+  /**
+   * Hand this server the location table its name server places visitors with (ADR-0049 phase 2), as
+   * Deplo's release carries it; gated on Hello "dns.geo". Kept on disk; no server fetches one itself.
+   */
+  setGeoTable: handleUnaryCall<SetGeoTableRequest, SetGeoTableResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -29017,6 +29298,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SetClusterZoneResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Hand this server the location table its name server places visitors with (ADR-0049 phase 2), as
+   * Deplo's release carries it; gated on Hello "dns.geo". Kept on disk; no server fetches one itself.
+   */
+  setGeoTable(
+    request: SetGeoTableRequest,
+    callback: (error: ServiceError | null, response: SetGeoTableResponse) => void,
+  ): ClientUnaryCall;
+  setGeoTable(
+    request: SetGeoTableRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetGeoTableResponse) => void,
+  ): ClientUnaryCall;
+  setGeoTable(
+    request: SetGeoTableRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetGeoTableResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

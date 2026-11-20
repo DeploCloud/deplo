@@ -44,6 +44,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# The location table a release builds (bun run geo:build, ADR-0049); never committed.
+/geo/
+
 # Deplo dev build/upload staging dir (DEPLO_DATA_DIR; not a data store)
 /.deplo/
 .claude

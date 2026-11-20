@@ -26,6 +26,7 @@ import {
   type ZoneServer,
 } from "../../deploy/cluster-zone";
 import { zoneCovers } from "../../dns-zone";
+import { GEO_STALE_MONTHS, geoAgeMonths, shippedGeo } from "../../geo/shipped";
 import { newId, nowIso } from "../../ids";
 import { setClusterZone } from "../../infra/agent-client/cluster-host";
 import { AgentClusterZoneUnsupportedError } from "../../infra/agent-client/errors";
@@ -41,6 +42,12 @@ import { getServerById } from "../servers/roster";
 import type { ClusterDnsView, DelegationCheck } from "../../types/cluster-dns";
 import { recordClusterActivity } from "./cluster-activity";
 import { checkDelegation } from "./dns-delegation";
+import {
+  placeOf,
+  placeRows,
+  setServerPlace,
+  type ServerPlace,
+} from "./server-place";
 import { fingerprintOf } from "./relay";
 import { getClusterById, requireClusterAdmin } from "./roster";
 
@@ -54,6 +61,7 @@ export type ZoneMemberFacts = {
   v6: string[];
   emptying: boolean;
   joinedAt: string;
+  place: ServerPlace | null;
 };
 
 async function zonesOf(clusterId: string) {
@@ -74,10 +82,13 @@ async function memberFacts(clusterId: string): Promise<ZoneMemberFacts[]> {
     .from(clusterMembers)
     .where(eq(clusterMembers.clusterId, clusterId))
     .orderBy(asc(clusterMembers.joinedAt), asc(clusterMembers.serverId));
+  const geo = await shippedGeo();
+  const placed = await placeRows(rows.map((r) => r.serverId));
   return Promise.all(
     rows.map(async (r) => {
       const server = await getServerById(r.serverId);
       const a = await serverAddresses(server);
+      const row = placed.get(r.serverId);
       return {
         serverId: r.serverId,
         name: server?.name ?? r.serverId,
@@ -86,6 +97,7 @@ async function memberFacts(clusterId: string): Promise<ZoneMemberFacts[]> {
         v6: a.v6,
         emptying: r.emptying != null,
         joinedAt: r.joinedAt,
+        place: row ? placeOf(row, a, geo) : null,
       };
     }),
   );
@@ -179,11 +191,7 @@ async function saveChoice(clusterId: string, choice: NameServerChoice[]) {
   });
 }
 
-async function saveState(
-  clusterId: string,
-  serverId: string,
-  s: { serving: boolean; problem: string; state: string; heard: number },
-) {
+async function saveState(clusterId: string, serverId: string, s: ZoneState) {
   const row = { clusterId, serverId, ...s, checkedAt: nowIso() };
   await getDb()
     .insert(clusterZoneStates)
@@ -203,6 +211,14 @@ const STOP = (clusterId: string) => ({
   answerTtlSeconds: 0,
   dropAfterSeconds: 0,
 });
+
+type ZoneState = {
+  serving: boolean;
+  problem: string;
+  state: string;
+  heard: number;
+  geoSha256: string;
+};
 
 /**
  * Hands every member its cluster's zones and reads back how each answers; picks the name servers from those that can.
@@ -245,7 +261,17 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
         v4: m.v4,
         v6: m.v6,
         emptying: m.emptying,
+        place: m.place && { lat: m.place.latitude, lon: m.place.longitude },
       }));
+    // The release's location table, handed to every agent that places visitors and lacks it.
+    const geo = await shippedGeo();
+    const table =
+      geo.state === "ready"
+        ? {
+            sha256: geo.bundle.table.digest,
+            tableGz: geo.bundle.tableGz,
+          }
+        : null;
     const fpOf = new Map(members.map((m) => [m.serverId, m.fingerprint]));
 
     const pick = async (current: NameServerChoice[]) => {
@@ -292,12 +318,13 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           dropAfter: cluster.dnsDropAfter,
         });
         try {
-          const r = await setClusterZone(m.serverId, req);
+          const r = await setClusterZone(m.serverId, req, table);
           await saveState(clusterId, m.serverId, {
             serving: r.listening.length > 0,
             problem: r.problem,
             state: r.state,
             heard: r.heard,
+            geoSha256: r.geoSha256,
           });
         } catch (e) {
           const unsupported = e instanceof AgentClusterZoneUnsupportedError;
@@ -309,6 +336,7 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
             problem: messageOf(e),
             state: unsupported ? "unsupported" : "unreachable",
             heard: 0,
+            geoSha256: prev.get(m.serverId)?.geoSha256 ?? "",
           });
         }
       }
@@ -383,6 +411,10 @@ export async function clusterDnsView(
     .filter((m): m is ZoneMemberFacts => !!m);
   const byZone = await zoneDomains(clusterId, zones);
   const states = await statesOf(clusterId);
+  const geo = await shippedGeo();
+  const digest = geo.state === "ready" ? geo.bundle.table.digest : null;
+  const everyonePlaced =
+    members.length > 0 && members.every((m) => m.place != null);
   return {
     zones: zones.map((z) => ({
       id: z.id,
@@ -405,10 +437,41 @@ export async function clusterDnsView(
         state: s.state,
         heard: s.heard,
         checkedAt: s.checkedAt,
+        nearest: everyonePlaced && digest != null && s.geoSha256 === digest,
       })),
+    places: members.map((m) => ({
+      serverId: m.serverId,
+      serverName: m.name,
+      place: m.place,
+    })),
+    geo:
+      geo.state === "ready"
+        ? {
+            state: "ready",
+            release: geo.bundle.manifest.release,
+            stale: geoAgeMonths(geo.bundle.manifest.release) > GEO_STALE_MONTHS,
+            reusedFrom: geo.bundle.manifest.reusedFrom,
+            problem: "",
+          }
+        : {
+            state: geo.state,
+            release: null,
+            stale: false,
+            reusedFrom: null,
+            problem: geo.state === "damaged" ? geo.problem : "",
+          },
     answerTtl: cluster.dnsAnswerTtl,
     dropAfter: cluster.dnsDropAfter,
   };
+}
+
+/** Places a server of a cluster (null: by its address again); its cluster's zone answers from there next. */
+export async function placeClusterServer(
+  serverId: string,
+  place: { latitude: number; longitude: number; label?: string | null } | null,
+): Promise<void> {
+  const clusterId = await setServerPlace(serverId, place);
+  if (clusterId) syncClusterZoneSoon(clusterId);
 }
 
 /** Delegates a zone to a cluster: its servers answer for it once the registrar points there. */

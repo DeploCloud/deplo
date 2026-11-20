@@ -27,6 +27,7 @@ export function clusterRpc(
   | "readProxyCertificates"
   | "setClusterNetwork"
   | "setClusterZone"
+  | "setGeoTable"
   | "setClusterReplicas"
   | "clusterReplicaStatus"
 > {
@@ -183,7 +184,16 @@ export function clusterRpc(
         state: r.state,
         answering: r.answering ?? [],
         heard: r.heard,
+        geoSha256: r.geoSha256 ?? "",
       };
+    },
+    async setGeoTable(sha256, tableGz) {
+      const r = await unary(
+        client.setGeoTable.bind(client),
+        { sha256, tableGz },
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return { sha256: r.sha256, release: r.release };
     },
     async setClusterReplicas(table) {
       const r = await unary(

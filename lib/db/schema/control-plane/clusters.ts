@@ -332,6 +332,8 @@ export const clusterZoneStates = pgTable(
     // "answer" | "stale" | "fail" | "warming" | "unsupported" | "unreachable"
     state: text("state").notNull(),
     heard: integer("heard").notNull().default(0),
+    // The location table its name server places visitors with, by digest; "" for none (ADR-0049 phase 2).
+    geoSha256: text("geo_sha256").notNull().default(""),
     checkedAt: isoTimestamptz("checked_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.clusterId, t.serverId] })],

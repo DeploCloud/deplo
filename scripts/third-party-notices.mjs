@@ -116,6 +116,8 @@ export function renderNotices(notices) {
   return [
     "Deplo is licensed under AGPL-3.0-only: https://github.com/DeploCloud/deplo",
     "It includes the open source software below, each under its own license.",
+    "Its location table is IP geolocation by DB-IP (https://db-ip.com), under",
+    "CC BY 4.0: https://creativecommons.org/licenses/by/4.0/",
     "",
     ...notices.map((n) =>
       [

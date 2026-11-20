@@ -44,6 +44,8 @@ ENV DEPLO_SECRET=build-time-placeholder-not-a-real-secret
 # No .git in the context, so the workflow names the commit the About dialog shows.
 ARG DEPLO_COMMIT=""
 RUN node scripts/third-party-notices.mjs && node node_modules/next/dist/bin/next build
+# The location table (ADR-0049): docker-image.yml builds it into the context; a local build has none.
+RUN mkdir -p /app/geo
 
 # The break-glass CLI as one bundled file. The runtime image below has no source
 # tree, no bun and no tsx, so `bun run recover` cannot exist there - which left
@@ -79,6 +81,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/dist/recover.js ./recover.js
+COPY --from=builder /app/geo ./geo
 # What `deplo recover` on the host runs, and the name its own usage text prints.
 ENV DEPLO_RECOVER_CMD="deplo recover"
 

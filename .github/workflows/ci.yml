@@ -138,6 +138,14 @@ jobs:
               exit 1
             }
           fi
+          # The location table this repo's release builds (ADR-0049 phase 2), as the agent reads it.
+          if [ -f deplo-agent/internal/dnszone/testdata/geo-table.golden.bin ]; then
+            cmp lib/geo/geo-table.golden.bin deplo-agent/internal/dnszone/testdata/geo-table.golden.bin &&
+              diff <(jq -S . lib/geo/geo-lookups.golden.json) <(jq -S . deplo-agent/internal/dnszone/testdata/geo-lookups.golden.json) || {
+                echo "::error::lib/geo's reference location table differs from deplo-agent's internal/dnszone/testdata"
+                exit 1
+              }
+          fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: deplo-agent/go.mod
@@ -157,5 +165,9 @@ jobs:
             tests="$tests|TestZone_thePanelsRequestPasses"
           fi
           cd deplo-agent && go test ./internal/server -run "$tests" -count=1 -v
+          if grep -q 'func TestGeo_thePanelsTableParses' internal/dnszone/*_test.go; then
+            cp ../lib/geo/geo-table.golden.bin ../lib/geo/geo-lookups.golden.json internal/dnszone/testdata/
+            go test ./internal/dnszone -run 'TestGeo_thePanelsTableParses' -count=1 -v
+          fi
         env:
           CGO_ENABLED: "0"

@@ -65,6 +65,8 @@ describe("third-party notices", () => {
     const out = renderNotices(notices);
     assert.match(out, /^a@1\.0\.0\nLicense: MIT\n\na's license$/m);
     assert.match(out, /Source: https:\/\/github\.com\/acme\/b\n\n## License/);
+    // DB-IP's licence asks for the credit wherever its data ships (ADR-0049).
+    assert.match(out, /IP geolocation by DB-IP \(https:\/\/db-ip\.com\)/);
   });
 
   it("finds the GitHub page behind every way npm spells it", () => {

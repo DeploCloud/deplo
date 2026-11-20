@@ -52,11 +52,35 @@ jobs:
             | jq -e '.deplo.updateStop == true' > /dev/null \
             || fail 'does not declare "updateStop": true'
 
+  # The location table the image ships (ADR-0049): DB-IP's database of the month,
+  # checked against the SHA-1 and record count DB-IP publishes, then reduced. When
+  # that fails, the newest release's copy, checked the same way; the log says so.
+  geo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - name: Build the location table
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/geo-table.mts geo
+      - name: Upload the location table
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: geo
+          path: geo/
+          if-no-files-found: error
+          retention-days: 1
+
   # One runner per architecture, not QEMU on one: an emulated `next build` takes
   # the release from 5 minutes to ~40 and crashes on its own schedule. GitHub's
   # arm64 runners are free on a public repository.
   build:
-    needs: agent-pin
+    needs: [agent-pin, geo]
     strategy:
       fail-fast: false
       matrix:
@@ -87,6 +111,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Download the location table
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: geo
+          path: geo
 
       # Pushed by digest and tagless on purpose: the tags go on the index the merge
       # job creates, so one architecture finishing first never owns `:latest` alone.
@@ -204,6 +234,15 @@ jobs:
           sbom-path: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
           push-to-registry: true
 
+      # Kept on the release, so the next one can reuse it when DB-IP's download fails.
+      - name: Download the location table
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: geo
+          path: geo
+      - name: Name the location table's assets
+        run: for f in geo/*; do mv "$f" "geo/geo-$(basename "$f")"; done
+
       # LAST, not first. Publishing the release before the build meant a failed
       # build still announced a version: v1.1.0 has a release page and no image
       # behind it, so `install.sh` on that version pulls a tag that was never
@@ -214,4 +253,6 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ steps.version.outputs.PRERELEASE == 'true' }}
           make_latest: ${{ steps.version.outputs.PRERELEASE != 'true' }}
-          files: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
+          files: |
+            deplo-${{ steps.version.outputs.VERSION }}.spdx.json
+            geo/geo-*
