@@ -1,14 +1,16 @@
 import { builder } from "../builder";
 import {
   addClusterDnsZone,
-  appDnsZones,
   checkClusterDnsZone,
   clusterDnsView,
   placeClusterServer,
   removeClusterDnsZone,
   setClusterDnsTimes,
-  setDomainDnsZone,
 } from "@/lib/data/clusters/dns-zone";
+import {
+  appDnsZones,
+  setDomainDnsZone,
+} from "@/lib/data/clusters/zone-domains";
 import { findCities } from "@/lib/data/clusters/server-place";
 import {
   checkDomainAcmeCname,

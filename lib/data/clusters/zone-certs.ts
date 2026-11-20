@@ -534,7 +534,8 @@ export async function checkDomainAcmeCname(domainId: string): Promise<boolean> {
   await requireAppCapability(d.appId, "manage_domains");
   const app = await loadAppGraph(d.appId);
   if (!app?.clusterId) throw new Error("This App is not on a cluster.");
-  const { domainNativeZone, syncClusterZoneSoon } = await import("./dns-zone");
+  const { syncClusterZoneSoon } = await import("./dns-zone");
+  const { domainNativeZone } = await import("./zone-domains");
   const native = await domainNativeZone(app.clusterId, {
     name: d.name,
     zoneId: d.dnsZoneId,

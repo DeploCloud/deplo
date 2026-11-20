@@ -30,11 +30,10 @@ import { proxyRestartMessage } from "./answer-certs";
 import {
   addClusterDnsZone,
   clusterDnsView,
-  domainZoneTargets,
   removeClusterDnsZone,
-  setDomainDnsZone,
   syncClusterZone,
 } from "./dns-zone";
+import { domainZoneTargets, setDomainDnsZone } from "./zone-domains";
 import { __setCnameLookupForTest } from "./zone-cnames";
 import { __forgetZoneCerts, setClusterDnsWildcard } from "./zone-certs";
 import {

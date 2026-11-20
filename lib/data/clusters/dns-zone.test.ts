@@ -30,16 +30,18 @@ import {
 } from "../cluster-dissolve-test-helpers";
 import { nativeStatus } from "./answer-dns";
 import {
-  __setApexCheckForTest,
   addClusterDnsZone,
   clusterDnsView,
-  domainZoneTargets,
   reconcileClusterZones,
   removeClusterDnsZone,
   setClusterDnsTimes,
-  setDomainDnsZone,
   syncClusterZone,
 } from "./dns-zone";
+import {
+  __setApexCheckForTest,
+  domainZoneTargets,
+  setDomainDnsZone,
+} from "./zone-domains";
 import {
   __resetAgentAddressesForTest,
   __setAgentAddressesForTest,

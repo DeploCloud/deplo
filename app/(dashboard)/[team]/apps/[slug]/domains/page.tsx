@@ -6,7 +6,10 @@ import { domainDnsHints } from "@/lib/data/domains/dns-check";
 import { autoDnsZones } from "@/lib/data/dns-providers/provision";
 import { domainsLeftOnServer } from "@/lib/data/clusters/app-tunnel";
 import { answerCertificatesMissing } from "@/lib/data/clusters/answer-certs";
-import { appDnsZones, domainZoneTargets } from "@/lib/data/clusters/dns-zone";
+import {
+  appDnsZones,
+  domainZoneTargets,
+} from "@/lib/data/clusters/zone-domains";
 import { productionDomain } from "@/lib/deploy/domains";
 import { composeServiceNames } from "@/lib/deploy/compose-stack/compose-read";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
