@@ -16,7 +16,7 @@ import {
 import {
   hasAnswerSupport,
   withAnswerSupport,
-} from "../../deploy/traefik-stack";
+} from "../../deploy/traefik-cluster";
 import { CLUSTER_ANSWERS_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { serverSupports } from "../../infra/agent-client/preflight";
 import type { CertProvider, DomainEntrypoint } from "../../types/domain";
