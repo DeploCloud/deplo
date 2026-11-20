@@ -287,6 +287,22 @@ test("the renewer's new pair is kept sealed and reaches every other server in th
   assert.ok(!JSON.stringify(view).includes("PRIVATE KEY"));
 });
 
+test("a pair from a server that does not renew the zone is never taken", async () => {
+  const { eu, zoneId } = await zoneCluster(["d1", "shop.go.example.com"]);
+  await syncClusterZone(eu.id);
+  const pair = await zonePair(90);
+  renewerHolds(RENEWER, pair);
+  await syncClusterZone(eu.id);
+  renewerHolds(MEMBERS[2], await zonePair(120));
+  await syncClusterZone(eu.id);
+  const [row] = await db()
+    .select()
+    .from(clusterZoneCerts)
+    .where(eq(clusterZoneCerts.zoneId, zoneId));
+  assert.equal(row.sha256, pair.sha256);
+  assert.equal(lastTable(MEMBERS[1]).certificates[0].sha256, pair.sha256);
+});
+
 test("the renewer stops: another server takes over after ten minutes, with the pair, and orders nothing new", async () => {
   const { eu, zoneId } = await zoneCluster(["d1", "shop.go.example.com"]);
   await syncClusterZone(eu.id);
