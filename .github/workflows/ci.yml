@@ -131,6 +131,13 @@ jobs:
             echo "::error::lib/deploy/answer-routes.golden.json differs from deplo-agent's internal/server/testdata/answer-routes.golden.json"
             exit 1
           }
+          # The cluster's DNS zone (ADR-0049): the request Deplo renders, as the agent checks it.
+          if [ -f deplo-agent/internal/server/testdata/cluster-zone.golden.json ]; then
+            diff <(jq -S . lib/deploy/cluster-zone.golden.json) <(jq -S . deplo-agent/internal/server/testdata/cluster-zone.golden.json) || {
+              echo "::error::lib/deploy/cluster-zone.golden.json differs from deplo-agent's internal/server/testdata/cluster-zone.golden.json"
+              exit 1
+            }
+          fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: deplo-agent/go.mod
@@ -144,6 +151,11 @@ jobs:
             exit 0
           fi
           cp lib/deploy/answer-routes.golden.json deplo-agent/internal/server/testdata/answer-routes.golden.json
-          cd deplo-agent && go test ./internal/server -run 'TestAnswers_thePanelsRoutesPassAsTheyAre' -count=1 -v
+          tests='TestAnswers_thePanelsRoutesPassAsTheyAre'
+          if grep -q 'func TestZone_thePanelsRequestPasses' deplo-agent/internal/server/*_test.go; then
+            cp lib/deploy/cluster-zone.golden.json deplo-agent/internal/server/testdata/cluster-zone.golden.json
+            tests="$tests|TestZone_thePanelsRequestPasses"
+          fi
+          cd deplo-agent && go test ./internal/server -run "$tests" -count=1 -v
         env:
           CGO_ENABLED: "0"

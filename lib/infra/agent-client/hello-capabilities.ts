@@ -128,6 +128,8 @@ export const CLUSTER_ANSWER_CERTIFICATES_CAPABILITY =
   "cluster.answers.certificates";
 // The cluster's private network (ADR-0047): a WireGuard tunnel between its servers, run inside each agent.
 export const CLUSTER_NETWORK_CAPABILITY = "cluster.network";
+// The cluster's DNS zone (ADR-0049): an unprivileged name server on port 53, answered from what the agent hears.
+export const CLUSTER_ZONE_CAPABILITY = "dns.zone";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
 export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
 // The agent starts a cluster's databases and Apps with stored data itself, under their lease (deplo#237): their

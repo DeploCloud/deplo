@@ -344,6 +344,11 @@ type App {
   zeroDowntimeDeploys: Boolean
 }
 
+type AppDnsZone {
+  id: ID
+  name: String
+}
+
 """One app together with all of its env vars."""
 type AppEnvGroup {
   app: AppEnvGroupApp
@@ -1271,6 +1276,37 @@ type ClusterDeletionTeam {
   teamName: String
 }
 
+type ClusterDns {
+  """Seconds a resolver keeps an answer (10 to 300)."""
+  answerTtl: Int
+
+  """
+  Seconds a server unheard on the private network stays in the answers (5 to 60).
+  """
+  dropAfter: Int
+  nameServers: [ClusterNameServer!]
+  servers: [ClusterZoneServer!]
+  zones: [ClusterDnsZone!]
+}
+
+"""
+A DNS zone delegated to a cluster: its servers answer for it, naming the healthy ones.
+"""
+type ClusterDnsZone {
+  id: ID
+  name: String
+
+  """
+  The names it answers: each domain answered by it, as its name in the zone.
+  """
+  names: [String!]
+
+  """
+  The NS records and their addresses (the glue) to add where the domain was bought.
+  """
+  records: [DnsDelegationRecord!]
+}
+
 """
 How far removing a server has got. Its Apps and databases move to the other servers of the cluster, one at a time, then it leaves.
 """
@@ -1475,6 +1511,13 @@ type ClusterMemberNetwork {
   unreachable: [String!]
 }
 
+type ClusterNameServer {
+  """1 for ns1, and so on."""
+  position: Int
+  serverId: ID
+  serverName: String
+}
+
 """
 An App or database a cluster lets go of when it is deleted. It stays on the server it runs on.
 """
@@ -1539,6 +1582,27 @@ input ClusterSharingInput {
 enum ClusterWorkloadKind {
   app
   database
+}
+
+"""
+How one server of a cluster answers for its zone, as its agent last said.
+"""
+type ClusterZoneServer {
+  checkedAt: String
+
+  """How many servers of the cluster it hears, itself included."""
+  heard: Int
+  problem: String
+  serverId: ID
+  serverName: String
+
+  """Port 53 is open on at least one of its addresses."""
+  serving: Boolean
+
+  """
+  answer, stale (hears exactly half: the last agreed set), fail (hears fewer than half: SERVFAIL), warming, unsupported (agent too old) or unreachable.
+  """
+  state: String
 }
 
 enum CommitSignature {
@@ -2869,6 +2933,34 @@ enum DeviceKind {
   mobile
   tablet
   unknown
+}
+
+type DnsDelegationCheck {
+  delegated: Boolean
+  nameServers: [DnsDelegationNameServer!]
+  parent: String
+
+  """What to fix, one record each."""
+  problems: [String!]
+}
+
+type DnsDelegationNameServer {
+  address: String
+
+  """It answered for the zone, asked from Deplo."""
+  answers: Boolean
+  name: String
+}
+
+"""
+A record to add where the domain was bought, so a zone is delegated to its cluster.
+"""
+type DnsDelegationRecord {
+  name: String
+
+  """NS, A or AAAA."""
+  type: String
+  value: String
 }
 
 """
@@ -4357,6 +4449,11 @@ type Mutation {
   addBasicAuthUser(appId: String!, password: String!, username: String!): BasicAuthUser
 
   """
+  Lets a cluster's servers answer for a DNS zone (go.example.com), once it is delegated to them where the domain was bought. Returns the zone's id.
+  """
+  addClusterDnsZone(clusterId: String!, name: String!): String
+
+  """
   Add an existing server to a cluster. Its Apps and databases come along where they run: nothing restarts and no address changes. Refused with every blocking reason listed.
   """
   addClusterMember(clusterId: String!, serverId: String!): ClusterJoin
@@ -5026,6 +5123,9 @@ type Mutation {
   """
   removeBasicAuthUser(id: String!): Boolean
 
+  """Stops a cluster answering for a DNS zone. Returns the cluster's id."""
+  removeClusterDnsZone(id: String!): String
+
   """
   Remove a server from a cluster; it stays a server of this Deplo. Its Apps and databases first move to the other servers, one at a time in the background (read `members.emptying` for progress), and it leaves once nothing is left; refused before anything moves when the others lack the room. Call it again to continue a removal that stopped. With keepWorkloads it leaves at once and its Apps and databases stay on it as ordinary ones that no cluster moves; the last server must pass it.
   """
@@ -5446,6 +5546,11 @@ type Mutation {
   setClusterAnswerLimits(id: String!, maxConnections: Int!, maxWaiting: Int!): Cluster
 
   """
+  How long resolvers keep the cluster's DNS answers (10 to 300 s, default 30), and how long a server unheard on the private network stays in them (5 to 60 s, default 10).
+  """
+  setClusterDnsTimes(answerTtl: Int!, clusterId: String!, dropAfter: Int!): Boolean
+
+  """
   Turn a cluster's failover on or off. Off, its leader holds nothing to restart elsewhere, so a server that stops keeps its Apps and databases until it comes back.
   """
   setClusterFailover(enabled: Boolean!, id: String!): Cluster
@@ -5502,6 +5607,11 @@ type Mutation {
   Turn "Answer on every server" on or off for a domain of a cluster App (ADR-0048). Refused, with the reason, for a domain it cannot work for: off a cluster, a generated name, plain HTTP, a Cloudflare tunnel, a hostname shared by path, a proxy with HTTP/3, or past the 200 Apps a cluster's servers carry.
   """
   setDomainAnswersEverywhere(id: String!, on: Boolean!): Domain
+
+  """
+  Lets the App's cluster answer for a domain that answers on every server, through one of the cluster's DNS zones; null goes back to records written elsewhere. A domain outside the zone then needs one CNAME into it. Returns the App's id.
+  """
+  setDomainDnsZone(id: String!, zoneId: String): String
 
   """
   Set or remove (null or empty) a variable's note, secrets included. A note is not deployed, so the app has no pending changes after it.
@@ -6245,6 +6355,11 @@ type Query {
   """
   appDatabaseOptions(appId: String!): [DatabaseLinkOption!]
 
+  """
+  The DNS zones of an App's cluster, which its domains that answer on every server can point at.
+  """
+  appDnsZones(appId: String!): [AppDnsZone!]
+
   """A fresh live per-container metrics snapshot for one app."""
   appMetrics(appId: String!): ContainerMetrics
 
@@ -6320,6 +6435,11 @@ type Query {
   """
   buildServerChoices: [BuildServerChoice!]
 
+  """
+  Asks the zone's parent whether it is delegated to the cluster (its NS records and their addresses, no DS record), and each name server whether it answers.
+  """
+  checkClusterDnsZone(id: String!): DnsDelegationCheck
+
   """Where Deplo can create a repository for a Deploy button's project."""
   cloneDestinations: CloneDestinations
   cluster(id: String!): Cluster
@@ -6328,6 +6448,11 @@ type Query {
   What `deleteCluster` would do: which Apps and databases stop failing over. The active team's are named; another team's are counted. Requires instanceAdmin.
   """
   clusterDeletion(id: String!): ClusterDeletion
+
+  """
+  A cluster's DNS zones, the records to add for them, its name servers and how each server answers.
+  """
+  clusterDns(clusterId: String!): ClusterDns
 
   """The clusters the active team may use, by creation order."""
   clusters: [Cluster!]

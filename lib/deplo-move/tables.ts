@@ -94,6 +94,11 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cluster_network_peers: { kind: "copy", needsServer: ["server_id"] },
   // Read back from the server agents every pass.
   cluster_network_links: { kind: "skip", clear: true },
+  // The zones delegated to a cluster and the servers named at the registrar for them (ADR-0049).
+  cluster_dns_zones: COPY,
+  cluster_name_servers: { kind: "copy", needsServer: ["server_id"] },
+  // Read back from the server agents every pass.
+  cluster_zone_states: { kind: "skip", clear: true },
   // Re-keyed with the rest; the new machine's leader has its own key, so every bundle is sealed to it again.
   failover_bundle_pushes: { kind: "copy", rekey: { bundle_enc: SECRET } },
   // Updates of this Deplo's own leaders against its own pin.

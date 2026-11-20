@@ -198,6 +198,13 @@ export const DOCS = {
   "clusters.answerEverywhere":
     "operations/clusters/addresses#answer-on-every-server",
   "clusters.answerLimits": "operations/clusters/addresses#what-it-costs",
+  "clusters.dnsZone": "operations/clusters/dns-zone",
+  "clusters.dnsZoneDelegate": "operations/clusters/dns-zone#delegate-the-zone",
+  "clusters.dnsZoneDomains":
+    "operations/clusters/dns-zone#point-a-domain-at-it",
+  "clusters.dnsZoneApex": "operations/clusters/dns-zone#a-bare-domain",
+  "clusters.dnsZoneTimes":
+    "operations/clusters/dns-zone#how-fast-a-stopped-server-leaves",
   "clusters.privateNetwork": "operations/clusters/private-network",
   "clusters.privateNetworkPaths":
     "operations/clusters/private-network#direct-or-relayed",

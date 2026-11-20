@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 
 import { isoTimestamptz } from "../columns";
 import { apps } from "./apps";
+import { clusterDnsZones } from "./clusters";
 import { users } from "./identity";
 
 export const domains = pgTable(
@@ -37,6 +38,10 @@ export const domains = pgTable(
     tunnel: boolean("tunnel"),
     // Every server of the App's cluster answers it and passes it on to the App's server (ADR-0048).
     answersEverywhere: boolean("answers_everywhere").notNull().default(false),
+    // The cluster's zone that answers for it (ADR-0049), directly or through a CNAME into it.
+    dnsZoneId: text("dns_zone_id").references(() => clusterDnsZones.id, {
+      onDelete: "set null",
+    }),
     securityHeaders: boolean("security_headers").notNull().default(true),
     importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),

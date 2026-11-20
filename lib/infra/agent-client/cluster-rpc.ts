@@ -26,6 +26,7 @@ export function clusterRpc(
   | "setClusterForwarders"
   | "readProxyCertificates"
   | "setClusterNetwork"
+  | "setClusterZone"
   | "setClusterReplicas"
   | "clusterReplicaStatus"
 > {
@@ -168,6 +169,20 @@ export function clusterRpc(
               ? (p.path as "direct" | "relay")
               : "none",
         })),
+      };
+    },
+    async setClusterZone(table) {
+      const r = await unary(
+        client.setClusterZone.bind(client),
+        table,
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return {
+        listening: r.listening ?? [],
+        problem: r.problem,
+        state: r.state,
+        answering: r.answering ?? [],
+        heard: r.heard,
       };
     },
     async setClusterReplicas(table) {
