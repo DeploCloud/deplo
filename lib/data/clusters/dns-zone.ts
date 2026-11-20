@@ -39,6 +39,7 @@ import { requireAppCapability } from "../node-access";
 import { serverAddresses } from "../servers/addresses";
 import { getServerById } from "../servers/roster";
 import type { ClusterDnsView, DelegationCheck } from "../../types/cluster-dns";
+import { recordClusterActivity } from "./cluster-activity";
 import { checkDelegation } from "./dns-delegation";
 import { fingerprintOf } from "./relay";
 import { getClusterById, requireClusterAdmin } from "./roster";
@@ -324,15 +325,18 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
       await saveChoice(clusterId, choice);
       await send(choice);
     }
-    const dropped = before.filter(
-      (b) => !choice.some((c) => c.serverId === b.serverId),
+    // A name server gone or renumbered changes records at the registrar; one added in a free place only adds one.
+    const moved = before.filter(
+      (b) =>
+        !choice.some(
+          (c) => c.serverId === b.serverId && c.position === b.position,
+        ),
     );
-    if (dropped.length > 0 && before.length > 0) {
+    if (moved.length > 0) {
       const names = zones.map((z) => z.name).join(", ");
-      await recordActivity(
-        "server",
+      await recordClusterActivity(
+        clusterId,
         `The name servers of ${cluster.name}'s DNS ${zones.length === 1 ? "zone" : "zones"} ${names} changed: update the records where the domain was bought, as the cluster's settings list them`,
-        "Deplo",
       );
     }
   });
