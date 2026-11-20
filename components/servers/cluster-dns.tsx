@@ -142,32 +142,34 @@ function DelegateDialog({
               nothing to delegate to.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {zone.records.map((r) => (
-                  <TableRow key={`${r.name}-${r.type}-${r.value}`}>
-                    <TableCell className="font-mono text-xs">
-                      {r.name}
-                      <CopyButton value={r.name} className="ml-1 size-6" />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {r.type}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {r.value}
-                      <CopyButton value={r.value} className="ml-1 size-6" />
-                    </TableCell>
+            <div className="overflow-hidden rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Value</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {zone.records.map((r) => (
+                    <TableRow key={`${r.name}-${r.type}-${r.value}`}>
+                      <TableCell className="font-mono text-xs">
+                        {r.name}
+                        <CopyButton value={r.name} className="ml-1 size-6" />
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {r.type}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {r.value}
+                        <CopyButton value={r.value} className="ml-1 size-6" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
           {silent.length > 0 && (
             <ul className="space-y-1 text-xs text-muted-foreground">

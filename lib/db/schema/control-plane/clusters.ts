@@ -313,10 +313,8 @@ export const clusterNameServers = pgTable(
       .notNull()
       .references(() => servers.id, { onDelete: "cascade" }),
   },
-  (t) => [
-    primaryKey({ columns: [t.clusterId, t.position] }),
-    uniqueIndex("cluster_name_servers_server_uq").on(t.clusterId, t.serverId),
-  ],
+  // No unique key on the server: a Deplo move may place two old servers on one, and the choice is redone each pass.
+  (t) => [primaryKey({ columns: [t.clusterId, t.position] })],
 );
 
 // How each server answers for its cluster's zone, as its agent last said. No foreign key to the cluster: a deleted

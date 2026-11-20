@@ -32,5 +32,4 @@ ALTER TABLE "cluster_name_servers" ADD CONSTRAINT "cluster_name_servers_server_i
 ALTER TABLE "cluster_zone_states" ADD CONSTRAINT "cluster_zone_states_server_id_servers_id_fk" FOREIGN KEY ("server_id") REFERENCES "public"."servers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "cluster_dns_zones_name_uq" ON "cluster_dns_zones" USING btree ("name");--> statement-breakpoint
 CREATE INDEX "cluster_dns_zones_cluster_idx" ON "cluster_dns_zones" USING btree ("cluster_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cluster_name_servers_server_uq" ON "cluster_name_servers" USING btree ("cluster_id","server_id");--> statement-breakpoint
 ALTER TABLE "domains" ADD CONSTRAINT "domains_dns_zone_id_cluster_dns_zones_id_fk" FOREIGN KEY ("dns_zone_id") REFERENCES "public"."cluster_dns_zones"("id") ON DELETE set null ON UPDATE no action;

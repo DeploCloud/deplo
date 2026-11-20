@@ -1,5 +1,5 @@
 {
-  "id": "bcf2143a-d166-4b88-a99b-2749051ec658",
+  "id": "7df18065-f14b-4b5f-9d91-aa5703df453f",
   "prevId": "7a5456a5-824c-4397-a6c9-fae4852efb79",
   "version": "7",
   "dialect": "postgresql",
@@ -6322,29 +6322,7 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "cluster_name_servers_server_uq": {
-          "name": "cluster_name_servers_server_uq",
-          "columns": [
-            {
-              "expression": "cluster_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "server_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "cluster_name_servers_cluster_id_clusters_id_fk": {
           "name": "cluster_name_servers_cluster_id_clusters_id_fk",
