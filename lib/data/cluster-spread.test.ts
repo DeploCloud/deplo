@@ -20,7 +20,9 @@ import {
 import { seedServerRow } from "./infra-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
+  clusterDnsZones,
   clusterMembers,
+  clusterNameCerts,
   clusters as clustersTable,
   imageArchitectures,
   workloadPlacements,
@@ -62,6 +64,7 @@ import { flushFailoverBundles, type FailoverBundle } from "./clusters/bundles";
 import {
   appEntrance,
   balanceClusterEntrances,
+  lbOneServerNames,
   openClusterEntrances,
 } from "./clusters/load-balancing";
 import { createCluster } from "./clusters/manage";
@@ -861,4 +864,94 @@ test("the most available server alone keeps its connector, and back to the neare
   await openClusterEntrances(clusterId);
   for (const id of MEMBERS) assert.deepEqual(hosts[id].stack, ["start:web"]);
   assert.equal(await appEntrance(APP), null);
+});
+
+// ADR-0048 step 5 (#228): a domain every server answers, whose certificate every server holds, needs no Cloudflare.
+async function answeredThroughZone() {
+  await db.insert(clusterDnsZones).values({
+    id: "zone_1",
+    clusterId,
+    name: "go.example.com",
+    createdAt: "2026-11-08T00:00:00.000Z",
+  });
+  await db
+    .update(domains)
+    .set({
+      ssl: true,
+      certProvider: "letsencrypt",
+      answersEverywhere: true,
+      certChallenge: "shared",
+      dnsZoneId: "zone_1",
+    })
+    .where(eq(domains.id, "dom_1"));
+  await db.insert(clusterNameCerts).values({
+    zoneId: "zone_1",
+    name: "web.example.com",
+    renewerServerId: "srv_2",
+    sha256: "a".repeat(64),
+    notAfter: new Date(Date.now() + 60 * 86_400_000).toISOString(),
+  });
+}
+
+test("load balancing runs an App on every server with no Cloudflare once every server holds each name's certificate", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await balancing();
+  await answeredThroughZone();
+  assert.equal(
+    await replicaSpreadNote(await app()),
+    "Load balancing runs it on 3 servers: visitors are shared between them",
+  );
+
+  await runDeploymentGuarded("dpl_1");
+
+  assert.deepEqual(
+    leader.asked.map((a) => a.replicas),
+    [3],
+  );
+  assert.deepEqual(await placement(), ["srv_2", "srv_3", "srv_4"]);
+  for (const id of MEMBERS) {
+    const services = stackOf(hosts[id].deploys[0]!).services;
+    assert.deepEqual(Object.keys(services), ["deplo-web"], "no connector");
+  }
+});
+
+test("a name with its certificate on one server keeps the App there, and the setting names the record that lifts it", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await balancing();
+  await answeredThroughZone();
+  await db.insert(domains).values({
+    id: "dom_2",
+    appId: APP,
+    name: "shop.example.com",
+    status: "valid",
+    isPrimary: false,
+    ssl: true,
+    answersEverywhere: true,
+    port: 3000,
+    createdAt: "2026-11-08T00:00:00.000Z",
+  });
+  const note = await replicaSpreadNote(await app());
+  assert.equal(note, lbOneServerNames(["shop.example.com"]));
+  assert.match(
+    note!,
+    /shop\.example\.com has its certificate on that server only/,
+  );
+  assert.match(note!, /_acme-challenge record/);
+
+  await runDeploymentGuarded("dpl_1");
+
+  assert.deepEqual(leader.asked, []);
+  assert.deepEqual(await placement(), ["srv_2"]);
+  assert.equal(hosts.srv_3.deploys.length + hosts.srv_4.deploys.length, 0);
+});
+
+test("a name waiting for its first certificate keeps the App on one server too", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await balancing();
+  await answeredThroughZone();
+  await db.update(clusterNameCerts).set({ notAfter: null, sha256: null });
+  assert.equal(
+    await replicaSpreadNote(await app()),
+    lbOneServerNames(["web.example.com"]),
+  );
 });

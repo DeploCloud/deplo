@@ -7,12 +7,16 @@ import { eq } from "drizzle-orm";
 
 import { activities } from "../../db/schema/control-plane/activity";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { clusterZoneCerts } from "../../db/schema/control-plane/clusters";
+import {
+  clusterNameCerts,
+  clusterZoneCerts,
+} from "../../db/schema/control-plane/clusters";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { hasDnsChallenge } from "../../deploy/traefik-cluster";
 import { nowIso } from "../../ids";
 import {
   CLUSTER_ZONE_CAPABILITY,
+  DNS_CERTIFICATES_CAPABILITY,
   DNS_CHALLENGE_CAPABILITY,
 } from "../../infra/agent-client/hello-capabilities";
 import { seedApp } from "../app-graph-test-helpers";
@@ -124,7 +128,11 @@ const modeOf = async (id: string) =>
 x509.cryptoProvider.set(webcrypto as unknown as Crypto);
 
 /** A pair for the zone and every name below it, valid for `days`. */
-async function zonePair(days: number) {
+const zonePair = (days: number) =>
+  pairFor(["go.example.com", "*.go.example.com"], days);
+
+/** A pair for these names, valid for `days`. */
+async function pairFor(names: string[], days: number) {
   const alg = { name: "ECDSA", namedCurve: "P-256", hash: "SHA-256" };
   // x509 types against the DOM CryptoKey; node's webcrypto is structurally its own.
   const keys = (await webcrypto.subtle.generateKey(alg, true, [
@@ -133,16 +141,15 @@ async function zonePair(days: number) {
   ])) as unknown as CryptoKeyPair;
   const cert = await x509.X509CertificateGenerator.createSelfSigned({
     serialNumber: "01",
-    name: "CN=go.example.com",
+    name: `CN=${names[0]}`,
     notBefore: new Date(Date.now() - 60_000),
     notAfter: new Date(Date.now() + days * 86_400_000),
     keys,
     signingAlgorithm: alg,
     extensions: [
-      new x509.SubjectAlternativeNameExtension([
-        { type: "dns", value: "go.example.com" },
-        { type: "dns", value: "*.go.example.com" },
-      ]),
+      new x509.SubjectAlternativeNameExtension(
+        names.map((value) => ({ type: "dns" as const, value })),
+      ),
     ],
   });
   const der = Buffer.from(
@@ -175,6 +182,7 @@ function renewerHolds(
     ...base(table),
     certificates: table.certificates.map((c) => ({
       zone: c.zone,
+      names: c.names ?? [],
       sha256: pair.sha256,
       notAfterUnixMs: pair.notAfterUnixMs,
       certPem: c.sha256 === pair.sha256 ? "" : pair.certPem,
@@ -406,4 +414,135 @@ test("a zone certificate handed to another server is said as such", () => {
     }),
     /to remove the certificate of shop\.go\.example\.com, which its DNS zone's certificate serves now/,
   );
+});
+
+// ADR-0048 step 5 (#228): with every agent able to hold it, a name's own certificate follows the zone's model.
+const shareable = () => {
+  for (const id of MEMBERS)
+    hosts[id].capabilities.push(DNS_CERTIFICATES_CAPABILITY);
+};
+const nameCert = (id: string) =>
+  lastTable(id).certificates.find((c) => c.names[0] === "shop.example.com");
+
+/** A server's agent reports this pair as the name's own certificate it holds. */
+function holdsName(
+  serverId: string,
+  pair: Awaited<ReturnType<typeof pairFor>>,
+) {
+  const base = hosts[serverId].zoneReport;
+  hosts[serverId].zoneReport = (table) => ({
+    ...base(table),
+    certificates: table.certificates
+      .filter((c) => c.names.length > 0)
+      .map((c) => ({
+        zone: c.zone,
+        names: c.names,
+        sha256: pair.sha256,
+        notAfterUnixMs: pair.notAfterUnixMs,
+        certPem: c.sha256 === pair.sha256 ? "" : pair.certPem,
+        keyPem: c.sha256 === pair.sha256 ? "" : pair.keyPem,
+        error: "",
+        errorAtUnixMs: 0,
+        ordering: false,
+      })),
+  });
+}
+
+async function sharedName() {
+  shareable();
+  const { eu, zoneId } = await zoneCluster(["d1", "shop.example.com"]);
+  await asAdmin(() => setDomainDnsZone("d1", zoneId));
+  __setCnameLookupForTest(async (name) =>
+    name === "_acme-challenge.shop.example.com"
+      ? ["_acme-challenge.shop-example-com.go.example.com"]
+      : [],
+  );
+  await syncClusterZone(eu.id);
+  return { eu, zoneId };
+}
+
+const nameRow = async (zoneId: string) =>
+  (
+    await db()
+      .select()
+      .from(clusterNameCerts)
+      .where(eq(clusterNameCerts.zoneId, zoneId))
+  )[0];
+
+test("a name's own certificate is renewed by its App's server and held by every other, routed with no resolver", async () => {
+  const { eu, zoneId } = await sharedName();
+  const app = MEMBERS[1];
+  assert.equal(await modeOf("d1"), "shared");
+  for (const r of await routableRoutes("prj_web"))
+    assert.equal(r.certResolver, "", r.name);
+  // The App's server ordered it over DNS until now: it stays the renewer, so nothing is ordered twice.
+  assert.equal((await nameRow(zoneId)).renewerServerId, app);
+  assert.equal(
+    lastTable(MEMBERS[0]).challenges.find(
+      (c) => c.asked === "_acme-challenge.shop.example.com",
+    )?.ownerFingerprint,
+    FP[app],
+  );
+  assert.deepEqual(
+    MEMBERS.map((id) => [nameCert(id)?.zone, nameCert(id)?.renew]),
+    MEMBERS.map((id) => ["go.example.com", id === app]),
+  );
+
+  const pair = await pairFor(["shop.example.com"], 90);
+  holdsName(app, pair);
+  holdsName(MEMBERS[2], await pairFor(["shop.example.com"], 120));
+  await syncClusterZone(eu.id);
+  const row = await nameRow(zoneId);
+  assert.equal(
+    row.sha256,
+    pair.sha256,
+    "a pair from a server that does not renew it is never taken",
+  );
+  assert.ok(row.keyEnc && !row.keyEnc.includes("PRIVATE KEY"));
+  for (const id of [MEMBERS[0], MEMBERS[2]]) {
+    assert.equal(nameCert(id)?.sha256, pair.sha256, id);
+    assert.equal(nameCert(id)?.keyPem, pair.keyPem, id);
+  }
+  const said = await db().select().from(activities);
+  assert.ok(
+    said.some((a) =>
+      /now holds the certificate of shop\.example\.com/.test(a.message),
+    ),
+  );
+});
+
+test("the renewer of a name's certificate stops: another server takes it over after ten minutes, with the pair", async () => {
+  const { eu, zoneId } = await sharedName();
+  const pair = await pairFor(["shop.example.com"], 90);
+  holdsName(MEMBERS[1], pair);
+  await syncClusterZone(eu.id);
+  hosts[MEMBERS[1]].unreachable = true;
+  await syncClusterZone(eu.id);
+  assert.equal((await nameRow(zoneId)).renewerServerId, MEMBERS[1]);
+  await db()
+    .update(clusterNameCerts)
+    .set({ renewerLostAt: new Date(Date.now() - 11 * 60_000).toISOString() })
+    .where(eq(clusterNameCerts.zoneId, zoneId));
+  await syncClusterZone(eu.id);
+  const next = MEMBERS[0];
+  assert.equal((await nameRow(zoneId)).renewerServerId, next);
+  assert.equal(nameCert(next)?.renew, true);
+  assert.equal(nameCert(next)?.sha256, pair.sha256);
+  assert.equal(
+    lastTable(next).challenges.find(
+      (c) => c.asked === "_acme-challenge.shop.example.com",
+    )?.ownerFingerprint,
+    FP[next],
+  );
+  assert.equal(nameCert(MEMBERS[2])?.renew, false);
+});
+
+test("while one server's agent cannot hold it, a name keeps its own certificate on its App's server", async () => {
+  const { eu } = await sharedName();
+  hosts[MEMBERS[2]].capabilities = hosts[MEMBERS[2]].capabilities.filter(
+    (c) => c !== DNS_CERTIFICATES_CAPABILITY,
+  );
+  await syncClusterZone(eu.id);
+  assert.equal(await modeOf("d1"), "dns");
+  for (const id of MEMBERS) assert.equal(nameCert(id), undefined, id);
 });

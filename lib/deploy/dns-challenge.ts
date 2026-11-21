@@ -8,8 +8,11 @@ export const CHALLENGE_PORT = 8444;
 export const CHALLENGE_SECRET_FILE = "dns-challenge.secret";
 export const CHALLENGE_LABEL = "_acme-challenge";
 
-/** How a domain's certificate is checked: by the zone's own certificate, its own over DNS, or HTTP-01 as before. */
-export type CertChallenge = "zone" | "dns" | "http";
+/**
+ * How a domain's certificate is checked: by the zone's own certificate, its own over DNS renewed by one server and
+ * held by every other (`shared`, #228), its own over DNS on its App's server (`dns`), or HTTP-01 as before.
+ */
+export type CertChallenge = "zone" | "shared" | "dns" | "http";
 
 export const challengeName = (name: string) => `${CHALLENGE_LABEL}.${name}`;
 
@@ -30,10 +33,11 @@ export const zoneCertNames = (zone: string) => [zone, `*.${zone}`];
  */
 export function certChallengeOf(
   d: { name: string; zone: string | null; inside: boolean; cnameSeen: boolean },
-  opts: { wildcard: boolean; eligible: boolean },
+  opts: { wildcard: boolean; eligible: boolean; shared?: boolean },
 ): CertChallenge {
   if (!d.zone || !opts.eligible) return "http";
+  const own = opts.shared ? "shared" : "dns";
   if (d.inside)
-    return opts.wildcard && zoneCertCovers(d.zone, d.name) ? "zone" : "dns";
-  return d.cnameSeen ? "dns" : "http";
+    return opts.wildcard && zoneCertCovers(d.zone, d.name) ? "zone" : own;
+  return d.cnameSeen ? own : "http";
 }

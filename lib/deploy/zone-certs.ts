@@ -24,6 +24,8 @@ export type ZoneCertMember = {
   capable: boolean;
   /** It answered the last time Deplo handed it the zone. */
   reachable: boolean;
+  /** Its agent holds a name's own certificate that another server renews (Hello `dns.certificates`). */
+  shares: boolean;
 };
 
 export type ZoneCertDomain = {
@@ -49,7 +51,7 @@ export type ZoneCertState = {
 /** How each domain's certificate is checked, given the cluster's switch and whether its servers can check over DNS. */
 export function domainModes(
   domains: ZoneCertDomain[],
-  opts: { wildcard: boolean; eligible: boolean },
+  opts: { wildcard: boolean; eligible: boolean; shared?: boolean },
 ): Map<string, CertChallenge> {
   return new Map(
     domains.map((d) => [
@@ -71,6 +73,12 @@ export function domainModes(
 export function clusterCanCheckOverDns(members: ZoneCertMember[]): boolean {
   const heard = members.filter((m) => m.reachable);
   return heard.length > 0 && heard.every((m) => m.capable);
+}
+
+/** Whether every server Deplo can reach can also hold a name's own certificate that one of them renews (#228). */
+export function clusterCanShareCerts(members: ZoneCertMember[]): boolean {
+  const heard = members.filter((m) => m.reachable);
+  return heard.length > 0 && heard.every((m) => m.capable && m.shares);
 }
 
 const canRenew = (m: ZoneCertMember) => m.capable && m.reachable && !m.emptying;
@@ -108,6 +116,21 @@ export function chooseRenewer(
     : { serverId: null, lostAt: null };
 }
 
+/** A name's own certificate over DNS, renewed by one server and held by every other (ADR-0048 step 5). */
+export type NamePlanCert = {
+  zoneId: string;
+  zone: string;
+  name: string;
+  renewerServerId: string | null;
+  sha256: string | null;
+  notAfter: string | null;
+  pair: { certPem: string; keyPem: string } | null;
+};
+
+/** How Deplo and the agents key a certificate: the bare zone for the zone's own, "=" and its name for a name's. */
+export const certKey = (c: { zone: string } | { name: string }) =>
+  "name" in c ? `=${c.name}` : c.zone;
+
 export type ZonePlanZone = {
   id: string;
   name: string;
@@ -134,6 +157,7 @@ export function zoneChallenges(input: {
   domains: ZoneCertDomain[];
   modes: Map<string, CertChallenge>;
   fingerprintOf: (serverId: string) => string | null;
+  names?: NamePlanCert[];
 }): ClusterZoneChallenge[] {
   const out = new Map<string, ClusterZoneChallenge>();
   const need = zonesNeedingCert(input.domains, input.modes);
@@ -144,8 +168,14 @@ export function zoneChallenges(input: {
     out.set(name, { asked: name, at: name, ownerFingerprint: owner });
   }
   for (const d of input.domains) {
-    if (input.modes.get(d.id) !== "dns") continue;
-    const owner = d.serverId && input.fingerprintOf(d.serverId);
+    const mode = input.modes.get(d.id);
+    if (mode !== "dns" && mode !== "shared") continue;
+    // A shared certificate's check is its renewer's; one of its own is its App's server's.
+    const by =
+      mode === "shared"
+        ? (input.names ?? []).find((n) => n.name === d.name)?.renewerServerId
+        : d.serverId;
+    const owner = by && input.fingerprintOf(by);
     const asked = challengeName(d.name);
     if (!owner || out.has(asked)) continue;
     out.set(asked, {
@@ -166,14 +196,34 @@ export function zoneCertificatesFor(input: {
   zones: ZonePlanZone[];
   domains: ZoneCertDomain[];
   modes: Map<string, CertChallenge>;
-  /** The digest the member last said it holds, by zone; absent when Deplo has not heard. */
-  reported: (zone: string) => string | undefined;
+  /** The digest the member last said it holds, by certKey; absent when Deplo has not heard. */
+  reported: (key: string) => string | undefined;
   now: number;
+  /** Each name's own shared certificate, sent only to a member whose agent holds them. */
+  names?: NamePlanCert[];
+  shares?: boolean;
 }): ClusterZoneCertificate[] {
   const need = zonesNeedingCert(input.domains, input.modes);
+  const own = (input.shares ? (input.names ?? []) : []).map(
+    (n): ClusterZoneCertificate => {
+      const valid = !!n.notAfter && Date.parse(n.notAfter) > input.now;
+      const send =
+        valid && n.pair && n.sha256 && input.reported(certKey(n)) !== n.sha256;
+      return {
+        zone: n.zone,
+        names: [n.name],
+        renew: n.renewerServerId === input.serverId,
+        order: n.renewerServerId === input.serverId,
+        sha256: valid ? (n.sha256 ?? "") : "",
+        certPem: send ? n.pair!.certPem : "",
+        keyPem: send ? n.pair!.keyPem : "",
+        covered: [],
+      };
+    },
+  );
   return input.zones
     .filter((z) => need.has(z.id))
-    .map((z) => {
+    .map((z): ClusterZoneCertificate => {
       const valid = !!z.notAfter && Date.parse(z.notAfter) > input.now;
       const send =
         valid && z.pair && z.sha256 && input.reported(z.name) !== z.sha256;
@@ -196,14 +246,16 @@ export function zoneCertificatesFor(input: {
               ),
             ].sort()
           : [],
+        names: [],
       };
-    });
+    })
+    .concat(own);
 }
 
 /** Members in the order to hand them the zone: the renewers last, so a pair one just renewed reaches the rest next. */
 export function renewersLast<M extends { serverId: string }>(
   members: M[],
-  zones: ZonePlanZone[],
+  zones: { renewerServerId: string | null }[],
 ): M[] {
   const renewers = new Set(zones.map((z) => z.renewerServerId));
   return [

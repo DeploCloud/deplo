@@ -3352,6 +3352,11 @@ export interface ClusterZoneCertificate {
   keyPem: string;
   /** The hostnames it serves: a certificate of their own leaves this server's proxy. */
   covered: string[];
+  /**
+   * A name's own certificate over DNS, in the zone its check points into: its names, each one of the
+   * request's checks. Empty for the zone's own (Hello dns.certificates; an older agent refuses it).
+   */
+  names: string[];
 }
 
 export interface ClusterZone {
@@ -3409,6 +3414,8 @@ export interface ClusterZoneCertificateState {
   errorAtUnixMs: number;
   /** The proxy is asked to order it now. */
   ordering: boolean;
+  /** The names of a name's own certificate, as Deplo sent them; empty for the zone's. */
+  names: string[];
 }
 
 export interface SetGeoTableRequest {
@@ -26077,7 +26084,7 @@ export const ClusterZoneChallenge: MessageFns<ClusterZoneChallenge> = {
 };
 
 function createBaseClusterZoneCertificate(): ClusterZoneCertificate {
-  return { zone: "", renew: false, order: false, sha256: "", certPem: "", keyPem: "", covered: [] };
+  return { zone: "", renew: false, order: false, sha256: "", certPem: "", keyPem: "", covered: [], names: [] };
 }
 
 export const ClusterZoneCertificate: MessageFns<ClusterZoneCertificate> = {
@@ -26102,6 +26109,9 @@ export const ClusterZoneCertificate: MessageFns<ClusterZoneCertificate> = {
     }
     for (const v of message.covered) {
       writer.uint32(58).string(v!);
+    }
+    for (const v of message.names) {
+      writer.uint32(66).string(v!);
     }
     return writer;
   },
@@ -26175,6 +26185,14 @@ export const ClusterZoneCertificate: MessageFns<ClusterZoneCertificate> = {
             message.covered.push(reader.string());
             continue;
           }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.names.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -26204,6 +26222,7 @@ export const ClusterZoneCertificate: MessageFns<ClusterZoneCertificate> = {
         ? globalThis.String(object.key_pem)
         : "",
       covered: globalThis.Array.isArray(object?.covered) ? object.covered.map((e: any) => globalThis.String(e)) : [],
+      names: globalThis.Array.isArray(object?.names) ? object.names.map((e: any) => globalThis.String(e)) : [],
     };
   },
 
@@ -26230,6 +26249,9 @@ export const ClusterZoneCertificate: MessageFns<ClusterZoneCertificate> = {
     if (message.covered?.length) {
       obj.covered = message.covered;
     }
+    if (message.names?.length) {
+      obj.names = message.names;
+    }
     return obj;
   },
 
@@ -26245,6 +26267,7 @@ export const ClusterZoneCertificate: MessageFns<ClusterZoneCertificate> = {
     message.certPem = object.certPem ?? "";
     message.keyPem = object.keyPem ?? "";
     message.covered = object.covered?.map((e) => e) || [];
+    message.names = object.names?.map((e) => e) || [];
     return message;
   },
 };
@@ -26670,6 +26693,7 @@ function createBaseClusterZoneCertificateState(): ClusterZoneCertificateState {
     error: "",
     errorAtUnixMs: 0,
     ordering: false,
+    names: [],
   };
 }
 
@@ -26698,6 +26722,9 @@ export const ClusterZoneCertificateState: MessageFns<ClusterZoneCertificateState
     }
     if (message.ordering !== false) {
       writer.uint32(64).bool(message.ordering);
+    }
+    for (const v of message.names) {
+      writer.uint32(74).string(v!);
     }
     return writer;
   },
@@ -26779,6 +26806,14 @@ export const ClusterZoneCertificateState: MessageFns<ClusterZoneCertificateState
             message.ordering = reader.bool();
             continue;
           }
+          case 9: {
+            if (tag !== 74) {
+              break;
+            }
+
+            message.names.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -26817,6 +26852,9 @@ export const ClusterZoneCertificateState: MessageFns<ClusterZoneCertificateState
         ? globalThis.Number(object.error_at_unix_ms)
         : 0,
       ordering: isSet(object.ordering) ? globalThis.Boolean(object.ordering) : false,
+      names: globalThis.Array.isArray(object?.names)
+        ? object.names.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -26846,6 +26884,9 @@ export const ClusterZoneCertificateState: MessageFns<ClusterZoneCertificateState
     if (message.ordering !== false) {
       obj.ordering = message.ordering;
     }
+    if (message.names?.length) {
+      obj.names = message.names;
+    }
     return obj;
   },
 
@@ -26862,6 +26903,7 @@ export const ClusterZoneCertificateState: MessageFns<ClusterZoneCertificateState
     message.error = object.error ?? "";
     message.errorAtUnixMs = object.errorAtUnixMs ?? 0;
     message.ordering = object.ordering ?? false;
+    message.names = object.names?.map((e) => e) || [];
     return message;
   },
 };
