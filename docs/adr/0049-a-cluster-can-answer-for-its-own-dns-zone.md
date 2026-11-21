@@ -134,6 +134,16 @@ Released agent v0.5.3-canary.23 and panel v0.8.2-canary.53 to .55 (the fixes bel
 - **Found, not fixed: #281**: a spread App whose image has no shell never deploys, since the stand-in's readiness check is a shell command; the lab ran `web` on `nginxdemos/hello` instead of `traefik/whoami`.
 - **Seen, not a fault**: the lab's own mirror reload, sent to dockerd before it was ready at one boot, made systemd restart Docker and left that server's proxy stopped (the lab helper now waits for Docker); one run of (a) went with a second server left off by a lab step and does not count.
 
+## Before a stable release: four changes (21 Nov 2026)
+
+The owner's four decisions after the #228 lab, each its own release but the last.
+
+### A copy's port check needs nothing from the image (#281)
+
+- **The check is the server agent's own program.** A copy that starts beside the live one (a replica, an App spread over the cluster, a zero-downtime deploy) waits for its port as before, but its health check runs `deplo-agent probe <port>`, the agent's binary, which the agent keeps in the stack directory's `.deplo-probe` and which the stack mounts read-only. It reads the container's own listening sockets, so an image with no shell (scratch, distroless, `traefik/whoami`) passes it. Hello `deploy.probe`; an agent without it keeps the shell loop.
+- **Why a health check at all, rather than only the agent's ready check reading the port** (the issue's first option, read literally): the proxy sends visitors to a container with no health check as soon as it runs, so every deploy beside itself would drop the requests of an App that takes a moment to listen. Nothing else gates it. Traefik 3.7.17's passive health check counts the App's own 500s (one 500 took the only copy out, and the next second answered 503), and retries alone still failed 25%, 12% and 6% of the requests to a copy not listening yet with 2, 3 and 4 attempts. The agent's program is the port check that reads nothing from the image.
+- **No fallback to the in-place deploy.** An image that never listens fails at the deploy's deadline as before, with the same message (an agent test measures both checks). The probe's mount is not the App's storage, so a copy that fails still leaves the live one alone.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
