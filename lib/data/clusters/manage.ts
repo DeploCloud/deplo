@@ -271,7 +271,7 @@ export async function setClusterReplication(
 
 /**
  * Turns load balancing on or off, or changes where it sends visitors. Refused while replication is off. It reaches
- * the Apps on a Cloudflare domain that keep no data: from their next deploy they run on every server.
+ * the Apps that keep no data and every server reaches (ADR-0048 step 5): from their next deploy they run on every server.
  */
 export async function setClusterLoadBalancing(
   id: string,

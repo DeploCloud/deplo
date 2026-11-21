@@ -431,7 +431,7 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
     }),
     loadBalancingEnabled: t.exposeBoolean("loadBalancingEnabled", {
       description:
-        "True when the cluster's Apps on a Cloudflare domain that keep no data run on every server and visitors are spread over them. Only with `replicationEnabled`.",
+        "True when the cluster's Apps that keep no data, on a Cloudflare domain or on domains every server answers and holds the certificate of, run on every server and visitors are spread over them. Only with `replicationEnabled`.",
     }),
     loadBalancingMode: t.field({
       type: LoadBalancingModeEnum,
@@ -631,7 +631,7 @@ builder.mutationFields((t) => ({
     type: ClusterRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Turn a cluster's load balancing on or off, or change its mode. Refused while replication is off. It reaches Apps on a Cloudflare domain that keep no data: from their next deploy they run on every server. `nearest` sends each visitor to the closest server; `most_available` to the one with the most room. Omit `mode` to keep it.",
+      "Turn a cluster's load balancing on or off, or change its mode. Refused while replication is off. It reaches Apps that keep no data, on a Cloudflare domain or on domains every server answers and holds the certificate of: from their next deploy they run on every server. `nearest` sends each visitor to the closest server; `most_available` to the one with the most room. Omit `mode` to keep it.",
     args: {
       id: t.arg.string({ required: true }),
       enabled: t.arg.boolean({ required: true }),
