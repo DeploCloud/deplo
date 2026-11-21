@@ -74,7 +74,12 @@ beforeEach(async () => {
       { id: "admin1", teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
     ],
   });
-  await seedServerRow(db, { id: "srv_host", name: "host", ip: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_host",
+    name: "host",
+    ip: HOST_IP,
+    deploHost: true,
+  });
   installed = [];
   __setAgentConnectorForTest(
     async () =>

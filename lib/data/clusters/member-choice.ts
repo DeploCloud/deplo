@@ -4,10 +4,7 @@ import { asc, eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { clusterMembers as membersTable } from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
+import { isDeploHostServer } from "../../deploy/domains";
 import { requireActiveTeamId } from "../../membership";
 import { archWords, type Cluster } from "../../types/cluster";
 import { clusterMemberFacts, neededMb } from "./facts";
@@ -103,7 +100,6 @@ export async function listClusterServerChoices(
   w: Omit<MemberMove, "on"> & { clusterId?: string | null; serverId?: string },
 ): Promise<ClusterChoice[]> {
   const teamId = await requireActiveTeamId();
-  const self = deploHostSelfAddresses();
   const out: ClusterChoice[] = [];
   for (const c of await listClustersForTeam(teamId)) {
     const on = c.id === w.clusterId ? (w.serverId ?? null) : null;
@@ -114,7 +110,7 @@ export async function listClusterServerChoices(
       servers: rows.map(({ row, refusal }) => ({
         id: row.id,
         name: row.server.name,
-        isDeploHost: isDeploHostServer(row.server, self),
+        isDeploHost: isDeploHostServer(row.server),
         refusal,
         here: row.id === on,
       })),

@@ -121,7 +121,12 @@ beforeEach(async () => {
   });
   await turnOnExperiments(db, "tunnels");
   process.env.DEPLO_SERVER_IP = HOST_IP;
-  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_panel",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   forgetRoutedFallback();
   await rememberPanelUrl("https://old.example.com");
 

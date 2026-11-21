@@ -2,11 +2,7 @@ import { builder } from "../../builder";
 import { TeamRef } from "../team";
 import { serverRole } from "@/lib/data/servers/roster";
 import { getServerTeams } from "@/lib/data/servers/team-access";
-import {
-  deploHostSelfAddresses,
-  isBuildFallbackServer,
-  isDeploHostServer,
-} from "@/lib/deploy/domains";
+import { isBuildFallbackServer, isDeploHostServer } from "@/lib/deploy/domains";
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
 import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
@@ -84,6 +80,12 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     type: t.field({ type: ServerTypeEnum, resolve: (s) => s.type }),
     status: t.field({ type: ServerStatusEnum, resolve: (s) => s.status }),
     ip: t.exposeString("ip"),
+    connectedFrom: t.string({
+      nullable: true,
+      description:
+        "Where this server's agent link last came from, as the panel's proxy saw it. Information only: a server is known by its agent's key, never by an address, and two servers may share one (several machines behind one router).",
+      resolve: (s) => s.connectedFrom ?? null,
+    }),
     dockerVersion: t.exposeString("dockerVersion"),
     traefikEnabled: t.exposeBoolean("traefikEnabled"),
     cpuCores: t.exposeInt("cpuCores"),
@@ -118,7 +120,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     buildFallback: t.boolean({
       description:
         "Whether this host compiles for an app whose own build server could not be reached. On by default for the Deplo host and off for every other server, until setServerBuildFallback says otherwise. An app opts out of the whole chain with setAppBuildServer's buildFallback.",
-      resolve: (s) => isBuildFallbackServer(s, deploHostSelfAddresses()),
+      resolve: (s) => isBuildFallbackServer(s),
     }),
     generatedAddressFamily: t.field({
       type: AddressFamilyEnum,
@@ -197,8 +199,8 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     isDeploHost: t.boolean({
       description:
-        "Whether this is the host running Deplo itself (the dashboard and API), as opposed to a remote that only runs the deploy agent. It cannot be removed, and it is the only server that can restart the Deplo panel.",
-      resolve: (s) => isDeploHostServer(s, deploHostSelfAddresses()),
+        "Whether this is the host running Deplo itself (the dashboard and API), as opposed to a remote that only runs the deploy agent: the server the installer enrolled for that machine, never one found by its address. It cannot be removed, and it is the only server that can restart the Deplo panel.",
+      resolve: (s) => isDeploHostServer(s),
     }),
   }),
 });

@@ -173,6 +173,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "certificate mtls security fingerprint",
     defaultOn: true,
   },
+  server_identity_copied: {
+    label: "Server copied",
+    description:
+      "Two machines use one server's identity, usually a virtual machine copied with Deplo's agent inside.",
+    keywords: "clone duplicate vm snapshot certificate security",
+    defaultOn: true,
+  },
   agent_incompatible: {
     label: "Server unusable until it updates",
     description:
@@ -193,9 +200,9 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
   agent_certificate_failed: {
-    label: "Server agent certificate not renewed",
+    label: "Server agent key not renewed",
     description:
-      "Deplo could not renew a server's certificate and will lose access to it.",
+      "Deplo could not give a server's agent its new key. The server keeps working.",
     keywords: "mtls expiry renewal security",
     defaultOn: true,
   },
@@ -392,6 +399,7 @@ export const ALERT_CATEGORIES: {
       "server_online",
       "server_unmanageable",
       "server_trust_changed",
+      "server_identity_copied",
       "agent_incompatible",
       "server_resources_high",
       "server_disk_low",

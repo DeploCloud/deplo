@@ -98,7 +98,7 @@ beforeEach(async () => {
     ],
   });
   await turnOnExperiments(db, "clusters");
-  await seedServer(db);
+  await seedServer(db, undefined, { deploHost: true });
   await fingerprint(SERVER_1, FP1);
   // The seeded server stands for Deplo's own machine; srv_2 and srv_3 are elsewhere.
   process.env.DEPLO_SERVER_IP = "10.0.0.1";

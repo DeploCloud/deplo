@@ -946,6 +946,19 @@ if [ "$IMPORT_ONLY" = "1" ]; then
   [ -z "$FOREIGN_PANEL" ] || pf_fail "This machine already runs Deplo's agent for another Deplo ($FOREIGN_PANEL)." "Move it from that Deplo's own address with one of its API tokens instead - nothing needs installing here."
 fi
 
+# One machine, one server: caught here on the machine, never by its address (ADR-0050). A reinstall of the
+# same server says so, and a machine the panel refused as a copy of another gets its own identity.
+second_install_check() {
+  [ "$IMPORT_ONLY" != "1" ] && [ "${DEPLO_REINSTALL:-}" != "1" ] && [ -e "$AGENT_DATA/agent.crt" ] || return 0
+  if [ -e "$AGENT_DATA/identity-in-use" ]; then
+    ok "This machine is a copy of another server" "it gets its own identity"
+  else
+    pf_fail "This machine is already connected to Deplo as a server." \
+      "Installing a new server here disconnects that one. To reinstall its agent, use Reinstall on that server's page in Deplo. If this machine is a copy of another server, re-run with --force."
+  fi
+}
+second_install_check
+
 blank
 if [ "$PF_FAIL" -gt 0 ]; then
   err "Preflight found $PF_FAIL blocking $(plural "$PF_FAIL" problem) and $PF_WARN $(plural "$PF_WARN" warning)."

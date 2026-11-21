@@ -168,8 +168,9 @@ export const DOCS = {
 
   "servers.overview": "operations/servers",
   "servers.add": "operations/servers/add-a-server",
-  "servers.address":
-    "operations/servers/add-a-server#name-it-and-set-the-address",
+  "servers.address": "operations/servers/add-a-server#name-it",
+  "servers.connectedFrom":
+    "operations/servers/add-a-server#where-it-connects-from",
   "servers.role": "operations/servers/add-a-server#choose-what-its-for",
   "servers.readiness":
     "operations/servers/add-a-server#check-it-before-you-trust-it",

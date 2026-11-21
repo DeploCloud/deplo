@@ -59,4 +59,8 @@ export interface Server {
   firstLinkedAt?: string;
   /** When an instance admin let the update stop pass without it: until it links, only a reinstall brings it back. */
   leftBehindAt?: string;
+  /** The server the installer enrolled for the machine Deplo runs on (ADR-0050). */
+  deploHost?: boolean;
+  /** Where its agent link last came from; information only, never an identity. */
+  connectedFrom?: string;
 }

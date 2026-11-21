@@ -148,7 +148,12 @@ test("below a stop the newest release requires, Update installs the stop and say
 test("Update installs the stop on the machine Deplo runs on, not the newest release", async () => {
   const prevIp = process.env.DEPLO_SERVER_IP;
   process.env.DEPLO_SERVER_IP = HOST_IP;
-  await seedServerRow(db, { id: "srv_host", name: "host", ip: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_host",
+    name: "host",
+    ip: HOST_IP,
+    deploHost: true,
+  });
   const installed: string[] = [];
   __setAgentConnectorForTest(
     async () =>

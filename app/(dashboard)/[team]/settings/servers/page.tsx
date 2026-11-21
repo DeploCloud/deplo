@@ -30,10 +30,7 @@ import {
 } from "@/lib/data/clusters/roster";
 import { leaderHostOf } from "@/lib/data/clusters/host";
 import { listClusterLeaderChoices } from "@/lib/data/clusters/leader-move";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "@/lib/deploy/domains";
+import { isDeploHostServer } from "@/lib/deploy/domains";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { isInstanceAdmin } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
@@ -105,9 +102,8 @@ export default async function ServersPage(
     listClusterJoinRequests(),
     displayPositions(),
   ]);
-  const selfAddrs = deploHostSelfAddresses();
   const servers = inDisplayOrder(serversRaw, positions.servers, (s) =>
-    isDeploHostServer(s, selfAddrs),
+    isDeploHostServer(s),
   );
 
   const clusterRows = await Promise.all(
@@ -159,7 +155,12 @@ export default async function ServersPage(
       id: server.id,
       name: serverLabel(server),
       ip: server.ip,
-      search: [server.name, server.host, server.ip].join(" ").toLowerCase(),
+      connectedFrom: isDeploHostServer(server)
+        ? undefined
+        : server.connectedFrom,
+      search: [server.name, server.host, server.ip, server.connectedFrom ?? ""]
+        .join(" ")
+        .toLowerCase(),
       use: serverUse(server),
       teams: server.allTeams
         ? [...teamRefs.values()]
@@ -167,7 +168,7 @@ export default async function ServersPage(
             const t = teamRefs.get(id);
             return t ? [t] : [];
           }),
-      isDeploHost: isDeploHostServer(server, selfAddrs),
+      isDeploHost: isDeploHostServer(server),
       accessLabel: server.allTeams
         ? "All teams"
         : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`,

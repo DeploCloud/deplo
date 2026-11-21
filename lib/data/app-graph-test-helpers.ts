@@ -47,13 +47,14 @@ async function appSlug(db: TestDb, appId: string): Promise<string> {
 export async function seedServer(
   db: TestDb,
   id: string = SERVER_1,
-  opts: { provisioned?: boolean } = {},
+  opts: { provisioned?: boolean; deploHost?: boolean } = {},
 ): Promise<void> {
   await db
     .insert(serversTable)
     .values({
       id,
       name: id,
+      deploHost: opts.deploHost ?? false,
       host: "10.0.0.1",
       type: "remote",
       status: "online",

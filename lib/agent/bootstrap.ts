@@ -44,6 +44,8 @@ export function installCommand(opts: {
   storageOnly?: boolean;
   buildOnly?: boolean;
   importOnly?: boolean;
+  /** The same server again: the installer replaces the agent it finds instead of stopping at it. */
+  reinstall?: boolean;
 }): string {
   const {
     baseUrl,
@@ -54,16 +56,18 @@ export function installCommand(opts: {
     storageOnly,
     buildOnly,
     importOnly,
+    reinstall,
   } = opts;
   const fp = fingerprint ? ` '${fingerprint}'` : "";
   // Set after sudo, which drops the caller's environment - before it, the flag is silently ignored.
-  const env = importOnly
+  const role = importOnly
     ? "DEPLO_IMPORT_ONLY=1 "
     : storageOnly
       ? "DEPLO_STORAGE_ONLY=1 "
       : buildOnly
         ? "DEPLO_BUILD_ONLY=1 "
         : "";
+  const env = `${role}${reinstall ? "DEPLO_REINSTALL=1 " : ""}`;
   // Download then run, never curl | bash (a failed fetch exits 0 silently); --output, not -o, which ad blockers strip.
   // The token goes in on stdin (`-`): sudo's argv is readable by every local user for the whole install.
   return `curl ${curlFlags(insecure, pin)} '${baseUrl}/install-agent.sh' --output /tmp/deplo-agent-install.sh && echo '${rawToken}' | sudo ${env}bash /tmp/deplo-agent-install.sh - '${baseUrl}'${fp}`;

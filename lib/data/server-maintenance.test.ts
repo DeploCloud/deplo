@@ -64,6 +64,7 @@ beforeEach(async () => {
     id: SELF,
     name: "this-host",
     ip: SELF_IP,
+    deploHost: true,
     host: SELF_IP,
   });
 });

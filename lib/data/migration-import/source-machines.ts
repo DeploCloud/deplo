@@ -17,6 +17,7 @@ import { listServersForTeam } from "../servers/roster";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
+  isThisMachineAddress,
 } from "../../deploy/domains";
 import { servicesOf, type SourceService } from "./source-tree";
 
@@ -159,7 +160,7 @@ async function resolveAddresses(
     ),
   ];
   await mapLimit(wanted, 8, async (a) => {
-    if (isDeploHostServer({ ip: a, host: a }, self)) {
+    if (isThisMachineAddress(a, self)) {
       mine.add(a);
       return;
     }
@@ -212,7 +213,7 @@ export async function planMachines(
           s.host?.trim().toLowerCase() === a,
       ) ??
       (isSelf(a)
-        ? mine.find((s) => isDeploHostServer(s, self) || isSelf(s.ip ?? s.host))
+        ? mine.find((s) => isDeploHostServer(s) || isSelf(s.ip ?? s.host))
         : undefined);
     return hit ? { deploServerId: hit.id, deploServerName: hit.name } : null;
   };

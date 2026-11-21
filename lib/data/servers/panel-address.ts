@@ -2,7 +2,6 @@ import "server-only";
 
 import { cantReachDeploMessage } from "../../agent-reachability";
 import {
-  deploHostMachineAddresses,
   isDeploHostServer,
   isLoopbackIp,
   runsInContainer,
@@ -11,7 +10,7 @@ import { LINK_PORT } from "../../infra/agent-link/protocol";
 import { PUBLIC_URL_PLACEHOLDER } from "../../public-url";
 import { instancePublicBaseUrl } from "../instance-settings/settings-store";
 
-type ServerAddress = { ip?: string; host?: string };
+type ServerAddress = { deploHost?: boolean };
 
 /** Where a server's agent calls home: the panel's own server over loopback, before the proxy's ports are Deplo's. */
 export async function bootstrapBaseUrl(server: ServerAddress): Promise<string> {
@@ -53,10 +52,7 @@ export async function unlinkedServerMessage(): Promise<string> {
 
 /** Only a server provably on the panel's machine, and only while a port there reaches the door. */
 export function linksOverLoopback(server: ServerAddress): boolean {
-  return (
-    loopbackLinkPort() !== null &&
-    isDeploHostServer(server, deploHostMachineAddresses())
-  );
+  return loopbackLinkPort() !== null && isDeploHostServer(server);
 }
 
 // The installer names the port it published; a container that names none published none.

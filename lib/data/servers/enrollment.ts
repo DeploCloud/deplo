@@ -9,10 +9,7 @@ import {
 } from "../../db/schema/control-plane/servers";
 import { serverToRow } from "../infra-rows";
 import { sourceAgentReachable } from "../agent-reach";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
+import { isDeploHostServer, isThisMachineAddress } from "../../deploy/domains";
 import { getCurrentUser } from "../../auth/current-user";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import { newId, nowIso } from "../../ids";
@@ -26,6 +23,7 @@ import {
 } from "../../agent/bootstrap";
 import { listAllServers, getServerById, requireAdminServer } from "./roster";
 import { cleanServerName, SERVER_NAME_MAX } from "./settings";
+import { markDeploHost } from "./agent-identity";
 import {
   canonicalHost,
   HOST_ADDRESS_ERROR,
@@ -39,7 +37,8 @@ import {
 
 export interface AddServerInput {
   name: string;
-  host: string;
+  /** A migration source's machine; for any other server only where its Apps answer (ADR-0050). */
+  host?: string;
   allTeams?: boolean;
   storageOnly?: boolean;
   buildOnly?: boolean;
@@ -60,15 +59,19 @@ export async function addServer(
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
-  const parsed = parseHostAddress(input.host);
-  if (!parsed) throw new Error(HOST_ADDRESS_ERROR);
-  const host = parsed.host;
+  const importOnly = input.importOnly ?? false;
+  let host = "";
+  if (importOnly || input.host?.trim()) {
+    const parsed = parseHostAddress(input.host);
+    if (!parsed) throw new Error(HOST_ADDRESS_ERROR);
+    host = parsed.host;
+  }
 
   const { rawToken, stored } = mintBootstrap();
-  const baseUrl = await bootstrapBaseUrl({ ip: host, host });
+  // A server Deplo adds is never the machine it runs on: the installer enrolled that one.
+  const baseUrl = await bootstrapBaseUrl({});
   const { fingerprint, insecure, pin } = await controlPlaneCert(baseUrl);
 
-  const importOnly = input.importOnly ?? false;
   if (importOnly) {
     const reached = await existingImportSource(host);
     if (reached && !reached.importOnly)
@@ -81,7 +84,6 @@ export async function addServer(
     }
   }
 
-  if (!importOnly) await assertAddressFree(host);
   if (input.clusterId) {
     if (importOnly)
       throw new Error("A migration source cannot join a cluster.");
@@ -98,7 +100,7 @@ export async function addServer(
   const server: Server = {
     id: newId("srv"),
     name: cleanServerName(
-      (input.name.trim() || host).slice(0, SERVER_NAME_MAX),
+      (input.name.trim() || host || "server").slice(0, SERVER_NAME_MAX),
     ),
     host,
     type: "remote",
@@ -154,8 +156,7 @@ export async function addServer(
 }
 
 async function existingImportSource(host: string): Promise<Server | null> {
-  const self = deploHostSelfAddresses();
-  if (isDeploHostServer({ ip: host, host }, self))
+  if (isThisMachineAddress(host))
     throw new Error(
       "That address is the machine Deplo itself runs on. A migration source is " +
         "the other platform's host, and the agent here is already installed.",
@@ -166,18 +167,6 @@ async function existingImportSource(host: string): Promise<Server | null> {
 function serverAt(s: Server, host: string): boolean {
   const a = canonicalHost(host);
   return canonicalHost(s.ip) === a || canonicalHost(s.host) === a;
-}
-
-// One machine, one row: a second enrollment would re-key the agent the first row has pinned.
-export async function assertAddressFree(
-  host: string,
-  exceptId?: string,
-): Promise<void> {
-  const taken = (await listAllServers()).find(
-    (s) => s.id !== exceptId && !s.uninstallPending && serverAt(s, host),
-  );
-  if (taken)
-    throw new Error(`${taken.name} is already connected at that address.`);
 }
 
 async function claimImportSource(
@@ -229,15 +218,37 @@ async function claimImportSource(
 
 export async function ensureDeploHostServer(): Promise<void> {
   const rawToken = process.env.DEPLO_HOST_BOOTSTRAP_TOKEN?.trim();
-  if (!rawToken) return;
+  const stored = rawToken ? storedBootstrapFor(rawToken) : null;
+  const all = await listAllServers();
+  // The server the installer's own token enrolled is the machine Deplo runs on (ADR-0050).
+  const byToken = stored
+    ? all.find((s) => s.bootstrap?.tokenHash === stored.tokenHash)
+    : undefined;
+  let existing = all.find((s) => isDeploHostServer(s)) ?? byToken;
+  // An install from before the mark: recognised by its address this once, by the mark ever after.
+  existing ??= all.find(
+    (s) =>
+      !s.importOnly &&
+      (isThisMachineAddress(s.ip) || isThisMachineAddress(s.host)),
+  );
+  if (existing && !existing.deploHost) await markDeploHost(existing.id);
   const raw = process.env.DEPLO_SERVER_IP?.trim();
-  if (!raw) return;
+  if (!stored || !raw) return;
   const ip = parseHostAddress(raw)?.host ?? raw;
 
-  const self = deploHostSelfAddresses();
-  const all = await listAllServers();
-  const existing = all.find((s) => isDeploHostServer(s, self));
-  const stored = storedBootstrapFor(rawToken);
+  // The installer moved this machine to an address its row is not at (its IPv4 went away): the address follows.
+  if (
+    existing &&
+    existing.id === byToken?.id &&
+    !isThisMachineAddress(existing.ip) &&
+    !isThisMachineAddress(existing.host)
+  ) {
+    await getDb()
+      .update(serversTable)
+      .set({ ip, host: ip })
+      .where(eq(serversTable.id, existing.id));
+    return;
+  }
 
   if (existing) {
     if (existing.agent || existing.status !== "provisioning") return;
@@ -249,17 +260,6 @@ export async function ensureDeploHostServer(): Promise<void> {
         bootstrapUsedAt: stored.usedAt,
       })
       .where(eq(serversTable.id, existing.id));
-    return;
-  }
-
-  // The installer moved this host to an address the row was not enrolled at (its IPv4 went away):
-  // the row still holds the host's token, and follows it rather than leaving a second server behind.
-  const moved = all.find((s) => s.bootstrap?.tokenHash === stored.tokenHash);
-  if (moved) {
-    await getDb()
-      .update(serversTable)
-      .set({ ip, host: ip })
-      .where(eq(serversTable.id, moved.id));
     return;
   }
 
@@ -287,6 +287,7 @@ export async function ensureDeploHostServer(): Promise<void> {
     deployConcurrency: 1,
     createdAt: nowIso(),
     bootstrap: stored,
+    deploHost: true,
   };
   await getDb().insert(serversTable).values(serverToRow(server));
 }
@@ -322,6 +323,8 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
       fingerprint,
       insecure,
       pin,
+      // The same server again: the installer replaces its agent rather than stopping at it.
+      reinstall: true,
       storageOnly: fresh.storageOnly,
       buildOnly: fresh.buildOnly,
       importOnly: fresh.importOnly,

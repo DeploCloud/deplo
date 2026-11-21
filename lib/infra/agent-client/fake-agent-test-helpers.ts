@@ -37,6 +37,8 @@ export interface FakeAgent {
   /** Its own port on 127.0.0.1, as an agent installed before the link keeps until told to close it. */
   port: number;
   certPem: string;
+  /** The key it serves with now, to start a copy of it. */
+  keyPem: string;
   fingerprint: string;
   /** TCP connections anything opened to that port, and how many are still open: Deplo should open none. */
   connections(): { opened: number; open: number };
@@ -55,7 +57,7 @@ export interface FakeAgent {
   /** Links in to the door on 127.0.0.1 and serves on the link, as the real agent does. */
   link(
     doorPort: number,
-    opts?: { claim?: string; pingEveryMs?: number },
+    opts?: { claim?: string; pingEveryMs?: number; forwardedFor?: string },
   ): Promise<FakeLink>;
   stop(): Promise<void>;
 }
@@ -88,6 +90,10 @@ export async function startFakeAgent(
     };
     /** A door on 127.0.0.1 it links into whenever it holds a panel address and no link. */
     door?: number;
+    /** Starts with this certificate and key: a copy of another agent, or one past its date. */
+    identity?: { certPem: string; keyPem: string };
+    /** What its Hello says the host's own public addresses are. */
+    publicAddresses?: string[];
   } = {},
 ): Promise<FakeAgent> {
   let pair = opts.linkAddresses;
@@ -104,9 +110,11 @@ export async function startFakeAgent(
   let inject: (link: WebSocket) => void = () => {};
   let backendPort = 0;
   let pendingKeyPem = "";
-  const first = await issueAgentServerCert(["127.0.0.1"]);
+  const issued = await issueAgentServerCert(["127.0.0.1"]);
+  const first = opts.identity ? { ...issued, ...opts.identity } : issued;
   const agent = {
     certPem: first.certPem,
+    keyPem: first.keyPem,
     fingerprint: await certFingerprint(first.certPem),
   };
 
@@ -124,6 +132,7 @@ export async function startFakeAgent(
             hostArch: "amd64",
             linkAddresses: pair,
             listening,
+            publicAddresses: opts.publicAddresses ?? [],
           }),
         );
       },
@@ -203,6 +212,7 @@ export async function startFakeAgent(
       ) {
         await serve(call.request.certPem, pendingKeyPem);
         agent.certPem = call.request.certPem;
+        agent.keyPem = pendingKeyPem;
         agent.fingerprint = await certFingerprint(call.request.certPem);
         cb(null, StackResult.fromPartial({ ok: true }));
       },
@@ -269,6 +279,9 @@ export async function startFakeAgent(
     get certPem() {
       return agent.certPem;
     },
+    get keyPem() {
+      return agent.keyPem;
+    },
     get fingerprint() {
       return agent.fingerprint;
     },
@@ -291,6 +304,7 @@ export async function startFakeAgent(
     async link(doorPort, opts = {}) {
       const { ws, status, retryAfter } = await upgrade(doorPort, {
         claim: opts.claim ?? agent.fingerprint,
+        forwardedFor: opts.forwardedFor,
       });
       if (!ws) {
         const refused = Promise.resolve(0);

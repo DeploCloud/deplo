@@ -25,10 +25,7 @@ import {
 import { teamProjectOrder } from "../../db/schema/control-plane/display-order";
 import { getCurrentUser } from "../../auth/current-user";
 import { tryDecryptSecret } from "../../crypto";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
+import { isDeploHostServer } from "../../deploy/domains";
 import {
   hasCapability,
   requireCapability,
@@ -327,7 +324,6 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     : null;
 
   await trailExport(teamId, userId);
-  const self = deploHostSelfAddresses();
 
   return {
     version: DEPLO_EXPORT_VERSION,
@@ -361,7 +357,7 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
         id: s.id,
         name: s.name,
         address: s.ip?.trim() || s.host?.trim() || null,
-        isDeploHost: isDeploHostServer(s, self),
+        isDeploHost: isDeploHostServer(s),
       })),
     members: people,
     destinations: stores.buckets,

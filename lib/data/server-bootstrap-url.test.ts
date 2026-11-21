@@ -41,6 +41,7 @@ beforeEach(async () => {
     id: "srv_host",
     name: "this box",
     ip: HOST_IP,
+    deploHost: true,
     host: HOST_IP,
   });
   await seedServerRow(db, {

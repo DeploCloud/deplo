@@ -67,7 +67,7 @@ beforeEach(async () => {
   });
   await turnOnExperiments(db, "clusters");
   // srv_1 is Deplo's own machine: it leads the cluster and stands in for any other leader.
-  await seedServer(db);
+  await seedServer(db, undefined, { deploHost: true });
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   await db
     .update(serversTable)

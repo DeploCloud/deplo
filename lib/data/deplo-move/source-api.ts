@@ -19,10 +19,7 @@ import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { sha256Hex } from "../../crypto";
 import { composeTruthy } from "../../deploy/compose-lint/document";
 import { stackFilesDir } from "../../deploy/deploy-key";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
+import { isDeploHostServer } from "../../deploy/domains";
 import {
   MOVE_CODE_PREFIX,
   MOVE_PROTOCOL,
@@ -296,7 +293,6 @@ async function serverSummaries(): Promise<MoveServerSummary[]> {
     countByServer(databasesTable),
     databaseHostsByServer(),
   ]);
-  const self = deploHostSelfAddresses();
   return Promise.all(
     all.map(async (s) => {
       const enrolled = Boolean(s.agent?.certFingerprint);
@@ -306,7 +302,7 @@ async function serverSummaries(): Promise<MoveServerSummary[]> {
         name: s.name,
         address: s.ip || s.host,
         role: roleOf(s),
-        isPanelHost: isDeploHostServer(s, self),
+        isPanelHost: isDeploHostServer(s),
         enrolled,
         reachable: probe !== null,
         agentVersion: probe?.version || s.agent?.version || null,

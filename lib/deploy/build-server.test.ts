@@ -34,6 +34,7 @@ function srv(over: Partial<Server> & { id: string }): Server {
     hostArch: over.hostArch ?? "amd64",
     deployConcurrency: 1,
     createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",
+    deploHost: over.deploHost,
   };
 }
 
@@ -49,8 +50,12 @@ const plannedApp = (
   ...app(buildServerId),
   buildFallback,
 });
-const DEPLO_HOST = srv({ id: "srv_panel", ip: "10.0.0.1", host: "10.0.0.1" });
-const SELF = new Set(["10.0.0.1"]);
+const DEPLO_HOST = srv({
+  id: "srv_panel",
+  ip: "10.0.0.1",
+  host: "10.0.0.1",
+  deploHost: true,
+});
 
 test("no build server in the fleet leaves the deploy exactly as it was", () => {
   const choice = pickBuildServer(app(), TARGET, [
@@ -151,10 +156,11 @@ test("a fallback host that is not online is not asked either", () => {
       id: "srv_panel",
       ip: "10.0.0.1",
       host: "10.0.0.1",
+      deploHost: true,
       status,
     });
     assert.deepEqual(
-      pickBuildFallbacks(TARGET, [TARGET, host], SELF).map((s) => s.id),
+      pickBuildFallbacks(TARGET, [TARGET, host]).map((s) => s.id),
       [],
       `a ${status} Deplo host is not a usable fallback`,
     );
@@ -210,9 +216,7 @@ test("a pin to a server this team lost access to degrades instead of failing", (
 test("the Deplo host is a build fallback with nobody configuring anything", () => {
   const remote = srv({ id: "srv_remote", ip: "10.0.0.2" });
   assert.deepEqual(
-    pickBuildFallbacks(TARGET, [TARGET, DEPLO_HOST, remote], SELF).map(
-      (s) => s.id,
-    ),
+    pickBuildFallbacks(TARGET, [TARGET, DEPLO_HOST, remote]).map((s) => s.id),
     ["srv_panel"],
   );
 });
@@ -220,16 +224,14 @@ test("the Deplo host is a build fallback with nobody configuring anything", () =
 test("a server joins the pool only when it is marked, and the Deplo host leads it", () => {
   const marked = srv({ id: "srv_spare", ip: "10.0.0.2", buildFallback: true });
   assert.deepEqual(
-    pickBuildFallbacks(TARGET, [TARGET, marked, DEPLO_HOST], SELF).map(
-      (s) => s.id,
-    ),
+    pickBuildFallbacks(TARGET, [TARGET, marked, DEPLO_HOST]).map((s) => s.id),
     ["srv_panel", "srv_spare"],
   );
 });
 
 test("the Deplo host can be taken out of the pool, and then it is not asked", () => {
   const off = srv({ ...DEPLO_HOST, buildFallback: false });
-  assert.deepEqual(pickBuildFallbacks(TARGET, [TARGET, off], SELF), []);
+  assert.deepEqual(pickBuildFallbacks(TARGET, [TARGET, off]), []);
 });
 
 test("a fallback must be able to build for THIS target, like any other builder", () => {
@@ -259,7 +261,7 @@ test("a fallback must be able to build for THIS target, like any other builder",
   });
   const itself = srv({ ...TARGET, buildFallback: true });
   assert.deepEqual(
-    pickBuildFallbacks(TARGET, [itself, arm, down, store, source], SELF),
+    pickBuildFallbacks(TARGET, [itself, arm, down, store, source]),
     [],
   );
 });
@@ -278,39 +280,38 @@ test("two marked fallbacks split the load, deterministically", () => {
     createdAt: "2026-02-01T00:00:00.000Z",
   });
   assert.deepEqual(
-    pickBuildFallbacks(TARGET, [b, a], SELF, new Map([["srv_a", 2]])).map(
+    pickBuildFallbacks(TARGET, [b, a], new Map([["srv_a", 2]])).map(
       (s) => s.id,
     ),
     ["srv_b", "srv_a"],
   );
   assert.deepEqual(
-    pickBuildFallbacks(TARGET, [b, a], SELF).map((s) => s.id),
+    pickBuildFallbacks(TARGET, [b, a]).map((s) => s.id),
     ["srv_a", "srv_b"],
   );
 });
 
 test("a fleet with no build server is untouched by any of this", () => {
   assert.deepEqual(
-    planBuildServers(plannedApp(), TARGET, [TARGET, DEPLO_HOST], SELF),
+    planBuildServers(plannedApp(), TARGET, [TARGET, DEPLO_HOST]),
     { chain: [], local: true, missed: null },
   );
 });
 
 test("an app pinned to its own server asks no fallback question", () => {
   assert.deepEqual(
-    planBuildServers(plannedApp("srv_app"), TARGET, [TARGET, DEPLO_HOST], SELF),
+    planBuildServers(plannedApp("srv_app"), TARGET, [TARGET, DEPLO_HOST]),
     { chain: [], local: true, missed: null },
   );
 });
 
 test("a healthy build server is first, and the fallbacks queue behind it", () => {
   const builder = srv({ id: "srv_build", ip: "10.0.0.2", buildOnly: true });
-  const plan = planBuildServers(
-    plannedApp("srv_build"),
+  const plan = planBuildServers(plannedApp("srv_build"), TARGET, [
     TARGET,
-    [TARGET, builder, DEPLO_HOST],
-    SELF,
-  );
+    builder,
+    DEPLO_HOST,
+  ]);
   assert.deepEqual(plan, {
     chain: ["srv_build", "srv_panel"],
     local: true,
@@ -321,12 +322,11 @@ test("a healthy build server is first, and the fallbacks queue behind it", () =>
 test("the per-app switch off leaves exactly one host and no way out", () => {
   const builder = srv({ id: "srv_build", ip: "10.0.0.2", buildOnly: true });
   assert.deepEqual(
-    planBuildServers(
-      plannedApp("srv_build", false),
+    planBuildServers(plannedApp("srv_build", false), TARGET, [
       TARGET,
-      [TARGET, builder, DEPLO_HOST],
-      SELF,
-    ),
+      builder,
+      DEPLO_HOST,
+    ]),
     { chain: ["srv_build"], local: false, missed: null },
   );
 });
@@ -338,12 +338,11 @@ test("a build server that is down hands the build to the fallback, not to the ap
     buildOnly: true,
     status: "offline",
   });
-  const plan = planBuildServers(
-    plannedApp("srv_build"),
+  const plan = planBuildServers(plannedApp("srv_build"), TARGET, [
     TARGET,
-    [TARGET, builder, DEPLO_HOST],
-    SELF,
-  );
+    builder,
+    DEPLO_HOST,
+  ]);
   assert.deepEqual(plan, {
     chain: ["srv_panel"],
     local: true,
@@ -366,12 +365,11 @@ test("with the switch off, a build server that is down FAILS the deploy", () => 
       hostArch: "arm64",
     }),
   ]) {
-    const plan = planBuildServers(
-      plannedApp("srv_build", false),
+    const plan = planBuildServers(plannedApp("srv_build", false), TARGET, [
       TARGET,
-      [TARGET, builder, DEPLO_HOST],
-      SELF,
-    );
+      builder,
+      DEPLO_HOST,
+    ]);
     assert.deepEqual(plan.chain, []);
     assert.equal(plan.local, false);
     assert.equal(plan.missed?.pinned, true);
@@ -385,12 +383,11 @@ test("an arch-mismatched pin never sends the build there, switch on or off", () 
     buildOnly: true,
     hostArch: "arm64",
   });
-  const plan = planBuildServers(
-    plannedApp("srv_build"),
+  const plan = planBuildServers(plannedApp("srv_build"), TARGET, [
     TARGET,
-    [TARGET, builder, DEPLO_HOST],
-    SELF,
-  );
+    builder,
+    DEPLO_HOST,
+  ]);
   assert.deepEqual(plan, {
     chain: ["srv_panel"],
     local: true,
@@ -405,12 +402,11 @@ test("Automatic falls back too, and says nobody chose that server", () => {
     buildOnly: true,
     status: "offline",
   });
-  const plan = planBuildServers(
-    plannedApp(),
+  const plan = planBuildServers(plannedApp(), TARGET, [
     TARGET,
-    [TARGET, builder, DEPLO_HOST],
-    SELF,
-  );
+    builder,
+    DEPLO_HOST,
+  ]);
   assert.deepEqual(plan, {
     chain: ["srv_panel"],
     local: true,
@@ -446,12 +442,11 @@ test("no host is ever asked twice, even when the pin is itself in the pool", () 
     buildOnly: true,
     buildFallback: true,
   });
-  const plan = planBuildServers(
-    plannedApp("srv_build"),
+  const plan = planBuildServers(plannedApp("srv_build"), TARGET, [
     TARGET,
-    [TARGET, pinned, DEPLO_HOST],
-    SELF,
-  );
+    pinned,
+    DEPLO_HOST,
+  ]);
   assert.deepEqual(plan.chain, ["srv_build", "srv_panel"]);
   assert.equal(new Set(plan.chain).size, plan.chain.length, "no duplicates");
   assert.ok(!plan.chain.includes(TARGET.id), "the target is not in the chain");

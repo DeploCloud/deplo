@@ -101,6 +101,7 @@ async function seedFleet() {
     name: "prod-box-secret",
     ip: "203.0.113.10",
     host: "203.0.113.10",
+    deploHost: true,
     dockerVersion: "27.3.1",
     hostArch: "amd64",
     agent: { version: "0.4.0", certFingerprint: "fp", certPem: "" },

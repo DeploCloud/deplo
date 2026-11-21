@@ -120,7 +120,12 @@ test("an agent that reports another pair is sent the panel's address and its fal
 });
 
 test("the fallback an agent is sent is the name the panel's proxy answers on", async () => {
-  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_panel",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   // Installed before deplo.site: the proxy still routes the old generated name.
   const proxy = withPanelRoute(TRAEFIK_STACK, {
     domain: "panel.example.com",
@@ -172,7 +177,12 @@ test("an agent that does not link is never sent a pair", async () => {
 });
 
 test("the panel's own server links over loopback and is never sent a public address", async () => {
-  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_panel",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   const sent = linkingAgents();
   // Enrolled before the link had its own port, it saved the dashboard's.
   await agentHelloSeen(
@@ -190,7 +200,12 @@ test("the panel's own server links over loopback and is never sent a public addr
 });
 
 test("a new panel domain leaves the panel's own server on loopback", async () => {
-  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_panel",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   const sent = linkingAgents();
   const old = { primary: "https://old.example.com", fallback: "" };
   await agentHelloSeen("srv_panel", hello(old));
@@ -221,7 +236,12 @@ test("a server added by the panel's domain links through it, before and after th
 test("a panel in a container with no link port on the host sends its own server the public pair", async (t) => {
   __setRunsInContainerForTest(true);
   t.after(() => __setRunsInContainerForTest());
-  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_panel",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   const sent = linkingAgents();
   await agentHelloSeen(
     "srv_panel",

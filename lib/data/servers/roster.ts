@@ -9,11 +9,7 @@ import {
 } from "../../db/schema/control-plane/servers";
 import { assembleServer } from "../infra-rows";
 import { appCapabilities } from "../node-access";
-import {
-  deploHostSelfAddresses,
-  isBuildFallbackServer,
-  isDeploHostServer,
-} from "../../deploy/domains";
+import { isBuildFallbackServer, isDeploHostServer } from "../../deploy/domains";
 import { serverWildcardIp } from "./addresses";
 import { getCurrentUser } from "../../auth/current-user";
 import {
@@ -115,7 +111,6 @@ export async function listServerChoices(): Promise<
   { id: string; name: string; type: Server["type"]; isDeploHost: boolean }[]
 > {
   const teamId = await requireActiveTeamId();
-  const self = deploHostSelfAddresses();
   const members = await clusterMemberServerIdSet();
   return (await listServersForTeam(teamId))
     .filter((s) => canHostWorkloads(s) && !members.has(s.id))
@@ -123,7 +118,7 @@ export async function listServerChoices(): Promise<
       id: s.id,
       name: s.name,
       type: s.type,
-      isDeploHost: isDeploHostServer(s, self),
+      isDeploHost: isDeploHostServer(s),
     }));
 }
 
@@ -151,7 +146,6 @@ export async function listBuildServerChoices(): Promise<
   }[]
 > {
   const teamId = await requireActiveTeamId();
-  const self = deploHostSelfAddresses();
   return (await listServersForTeam(teamId))
     .filter((s) => !s.storageOnly && !s.importOnly)
     .map((s) => ({
@@ -159,8 +153,8 @@ export async function listBuildServerChoices(): Promise<
       name: s.name,
       hostArch: s.hostArch,
       buildOnly: s.buildOnly,
-      buildFallback: isBuildFallbackServer(s, self),
-      isDeploHost: isDeploHostServer(s, self),
+      buildFallback: isBuildFallbackServer(s),
+      isDeploHost: isDeploHostServer(s),
     }));
 }
 

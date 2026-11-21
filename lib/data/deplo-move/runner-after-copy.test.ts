@@ -91,6 +91,7 @@ beforeEach(async () => {
     id: "srv_self",
     name: "this-machine",
     ip: SELF_IP,
+    deploHost: true,
     host: SELF_IP,
   });
   __setClusterPinForTest({ version: "0.2.0", min: "0.2.0" });

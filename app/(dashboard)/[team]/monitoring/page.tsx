@@ -1,8 +1,5 @@
 import { listServers } from "@/lib/data/servers/roster";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "@/lib/deploy/domains";
+import { isDeploHostServer } from "@/lib/deploy/domains";
 import {
   getFleetMetrics,
   getServerMetricsHistory,
@@ -33,7 +30,6 @@ export default async function MonitoringPage() {
   ]);
 
   const shown = servers.filter((s) => !s.importOnly);
-  const selfAddrs = deploHostSelfAddresses();
   const initialHistory = shown[0]
     ? await getServerMetricsHistory(shown[0].id)
     : [];
@@ -46,7 +42,7 @@ export default async function MonitoringPage() {
         status: s.status,
         ip: s.ip,
         dockerVersion: s.dockerVersion,
-        isDeploHost: isDeploHostServer(s, selfAddrs),
+        isDeploHost: isDeploHostServer(s),
         // Nothing to refuse until its agent has enrolled.
         agentReach: s.agent?.certFingerprint ? agentReach(s) : "usable",
       }))}

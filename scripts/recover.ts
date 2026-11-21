@@ -12,7 +12,6 @@ import {
 import { hashPassword } from "../lib/crypto";
 import { createOwnerWithTemporaryPassword } from "../lib/auth/create-account";
 import {
-  deploHostSelfAddresses,
   isDeploHostServer,
   isWildcardIp,
   wildcardEmbeddedIp,
@@ -301,15 +300,15 @@ export async function requestPanelAddress(
       name: serversTable.name,
       host: serversTable.host,
       ip: serversTable.ip,
+      deploHost: serversTable.deploHost,
     })
     .from(serversTable);
-  const self = deploHostSelfAddresses();
   const server =
-    servers.find((s) => isDeploHostServer(s, self)) ??
+    servers.find((s) => isDeploHostServer(s)) ??
     (servers.length === 1 ? servers[0] : null);
   if (!server)
     fail(
-      `Cannot tell which server runs Deplo. Set DEPLO_SERVER_IP to its address and try again. Known: ${servers.map((s) => s.name).join(", ") || "none"}.`,
+      `Cannot tell which server runs Deplo: the installer never enrolled one for this machine. Known: ${servers.map((s) => s.name).join(", ") || "none"}.`,
     );
 
   let domain: string;

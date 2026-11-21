@@ -21,7 +21,7 @@ import { environments } from "../db/schema/control-plane/projects";
 import { servers } from "../db/schema/control-plane/servers";
 import { passkey } from "../db/schema/auth";
 import { AGENT_VERSION } from "../version";
-import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
+import { isDeploHostServer } from "../deploy/domains";
 import { DEPLO_VERSION } from "../version";
 
 // https://deplo.build/docs/operations/anonymous-usage-statistics (ADR-0033)
@@ -108,8 +108,6 @@ export async function buildUsageReport(opts: {
 }): Promise<UsageReport> {
   const db = getDb();
   const now = opts.now ?? new Date();
-  const self = deploHostSelfAddresses();
-
   const [
     settings,
     hostRows,
@@ -139,8 +137,7 @@ export async function buildUsageReport(opts: {
       .then((r) => r[0]),
     db
       .select({
-        ip: servers.ip,
-        host: servers.host,
+        deploHost: servers.deploHost,
         agentVersion: servers.agentVersion,
         dockerVersion: servers.dockerVersion,
         arch: servers.hostArch,
@@ -193,7 +190,7 @@ export async function buildUsageReport(opts: {
       agentVersion: h.agentVersion || null,
       dockerVersion: h.dockerVersion,
       arch: h.arch,
-      isDeploHost: isDeploHostServer(h, self),
+      isDeploHost: isDeploHostServer(h),
       isBuildServer: h.buildOnly,
       importOnly: h.importOnly,
     })),

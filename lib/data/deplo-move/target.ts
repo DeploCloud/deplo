@@ -34,6 +34,7 @@ import { schemaTag } from "../../deplo-move/schema-tag";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
+  isThisMachineAddress,
 } from "../../deploy/domains";
 import { canonicalHost } from "../../host-address";
 import { removeUploads } from "../../deploy/upload";
@@ -308,9 +309,8 @@ const NOWHERE: Record<MoveServerSummary["role"], string> = {
 };
 
 function defaultTarget(choices: string[], here: Server[]): string | null {
-  const self = deploHostSelfAddresses();
   const thisMachine = here.find(
-    (h) => choices.includes(h.id) && isDeploHostServer(h, self),
+    (h) => choices.includes(h.id) && isDeploHostServer(h),
   );
   return thisMachine?.id ?? choices[0] ?? null;
 }
@@ -353,7 +353,7 @@ async function inspect(c: moveClient.MoveCredential): Promise<Inspection> {
   const servers = hello.servers.map((s): MovePreviewServer => {
     const choices = choicesFor(s, here);
     let problem: string | null = null;
-    if (isDeploHostServer({ ip: s.address, host: s.address }, self))
+    if (isThisMachineAddress(s.address, self))
       problem = `${s.name} is this machine: install the new Deplo on a machine the old one does not use.`;
     else if (choices.length === 0 && s.role !== "import")
       problem = `No server here can ${NOWHERE[s.role]} in place of ${s.name}: add one under Servers, then check again.`;
@@ -388,7 +388,7 @@ async function inspect(c: moveClient.MoveCredential): Promise<Inspection> {
       id: h.id,
       name: h.name,
       address: h.ip || h.host,
-      isThisMachine: isDeploHostServer(h, self),
+      isThisMachine: isDeploHostServer(h),
       canHostWorkloads: canHostWorkloads(h),
     })),
     problems: servers.flatMap((s) => (s.problem ? [s.problem] : [])),

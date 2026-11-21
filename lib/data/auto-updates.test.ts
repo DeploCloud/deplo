@@ -81,7 +81,12 @@ beforeEach(async () => {
       { id: "member2", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
     ],
   });
-  await seedServerRow(db, { id: "srv_host", name: "host", ip: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_host",
+    name: "host",
+    ip: HOST_IP,
+    deploHost: true,
+  });
 });
 
 const asAdmin = <T>(fn: () => Promise<T>) =>

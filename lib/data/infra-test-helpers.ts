@@ -52,6 +52,8 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     statusMessage: opts.statusMessage,
     firstLinkedAt: opts.firstLinkedAt,
     leftBehindAt: opts.leftBehindAt,
+    deploHost: opts.deploHost,
+    connectedFrom: opts.connectedFrom,
   };
 }
 

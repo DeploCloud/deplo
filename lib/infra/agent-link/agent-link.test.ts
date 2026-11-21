@@ -18,6 +18,7 @@ import {
   USER_1,
 } from "../../data/identity-test-helpers";
 import { completeBootstrap } from "../../data/servers/agent-handshake";
+import { __setCopyAlertForTest } from "../../data/servers/agent-identity";
 import { removeServer } from "../../data/servers/removal";
 import { runWithIdentity } from "../../auth/request-context";
 import type { HelloResponse } from "../../agent/gen/agent";
@@ -44,6 +45,14 @@ import { LINK_CLOSE, LINK_RATE_LIMIT } from "./protocol";
 import { onAgentLink } from "./registry";
 
 const SERVER = "srv_linked";
+
+type SentAlert = { serverId: string; key: string; title: string; body: string };
+
+function captureAlerts(): SentAlert[] {
+  const sent: SentAlert[] = [];
+  __setCopyAlertForTest((serverId, a) => void sent.push({ serverId, ...a }));
+  return sent;
+}
 
 let db: TestDb;
 let pg: PGlite;
@@ -78,6 +87,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  __setCopyAlertForTest();
   await stopAgentLinkListener();
   dropAgentChannel(SERVER);
   await agent.stop();
@@ -223,18 +233,30 @@ test("a call to a server whose agent links in rides the link", async () => {
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("the newest verified link for a server replaces the older one", async () => {
+test("a second link with the same identity is refused while the first answers, and the alert fires", async () => {
+  const alerts = captureAlerts();
   let up = linkUp();
   const first = await agent.link(door);
   await up;
   assert.equal(await helloOver(), AGENT_VERSION);
 
-  up = linkUp();
   const second = await agent.link(door);
-  await up;
-  assert.equal(await first.closed, LINK_CLOSE.replaced);
-  assert.equal(await stillOpen(second), "open");
+  assert.equal(second.status, 101, "only the handshake can tell");
+  assert.equal(await second.closed, LINK_CLOSE.copied);
+  assert.equal(await stillOpen(first), "open");
   assert.equal(await helloOver(), AGENT_VERSION);
+  await eventually(() => alerts.length > 0);
+  assert.equal(alerts[0].key, "server_identity_copied");
+  assert.match(alerts[0].title, /^Two machines are using the identity of /);
+
+  // A link that stopped answering was the same machine before it went quiet: the new one replaces it.
+  first.freeze();
+  up = linkUp();
+  const third = await agent.link(door);
+  await up;
+  assert.equal(await stillOpen(third), "open");
+  assert.equal(await helloOver(), AGENT_VERSION);
+  first.drop();
 });
 
 test("a call waits for a link that is momentarily missing", async () => {
@@ -395,7 +417,7 @@ test("a renewed certificate closes the link it verified, and the agent relinks w
 
   assert.equal((await renewAgentCertIfDue(SERVER)).renewed, true);
   assert.equal(await link.closed, LINK_CLOSE.revoked);
-  assert.equal((await knock(door, { claim: old })).status, 404);
+  assert.ok(old !== agent.fingerprint, "a renewal is a new key");
   up = linkUp();
   assert.equal((await agent.link(door)).status, 101);
   await up;
@@ -419,7 +441,10 @@ test("enrolling a server again closes the link of the agent it replaces", async 
 
   await completeBootstrap({ token: rawToken, csrPem: await makeCsr() });
   assert.equal(await link.closed, LINK_CLOSE.revoked);
-  assert.equal((await agent.link(door)).status, 404);
+  // The machine it replaced still holds the old key: refused as a copy, not trusted again.
+  const again = await agent.link(door);
+  assert.equal(again.status, 101);
+  assert.equal(await again.closed, LINK_CLOSE.copied);
 });
 
 test("stopping the listener closes every link and the door", async () => {
@@ -438,10 +463,11 @@ test("server status hears a link come up and go down, and nothing for a replacem
   let up = linkUp();
   const first = await agent.link(door);
   await up;
+  first.freeze();
   up = linkUp();
   const second = await agent.link(door);
   await up;
-  await first.closed;
+  first.drop();
 
   const down = linkDown();
   second.drop();

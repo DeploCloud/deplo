@@ -102,11 +102,17 @@ export type SanEntry =
 
 const LEAF_LIFETIME_MS = 365 * 24 * 3600_000;
 
+export interface Validity {
+  notBefore: Date;
+  notAfter: Date;
+}
+
 async function issueCertFor(
   publicKey: CryptoKey,
   commonName: string,
   sans: SanEntry[],
   eku: string,
+  validity?: Validity,
 ): Promise<x509.X509Certificate> {
   const { caKeys, subject } = await getCa();
   const san = new x509.GeneralNames(sans);
@@ -114,8 +120,8 @@ async function issueCertFor(
     serialNumber: randomBytes(8).toString("hex"),
     subject: `CN=${commonName}`,
     issuer: subject,
-    notBefore: new Date(Date.now() - 60_000),
-    notAfter: new Date(Date.now() + LEAF_LIFETIME_MS),
+    notBefore: validity?.notBefore ?? new Date(Date.now() - 60_000),
+    notAfter: validity?.notAfter ?? new Date(Date.now() + LEAF_LIFETIME_MS),
     signingKey: caKeys.privateKey,
     publicKey,
     signingAlgorithm: { name: "Ed25519" },
@@ -131,11 +137,18 @@ async function issueLeaf(
   commonName: string,
   sans: SanEntry[],
   eku: string,
+  validity?: Validity,
 ): Promise<CertBundle> {
   const { caPem } = await getCa();
   const leafNode = ed25519KeyFromSeed(randomBytes(32));
   const leafKeys = await toWebCryptoKeys(leafNode);
-  const cert = await issueCertFor(leafKeys.publicKey, commonName, sans, eku);
+  const cert = await issueCertFor(
+    leafKeys.publicKey,
+    commonName,
+    sans,
+    eku,
+    validity,
+  );
   return {
     certPem: cert.toString("pem"),
     keyPem: pemPrivateKey(leafNode),
@@ -143,11 +156,13 @@ async function issueLeaf(
   };
 }
 
+/** `validity` only for a test: a real certificate's dates are the renewal schedule (ADR-0050). */
 export async function issueAgentServerCert(
   hosts: string[],
+  validity?: Validity,
 ): Promise<CertBundle> {
   const sans = hostsToSans(hosts);
-  return issueLeaf("deplo-agent", sans, EKU_SERVER_AUTH);
+  return issueLeaf("deplo-agent", sans, EKU_SERVER_AUTH, validity);
 }
 
 export async function issueControlPlaneClientCert(): Promise<CertBundle> {

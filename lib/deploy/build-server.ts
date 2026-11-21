@@ -5,11 +5,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { listServersForTeam } from "../data/servers/roster";
-import {
-  deploHostSelfAddresses,
-  isBuildFallbackServer,
-  isDeploHostServer,
-} from "./domains";
+import { isBuildFallbackServer, isDeploHostServer } from "./domains";
 import type { App } from "../types/app";
 import type { Server } from "../types/server";
 
@@ -75,18 +71,15 @@ function leastBusy(
 export function pickBuildFallbacks(
   target: Pick<Server, "id" | "hostArch">,
   candidates: readonly Server[],
-  self: ReadonlySet<string>,
   inFlightByServer: ReadonlyMap<string, number> = new Map(),
   exclude?: string | null,
 ): Server[] {
-  const rank = (s: Server) => (isDeploHostServer(s, self) ? 0 : 1);
+  const rank = (s: Server) => (isDeploHostServer(s) ? 0 : 1);
   const load = (s: Server) => inFlightByServer.get(s.id) ?? 0;
   return candidates
     .filter(
       (s) =>
-        s.id !== exclude &&
-        isBuildFallbackServer(s, self) &&
-        canBuildFor(s, target),
+        s.id !== exclude && isBuildFallbackServer(s) && canBuildFor(s, target),
     )
     .sort(
       (a, b) =>
@@ -100,12 +93,11 @@ export function planBuildServers(
   app: Pick<App, "serverId" | "buildServerId" | "buildFallback">,
   target: Pick<Server, "id" | "hostArch">,
   candidates: readonly Server[],
-  self: ReadonlySet<string> = deploHostSelfAddresses(),
   inFlightByServer: ReadonlyMap<string, number> = new Map(),
 ): BuildPlan {
   const primary = pickBuildServer(app, target, candidates, inFlightByServer);
   const fallbacks = (exclude?: string) =>
-    pickBuildFallbacks(target, candidates, self, inFlightByServer, exclude).map(
+    pickBuildFallbacks(target, candidates, inFlightByServer, exclude).map(
       (s) => s.id,
     );
 
@@ -160,12 +152,11 @@ export async function resolveBuildPlan(
   target: Server,
 ): Promise<BuildPlan> {
   const candidates = await listServersForTeam(app.teamId);
-  const self = deploHostSelfAddresses();
   const usableIds = candidates
     .filter((s) => s.id !== target.id && !s.storageOnly && !s.importOnly)
     .map((s) => s.id);
   if (usableIds.length === 0) {
-    return planBuildServers(app, target, candidates, self);
+    return planBuildServers(app, target, candidates);
   }
   const rows = await getDb()
     .select({ serverId: deploymentsTable.buildServerId })
@@ -181,7 +172,7 @@ export async function resolveBuildPlan(
     if (r.serverId)
       inFlight.set(r.serverId, (inFlight.get(r.serverId) ?? 0) + 1);
   }
-  return planBuildServers(app, target, candidates, self, inFlight);
+  return planBuildServers(app, target, candidates, inFlight);
 }
 
 export function buildPlanLines(

@@ -82,7 +82,11 @@ input AddServerInput {
   Join this cluster once the server is installed and answers. The join runs as you, with every check a join has.
   """
   clusterId: String
-  host: String!
+
+  """
+  Only a migration source needs it: the other platform's machine. An ordinary server is known by its agent's key, and Deplo reads its address from the agent; one given here is where its Apps answer, as if set under Advanced.
+  """
+  host: String
   importOnly: Boolean
   name: String!
   storageOnly: Boolean
@@ -7690,6 +7694,11 @@ type Server {
   Whether this host compiles for an app whose own build server could not be reached. On by default for the Deplo host and off for every other server, until setServerBuildFallback says otherwise. An app opts out of the whole chain with setAppBuildServer's buildFallback.
   """
   buildFallback: Boolean
+
+  """
+  Where this server's agent link last came from, as the panel's proxy saw it. Information only: a server is known by its agent's key, never by an address, and two servers may share one (several machines behind one router).
+  """
+  connectedFrom: String
   cpuCores: Int
   createdAt: String
 
@@ -7724,7 +7733,7 @@ type Server {
   ip: String
 
   """
-  Whether this is the host running Deplo itself (the dashboard and API), as opposed to a remote that only runs the deploy agent. It cannot be removed, and it is the only server that can restart the Deplo panel.
+  Whether this is the host running Deplo itself (the dashboard and API), as opposed to a remote that only runs the deploy agent: the server the installer enrolled for that machine, never one found by its address. It cannot be removed, and it is the only server that can restart the Deplo panel.
   """
   isDeploHost: Boolean
 

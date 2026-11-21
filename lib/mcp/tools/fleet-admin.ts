@@ -14,6 +14,7 @@ const SERVER_ROW = /* GraphQL */ `
   deployConcurrency
   agentVersion
   isDeploHost
+  connectedFrom
 `;
 
 export const FLEET: McpToolDef[] = [
@@ -21,14 +22,17 @@ export const FLEET: McpToolDef[] = [
     name: "add_server",
     title: "Register a new server",
     description:
-      "Add a machine to the fleet. Returns the one-line install command that has to be run on it once; it carries an enrolment token, so hand it to the person who owns the machine rather than repeating it.",
+      "Add a machine to the fleet. Returns the one-line install command that has to be run on it once; it carries an enrolment token, so hand it to the person who owns the machine. No address is needed.",
     group: "Servers",
     requires: "instanceAdmin",
     input: z.object({
       name: z.string(),
       host: z
         .string()
-        .describe("The machine's IP or hostname; its apps are reached there."),
+        .optional()
+        .describe(
+          "Leave it out: Deplo reads the address from the agent. Only where its Apps answer, as if set under Advanced.",
+        ),
       allTeams: z.boolean().optional().describe("Usable by every team."),
       teamIds: z.array(z.string()).optional(),
       buildOnly: z.boolean().optional(),

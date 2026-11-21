@@ -10,15 +10,13 @@ import { getCleanupPolicy } from "@/lib/data/docker-cleanup/policy";
 import { listCleanupRuns } from "@/lib/data/docker-cleanup/run-history";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
-import {
-  deploHostSelfAddresses,
-  isBuildFallbackServer,
-  isDeploHostServer,
-} from "@/lib/deploy/domains";
+import { isBuildFallbackServer, isDeploHostServer } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
 import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
 import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import { offlineAdvice } from "@/lib/data/server-health";
+import { connectsFromElsewhere } from "@/lib/data/servers/addresses";
+import { DocsLink } from "@/components/ui/docs-link";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -50,20 +48,28 @@ export default async function ServerDetailPage(
 
   const memberOf = await clusterOfServer(id);
   const expectedAgentVersion = AGENT_VERSION;
-  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
-    await Promise.all([
-      getServerTeamIds(id),
-      listAllTeamsForAdmin(),
-      getCleanupPolicy(),
-      listCleanupRuns({ serverId: id }),
-      listServerWorkloads(id),
-      serverAgentUpdate(id),
-      offlineAdvice(server),
-    ]);
+  const [
+    teamIds,
+    teamsRaw,
+    policy,
+    runs,
+    workloads,
+    agentUpdate,
+    advice,
+    elsewhere,
+  ] = await Promise.all([
+    getServerTeamIds(id),
+    listAllTeamsForAdmin(),
+    getCleanupPolicy(),
+    listCleanupRuns({ serverId: id }),
+    listServerWorkloads(id),
+    serverAgentUpdate(id),
+    offlineAdvice(server),
+    connectsFromElsewhere(server),
+  ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
-  const self = deploHostSelfAddresses();
-  const isDeploHost = isDeploHostServer(server, self);
+  const isDeploHost = isDeploHostServer(server);
   const teams: TeamOption[] = teamsRaw.map((t) => ({
     id: t.id,
     name: t.name,
@@ -116,7 +122,16 @@ export default async function ServerDetailPage(
             />
           }
           ip={hydrated.ip}
+          connectedFrom={isDeploHost ? null : (server.connectedFrom ?? null)}
         />
+        {elsewhere && (
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            This server connects to Deplo from {elsewhere}, which is not one of
+            its own addresses, so it is behind a router. Its Apps answer on{" "}
+            {elsewhere} only if the router forwards ports 80 and 443 to it.{" "}
+            <DocsLink topic="servers.connectedFrom" />
+          </p>
+        )}
 
         <ServerDetailTabs
           server={{
@@ -132,7 +147,7 @@ export default async function ServerDetailPage(
             allTeams: hydrated.allTeams,
             deployConcurrency: hydrated.deployConcurrency,
             role: serverRole(hydrated) as "everything" | "build" | "storage",
-            buildFallback: isBuildFallbackServer(hydrated, self),
+            buildFallback: isBuildFallbackServer(hydrated),
             generatedAddressFamily: hydrated.generatedAddressFamily,
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
