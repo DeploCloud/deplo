@@ -22,10 +22,12 @@ import {
 } from "./clusters/answer-dns";
 import {
   MEMBERS,
+  asAdmin,
   clusterOf,
   db,
   dissolveHarness,
 } from "./cluster-dissolve-test-helpers";
+import { addClusterDnsZone } from "./clusters/dns-zone";
 import {
   __resetDnsResolve4ForTest,
   __setDnsResolve4ForTest,
@@ -184,4 +186,53 @@ test("by hand, the domain is misconfigured until it lists every healthy server, 
     .from(domainsTable)
     .where(eq(domainsTable.id, "dom_1"));
   assert.equal(fixed.status, "valid");
+});
+
+// Found on the ADR-0049 lab: a name server that had just stopped failed the lookup, which read as "not delegated",
+// and the failover's reroute then left the App's domain out on every server that still ran it.
+test("a lookup that fails says nothing about a zone's domain; a real change routes its App again", async () => {
+  const cluster = await clusterOf("eu", MEMBERS);
+  await answeringApp(cluster.id);
+  await db()
+    .update(domainsTable)
+    .set({ name: "app.go.example.com" })
+    .where(eq(domainsTable.id, "dom_1"));
+  await asAdmin(() => addClusterDnsZone(cluster.id, "go.example.com"));
+  const status = async () =>
+    (
+      await db()
+        .select({ s: domainsTable.status })
+        .from(domainsTable)
+        .where(eq(domainsTable.id, "dom_1"))
+    )[0].s;
+  const routed: string[] = [];
+  const reroutes = () => routed.length;
+  const sync = () =>
+    syncClusterAnswerDns(cluster.id, async (id) => void routed.push(id));
+
+  __setDnsResolve4ForTest(async () => {
+    throw Object.assign(new Error("queryA ESERVFAIL"), { code: "ESERVFAIL" });
+  });
+  await sync();
+  assert.equal(await status(), "valid");
+  assert.equal(reroutes(), 0);
+  assert.ok(
+    !(await db().select().from(activities)).some((a) =>
+      a.message.includes("does not reach the cluster"),
+    ),
+  );
+
+  __setDnsResolve4ForTest(async () => {
+    throw Object.assign(new Error("queryA ENODATA"), { code: "ENODATA" });
+  });
+  await sync();
+  assert.equal(await status(), "pending");
+  const after = reroutes();
+  assert.ok(after > 0, "a domain no longer valid is routed again");
+
+  __setDnsResolve4ForTest(async () => ["10.0.0.2", "10.0.0.3"]);
+  await sync();
+  assert.equal(await status(), "valid");
+  assert.ok(reroutes() > after, "and once valid again");
+  assert.deepEqual([...new Set(routed)], ["prj_web"]);
 });
