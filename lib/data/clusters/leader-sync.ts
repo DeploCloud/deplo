@@ -55,6 +55,8 @@ export interface LeaderEntry {
   slug: string;
   /** A database, or an App with a Volume: stopped first when a member's lease runs out. */
   singleWriter: boolean;
+  /** An App the cluster load-balances: a server back from a failover gets its copy again. */
+  balanced?: true;
 }
 
 /** The mirror of the leader's placement, with the stack name and whether the workload is single-writer. */
@@ -120,6 +122,7 @@ export async function placementEntries(
       )
       .map((a) => a.id),
   );
+  const balanced = await balancedApps(rows);
   const slugOf = new Map<string, string>([
     ...apps.map((a) => [a.id, a.slug] as const),
     ...dbs.map((d) => [d.id, d.host] as const),
@@ -137,6 +140,7 @@ export async function placementEntries(
       member: r.memberServerId ?? "",
       slug: slugOf.get(r.workloadId) ?? "",
       singleWriter: kind === "database" || withVolume.has(r.workloadId),
+      ...(balanced.has(r.workloadId) ? { balanced: true as const } : {}),
     });
   }
   return out.sort((a, b) =>
@@ -144,6 +148,25 @@ export async function placementEntries(
       `${b.kind}/${b.id}/${b.replica}`,
     ),
   );
+}
+
+/** The Apps placed more than once that the cluster load-balances: only one of them can have a copy to give back. */
+async function balancedApps(
+  rows: { kind: string; workloadId: string }[],
+): Promise<Set<string>> {
+  const count = new Map<string, number>();
+  for (const r of rows)
+    if (r.kind === "app")
+      count.set(r.workloadId, (count.get(r.workloadId) ?? 0) + 1);
+  const { loadAppGraph } = await import("../app-graph-load");
+  const { appLoadBalanced } = await import("./load-balancing");
+  const out = new Set<string>();
+  for (const [id, n] of count) {
+    if (n < 2) continue;
+    const app = await loadAppGraph(id);
+    if (app && (await appLoadBalanced(app))) out.add(id);
+  }
+  return out;
 }
 
 /** One replica the leader moved, or left waiting (`member` empty), that no roster has repeated yet. */

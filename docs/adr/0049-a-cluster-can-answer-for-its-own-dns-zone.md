@@ -150,6 +150,13 @@ The owner's four decisions after the #228 lab, each its own release but the last
 - **Pending to valid adds the route**, and only then is the App routed again (#278's reroute, now kept for that one change). A person removing or renaming the domain still takes it off.
 - **Why**: #278 made every status change reroute the App, and #280 removed one false `misconfigured`; any other wrong or transient verdict would again have rendered the stack without the domain on every server, a 404 Deplo made itself. A route that stays while DNS truly points elsewhere costs nothing: no visitor reaches it.
 
+### A server back gets its copy again
+
+- **The leader hands it back**, since it already moves the copies: a load-balanced App that keeps no data (the roster's `balanced`), one member running two or more of its replicas, another running none. Once that member has answered for **2 minutes** (`GiveCopyAfter`, longer than the longest removal time of 60 s), the highest replica of the most loaded member starts on it, and nowhere else, and is recorded there once ready. Activity: "lab-1 runs its own copy of web again: it has been back for 2 minutes".
+- **No other copy restarts**: no order reaches another member. Until its copy is ready the server passes its visitors on (ADR-0048), then serves them from it.
+- **The extra copy the failover started stays where it is** until the App's next deploy: stopping it would leave a moment where the proxy still sends visitors to a stopped container.
+- A server that drops again within the wait gets nothing, and its wait starts over. A start that fails changes nothing and is tried again. An App that keeps data stays where the failover put it, as before.
+
 ### Cloudflare in front of the zone
 
 - Cloudflare proxies a new record by default, and a proxied `CNAME` into the zone puts Cloudflare in the cluster's place: visitors reach Cloudflare, never the nearest server. When every address the domain resolves to is Cloudflare's, the domain screen and Activity say so: "set its record to DNS only (grey cloud)".
