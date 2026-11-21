@@ -17,6 +17,8 @@ import { withKeyedLock } from "../keyed-mutex";
 import { serverWildcardIp } from "../servers/addresses";
 import { getServerById } from "../servers/roster";
 import { recordOnce } from "./bundles";
+import { clusterMemberServerIds } from "./roster";
+import type { App } from "../../types/app";
 import { messageOf } from "../../utils";
 
 /**
@@ -31,10 +33,11 @@ export async function rehostClusterApp(appId: string): Promise<string[]> {
     if (!app?.clusterId) return [];
     const ip = await serverWildcardIp(await getServerById(app.serverId));
     if (!ip) return [];
+    const waits = await waitsForItsServer(app);
     const moved: { id: string; from: string; to: string }[] = [];
     for (const d of await loadDomainsForApp(appId)) {
       const held = d.source === "auto" ? wildcardEmbeddedIp(d.name) : null;
-      if (!held || held === ip) continue;
+      if (!held || held === ip || waits.has(held)) continue;
       const to = rehostWildcard(d.name, ip);
       if (to === d.name) continue;
       try {
@@ -85,6 +88,21 @@ export async function rehostClusterApp(appId: string): Promise<string[]> {
     );
     return moved.map((m) => m.to);
   });
+}
+
+/**
+ * A load-balanced App gets its copy back on a server that returns, and every copy holds the name in its routes: a
+ * renamed address would restart them all. Its address waits for the server it names while that one is a member.
+ */
+async function waitsForItsServer(app: App): Promise<Set<string>> {
+  const { appLoadBalanced } = await import("./load-balancing");
+  if (!app.clusterId || !(await appLoadBalanced(app))) return new Set();
+  const ips = await Promise.all(
+    (await clusterMemberServerIds(app.clusterId)).map(async (id) =>
+      serverWildcardIp(await getServerById(id)),
+    ),
+  );
+  return new Set(ips.filter((ip): ip is string => Boolean(ip)));
 }
 
 /** The sweep's backstop: every cluster App whose generated address names a server it left catches up. */
