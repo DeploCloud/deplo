@@ -180,7 +180,12 @@ type Pair = { primary: string; fallback: string };
 
 /** The panel's own server answers with a proxy routing the panel; every other server is reached for real. */
 async function panelHost(): Promise<PanelProxy> {
-  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_panel",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   const proxy: PanelProxy = {
     yaml: withPanelRoute(PROXY, {
       domain: "panel.example.com",

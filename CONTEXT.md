@@ -487,7 +487,9 @@ server with no agent link past a short grace window is **offline**; every other 
 comes from a live Hello over the link. Nothing else reaches a server: the control plane never
 dials one. An agent installed before the link is told over its link to stop listening, for good,
 and a new one opens no port, so no server of an updated instance keeps a port open.
-A server's address stays, for its apps' domains and DNS checks only. Users never see the term: a
+A server's address stays, for its apps' domains and DNS checks only, and is never its identity:
+that is its agent's key (ADR-0050), and two servers may share one address. Where a link comes from
+is **Connected from**, information only. Users never see the term: a
 server is _connected_ or _offline_, and no screen mentions a port. The link enters the panel by its
 **door**, a reserved path on the panel's public address (loopback for the host running Deplo): the
 door only names the server the agent claims to be, and the mutual-TLS handshake inside the link

@@ -249,14 +249,14 @@ test("an address that is no IP and no host name is refused, on add and on change
   }
 });
 
-test("a second server at an address already connected is refused, in any spelling", async () => {
-  await asAdmin(() => addServer({ name: "first", host: "2001:db8::1" }));
-  await assert.rejects(
-    () => asAdmin(() => addServer({ name: "again", host: "[2001:db8:0::1]" })),
-    /first is already connected at that address/,
+test("two servers may share one address: several machines behind one router (ADR-0050)", async () => {
+  const first = await asAdmin(() =>
+    addServer({ name: "first", host: "2001:db8::1" }),
   );
-  await assert.rejects(
-    () => asAdmin(() => updateServerAddress({ id: BARE, address: DEAD_LOCAL })),
-    /provisioned is already connected at that address/,
+  const again = await asAdmin(() =>
+    addServer({ name: "again", host: "[2001:db8:0::1]" }),
   );
+  assert.notEqual(first.server.id, again.server.id);
+  await asAdmin(() => updateServerAddress({ id: BARE, address: DEAD_LOCAL }));
+  assert.equal((await getServerById(BARE))?.ip, DEAD_LOCAL);
 });

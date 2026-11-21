@@ -85,7 +85,7 @@ export function failoverLab() {
       ],
     });
     await turnOnExperiments(lab.db, "clusters");
-    await seedServer(lab.db);
+    await seedServer(lab.db, undefined, { deploHost: true });
     process.env.DEPLO_SERVER_IP = "10.0.0.1";
     for (const [i, id] of ["srv_2", "srv_3"].entries()) {
       await seedServerRow(lab.db, {

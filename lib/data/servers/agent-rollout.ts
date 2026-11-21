@@ -7,10 +7,7 @@ import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { instanceSettings } from "../../db/schema/control-plane/instance";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
+import { isDeploHostServer } from "../../deploy/domains";
 import { selfUpdateServerAgent } from "../../infra/agent-client/agent-lifecycle";
 import { openAgent } from "../../infra/agent-client/connect";
 import { nowIso } from "../../ids";
@@ -179,17 +176,16 @@ export async function unusableServers(): Promise<
 export function rolloutOrder(
   servers: Server[],
   appsPerServer: ReadonlyMap<string, number>,
-  self: ReadonlySet<string> = deploHostSelfAddresses(),
 ): Server[] {
   const eligible = servers.filter(
     (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
   );
   const remotes = eligible
-    .filter((s) => !isDeploHostServer(s, self))
+    .filter((s) => !isDeploHostServer(s))
     .sort(
       (a, b) => (appsPerServer.get(a.id) ?? 0) - (appsPerServer.get(b.id) ?? 0),
     );
-  return [...remotes, ...eligible.filter((s) => isDeploHostServer(s, self))];
+  return [...remotes, ...eligible.filter((s) => isDeploHostServer(s))];
 }
 
 async function appsPerServer(): Promise<Map<string, number>> {

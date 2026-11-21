@@ -217,21 +217,27 @@ function computeSelfAddresses(withNames: boolean): Set<string> {
   return addrs;
 }
 
+/** The server the installer enrolled for the machine Deplo runs on (ADR-0050): an identity, never an address. */
 export function isDeploHostServer(
-  server: { ip?: string; host?: string },
-  self: ReadonlySet<string> = deploHostSelfAddresses(),
+  server: { deploHost?: boolean | null } | null | undefined,
 ): boolean {
-  if (self.size === 0) return false;
-  const ip = canonicalHost(server.ip);
-  const host = canonicalHost(server.host);
-  return (!!ip && self.has(ip)) || (!!host && self.has(host));
+  return server?.deploHost === true;
 }
 
-export function isBuildFallbackServer(
-  server: { buildFallback: boolean | null; ip?: string; host?: string },
+/** Whether an address someone handed Deplo is one of this machine's own: a hint about that address, never who a server is. */
+export function isThisMachineAddress(
+  address: string | null | undefined,
   self: ReadonlySet<string> = deploHostSelfAddresses(),
 ): boolean {
-  return server.buildFallback ?? isDeploHostServer(server, self);
+  const a = canonicalHost(address);
+  return !!a && self.has(a);
+}
+
+export function isBuildFallbackServer(server: {
+  buildFallback: boolean | null;
+  deploHost?: boolean | null;
+}): boolean {
+  return server.buildFallback ?? isDeploHostServer(server);
 }
 
 export function certResolver(): string {

@@ -174,6 +174,7 @@ test("refuses to remove the host running Deplo itself", async () => {
     id: "srv_self",
     name: "this-host",
     ip: SELF_IP,
+    deploHost: true,
     host: SELF_IP,
   });
 
@@ -196,6 +197,7 @@ test("the Deplo-host refusal fires BEFORE any side effect", async () => {
     id: "srv_self",
     name: "this-host",
     ip: SELF_IP,
+    deploHost: true,
     host: SELF_IP,
     agent: {
       certFingerprint: "sha256:self-pinned",
@@ -210,17 +212,16 @@ test("the Deplo-host refusal fires BEFORE any side effect", async () => {
   assert.equal(self?.agent?.certFingerprint, "sha256:self-pinned");
 });
 
-test("the guard matches on host as well as ip, and spares unrelated remotes", async () => {
+test("the guard reads which server the installer enrolled, never an address (ADR-0050)", async () => {
+  // Another machine behind the same router as Deplo's: same address, a different server.
   await seedServerRow(db, {
-    id: "srv_by_name",
-    name: "by-name",
-    ip: "192.0.2.99",
+    id: "srv_neighbour",
+    name: "neighbour",
+    ip: SELF_IP,
     host: "deplo.test",
   });
-  await assert.rejects(
-    () => asAdmin(() => removeServer("srv_by_name")),
-    /host running Deplo itself/i,
-  );
+  await asAdmin(() => removeServer("srv_neighbour"));
+  assert.equal(await getServerById("srv_neighbour"), null);
 
   await asAdmin(() => removeServer(OTHER));
   assert.equal(await getServerById(OTHER), null);

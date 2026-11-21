@@ -68,6 +68,7 @@ test("rollout order puts the lightest remote first and the Deplo host last", () 
       id: "srv_host",
       ip: SELF_IP,
       host: SELF_IP,
+      deploHost: true,
       agent: agentAt("0.1.0"),
     }),
     makeServer({
@@ -87,7 +88,6 @@ test("rollout order puts the lightest remote first and the Deplo host last", () 
       ["srv_busy", 9],
       ["srv_light", 1],
     ]),
-    new Set([SELF_IP]),
   );
   assert.deepEqual(
     order.map((s) => s.id),
@@ -110,7 +110,7 @@ test("rollout order leaves out an unprovisioned host and a migration source", ()
       agent: agentAt("0.1.0"),
     }),
   ];
-  const order = rolloutOrder(servers, new Map(), new Set([SELF_IP]));
+  const order = rolloutOrder(servers, new Map());
   assert.deepEqual(
     order.map((s) => s.id),
     ["srv_ok"],

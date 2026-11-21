@@ -96,7 +96,7 @@ beforeEach(async () => {
     ],
   });
   await turnOnExperiments(db, "clusters");
-  await seedServer(db);
+  await seedServer(db, undefined, { deploHost: true });
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   for (const [i, id] of ["srv_2", "srv_3", "srv_4"].entries()) {
     await seedServerRow(db, {

@@ -19,7 +19,7 @@ export interface ServerAddresses {
 }
 
 type AddressedServer = Pick<Server, "id" | "ip" | "host" | "agent"> &
-  Partial<Pick<Server, "generatedAddressFamily">>;
+  Partial<Pick<Server, "generatedAddressFamily" | "deploHost">>;
 
 // null when the agent cannot say: unreachable, or too old to report its addresses.
 async function askAgent(serverId: string): Promise<string[] | null> {
@@ -183,4 +183,14 @@ export async function serverAddresses(
   // A loopback address can only mean the machine Deplo itself runs on.
   if (loopback || isDeploHostServer(server)) addInstance();
   return { v4: [...v4], v6: [...v6], v6Known };
+}
+
+/** Where its link comes from when that is not one of its own addresses: it is behind a router (ADR-0050). */
+export async function connectsFromElsewhere(
+  server: AddressedServer & Partial<Pick<Server, "connectedFrom">>,
+): Promise<string | null> {
+  const from = parseHostAddress(server.connectedFrom)?.host;
+  if (!from || isDeploHostServer(server) || isLoopbackIp(from)) return null;
+  const own = await serverAddresses(server, { askAgent: false });
+  return [...own.v4, ...own.v6].includes(from) ? null : from;
 }

@@ -31,6 +31,13 @@ export const servers = pgTable(
     agentPort: integer("agent_port"),
     agentCertFingerprint: text("agent_cert_fingerprint"),
     agentCertPem: text("agent_cert_pem"),
+    // A rotation's new certificate, stored before the agent installs it (ADR-0050).
+    agentNextCertFingerprint: text("agent_next_cert_fingerprint"),
+    agentNextCertPem: text("agent_next_cert_pem"),
+    // The server the installer enrolled for the machine Deplo runs on: known by identity, never by address.
+    deploHost: boolean("deplo_host").notNull().default(false),
+    // Where its agent link last came from, as the panel's proxy saw it: shown, never trusted.
+    connectedFrom: text("connected_from"),
     agentVersion: text("agent_version"),
     bootstrapTokenHash: text("bootstrap_token_hash"),
     bootstrapExpiresAt: isoTimestamptz("bootstrap_expires_at"),
@@ -77,10 +84,27 @@ export const servers = pgTable(
       .where(
         sql`${t.agentCertFingerprint} is not null and ${t.agentCertFingerprint} <> ''`,
       ),
+    uniqueIndex("servers_next_cert_fingerprint_uq")
+      .on(t.agentNextCertFingerprint)
+      .where(sql`${t.agentNextCertFingerprint} is not null`),
     index("servers_bootstrap_token_idx")
       .on(t.bootstrapTokenHash)
       .where(sql`${t.bootstrapTokenHash} is not null`),
   ],
+);
+
+// Keys a server rotated away from: a machine that still holds one is a copy (ADR-0050).
+export const serverRetiredCerts = pgTable(
+  "server_retired_certs",
+  {
+    fingerprint: text("fingerprint").primaryKey(),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    certPem: text("cert_pem").notNull(),
+    retiredAt: isoTimestamptz("retired_at").notNull(),
+  },
+  (t) => [index("server_retired_certs_server_idx").on(t.serverId)],
 );
 
 export const serverTeams = pgTable(

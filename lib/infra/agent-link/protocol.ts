@@ -20,6 +20,9 @@ export const LINK_MAX_PAYLOAD = 4 * 1024 * 1024;
 /** Per client address, sized for an office whose servers all relink after a panel restart. */
 export const LINK_RATE_LIMIT = { limit: 120, windowMs: 60_000 };
 
+/** How long an open link has to answer before a new one with its identity replaces it (ADR-0050). */
+export const LINK_COPY_PING_MS = 3_000;
+
 /** Close codes after the upgrade; before it the door answers plain HTTP (400, 404, 429). */
 export const LINK_CLOSE = {
   /** A newer verified link for the same server took over. */
@@ -28,5 +31,7 @@ export const LINK_CLOSE = {
   refused: 4001,
   /** The server was removed or its certificate replaced (ADR-0011). */
   revoked: 4002,
+  /** Another machine holds this identity and answers, or this key was rotated away: a copy (ADR-0050). */
+  copied: 4003,
   stopping: 1001,
 } as const;

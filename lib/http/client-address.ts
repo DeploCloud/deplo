@@ -14,3 +14,14 @@ export function clientAddress(h: Headers): string | null {
 export function clientAddressKey(h: Headers): string {
   return clientKeyAddress(clientAddress(h) ?? "unknown");
 }
+
+// A connection straight from this machine (the host's own agent link) passed no proxy: nothing it claims to forward is read.
+export function connectionAddress(
+  peer: string | null | undefined,
+  h: Headers,
+): string | null {
+  const p = (peer ?? "").trim().replace(/^::ffff:/i, "");
+  if (!p) return null;
+  if (/^127\./.test(p) || p === "::1") return p;
+  return clientAddress(h) ?? p;
+}

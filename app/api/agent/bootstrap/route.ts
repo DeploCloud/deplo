@@ -2,6 +2,7 @@ import { completeBootstrap } from "@/lib/data/servers/agent-handshake";
 import { signResponse, BootstrapError } from "@/lib/agent/bootstrap";
 import { readTextCapped } from "@/lib/http/body-cap";
 import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
+import { clientAddress } from "@/lib/http/client-address";
 
 export async function POST(request: Request) {
   const paused = await refuseWhileFrozen();
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
       token,
       csrPem,
       advertisedHost,
+      connectedFrom: clientAddress(request.headers),
     });
     // The agent recomputes this HMAC and refuses a mismatch, binding the CA and its link address to a party that knew the token.
     const payload = JSON.stringify({ certPem, caPem, linkUrl });

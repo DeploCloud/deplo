@@ -1,4 +1,5 @@
 import net from "node:net";
+import type { Duplex } from "node:stream";
 import { webcrypto } from "node:crypto";
 
 import {
@@ -37,6 +38,8 @@ export interface FakeAgent {
   /** Its own port on 127.0.0.1, as an agent installed before the link keeps until told to close it. */
   port: number;
   certPem: string;
+  /** The key it serves with now, to start a copy of it. */
+  keyPem: string;
   fingerprint: string;
   /** TCP connections anything opened to that port, and how many are still open: Deplo should open none. */
   connections(): { opened: number; open: number };
@@ -55,7 +58,7 @@ export interface FakeAgent {
   /** Links in to the door on 127.0.0.1 and serves on the link, as the real agent does. */
   link(
     doorPort: number,
-    opts?: { claim?: string; pingEveryMs?: number },
+    opts?: { claim?: string; pingEveryMs?: number; forwardedFor?: string },
   ): Promise<FakeLink>;
   stop(): Promise<void>;
 }
@@ -88,6 +91,10 @@ export async function startFakeAgent(
     };
     /** A door on 127.0.0.1 it links into whenever it holds a panel address and no link. */
     door?: number;
+    /** Starts with this certificate and key: a copy of another agent, or one past its date. */
+    identity?: { certPem: string; keyPem: string };
+    /** What its Hello says the host's own public addresses are. */
+    publicAddresses?: string[];
   } = {},
 ): Promise<FakeAgent> {
   let pair = opts.linkAddresses;
@@ -101,12 +108,14 @@ export async function startFakeAgent(
   >();
   const backends: GrpcServer[] = [];
   const links = new Set<FakeLink>();
-  let inject: (link: WebSocket) => void = () => {};
+  let inject: (link: Duplex) => void = () => {};
   let backendPort = 0;
   let pendingKeyPem = "";
-  const first = await issueAgentServerCert(["127.0.0.1"]);
+  const issued = await issueAgentServerCert(["127.0.0.1"]);
+  const first = opts.identity ? { ...issued, ...opts.identity } : issued;
   const agent = {
     certPem: first.certPem,
+    keyPem: first.keyPem,
     fingerprint: await certFingerprint(first.certPem),
   };
 
@@ -124,6 +133,7 @@ export async function startFakeAgent(
             hostArch: "amd64",
             linkAddresses: pair,
             listening,
+            publicAddresses: opts.publicAddresses ?? [],
           }),
         );
       },
@@ -203,6 +213,7 @@ export async function startFakeAgent(
       ) {
         await serve(call.request.certPem, pendingKeyPem);
         agent.certPem = call.request.certPem;
+        agent.keyPem = pendingKeyPem;
         agent.fingerprint = await certFingerprint(call.request.certPem);
         cb(null, StackResult.fromPartial({ ok: true }));
       },
@@ -224,7 +235,7 @@ export async function startFakeAgent(
       ),
     );
     const injector = server.createConnectionInjector(creds());
-    inject = (ws) => injector.injectConnection(createWebSocketStream(ws));
+    inject = (stream) => injector.injectConnection(stream);
     backends.push(server);
   };
   await serve(first.certPem, first.keyPem);
@@ -269,6 +280,9 @@ export async function startFakeAgent(
     get certPem() {
       return agent.certPem;
     },
+    get keyPem() {
+      return agent.keyPem;
+    },
     get fingerprint() {
       return agent.fingerprint;
     },
@@ -289,22 +303,24 @@ export async function startFakeAgent(
       for (const state of open.values()) state.stale = true;
     },
     async link(doorPort, opts = {}) {
-      const { ws, status, retryAfter } = await upgrade(doorPort, {
-        claim: opts.claim ?? agent.fingerprint,
-      });
-      if (!ws) {
+      const { ws, stream, closedWith, status, retryAfter } = await upgrade(
+        doorPort,
+        {
+          claim: opts.claim ?? agent.fingerprint,
+          forwardedFor: opts.forwardedFor,
+        },
+      );
+      if (!ws || !stream || !closedWith) {
         const refused = Promise.resolve(0);
         return { status, retryAfter, closed: refused, drop() {}, freeze() {} };
       }
       const pinging = opts.pingEveryMs
         ? setInterval(() => ws.ping(), opts.pingEveryMs)
         : undefined;
-      const closed = new Promise<number>((r) =>
-        ws.once("close", (code) => {
-          clearInterval(pinging);
-          r(code);
-        }),
-      );
+      const closed = closedWith.then((code) => {
+        clearInterval(pinging);
+        return code;
+      });
       const link: FakeLink = {
         status,
         retryAfter,
@@ -317,7 +333,7 @@ export async function startFakeAgent(
       };
       links.add(link);
       void closed.then(() => links.delete(link));
-      inject(ws);
+      inject(stream);
       return link;
     },
     async stop() {
@@ -356,6 +372,9 @@ async function upgrade(
   },
 ): Promise<{
   ws: WebSocket | null;
+  /** Read from the moment the socket exists: the door speaks as soon as it upgrades, as the real agent buffers. */
+  stream?: Duplex;
+  closedWith?: Promise<number>;
   status: number;
   retryAfter: string | null;
 }> {
@@ -369,10 +388,17 @@ async function upgrade(
     protocol ? [protocol] : [],
     { headers, perMessageDeflate: false },
   );
+  const stream = createWebSocketStream(ws);
+  stream.on("error", () => {});
+  const closedWith = new Promise<number>((r) =>
+    ws.once("close", (code) => r(code)),
+  );
   return new Promise((resolve, reject) => {
     // Errors after the answer are the link ending, which `closed` reports.
     ws.on("error", reject);
-    ws.once("open", () => resolve({ ws, status: 101, retryAfter: null }));
+    ws.once("open", () =>
+      resolve({ ws, stream, closedWith, status: 101, retryAfter: null }),
+    );
     ws.once("unexpected-response", (req, res) => {
       req.destroy();
       resolve({

@@ -10,10 +10,7 @@ import { destinationToRow } from "../backup-rows";
 import { assertSafeOutboundUrl } from "../../outbound-url";
 import { validateS3Args } from "../../backups/s3-args";
 import { getCurrentUser } from "../../auth/current-user";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
+import { isDeploHostServer } from "../../deploy/domains";
 import { serverLabel } from "../../utils";
 import { newId, nowIso } from "../../ids";
 import {
@@ -238,14 +235,13 @@ export async function ensureDefaultDestination(): Promise<void> {
     const provisioned = (await listServersForCurrentTeam()).filter(
       (s) => s.agent?.certFingerprint && !s.importOnly,
     );
-    const self = deploHostSelfAddresses();
     const server =
-      provisioned.find((s) => isDeploHostServer(s, self)) ?? provisioned[0];
+      provisioned.find((s) => isDeploHostServer(s)) ?? provisioned[0];
     if (!server) {
       await release();
       return;
     }
-    const name = isDeploHostServer(server, self)
+    const name = isDeploHostServer(server)
       ? "This server"
       : serverLabel(server);
 

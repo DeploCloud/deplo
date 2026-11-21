@@ -227,6 +227,7 @@ const DANGER = new Set<AlertKey>([
   "server_offline",
   "server_unmanageable",
   "server_trust_changed",
+  "server_identity_copied",
   "agent_incompatible",
   "git_connection_failing",
   "failed_logins",

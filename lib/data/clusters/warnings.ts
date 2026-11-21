@@ -22,6 +22,8 @@ import { readClusterLeader } from "./leader";
 import { listClusterWaiting } from "./placement";
 import { listClusterReplication } from "./replica-state";
 import { getClusterById } from "./roster";
+import { sharedClusterAddresses } from "./dns-zone";
+import { sharedAddressWarnings } from "../../clusters/shared-addresses";
 
 // A leader that hangs is a warning, not a stuck pass.
 const READ_DEADLINE_MS = 15_000;
@@ -129,7 +131,7 @@ export async function loadClusterWarnings(
   servers: number,
   stored: ClusterWarning[],
 ): Promise<ClusterWarning[]> {
-  const [waiting, copies, replication] = await Promise.all([
+  const [waiting, copies, replication, shared] = await Promise.all([
     listClusterWaiting(cluster.id).catch(() => []),
     cluster.failoverEnabled
       ? listClusterImageProgress(cluster.id).catch(() => [])
@@ -137,13 +139,18 @@ export async function loadClusterWarnings(
     cluster.failoverEnabled && cluster.replicationEnabled
       ? listClusterReplication(cluster.id).catch(() => [])
       : [],
+    // Whatever failover is set to: the cluster's DNS names a shared address once either way.
+    sharedClusterAddresses(cluster.id).catch(() => new Map<string, string[]>()),
   ]);
-  return composeClusterWarnings({
-    failoverEnabled: cluster.failoverEnabled,
-    servers,
-    leader: stored,
-    waiting,
-    copies,
-    replication,
-  });
+  return [
+    ...sharedAddressWarnings(shared),
+    ...composeClusterWarnings({
+      failoverEnabled: cluster.failoverEnabled,
+      servers,
+      leader: stored,
+      waiting,
+      copies,
+      replication,
+    }),
+  ];
 }

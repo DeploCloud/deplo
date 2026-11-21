@@ -25,7 +25,6 @@ import {
   toAgentUpdateDTO,
 } from "./agent-update-state";
 import { assertNotMigrationSource, requireAdminServer } from "./roster";
-import { assertAddressFree } from "./enrollment";
 import { unlinkedServerMessage } from "./panel-address";
 import { HOST_ADDRESS_ERROR, parseHostAddress } from "../../host-address";
 
@@ -45,8 +44,8 @@ export async function updateServerAddress(
   const parsed = parseHostAddress(input.address);
   if (!parsed) throw new Error(HOST_ADDRESS_ERROR);
   const address = parsed.host;
+  // Two servers may share one public address (ADR-0050): several machines behind one router.
   if (address === server.host && address === server.ip) return;
-  await assertAddressFree(address, server.id);
 
   const moved = { ...(input.keepHost ? {} : { host: address }), ip: address };
   const fromIp = await serverWildcardIp(server);

@@ -77,6 +77,7 @@ beforeEach(async () => {
     id: "srv_self",
     name: "this-machine",
     ip: SELF_IP,
+    deploHost: true,
     host: SELF_IP,
   });
   old = fakeOldDeplo({

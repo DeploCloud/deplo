@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
 
+import { eq } from "drizzle-orm";
+
 import { makeTestDb, type TestDb } from "../db/test-harness";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
@@ -210,6 +213,10 @@ test("a build-only server is still a legal builder, unlike a migration source", 
 
 test("the Deplo host is a build fallback with nobody configuring anything", async () => {
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
+  await db
+    .update(serversTable)
+    .set({ deploHost: true })
+    .where(eq(serversTable.id, SERVER_1));
   try {
     await asOwner(async () => {
       const panel = (await listBuildServerChoices()).find(

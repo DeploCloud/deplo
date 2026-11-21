@@ -52,9 +52,11 @@ async function seedProvisioning(
   tokenHash: string,
   expiresAt: string,
   address = "10.0.0.1",
+  deploHost = false,
 ): Promise<void> {
   await db.insert(serversTable).values(
     serverToRow({
+      deploHost,
       id: "srv_p",
       name: "p",
       host: address,
@@ -144,7 +146,13 @@ async function callHome(
   extra: Record<string, unknown> = {},
 ): Promise<{ linkUrl?: string }> {
   const { rawToken, stored } = mintBootstrap();
-  await seedProvisioning(stored.tokenHash, stored.expiresAt, address);
+  // The panel's own server is the one its installer enrolled (ADR-0050).
+  await seedProvisioning(
+    stored.tokenHash,
+    stored.expiresAt,
+    address,
+    address === SELF,
+  );
   const res = await bootstrapRoute(
     new Request("http://127.0.0.1:3000/api/agent/bootstrap", {
       method: "POST",

@@ -1,11 +1,12 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { encryptSecret } from "../../crypto";
 import { nowIso } from "../../ids";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   clusterMembers,
   clusterNameServers,
@@ -42,6 +43,7 @@ import {
   removeClusterDnsZone,
   setClusterDnsTimes,
   syncClusterZone,
+  sharedClusterAddresses,
 } from "./dns-zone";
 import {
   __setApexCheckForTest,
@@ -216,6 +218,30 @@ test("every member is handed the zone under its own certificate; the name server
     assert.deepEqual(lastTable(id)!.challenges, []);
     assert.deepEqual(lastTable(id)!.certificates, []);
   }
+});
+
+test("two members behind one public address: the cluster names it once, for the one that joined first", async () => {
+  const shared = "203.0.113.50";
+  __setAgentAddressesForTest(async () => []);
+  const eu = await clusterOf("eu", MEMBERS);
+  // Two virtual machines behind one router, each given the router's address under Advanced.
+  await db()
+    .update(serversTable)
+    .set({ ip: shared, host: shared })
+    .where(inArray(serversTable.id, [MEMBERS[0], MEMBERS[1]]));
+  await asAdmin(() => addClusterDnsZone(eu.id, "go.example.com"));
+  await syncClusterZone(eu.id);
+  const t = lastTable(MEMBERS[0])!;
+  const named = t.servers.flatMap((s) => s.addresses);
+  assert.equal(named.filter((a) => a === shared).length, 1, named.join(" "));
+  assert.deepEqual(t.servers[1].addresses, []);
+  const view = await asAdmin(() => clusterDnsView(eu.id));
+  const glue = view.zones[0].records.filter((r) => r.value === shared);
+  assert.equal(glue.length, 1, "one name server's glue, never two");
+  assert.deepEqual(
+    [...(await sharedClusterAddresses(eu.id))],
+    [[shared, [MEMBERS[0], MEMBERS[1]]]],
+  );
 });
 
 test("a server whose port 53 is taken, or whose agent is too old, is no name server; the chosen ones keep their place", async () => {

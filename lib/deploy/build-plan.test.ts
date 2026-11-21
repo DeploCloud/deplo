@@ -48,7 +48,12 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  await seedServerRow(db, { id: PANEL, ip: "10.9.0.1", host: "10.9.0.1" });
+  await seedServerRow(db, {
+    id: PANEL,
+    ip: "10.9.0.1",
+    host: "10.9.0.1",
+    deploHost: true,
+  });
   target = await seedServerRow(db, {
     id: TARGET,
     ip: "203.0.113.10",

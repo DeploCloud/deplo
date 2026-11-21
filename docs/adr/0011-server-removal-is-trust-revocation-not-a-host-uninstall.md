@@ -1,5 +1,9 @@
 # Removing a server is trust revocation, not a host uninstall
 
+- **Amended by [ADR-0050](0050-a-server-is-known-by-its-key-never-by-its-address.md)** (2026-11-21):
+  the trust removal revokes is a key, not a certificate. Removal forgets the server's current,
+  next and retired keys with its row, so none of them opens a link again.
+
 - **Amended - 2026-08-25.** The decision stands unchanged; the script moved. There is one
   host-side uninstaller now, [`uninstall.sh`](../../uninstall.sh), which also removes the
   control plane in `/opt/deplo` - something no RPC could ever do either, since the panel

@@ -75,6 +75,8 @@ test("a reinstall clears the saved link state with the certificates, so it canno
     "link-addresses.json",
     // An agent that closed its own port once it linked.
     "no-listener",
+    // A copy the panel refused: the new identity is its own (ADR-0050).
+    "identity-in-use",
   ])
     await writeFile(join(dir, f), "old");
   await writeFile(join(dir, "build-cache.salt"), "kept");

@@ -2701,11 +2701,12 @@ agent_is_ours() {
 }
 
 # The token on stdin keeps it out of `ps`; an older panel's installer only takes it as an argument.
+# This machine's own server: its agent is replaced, never refused as a second install.
 run_agent_installer() {
   if grep -q token-stdin "$1"; then
-    printf '%s\n' "$HOST_TOKEN" | DEPLO_IP_FAMILY="${IP_FAMILY:-}" bash "$1" - "$AGENT_BOOTSTRAP_URL" --quiet
+    printf '%s\n' "$HOST_TOKEN" | DEPLO_REINSTALL=1 DEPLO_IP_FAMILY="${IP_FAMILY:-}" bash "$1" - "$AGENT_BOOTSTRAP_URL" --quiet
   else
-    DEPLO_IP_FAMILY="${IP_FAMILY:-}" bash "$1" "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet
+    DEPLO_REINSTALL=1 DEPLO_IP_FAMILY="${IP_FAMILY:-}" bash "$1" "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet
   fi
 }
 

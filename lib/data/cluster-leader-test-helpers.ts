@@ -226,7 +226,7 @@ export function leaderLab() {
       ],
     });
     await turnOnExperiments(db, "clusters");
-    await seedServer(db);
+    await seedServer(db, undefined, { deploHost: true });
     process.env.DEPLO_SERVER_IP = "10.0.0.1";
     for (const [i, id] of SERVERS.entries()) {
       await seedServerRow(db, {

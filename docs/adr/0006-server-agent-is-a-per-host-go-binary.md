@@ -3,6 +3,9 @@
 - **Amended by [ADR-0040](0040-a-server-agent-links-to-its-control-plane.md)** (2026-10-25):
   decisions 4 and 8. The agent no longer listens for the control plane; it opens an agent link
   to it, and every call rides that link.
+- **Amended by [ADR-0050](0050-a-server-is-known-by-its-key-never-by-its-address.md)** (2026-11-21):
+  decision 4. The control plane pins the agent's public key, not its certificate, and rotates
+  the key over the link every 30 days; a certificate past its date no longer locks a server out.
 
 ## Context
 

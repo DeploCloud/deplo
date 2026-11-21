@@ -22,7 +22,7 @@ import { HEALTH_MESSAGES } from "../infra/server-health";
 import { __resetCooldowns, shouldFire } from "../notify/cooldown";
 import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
-import { instanceFrozen } from "./deplo-move/freeze";
+import { instanceFrozen, invalidateFrozen } from "./deplo-move/freeze";
 import { saveNotificationChannel } from "./notifications";
 
 let db: TestDb;
@@ -136,6 +136,8 @@ test("only a persisted offline-to-online transition sends a recovery alert", asy
   let now = Date.parse(T2);
   t.mock.method(Date, "now", () => now);
   const online = { status: "online", message: null } as const;
+  // With the clock mocked into the past, a freeze an earlier file cached would never expire.
+  invalidateFrozen();
   await instanceFrozen();
 
   await recordServerHealth(id, online, T1);
@@ -155,6 +157,7 @@ test("only a persisted offline-to-online transition sends a recovery alert", asy
 
   now += 31 * 60_000;
   const later = new Date(now).toISOString();
+  invalidateFrozen();
   await instanceFrozen();
   await recordServerHealth(id, online, later);
   const stored = await getServerById(id);

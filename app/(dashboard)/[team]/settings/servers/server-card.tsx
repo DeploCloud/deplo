@@ -39,6 +39,8 @@ export type ServerCardData = ServerFilterFields & {
   id: string;
   name: string;
   ip: string;
+  /** Where its link comes from; shown while it has no address of its own (ADR-0050). */
+  connectedFrom?: string;
   isDeploHost: boolean;
   accessLabel: string;
   agentVersion: string | null;
@@ -316,8 +318,15 @@ export function ServerCard({
   const identity = (
     <div className="min-w-0 flex-1">
       <span className="block truncate font-medium">{server.name}</span>
-      <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-        {server.ip}
+      <p className="mt-1 truncate text-xs text-muted-foreground">
+        {server.ip ? (
+          <span className="font-mono">{server.ip}</span>
+        ) : server.connectedFrom ? (
+          <>
+            Connected from{" "}
+            <span className="font-mono">{server.connectedFrom}</span>
+          </>
+        ) : null}
       </p>
     </div>
   );

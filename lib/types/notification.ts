@@ -47,6 +47,7 @@ export type AlertKey =
   | "server_online"
   | "server_unmanageable"
   | "server_trust_changed"
+  | "server_identity_copied"
   | "agent_incompatible"
   | "server_resources_high"
   | "server_disk_low"
@@ -97,6 +98,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "server_online",
   "server_unmanageable",
   "server_trust_changed",
+  "server_identity_copied",
   "agent_incompatible",
   "server_resources_high",
   "server_disk_low",

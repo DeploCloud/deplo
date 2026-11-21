@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { deploHostSelfAddresses, isDeploHostServer } from "./domains";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+  isThisMachineAddress,
+} from "./domains";
 
 function withEnv(
   vars: Record<string, string | undefined>,
@@ -23,25 +27,32 @@ function withEnv(
   }
 }
 
-test("DEPLO_SERVER_IP identifies the Deplo host by its ip", () => {
+test("the host running Deplo is the server the installer enrolled, whatever its address", () => {
+  withEnv(
+    { DEPLO_SERVER_IP: "203.0.113.10", DEPLO_PUBLIC_URL: undefined },
+    () => {
+      // Behind NAT the machine's own address is not the one the row was added at.
+      assert.equal(isDeploHostServer({ deploHost: true }), true);
+      assert.equal(isDeploHostServer({ deploHost: false }), false);
+      assert.equal(isDeploHostServer({}), false);
+      assert.equal(isDeploHostServer(null), false);
+    },
+  );
+});
+
+test("DEPLO_SERVER_IP is one of this machine's addresses", () => {
   withEnv(
     { DEPLO_SERVER_IP: "203.0.113.10", DEPLO_PUBLIC_URL: undefined },
     () => {
       const self = deploHostSelfAddresses();
       assert.ok(self.has("203.0.113.10"));
-      assert.equal(
-        isDeploHostServer({ ip: "203.0.113.10", host: "203.0.113.10" }, self),
-        true,
-      );
-      assert.equal(
-        isDeploHostServer({ ip: "198.51.100.7", host: "198.51.100.7" }, self),
-        false,
-      );
+      assert.equal(isThisMachineAddress("203.0.113.10", self), true);
+      assert.equal(isThisMachineAddress("198.51.100.7", self), false);
     },
   );
 });
 
-test("an IPv6 Deplo host is recognised in any spelling, bracketed or not", () => {
+test("an IPv6 address of this machine is recognised in any spelling, bracketed or not", () => {
   withEnv(
     {
       DEPLO_SERVER_IP: "2001:DB8:0::10",
@@ -50,29 +61,13 @@ test("an IPv6 Deplo host is recognised in any spelling, bracketed or not", () =>
     () => {
       const self = deploHostSelfAddresses();
       for (const ip of ["2001:db8::10", "[2001:0db8::10]"])
-        assert.equal(isDeploHostServer({ ip, host: ip }, self), true, ip);
-      assert.equal(
-        isDeploHostServer({ ip: "2001:db8::11", host: "2001:db8::11" }, self),
-        false,
-      );
+        assert.equal(isThisMachineAddress(ip, self), true, ip);
+      assert.equal(isThisMachineAddress("2001:db8::11", self), false);
     },
   );
 });
 
-test("matches the server row's host when only the host (not ip) carries the address", () => {
-  withEnv(
-    { DEPLO_SERVER_IP: "203.0.113.10", DEPLO_PUBLIC_URL: undefined },
-    () => {
-      const self = deploHostSelfAddresses();
-      assert.equal(
-        isDeploHostServer({ ip: "10.0.0.5", host: "203.0.113.10" }, self),
-        true,
-      );
-    },
-  );
-});
-
-test("an IPv4 DEPLO_PUBLIC_URL host also identifies the Deplo host", () => {
+test("an IPv4 DEPLO_PUBLIC_URL host is one of this machine's addresses", () => {
   withEnv(
     {
       DEPLO_SERVER_IP: undefined,
@@ -81,24 +76,20 @@ test("an IPv4 DEPLO_PUBLIC_URL host also identifies the Deplo host", () => {
     () => {
       const self = deploHostSelfAddresses();
       assert.ok(self.has("203.0.113.10"));
-      assert.equal(isDeploHostServer({ ip: "203.0.113.10" }, self), true);
+      assert.equal(isThisMachineAddress("203.0.113.10", self), true);
     },
   );
 });
 
-test("a hostname-valued DEPLO_PUBLIC_URL matches a host registered under that hostname", () => {
+test("a hostname-valued DEPLO_PUBLIC_URL names this machine", () => {
   withEnv(
     {
       DEPLO_SERVER_IP: undefined,
       DEPLO_PUBLIC_URL: "https://Deplo.Example.COM",
     },
     () => {
-      const self = deploHostSelfAddresses();
       assert.equal(
-        isDeploHostServer(
-          { ip: "198.51.100.7", host: "deplo.example.com" },
-          self,
-        ),
+        isThisMachineAddress("deplo.example.com", deploHostSelfAddresses()),
         true,
       );
     },
@@ -109,19 +100,15 @@ test("matching is case-insensitive and tolerant of surrounding whitespace", () =
   withEnv(
     { DEPLO_SERVER_IP: "203.0.113.10", DEPLO_PUBLIC_URL: undefined },
     () => {
-      const self = deploHostSelfAddresses();
-      assert.equal(isDeploHostServer({ ip: "  203.0.113.10 " }, self), true);
+      assert.equal(
+        isThisMachineAddress("  203.0.113.10 ", deploHostSelfAddresses()),
+        true,
+      );
     },
   );
 });
 
-test("an empty self-address set never classifies any server as the Deplo host", () => {
-  withEnv({ DEPLO_SERVER_IP: undefined, DEPLO_PUBLIC_URL: undefined }, () => {
-    const self = deploHostSelfAddresses();
-    assert.equal(
-      isDeploHostServer({ ip: "198.51.100.250", host: "" }, self),
-      false,
-    );
-    assert.equal(isDeploHostServer({ ip: "198.51.100.250" }, new Set()), false);
-  });
+test("an empty self-address set names no address as this machine", () => {
+  assert.equal(isThisMachineAddress("198.51.100.250", new Set()), false);
+  assert.equal(isThisMachineAddress("", new Set(["198.51.100.250"])), false);
 });

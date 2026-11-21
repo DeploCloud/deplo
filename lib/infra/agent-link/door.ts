@@ -4,24 +4,35 @@ import type { IncomingMessage } from "node:http";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 
-import type { WebSocket, WebSocketServer } from "ws";
-
 import {
-  recordFirstLink,
-  serverPinnedTo,
-} from "../../data/servers/agent-handshake";
-import { clientAddressKey } from "../../http/client-address";
+  createWebSocketStream,
+  type WebSocket,
+  type WebSocketServer,
+} from "ws";
+
+import { recordFirstLink } from "../../data/servers/agent-handshake";
+import {
+  claimedIdentity,
+  identityCopied,
+  promoteNextCert,
+  recordLinkOrigin,
+  type ClaimedIdentity,
+} from "../../data/servers/agent-identity";
+import { clientAddressKey, connectionAddress } from "../../http/client-address";
 import { rateLimit } from "../../security";
 import { HELLO_TIMEOUT_MS } from "../agent-client/deadlines";
+import { HOST_ADDRESSES_CAPABILITY } from "../agent-client/hello-capabilities";
 import {
+  linkChannel,
   openChannel,
-  withClientCert,
   type AgentChannel,
 } from "../agent-client/mtls-channel";
+import { agentTls, certLapsed, keyFingerprint } from "./agent-tls";
 import { bridgeLink } from "./bridge";
 import {
   LINK_CERT_HEADER,
   LINK_CLOSE,
+  LINK_COPY_PING_MS,
   LINK_PATH,
   LINK_PING_MS,
   LINK_RATE_LIMIT,
@@ -29,6 +40,7 @@ import {
 } from "./protocol";
 import {
   admitLink,
+  currentLink,
   linkAdmissible,
   linkEnded,
   linkGeneration,
@@ -61,18 +73,20 @@ export async function knock(
       .toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(claim))
       return refuse(socket, 400, "Bad Request");
+    const headers = headersOf(req);
     const limited = await rateLimit(
-      `agent-link:${clientAddressKey(headersOf(req))}`,
+      `agent-link:${clientAddressKey(headers)}`,
       LINK_RATE_LIMIT,
     );
     if (!limited.ok)
       return refuse(socket, 429, "Too Many Requests", {
         "Retry-After": String(limited.retryAfterSec),
       });
-    const server = await serverPinnedTo(claim);
-    if (!server) return refuse(socket, 404, "Not Found");
+    const claimed = await claimedIdentity(claim);
+    if (!claimed) return refuse(socket, 404, "Not Found");
+    const from = connectionAddress(req.socket.remoteAddress, headers);
     door.wss.handleUpgrade(req, socket, head, (ws) => {
-      void holdLink(door, ws, server.id, claim);
+      void holdLink(door, ws, claimed, claim, from);
     });
   } catch (e) {
     console.error("[deplo] agent link door failed:", e);
@@ -83,9 +97,11 @@ export async function knock(
 async function holdLink(
   door: Door,
   ws: WebSocket,
-  serverId: string,
+  claimed: ClaimedIdentity,
   fingerprint: string,
+  from: string | null,
 ): Promise<void> {
+  const { serverId } = claimed;
   const id = nextLinkId();
   const openedAt = Date.now();
   let link: AgentLink | null = null;
@@ -110,23 +126,55 @@ async function holdLink(
   });
 
   try {
-    const bridge = await bridgeLink(ws, join(door.socketDir, `${id}.sock`));
-    const target = await withClientCert({
-      address: bridge.address,
-      // Every agent certificate carries localhost: the pin, not the name, is the identity.
-      serverName: "localhost",
-      pinnedFingerprint: fingerprint,
-    });
-    channel = openChannel(target);
+    const stream = createWebSocketStream(ws);
+    stream.on("error", () => {});
+    // The agent's key, not its certificate, is who it is: a certificate past its date still proves it (ADR-0050).
+    const session = await agentTls(
+      stream,
+      keyFingerprint(claimed.certPem),
+      await panelClientCert(),
+      HELLO_TIMEOUT_MS,
+      certLapsed(claimed.certPem),
+    );
+    if (claimed.kind === "retired") {
+      // It proved a key this server rotated away from: a copy that missed the rotation.
+      identityCopied(claimed, "missed-rotation");
+      return void ws.close(LINK_CLOSE.copied, "identity in use");
+    }
+    const bridge = await bridgeLink(
+      session,
+      ws,
+      join(door.socketDir, `${id}.sock`),
+    );
+    channel = openChannel(bridge.address);
     const hello = await channel.hello(HELLO_TIMEOUT_MS);
     // Read before the second look, so a removal that lands after it still refuses this link.
     const generation = linkGeneration(serverId);
-    const still = await serverPinnedTo(fingerprint);
+    const still = await claimedIdentity(fingerprint);
     if (ws.readyState !== ws.OPEN) return;
-    if (still?.id !== serverId || !linkAdmissible(serverId, generation))
+    if (
+      still?.serverId !== serverId ||
+      still.kind === "retired" ||
+      !linkAdmissible(serverId, generation)
+    )
       return void ws.close(LINK_CLOSE.revoked, "trust revoked");
+    // One identity, one live link: a second machine holding the key is refused while the first answers.
+    const open = currentLink(serverId);
+    if (open && (await answers(open))) {
+      identityCopied(claimed, "both-answer");
+      return void ws.close(LINK_CLOSE.copied, "identity in use");
+    }
+    if (ws.readyState !== ws.OPEN) return;
+    if (still.kind === "next") await promoteNextCert(serverId, fingerprint);
     // As the door admits it, before anyone hears it come up (ADR-0041).
     await recordFirstLink(serverId);
+    await recordLinkOrigin(
+      serverId,
+      from,
+      hello.capabilities?.includes(HOST_ADDRESSES_CAPABILITY)
+        ? hello.publicAddresses
+        : [],
+    );
     if (ws.readyState !== ws.OPEN) return;
     const verified: AgentLink = {
       id,
@@ -145,6 +193,7 @@ async function holdLink(
     if (!admitLink(verified, generation))
       return void ws.close(LINK_CLOSE.revoked, "trust revoked");
     link = verified;
+    void rotateIfDue(serverId);
   } catch (e) {
     if (ws.readyState !== ws.OPEN) return;
     const why = e instanceof Error ? e.message : String(e);
@@ -153,6 +202,39 @@ async function holdLink(
   } finally {
     // The WebSocket may have closed while this was still verifying it.
     if (!link && ws.readyState === ws.CLOSED) channel?.close();
+  }
+}
+
+async function panelClientCert() {
+  const { issueControlPlaneClientCert, caCertPem } =
+    await import("../../agent/pki");
+  const client = await issueControlPlaneClientCert();
+  return {
+    certPem: client.certPem,
+    keyPem: client.keyPem,
+    caPem: await caCertPem(),
+  };
+}
+
+// A dead link does not answer: its replacement is the same machine back, not a copy.
+async function answers(open: AgentLink): Promise<boolean> {
+  try {
+    await linkChannel(open.client).hello(LINK_COPY_PING_MS);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A certificate past its date or due for its key's rotation gets a new key now, over the link just proven.
+async function rotateIfDue(serverId: string): Promise<void> {
+  try {
+    const { renewAgentCertIfDue } = await import("../../agent/cert-renewal");
+    const r = await renewAgentCertIfDue(serverId);
+    if (r.renewed) console.log(`[cert-renewal] ${serverId}: ${r.reason}`);
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    console.warn(`[cert-renewal] ${serverId} on its link: ${why}`);
   }
 }
 

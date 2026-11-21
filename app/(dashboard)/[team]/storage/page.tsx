@@ -13,10 +13,7 @@ import {
   listPlacementChoices,
   placementOption,
 } from "@/lib/data/clusters/choices";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "@/lib/deploy/domains";
+import { isDeploHostServer } from "@/lib/deploy/domains";
 import { listApps } from "@/lib/data/apps/listing";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import {
@@ -116,7 +113,6 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
   ]);
   const dbSecurity = await databaseSecurityCounts(databases.map((d) => d.id));
 
-  const selfAddrs = deploHostSelfAddresses();
   const provisioned = new Set(
     servers.filter((s) => s.agent?.certFingerprint).map((s) => s.id),
   );
@@ -137,7 +133,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
       id: s.id,
       name: s.name,
       storageOnly: s.storageOnly,
-      isDeploHost: isDeploHostServer(s, selfAddrs),
+      isDeploHost: isDeploHostServer(s),
     }));
 
   const createBackupProps = {

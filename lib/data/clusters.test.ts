@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
+import { servers as serversTable } from "../db/schema/control-plane/servers";
+
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
@@ -69,7 +71,7 @@ beforeEach(async () => {
     ],
   });
   await turnOnExperiments(db, "clusters");
-  await seedServer(db);
+  await seedServer(db, undefined, { deploHost: true });
   // The seeded server stands for Deplo's own machine.
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   fleet = fakeClusterHosts();
@@ -150,7 +152,10 @@ test("an unreachable machine reads as unreachable, and starting it again works o
 });
 
 test("with Deplo's machine not connected as a server there is nowhere to start it", async () => {
-  process.env.DEPLO_SERVER_IP = "10.9.9.9";
+  await db
+    .update(serversTable)
+    .set({ deploHost: false })
+    .where(eq(serversTable.id, SERVER_1));
   const cluster = await asAdmin(() => createCluster("eu", everyone));
   const leader = await asAdmin(() => getClusterLeader(cluster.id));
   assert.equal(leader.state, "unavailable");

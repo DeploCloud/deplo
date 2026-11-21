@@ -465,7 +465,12 @@ test("the panel's DNS check classifies the address the instance answers on", asy
   const prevIp = process.env.DEPLO_SERVER_IP;
   process.env.DEPLO_SERVER_IP = HOST_IP;
   await pg.exec(TRUNCATE_INFRA);
-  await seedServerRow(db, { id: "srv_self", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_self",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   await asUser(ADMIN, () => setPanelUrl("https://panel.example.com"));
 
   const at = async (ips: string[]) => {
@@ -498,7 +503,12 @@ test("on an IPv6-only instance the panel's DNS check reads the AAAA record", asy
   const prevIp = process.env.DEPLO_SERVER_IP;
   process.env.DEPLO_SERVER_IP = V6;
   await pg.exec(TRUNCATE_INFRA);
-  await seedServerRow(db, { id: "srv_self", ip: V6, host: V6 });
+  await seedServerRow(db, {
+    id: "srv_self",
+    ip: V6,
+    host: V6,
+    deploHost: true,
+  });
   await asUser(ADMIN, () => setPanelUrl("https://panel.example.com"));
 
   const at = async (aaaa: string[]) => {
@@ -571,7 +581,12 @@ async function withSelfServer<T>(
   const prevIp = process.env.DEPLO_SERVER_IP;
   process.env.DEPLO_SERVER_IP = HOST_IP;
   await pg.exec(TRUNCATE_INFRA);
-  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_panel",
+    ip: HOST_IP,
+    host: HOST_IP,
+    deploHost: true,
+  });
   forgetRoutedFallback();
   t.after(() => {
     __setAgentConnectorForTest();

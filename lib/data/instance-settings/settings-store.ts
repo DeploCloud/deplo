@@ -23,7 +23,6 @@ import {
   setStoredPublicBaseUrl,
 } from "../../public-url";
 import {
-  deploHostSelfAddresses,
   instanceHost,
   isDeploHostServer,
   isLoopbackIp,
@@ -236,8 +235,7 @@ export async function instancePublicBaseUrl(h?: Headers): Promise<string> {
 export async function deploHostServer() {
   const { listAllServers } = await import("../servers/roster");
   const servers = await listAllServers();
-  const selfAddresses = deploHostSelfAddresses();
-  return servers.find((s) => isDeploHostServer(s, selfAddresses)) ?? null;
+  return servers.find((s) => isDeploHostServer(s)) ?? null;
 }
 
 async function instanceOwnerName(): Promise<string | null> {

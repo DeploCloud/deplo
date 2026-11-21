@@ -93,7 +93,12 @@ async function onDeploHost(
 ): Promise<() => void> {
   const prevIp = process.env.DEPLO_SERVER_IP;
   process.env.DEPLO_SERVER_IP = HOST_IP;
-  await seedServerRow(db, { id: "srv_host", name: "host", ip: HOST_IP });
+  await seedServerRow(db, {
+    id: "srv_host",
+    name: "host",
+    ip: HOST_IP,
+    deploHost: true,
+  });
   __setAgentConnectorForTest(
     async () =>
       ({

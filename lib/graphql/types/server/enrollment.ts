@@ -83,7 +83,11 @@ const AddServerInputType = builder.inputType("AddServerInput", {
     "Register a remote server. Provisioned by a call-home bootstrap (no SSH-in): you run the returned install command on the box.",
   fields: (t) => ({
     name: t.string({ required: true }),
-    host: t.string({ required: true }),
+    host: t.string({
+      required: false,
+      description:
+        "Only a migration source needs it: the other platform's machine. An ordinary server is known by its agent's key, and Deplo reads its address from the agent; one given here is where its Apps answer, as if set under Advanced.",
+    }),
     allTeams: t.boolean({ required: false }),
     teamIds: t.stringList({ required: false }),
     storageOnly: t.boolean({ required: false }),
@@ -105,7 +109,7 @@ builder.mutationFields((t) => ({
     resolve: (_r, { input }) =>
       addServer({
         name: input.name,
-        host: input.host,
+        host: input.host ?? undefined,
         allTeams: input.allTeams ?? undefined,
         teamIds: input.teamIds ?? undefined,
         storageOnly: input.storageOnly ?? undefined,

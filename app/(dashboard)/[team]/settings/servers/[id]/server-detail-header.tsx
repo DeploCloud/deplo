@@ -12,12 +12,15 @@ export function ServerDetailHeader({
   badges,
   action,
   ip,
+  connectedFrom,
 }: {
   name: React.ReactNode;
   title?: string;
   badges: React.ReactNode;
   action: React.ReactNode;
   ip: React.ReactNode;
+  /** Where its link comes from: information, never its identity (ADR-0050). */
+  connectedFrom?: string | null;
 }) {
   return (
     <div className="space-y-3">
@@ -39,7 +42,15 @@ export function ServerDetailHeader({
         {badges}
         <div className="ml-auto shrink-0">{action}</div>
       </div>
-      <p className="mt-1 font-mono text-xs text-muted-foreground">{ip}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        <span className="font-mono">{ip}</span>
+        {connectedFrom && connectedFrom !== ip && (
+          <>
+            {ip ? " · " : ""}Connected from{" "}
+            <span className="font-mono">{connectedFrom}</span>
+          </>
+        )}
+      </p>
     </div>
   );
 }

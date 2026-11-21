@@ -10,26 +10,58 @@ import { connectAgent } from "../infra/agent-client/connect";
 import { dropAgentChannel } from "../infra/agent-client/channel-pool";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
+import {
+  dropNextCert,
+  promoteNextCert,
+  stageNextCert,
+} from "../data/servers/agent-identity";
 import { instanceFrozen } from "../data/deplo-move/freeze";
 import { pushRostersForServer } from "../data/clusters/relay";
 
 export const CERT_RENEWAL_CAPABILITY = "cert-renewal";
 
 const RENEWAL_WINDOW_MS = 30 * 24 * 3_600_000;
+/** The key rotates this often over the link, so a copy that misses one is locked out (ADR-0050). */
+export const KEY_ROTATION_MS = 30 * 24 * 3_600_000;
 
-function leafNotAfter(certPem: string): Date | null {
+function leafDates(certPem: string): { from: Date; to: Date } | null {
   try {
-    const t = new X509Certificate(certPem).validTo;
-    const d = new Date(t);
-    return isNaN(d.getTime()) ? null : d;
+    const x = new X509Certificate(certPem);
+    const from = new Date(x.validFrom);
+    const to = new Date(x.validTo);
+    return isNaN(from.getTime()) || isNaN(to.getTime()) ? null : { from, to };
   } catch {
     return null;
   }
 }
 
-export async function renewAgentCertIfDue(
-  serverId: string,
-): Promise<{ renewed: boolean; reason: string }> {
+function leafNotAfter(certPem: string): Date | null {
+  return leafDates(certPem)?.to ?? null;
+}
+
+/** Its dates are a schedule: due once its key is a rotation old, or its date is near or gone. */
+export function rotationDue(certPem: string, now = Date.now()): boolean | null {
+  const d = leafDates(certPem);
+  if (!d) return null;
+  return (
+    d.to.getTime() - now <= RENEWAL_WINDOW_MS ||
+    now - d.from.getTime() >= KEY_ROTATION_MS
+  );
+}
+
+type Renewal = { renewed: boolean; reason: string };
+const renewing = new Map<string, Promise<Renewal>>();
+
+/** One rotation per server at a time: a second would replace the agent's pending key under the first. */
+export function renewAgentCertIfDue(serverId: string): Promise<Renewal> {
+  const running = renewing.get(serverId);
+  if (running) return running;
+  const run = renewNow(serverId).finally(() => renewing.delete(serverId));
+  renewing.set(serverId, run);
+  return run;
+}
+
+async function renewNow(serverId: string): Promise<Renewal> {
   const [row] = await getDb()
     .select({
       ip: serversTable.ip,
@@ -40,10 +72,10 @@ export async function renewAgentCertIfDue(
     .where(eq(serversTable.id, serverId))
     .limit(1);
   if (!row?.certPem) return { renewed: false, reason: "no stored agent cert" };
-  const notAfter = leafNotAfter(row.certPem);
-  if (!notAfter) return { renewed: false, reason: "unparseable stored cert" };
-  if (notAfter.getTime() - Date.now() > RENEWAL_WINDOW_MS)
-    return { renewed: false, reason: "not due" };
+  const due = rotationDue(row.certPem);
+  if (due === null)
+    return { renewed: false, reason: "unparseable stored cert" };
+  if (!due) return { renewed: false, reason: "not due" };
 
   const conn = await connectAgent(serverId);
   try {
@@ -57,20 +89,19 @@ export async function renewAgentCertIfDue(
     const { csrPem } = await conn.renewalCsr();
     const dialHosts = [row.ip, row.host].filter(Boolean) as string[];
     const signed = await signAgentCsr(csrPem, dialHosts);
-    // Install and hot-swap first, repin after: repinning a cert the agent never installed locks Deplo out.
+    // Staged before the agent installs it: a rotation cut halfway leaves a key the door still takes.
+    await stageNextCert(serverId, signed);
     const res = await conn.installRenewedCert({
       certPem: signed.certPem,
       caPem: "",
     });
-    if (!res.ok)
+    if (!res.ok) {
+      await dropNextCert(serverId, signed.fingerprint);
       return { renewed: false, reason: `agent rejected install: ${res.error}` };
-    await getDb()
-      .update(serversTable)
-      .set({
-        agentCertPem: signed.certPem,
-        agentCertFingerprint: signed.fingerprint,
-      })
-      .where(eq(serversTable.id, serverId));
+    }
+    if (!(await promoteNextCert(serverId, signed.fingerprint)))
+      return { renewed: false, reason: "its link promoted the new key first" };
+    // The link proved the key just retired: it proves the new one by linking again.
     dropAgentChannel(serverId);
     // The old certificate is cut off at every cluster relay at once.
     await pushRostersForServer(serverId);
@@ -104,8 +135,8 @@ export async function sweepExpiringAgentCerts(): Promise<void> {
       dispatchServerAlert(s.id, {
         key: "agent_certificate_failed",
         dedupe: { id: `certrenew:${s.id}`, state: "failed" },
-        title: `Could not renew the agent certificate on ${s.name}`,
-        body: `${why} Deplo will lose access to this server when it expires.`,
+        title: `Could not renew the agent's key on ${s.name}`,
+        body: `${why} The server keeps working, and Deplo tries again in 12 hours.`,
         path: "/settings/servers",
       });
     }

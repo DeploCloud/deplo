@@ -1828,6 +1828,13 @@
       "when": 1796063000000,
       "tag": "0271_name_certificates",
       "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1796064000000,
+      "tag": "0272_server_identity",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,10 @@ import "server-only";
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
-import { servers as serversTable } from "../../db/schema/control-plane/servers";
+import {
+  serverRetiredCerts,
+  servers as serversTable,
+} from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
 import { findServerForToken, signBootstrapCsr } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
@@ -16,6 +19,8 @@ export interface BootstrapCallHome {
   token: string;
   csrPem: string;
   advertisedHost?: string;
+  /** Where the call came from, as the panel's proxy saw it (ADR-0050). */
+  connectedFrom?: string | null;
 }
 
 export interface BootstrapCompletion {
@@ -35,20 +40,37 @@ export async function completeBootstrap(
   const linkUrl = await agentLinkUrl(server);
 
   const now = nowIso();
-  const won = await getDb()
-    .update(serversTable)
-    .set({
-      bootstrapUsedAt: now,
-      agentCertFingerprint: signed.fingerprint,
-      agentCertPem: signed.certPem,
-      agentVersion: "",
-      status: "online",
-      lastSeenAt: now,
-    })
-    .where(
-      sql`${serversTable.id} = ${server.id} and ${serversTable.bootstrapTokenHash} is not null and ${serversTable.bootstrapUsedAt} is null`,
-    )
-    .returning({ id: serversTable.id });
+  const won = await getDb().transaction(async (tx) => {
+    const rows = await tx
+      .update(serversTable)
+      .set({
+        bootstrapUsedAt: now,
+        agentCertFingerprint: signed.fingerprint,
+        agentCertPem: signed.certPem,
+        agentNextCertFingerprint: null,
+        agentNextCertPem: null,
+        agentVersion: "",
+        status: "online",
+        lastSeenAt: now,
+        ...(call.connectedFrom ? { connectedFrom: call.connectedFrom } : {}),
+      })
+      .where(
+        sql`${serversTable.id} = ${server.id} and ${serversTable.bootstrapTokenHash} is not null and ${serversTable.bootstrapUsedAt} is null`,
+      )
+      .returning({ id: serversTable.id });
+    // A reinstall replaces the key: a copy still holding the old one is refused as one (ADR-0050).
+    if (rows.length > 0 && server.agent?.certPem)
+      await tx
+        .insert(serverRetiredCerts)
+        .values({
+          fingerprint: server.agent.certFingerprint,
+          serverId: server.id,
+          certPem: server.agent.certPem,
+          retiredAt: now,
+        })
+        .onConflictDoNothing();
+    return rows;
+  });
   if (won.length === 0) {
     throw new Error("bootstrap token was already consumed");
   }
@@ -56,19 +78,6 @@ export async function completeBootstrap(
   dropAgentChannel(server.id);
   await pushRostersForServer(server.id);
   return { certPem: signed.certPem, caPem: signed.caPem, linkUrl };
-}
-
-/** The provisioned server pinned to this agent certificate: what an agent link claims to be. */
-export async function serverPinnedTo(
-  fingerprint: string,
-): Promise<{ id: string } | null> {
-  if (!fingerprint) return null;
-  const [row] = await getDb()
-    .select({ id: serversTable.id })
-    .from(serversTable)
-    .where(eq(serversTable.agentCertFingerprint, fingerprint))
-    .limit(1);
-  return row ?? null;
 }
 
 /** Its first verified link, kept for good; a Deplo move never inserts servers, so the freeze does not apply. */

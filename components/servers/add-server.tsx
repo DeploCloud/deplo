@@ -60,7 +60,6 @@ export function AddServer({
   const [pending, startTransition] = React.useTransition();
   const [kind, setKind] = React.useState<"server" | "cluster">("server");
   const [name, setName] = React.useState("");
-  const [host, setHost] = React.useState("");
   const [access, setAccess] = React.useState<ServerAccess>({
     allTeams: true,
     teamIds: [],
@@ -78,7 +77,6 @@ export function AddServer({
   function reset() {
     setKind("server");
     setName("");
-    setHost("");
     setAccess({ allTeams: true, teamIds: [] });
     setRole("everything");
     setCommand(null);
@@ -137,7 +135,6 @@ export function AddServer({
         {
           input: {
             name,
-            host,
             allTeams: access.allTeams,
             teamIds: access.allTeams ? [] : access.teamIds,
             storageOnly: role === "storage",
@@ -152,7 +149,7 @@ export function AddServer({
       }
       if (!res.data) return;
       toast.success(
-        `${name || host} registered - run the install command on it`,
+        `${name.trim()} registered - run the install command on it`,
       );
       setCommand(res.data.addServer.installCommand);
       router.refresh();
@@ -205,7 +202,7 @@ export function AddServer({
                 <DocsLink topic="clusters.overview" />
               </>
             ) : (
-              "Add a remote server: name it, then run the install command on it. Deplo never SSHes in."
+              "Name it, then run the install command on it. It connects to Deplo by itself, so there is no address to type."
             )}
           </DialogDescription>
         </DialogHeader>
@@ -269,22 +266,6 @@ export function AddServer({
                     placeholder="eu-west-1"
                   />
                 </div>
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="srv-host"
-                    info="The machine's IP or DNS name. Apps deployed to this server are reached at it."
-                    docs="servers.address"
-                  >
-                    Host or IP
-                  </FieldLabel>
-                  <Input
-                    id="srv-host"
-                    value={host}
-                    onChange={(e) => setHost(e.target.value)}
-                    placeholder="203.0.113.24"
-                    className="font-mono text-sm"
-                  />
-                </div>
                 <ServerTeamAccess
                   value={access}
                   teams={teams}
@@ -324,11 +305,7 @@ export function AddServer({
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  pending ||
-                  !accessIsComplete(access) ||
-                  (kind === "cluster" ? !name.trim() : !host.trim())
-                }
+                disabled={pending || !accessIsComplete(access) || !name.trim()}
               >
                 <span className="grid place-items-center">
                   <span

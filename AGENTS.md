@@ -172,12 +172,19 @@ a per-app / host-coupled action.** Deploy, build, logs, console, metrics, files,
 lifecycle, backups, backup destinations, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
-- `lib/infra/agent-client/connect.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
-  pinned at bootstrap), over the server's agent link and nothing else (ADR-0040): it waits briefly
+- `lib/infra/agent-client/connect.ts` `connectAgent(serverId)` is the sole entry (mTLS, the agent's
+  key pinned at bootstrap), over the server's agent link and nothing else (ADR-0040): it waits briefly
   for a missing link, then the server is offline. Nothing dials a server, and no server of an
   updated instance keeps a port open.
   The Deplo host is itself "agent 0", **no in-process localhost shortcut**; local and remote take
   the identical path.
+- **A server is known by its agent's key, never by its address** (ADR-0050). The door
+  (`lib/infra/agent-link/`) runs the link's mTLS itself and pins the key of the stored certificate,
+  so a certificate past its date still links and is rotated at once; the key rotates every 30 days
+  (`lib/agent/cert-renewal.ts`), and a retired key or a second live link is a copy
+  (`lib/data/servers/agent-identity.ts`). Nothing is unique by address, the host running Deplo is
+  `servers.deplo_host` (`isDeploHostServer`), and `isThisMachineAddress` only judges an address
+  someone handed Deplo, never which server is which.
 - **A backup destination is a bucket OR a server's disk** (ADR-0019). Which agent handles one
   is the single seam `destinationServerId` in `lib/data/destinations/credentials.ts`: the DESTINATION's
   server for `kind: "server"`, the workload's for `s3`. Getting it wrong is silent - retention

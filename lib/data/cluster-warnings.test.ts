@@ -49,8 +49,9 @@ beforeEach(async () => {
     ],
   });
   await db.insert(clusters).values({ id: CLUSTER, name: "eu", createdAt: T0 });
-  for (const id of ["srv_w1", "srv_w2"]) {
-    await seedServerRow(db, { id, name: id });
+  for (const [i, id] of ["srv_w1", "srv_w2"].entries()) {
+    const ip = `10.0.0.${i + 1}`;
+    await seedServerRow(db, { id, name: id, ip, host: ip });
     await db
       .insert(clusterMembers)
       .values({ serverId: id, clusterId: CLUSTER, joinedAt: T0 });

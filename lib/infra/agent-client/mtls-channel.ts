@@ -3,11 +3,9 @@ import "server-only";
 import {
   credentials,
   Metadata,
-  status as GrpcStatus,
   type ClientReadableStream,
   type ServiceError,
 } from "@grpc/grpc-js";
-import type { PeerCertificate } from "node:tls";
 import {
   AgentClient as GrpcAgentClient,
   ContractVersion,
@@ -15,43 +13,8 @@ import {
 } from "../../agent/gen/agent";
 import { streamEvents } from "../stream-events";
 import { HELLO_TIMEOUT_MS, STREAM_BYTES_PAUSE_ABOVE } from "./deadlines";
-import {
-  AgentNetworkUnsupportedError,
-  AgentUnreachableError,
-  toAgentError,
-} from "./errors";
+import { AgentNetworkUnsupportedError, toAgentError } from "./errors";
 import { NETWORK_CAPABILITY } from "./hello-capabilities";
-
-/** Where the door reaches a link's agent: its bridge socket, under the name every agent certificate carries. */
-export interface AgentAddress {
-  address: string;
-  serverName: string;
-  pinnedFingerprint: string;
-}
-
-export interface DialTarget extends AgentAddress {
-  clientCreds: { certPem: string; keyPem: string; caPem: string };
-}
-
-export async function withClientCert(
-  address: AgentAddress,
-): Promise<DialTarget> {
-  const { issueControlPlaneClientCert, caCertPem } =
-    await import("../../agent/pki");
-  const client = await issueControlPlaneClientCert();
-  return {
-    ...address,
-    clientCreds: {
-      certPem: client.certPem,
-      keyPem: client.keyPem,
-      caPem: await caCertPem(),
-    },
-  };
-}
-
-function peerFingerprint(cert: PeerCertificate): string {
-  return (cert.fingerprint256 ?? "").replace(/:/g, "").toLowerCase();
-}
 
 export interface AgentChannel {
   client: GrpcAgentClient;
@@ -64,31 +27,10 @@ export interface AgentChannel {
 // grpc-js has no "never": its idle timer is a setTimeout, so this is the longest one Node allows.
 const NEVER_IDLE_MS = 2 ** 31 - 1;
 
-/** An agent link's channel, opened by the door: grpc-js must never close its one connection for idleness. */
-export function openChannel(target: DialTarget): AgentChannel {
-  const { certPem, keyPem, caPem } = target.clientCreds;
-  let trustFailed = false;
-  const creds = credentials.createSsl(
-    Buffer.from(caPem),
-    Buffer.from(keyPem),
-    Buffer.from(certPem),
-    {
-      // Replaces the hostname check, never the CA chain: the pinned fingerprint is what names the agent.
-      checkServerIdentity: (_host, cert) => {
-        const got = peerFingerprint(cert);
-        if (got !== target.pinnedFingerprint) {
-          trustFailed = true;
-          return new Error(
-            `agent cert fingerprint mismatch: pinned ${target.pinnedFingerprint}, got ${got}`,
-          );
-        }
-        return undefined;
-      },
-    },
-  );
-  const client = new GrpcAgentClient(target.address, creds, {
-    "grpc.ssl_target_name_override": target.serverName,
-    "grpc.default_authority": target.serverName,
+/** An agent link's channel, opened by the door over the link's own mTLS session (agent-link/agent-tls.ts). */
+export function openChannel(address: string): AgentChannel {
+  const client = new GrpcAgentClient(address, credentials.createInsecure(), {
+    "grpc.default_authority": "localhost",
     "grpc.max_receive_message_length": 256 * 1024 * 1024,
     "grpc.max_send_message_length": 256 * 1024 * 1024,
     // grpc-js defaults to 65535 bytes and never tunes it from the measured BDP, so a stream is capped at window/RTT.
@@ -98,19 +40,7 @@ export function openChannel(target: DialTarget): AgentChannel {
     "grpc.keepalive_permit_without_calls": 0,
     "grpc.client_idle_timeout_ms": NEVER_IDLE_MS,
   });
-
-  const helloError = (err: unknown): Error => {
-    const e = toAgentError(err);
-    if (
-      e instanceof AgentUnreachableError &&
-      (trustFailed || e.code === GrpcStatus.UNAUTHENTICATED)
-    ) {
-      return new AgentUnreachableError(e.message, e.code, true);
-    }
-    return e;
-  };
-
-  const sayHello = helloOn(client, helloError);
+  const sayHello = helloOn(client, toAgentError);
   return {
     client,
     hello: sayHello,

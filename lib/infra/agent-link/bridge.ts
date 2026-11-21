@@ -1,7 +1,8 @@
 import "server-only";
 
 import net from "node:net";
-import { createWebSocketStream, type WebSocket } from "ws";
+import type { Duplex } from "node:stream";
+import type { WebSocket } from "ws";
 
 export interface LinkBridge {
   /** The channel's target. */
@@ -10,13 +11,13 @@ export interface LinkBridge {
   close(): void;
 }
 
-// grpc-js cannot be handed a socket it did not dial, so the link's channel dials a unix socket piped onto it.
+// grpc-js cannot be handed a socket it did not dial, so the link's channel dials a unix socket piped onto
+// the link's TLS session; the socket sits in a directory only this process can enter, and takes one dial.
 export async function bridgeLink(
+  session: Duplex,
   ws: WebSocket,
   path: string,
 ): Promise<LinkBridge> {
-  const stream = createWebSocketStream(ws);
-  stream.on("error", () => {});
   let taken: net.Socket | null = null;
   const server = net.createServer((sock) => {
     // A second dial is grpc-js reconnecting after the link died: a link channel never outlives its link.
@@ -24,7 +25,7 @@ export async function bridgeLink(
     taken = sock;
     server.close();
     sock.on("error", () => {});
-    sock.pipe(stream).pipe(sock);
+    sock.pipe(session).pipe(sock);
     sock.once("close", () => {
       if (ws.readyState === ws.OPEN) ws.close(1000, "channel closed");
     });
@@ -32,6 +33,7 @@ export async function bridgeLink(
   const close = () => {
     if (server.listening) server.close();
     taken?.destroy();
+    session.destroy();
   };
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -42,5 +44,8 @@ export async function bridgeLink(
     throw new Error("the link closed before its channel opened");
   }
   ws.once("close", close);
+  session.once("close", () => {
+    if (ws.readyState === ws.OPEN) ws.close(1000, "session closed");
+  });
   return { address: `unix:${path}`, close };
 }

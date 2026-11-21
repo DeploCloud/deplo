@@ -27,6 +27,8 @@ const at = (ip: string, withAgent = false): Server =>
     host: ip,
     ip,
     agent: withAgent ? agent : undefined,
+    // The installer's own server, as Deplo marks it (ADR-0050).
+    deploHost: ip === PANEL_IP,
   }) as unknown as Server;
 
 before(() => {
@@ -174,7 +176,11 @@ test("automatic on the Deplo host follows the installer, not the address its row
 });
 
 test("a Deplo host moved to a new address in Settings names its apps there, not where the installer saw it", async () => {
-  const moved = { ...choosing("198.51.100.50", null, false), host: PANEL_IP };
+  const moved = {
+    ...choosing("198.51.100.50", null, false),
+    host: PANEL_IP,
+    deploHost: true,
+  };
   assert.equal(await serverWildcardIp(moved), "198.51.100.50");
 });
 
