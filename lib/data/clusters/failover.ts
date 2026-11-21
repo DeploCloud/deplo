@@ -50,6 +50,13 @@ const REASONS: Record<string, string> = {
   stopped_answering: "stopped answering",
 };
 
+// The leader starts a load-balanced App's copy again on a server back for 2 minutes (deplo-cluster's GiveCopyAfter).
+const COPY_BACK = "copy_back";
+
+export function copyBackSentence(server: string, app: string): string {
+  return `${server} runs its own copy of ${app} again: it has been back for 2 minutes`;
+}
+
 async function serverName(id: string): Promise<string> {
   return (await getServerById(id))?.name ?? "A server";
 }
@@ -252,6 +259,14 @@ export async function applyFailedOver(
   if (d.kind !== "app") return;
   const app = await ownApp(cluster.id, d.workloadId);
   if (!app) return;
+  if (d.reason === COPY_BACK)
+    return void (await recordActivity(
+      "app",
+      copyBackSentence(await serverName(d.to), app.name),
+      ACTOR,
+      app.id,
+      app.teamId,
+    ));
   const why = REASONS[String(d.reason)] ?? "stopped answering";
   const [from, to] = await Promise.all([serverName(d.from), serverName(d.to)]);
   const placedOn = (

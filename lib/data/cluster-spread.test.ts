@@ -80,6 +80,7 @@ import {
   SPREAD_NO_CLOUDFLARE,
 } from "./clusters/spread";
 import { applyLeaderEvent } from "./clusters/watch";
+import { placementEntries } from "./clusters/leader-sync";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { saveNotificationChannel } from "./notifications";
 import { activities } from "../db/schema/control-plane/activity";
@@ -943,6 +944,51 @@ test("a load-balanced App's copies run the agent's probe on every server, image 
       assert.doesNotMatch(yaml, /CMD-SHELL/);
     }
   }
+});
+
+// A server back from a failover gets its copy again from the leader, which needs to know the App is load-balanced.
+test("the leader is told which Apps the cluster load-balances, and a copy handed back is said in Activity", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await balancing();
+  await answeredThroughZone();
+  await runDeploymentGuarded("dpl_1");
+  const entries = (await placementEntries(clusterId)).filter(
+    (e) => e.id === APP,
+  );
+  assert.equal(entries.length, 3);
+  assert.ok(entries.every((e) => e.balanced === true && !e.singleWriter));
+
+  await event(1, "placement", {
+    kind: "app",
+    workloadId: APP,
+    members: ["srv_2", "srv_3", "srv_4"],
+    epoch: 1,
+  });
+  await event(2, "failed_over", {
+    kind: "app",
+    workloadId: APP,
+    from: "srv_2",
+    to: "srv_4",
+    reason: "copy_back",
+  });
+  const said = await activity();
+  assert.ok(
+    said.includes(
+      "srv_4 runs its own copy of prj_1 again: it has been back for 2 minutes",
+    ),
+    said.join("\n"),
+  );
+  assert.ok(!said.some((m) => m.startsWith("Started a replica")));
+});
+
+test("replicas spread through a tunnel are not load-balanced, and the leader is told so", async () => {
+  await withCloudflareDomain();
+  await runDeploymentGuarded("dpl_1");
+  const entries = (await placementEntries(clusterId)).filter(
+    (e) => e.id === APP,
+  );
+  assert.ok(entries.length > 1);
+  assert.ok(entries.every((e) => e.balanced === undefined));
 });
 
 test("a name with its certificate on one server keeps the App there, and the setting names the record that lifts it", async () => {
