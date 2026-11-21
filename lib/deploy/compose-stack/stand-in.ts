@@ -7,7 +7,7 @@ import { servicesOf } from "../compose-lint/document";
 import { probeEverySecondWhileStarting } from "../health-check";
 import { INFRA_NETWORK } from "../network";
 import { BRIEFLY, STAND_IN_LABEL, standInName } from "../overlap";
-import { portProbeHealthCheck } from "../port-probe";
+import { agentProbeMount, portProbeHealthCheck } from "../port-probe";
 import {
   composeServiceReplicas,
   oneCopyServiceReason,
@@ -98,12 +98,18 @@ export function stackOverlapBlocker(
 export function probeRoutedServices(
   services: Record<string, App>,
   routedPorts: ReadonlyMap<string, number>,
+  agentProbe = false,
 ): void {
   for (const [name, port] of routedPorts) {
     const svc = services[name];
     if (!isRec(svc) || svc.healthcheck != null) continue;
-    svc.healthcheck = portProbeHealthCheck(port);
+    svc.healthcheck = portProbeHealthCheck(port, agentProbe);
     probeEverySecondWhileStarting(svc);
+    if (agentProbe)
+      svc.volumes = [
+        ...(Array.isArray(svc.volumes) ? svc.volumes : []),
+        agentProbeMount(),
+      ];
   }
 }
 

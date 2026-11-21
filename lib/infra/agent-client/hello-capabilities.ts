@@ -148,3 +148,6 @@ export const START_AFTER_READY_CAPABILITY = "deploy.start-after-ready";
 
 // The agent runs a stack that declares one replica as a project, so a member can hold one replica of an App spread over several (#208).
 export const SPREAD_CAPABILITY = "deploy.spread";
+
+// The agent keeps its own binary in the stack directory's .deplo-probe: a port probe that needs no shell in the image (deplo#281).
+export const PROBE_CAPABILITY = "deploy.probe";

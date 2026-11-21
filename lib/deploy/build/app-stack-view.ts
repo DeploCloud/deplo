@@ -11,6 +11,8 @@ import {
 } from "../../data/domains/routes";
 import { getServerById } from "../../data/servers/roster";
 import { connectAgent } from "../../infra/agent-client/connect";
+import { PROBE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import { serverSupports } from "../../infra/agent-client/preflight";
 import { usesComposeStack, usesPastedCompose } from "../../utils";
 import { buildComposeStack } from "../compose-stack/render";
 import { stackName } from "../deploy-key";
@@ -52,6 +54,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       appId,
       network: deployNetwork(project),
       dockerVersion: (await getServerById(project.serverId))?.dockerVersion,
+      agentProbe: await serverSupports(project.serverId, PROBE_CAPABILITY),
       domainRoutes,
       takenNames: await takenNamesForApp(project, appId),
       filesDir: sourceDir ?? composeFilesDir(deployKey),

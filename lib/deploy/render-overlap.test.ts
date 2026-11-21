@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 
 import yaml from "../yaml";
 import { renderCompose, renderOverlapStacks } from "./build/compose-render";
-import { portProbeCommand } from "./port-probe";
+import { agentProbeMount, portProbeCommand } from "./port-probe";
+import {
+  parseStackHealthCheck,
+  readStackVolumesFromYaml,
+} from "./build/stack-yaml";
 import type { RoutableDomain } from "../data/domains/routes";
 
 const route: RoutableDomain = {
@@ -126,6 +130,34 @@ describe("stand-in stack", () => {
       ]);
       assert.equal(hc.start_interval, "1s");
     }
+  });
+
+  // deplo#281: an image with no shell (scratch, distroless) passes the agent's own probe, mounted read-only.
+  test("with the agent's probe, both run it from its mount and no shell is needed", () => {
+    const probed = renderOverlapStacks({ ...base, agentProbe: true });
+    for (const stack of [probed.live, probed.standIn]) {
+      const svc = only(stack)[1];
+      assert.deepEqual(svc.healthcheck!.test, [
+        "CMD",
+        "/.deplo-probe/deplo-agent",
+        "probe",
+        "3000",
+      ]);
+      assert.equal(svc.healthcheck!.start_interval, "1s");
+      assert.deepEqual(svc.volumes, ["data:/data", agentProbeMount()]);
+      assert.doesNotMatch(stack, /CMD-SHELL|\/proc\/net/);
+    }
+  });
+
+  // A reroute re-renders what it reads back: one mount, the stack unchanged byte for byte.
+  test("a probed stack read back renders the same again", () => {
+    const { live } = renderOverlapStacks({ ...base, agentProbe: true });
+    const again = renderCompose({
+      ...base,
+      volumes: readStackVolumesFromYaml(live, "deplo-demo"),
+      healthCheckKeys: parseStackHealthCheck(live, "deplo-demo"),
+    });
+    assert.equal(again, live);
   });
 
   test("an in-place deploy renders the stack it always did", () => {

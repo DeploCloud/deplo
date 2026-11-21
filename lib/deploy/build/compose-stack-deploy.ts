@@ -7,7 +7,11 @@ import type { RoutableDomain } from "../../data/domains/routes";
 import { namesTakenOnNetwork } from "../../data/name-clash";
 import { getServerById } from "../../data/servers/roster";
 import { nowIso } from "../../ids";
-import { agentPreflight } from "../../infra/agent-client/preflight";
+import {
+  agentPreflight,
+  serverSupports,
+} from "../../infra/agent-client/preflight";
+import { PROBE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import type { ResourceLimits, VolumeMount } from "../../types/container";
 import type { DeploymentEnvironment } from "../../types/deployment";
 import { buildComposeStack } from "../compose-stack/render";
@@ -146,6 +150,7 @@ async function prepareComposeStack(
     volumes: project.volumes,
     network: deployNetwork(project, opts.preview ? deployKey : null),
     dockerVersion: (await getServerById(opts.serverId))?.dockerVersion,
+    agentProbe: await serverSupports(opts.serverId, PROBE_CAPABILITY),
     underLease: !opts.preview && (await appStartsUnderLease(project)),
   });
   return {

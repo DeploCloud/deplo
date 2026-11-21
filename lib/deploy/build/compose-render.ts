@@ -25,8 +25,14 @@ import {
 } from "../health-check";
 import { STAND_IN_LABEL, standInName, type OverlapStacks } from "../overlap";
 import { replicasRefusal } from "../replicas";
-import { portProbeHealthCheck } from "../port-probe";
+import {
+  agentProbeMount,
+  portProbeHealthCheck,
+  runsAgentProbe,
+} from "../port-probe";
 import { deployNetwork } from "../network";
+import { PROBE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import { serverSupports } from "../../infra/agent-client/preflight";
 import { defaultLogging, renderResourceLimitsYaml } from "../resources";
 import { traefikRouterLabels } from "../routing";
 import { RESTART_LABEL } from "../restart-under-lease";
@@ -62,7 +68,7 @@ function overlapHealthCheck(
   const hc = own
     ? { ...own }
     : opts.routes.length > 0
-      ? portProbeHealthCheck(opts.port)
+      ? portProbeHealthCheck(opts.port, opts.agentProbe)
       : null;
   if (!hc) return null;
   const svc = { healthcheck: hc };
@@ -106,6 +112,8 @@ export function renderCompose(opts: {
   ports?: string[];
   healthCheck?: HealthCheck | null;
   healthCheckKeys?: Record<string, unknown> | null;
+  // The server's agent says Hello `deploy.probe`: the port probe is its binary, not the image's shell.
+  agentProbe?: boolean;
   injectPort?: boolean;
   basicAuthUsers?: string;
   resources?: ResourceLimits | null;
@@ -161,21 +169,21 @@ export function renderCompose(opts: {
         .join("\n") +
       "\n"
     : "";
+  const volLines = [
+    ...vols.map((v) => {
+      const source =
+        v.type === "host"
+          ? v.hostPath
+          : v.type === "app"
+            ? `${filesDir}/${v.projectPath}`
+            : v.name;
+      return `${source}:${v.mountPath}${mountOptions(v)}`;
+    }),
+    ...(runsAgentProbe(opts.healthCheckKeys) ? [agentProbeMount()] : []),
+  ];
   // Exactly "" when the app has none, so the stack stays byte-identical (the reroute contract).
-  const appVolsYaml = vols.length
-    ? "    volumes:\n" +
-      vols
-        .map((v) => {
-          const source =
-            v.type === "host"
-              ? v.hostPath
-              : v.type === "app"
-                ? `${filesDir}/${v.projectPath}`
-                : v.name;
-          return `      - ${source}:${v.mountPath}${mountOptions(v)}`;
-        })
-        .join("\n") +
-      "\n"
+  const appVolsYaml = volLines.length
+    ? "    volumes:\n" + volLines.map((l) => `      - ${l}`).join("\n") + "\n"
     : "";
   const portsYaml = (opts.ports ?? []).length
     ? "    ports:\n" +
@@ -243,6 +251,8 @@ export async function renderDeployStack(opts: {
   previewPort: number | null;
   routes: RoutableDomain[];
   image: string;
+  // The server this render runs on: its agent decides how the port probe runs.
+  serverId: string;
   // One member of a cluster the App is spread over, and how many of its replicas that member runs.
   member?: { replicas: number };
 }): Promise<{
@@ -283,6 +293,7 @@ export async function renderDeployStack(opts: {
     ports: portMappings(ports),
     resources: project.resources,
     healthCheck: project.healthCheck,
+    agentProbe: await serverSupports(opts.serverId, PROBE_CAPABILITY),
     replicas,
     scaled,
     stickySessions: project.stickySessions,

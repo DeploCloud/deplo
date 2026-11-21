@@ -7,6 +7,7 @@ import { parseMountPropagation } from "../../apps/volume-model";
 import type { MountPropagation } from "../../types/container";
 import { dataDir } from "../../data-dir";
 import { RESOURCE_COMPOSE_KEYS } from "../resources";
+import { AGENT_PROBE_DIR } from "../port-probe";
 
 export function readStackImageFromYaml(
   stackYaml: string,
@@ -155,7 +156,8 @@ export function parseStackVolumes(
   return list.flatMap((e) => {
     if (typeof e !== "string") return [];
     const [source, mountPath, flag] = e.split(":");
-    if (!source || !mountPath) return [];
+    // The agent's port probe is Deplo's, rendered again with its health check, never the App's storage.
+    if (!source || !mountPath || mountPath === AGENT_PROBE_DIR) return [];
     const opts = (flag ?? "").split(",");
     const readOnly = opts.includes("ro");
     const propagation = parseMountPropagation(opts);

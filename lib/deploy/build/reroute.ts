@@ -36,6 +36,7 @@ import {
 import { isPausedForMove } from "../../data/deplo-move/source-guard";
 import { getServerById } from "../../data/servers/roster";
 import { offerReroutedBundle } from "../failover-offer";
+import { PROBE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 
 const DEFERS_REROUTE = new Set<AppStatus>([
   "idle",
@@ -117,6 +118,9 @@ async function rerouteOn(
         takenNames: await takenNamesForApp(project, appId),
         network: deployNetwork(project),
         dockerVersion: (await getServerById(serverId))?.dockerVersion,
+        agentProbe: (await conn.hello()).capabilities?.includes(
+          PROBE_CAPABILITY,
+        ),
         deployKey,
         appId,
         domainRoutes: routes,
