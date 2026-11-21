@@ -34,6 +34,8 @@ const CHECK_CNAME = /* GraphQL */ `
 export type DomainZone = {
   zone: string;
   target: string | null;
+  /** Cloudflare answers where the cluster should: the record is proxied, not DNS only. */
+  cloudflare?: boolean;
   cert?: {
     mode: "zone" | "shared" | "dns" | "http";
     check: { name: string; target: string; seen: boolean } | null;
@@ -70,7 +72,15 @@ export function DomainZoneLine({
     return (
       <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
         <Globe className="size-3.5 shrink-0" />
-        {native.target && domain.status !== "valid" ? (
+        {native.cloudflare && domain.status !== "valid" ? (
+          <span>
+            Cloudflare answers for{" "}
+            <span className="font-mono text-foreground">{domain.name}</span> in
+            the cluster&rsquo;s place: in Cloudflare, set its record to{" "}
+            <span className="font-medium text-foreground">DNS only</span> (grey
+            cloud).
+          </span>
+        ) : native.target && domain.status !== "valid" ? (
           <>
             <span>
               Add a{" "}
@@ -89,7 +99,13 @@ export function DomainZoneLine({
             <span className="font-mono text-foreground">{native.zone}</span>.
           </span>
         )}
-        <DocsLink topic="clusters.dnsZoneDomains" />
+        <DocsLink
+          topic={
+            native.cloudflare && domain.status !== "valid"
+              ? "clusters.dnsZoneCloudflare"
+              : "clusters.dnsZoneDomains"
+          }
+        />
         {canManage && !(native.target === null) && (
           <Button
             variant="ghost"

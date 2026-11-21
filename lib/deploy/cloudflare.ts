@@ -87,6 +87,11 @@ function inV6Cidr(ipInt: bigint, cidr: string): boolean {
   return (ipInt & mask) === (baseInt & mask);
 }
 
+/** Every address a name resolves to is Cloudflare's: its record is proxied ("orange cloud"), not DNS only. */
+export function resolvesToCloudflare(addresses: readonly string[]): boolean {
+  return addresses.length > 0 && addresses.every(isCloudflareIp);
+}
+
 export function isCloudflareIp(ip: string): boolean {
   if (ip.includes(":")) {
     const v6 = ipv6ToBigInt(ip);

@@ -15,6 +15,7 @@ import {
   checkAnswerRecords,
   type AnswerRecordSet,
 } from "../../deploy/answer-dns";
+import { resolvesToCloudflare } from "../../deploy/cloudflare";
 import { messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
@@ -211,6 +212,9 @@ async function checkNative(
   if (status === null) return null;
   await recordVerdict(d, status, changed);
   if (status === "valid") return null;
+  // Cloudflare proxies a new record by default, and then answers in the cluster's place (ADR-0049).
+  if (resolvesToCloudflare(found))
+    return `${d.name} reaches Cloudflare, not the cluster: in Cloudflare, set its record to DNS only (grey cloud)`;
   return native.target === d.name
     ? `${d.name} does not reach the cluster yet: delegate ${native.zone} to it where the domain was bought`
     : `${d.name} does not point at the cluster yet: add the CNAME record ${d.name} → ${native.target}`;

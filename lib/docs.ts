@@ -203,6 +203,8 @@ export const DOCS = {
   "clusters.dnsZoneDomains":
     "operations/clusters/dns-zone#point-a-domain-at-it",
   "clusters.dnsZoneApex": "operations/clusters/dns-zone#a-bare-domain",
+  "clusters.dnsZoneCloudflare":
+    "operations/clusters/dns-zone#dns-at-cloudflare",
   "clusters.dnsZoneNearest":
     "operations/clusters/dns-zone#nearest-servers-first",
   "clusters.dnsZoneCertificates": "operations/clusters/dns-zone#certificates",

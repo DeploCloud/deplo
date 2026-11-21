@@ -10,7 +10,9 @@ import { domainDnsRecords } from "../../db/schema/control-plane/dns-providers";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { zoneTarget } from "../../deploy/cluster-zone";
 import { challengeName, type CertChallenge } from "../../deploy/dns-challenge";
+import { resolvesToCloudflare } from "../../deploy/cloudflare";
 import { zoneCovers } from "../../dns-zone";
+import { lookupHostAddresses } from "../domains/dns-resolve";
 import { recordActivity } from "../activity";
 import { loadAppGraph } from "../app-graph-load";
 import { instanceFrozen } from "../deplo-move/freeze";
@@ -127,6 +129,8 @@ export async function setDomainDnsZone(
 export type DomainZoneInfo = {
   zone: string;
   target: string | null;
+  /** Not answered by the cluster yet, and Cloudflare's addresses are where its record should lead: proxied, not DNS only. */
+  cloudflare: boolean;
   /** How its certificate is checked as routed now, and for a name outside the zone the CNAME that moves it to DNS. */
   cert: {
     mode: CertChallenge;
@@ -150,6 +154,7 @@ export async function domainZoneTargets(
       zoneId: domainsTable.dnsZoneId,
       certChallenge: domainsTable.certChallenge,
       seenAt: domainsTable.acmeCnameSeenAt,
+      status: domainsTable.status,
     })
     .from(domainsTable)
     .where(
@@ -164,9 +169,12 @@ export async function domainZoneTargets(
     const target = zoneCovers(z.name, d.name)
       ? null
       : zoneTarget(d.name, z.name);
+    const found =
+      d.status === "valid" ? null : await lookupHostAddresses(d.name);
     out.set(d.id, {
       zone: z.name,
       target,
+      cloudflare: found !== null && resolvesToCloudflare(found),
       cert: {
         mode:
           d.certChallenge === "zone" ||
