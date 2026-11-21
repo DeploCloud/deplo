@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash, X509Certificate } from "node:crypto";
-import type { Duplex } from "node:stream";
+import { duplexPair, type Duplex } from "node:stream";
 import tls from "node:tls";
 
 const EKU_SERVER_AUTH = "1.3.6.1.5.5.7.3.1";
@@ -36,26 +36,45 @@ export function agentCertProblem(
 
 export class AgentTrustError extends Error {}
 
-/** The mTLS handshake inside a link: Deplo's client certificate out, the agent's checked against the pinned key. */
+/** Whether a certificate's dates have passed (or not begun): only then may its handshake overlook them. */
+export function certLapsed(certPem: string, now = Date.now()): boolean {
+  const x = new X509Certificate(certPem);
+  return now > Date.parse(x.validTo) || now < Date.parse(x.validFrom);
+}
+
+/**
+ * The mTLS handshake inside a link: Deplo's client certificate out, the agent's checked against the pinned key.
+ * Node verifies the chain and dates as always; `lapsed` lets only a pinned certificate past its date through.
+ */
 export function agentTls(
   stream: Duplex,
   pinnedKey: string,
   creds: { certPem: string; keyPem: string; caPem: string },
   timeoutMs: number,
+  lapsed = false,
 ): Promise<tls.TLSSocket> {
   const ca = new X509Certificate(creds.caPem);
+  // Node destroys a session it refuses; across this pair that never reaches the link, which the caller closes with a reason.
+  const [inner, outer] = duplexPair();
+  stream.pipe(outer, { end: false });
+  outer.pipe(stream, { end: false });
+  outer.on("error", () => {});
+  stream.once("close", () => outer.destroy());
   return new Promise((resolve, reject) => {
     const sock = tls.connect({
-      socket: stream,
+      socket: inner,
       servername: "localhost",
       ca: creds.caPem,
       cert: creds.certPem,
       key: creds.keyPem,
       minVersion: "TLSv1.2",
       ALPNProtocols: ["h2"],
-      // The CA and the pinned key decide, below; Node's own verdict is read there, never ignored.
-      rejectUnauthorized: false,
-      checkServerIdentity: () => undefined,
+      rejectUnauthorized: !lapsed,
+      // Replaces the hostname check, never the chain: the pinned key, not a name, is the agent.
+      checkServerIdentity: (_host, cert) =>
+        keyFingerprint(new X509Certificate(cert.raw)) === pinnedKey
+          ? undefined
+          : new AgentTrustError("its key is not the one Deplo pinned"),
     });
     // The caller closes the link with a reason; that ends this session with it.
     const fail = (e: Error) => {

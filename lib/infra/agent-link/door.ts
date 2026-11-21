@@ -27,7 +27,7 @@ import {
   openChannel,
   type AgentChannel,
 } from "../agent-client/mtls-channel";
-import { agentTls, keyFingerprint } from "./agent-tls";
+import { agentTls, certLapsed, keyFingerprint } from "./agent-tls";
 import { bridgeLink } from "./bridge";
 import {
   LINK_CERT_HEADER,
@@ -134,6 +134,7 @@ async function holdLink(
       keyFingerprint(claimed.certPem),
       await panelClientCert(),
       HELLO_TIMEOUT_MS,
+      certLapsed(claimed.certPem),
     );
     if (claimed.kind === "retired") {
       // It proved a key this server rotated away from: a copy that missed the rotation.
