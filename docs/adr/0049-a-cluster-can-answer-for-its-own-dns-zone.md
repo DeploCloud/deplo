@@ -158,6 +158,11 @@ The owner's four decisions after the #228 lab, each its own release but the last
 - **Its generated address waits for the server it names** while that one is a member of the cluster (found on the lab): every copy holds the name in its routes, so renaming the address after a failover restarted every copy on every other server. A load-balanced App's address answers again once its server is back; it is still renamed when that server leaves the cluster.
 - A server that drops again within the wait gets nothing, and its wait starts over. A start that fails changes nothing and is tried again. An App that keeps data stays where the failover put it, as before.
 
+### A server back is named once it is up (found on the lab)
+
+- **A server that starts, or comes back after a silence of the removal time, is named by nobody, itself included, until it has been up for the removal time.** It counts for the majority meanwhile, as one being emptied does, and the last agreed set a name server answers while warming leaves it out too. On the lab the zone named a server about 2 s after it came back, while its proxy still showed its default certificate, then a 502: two to five visitor errors in the 3.5 s after each return. Agent v0.5.3-canary.25 (`dnszone.DecideHolding`).
+- Rejected: asking its own proxy for a name's certificate, which needs a TLS handshake that skips verification; ten seconds cover what the lab measured with room to spare.
+
 ### Cloudflare in front of the zone
 
 - Cloudflare proxies a new record by default, and a proxied `CNAME` into the zone puts Cloudflare in the cluster's place: visitors reach Cloudflare, never the nearest server. When every address the domain resolves to is Cloudflare's, the domain screen and Activity say so: "set its record to DNS only (grey cloud)".
