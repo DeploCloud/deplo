@@ -155,6 +155,7 @@ The owner's four decisions after the #228 lab, each its own release but the last
 - **The leader hands it back**, since it already moves the copies: a load-balanced App that keeps no data (the roster's `balanced`), one member running two or more of its replicas, another running none. Once that member has answered for **2 minutes** (`GiveCopyAfter`, longer than the longest removal time of 60 s), the highest replica of the most loaded member starts on it, and nowhere else, and is recorded there once ready. Activity: "lab-1 runs its own copy of web again: it has been back for 2 minutes".
 - **No other copy restarts**: no order reaches another member. Until its copy is ready the server passes its visitors on (ADR-0048), then serves them from it.
 - **The extra copy the failover started stays where it is** until the App's next deploy: stopping it would leave a moment where the proxy still sends visitors to a stopped container.
+- **Its generated address waits for the server it names** while that one is a member of the cluster (found on the lab): every copy holds the name in its routes, so renaming the address after a failover restarted every copy on every other server. A load-balanced App's address answers again once its server is back; it is still renamed when that server leaves the cluster.
 - A server that drops again within the wait gets nothing, and its wait starts over. A start that fails changes nothing and is tried again. An App that keeps data stays where the failover put it, as before.
 
 ### Cloudflare in front of the zone

@@ -981,6 +981,53 @@ test("the leader is told which Apps the cluster load-balances, and a copy handed
   assert.ok(!said.some((m) => m.startsWith("Started a replica")));
 });
 
+// Found on the lab: renaming the address restarted every copy, each holding the name in its routes.
+test("a load-balanced App's generated address waits for its server, so a failover restarts no other copy", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await balancing();
+  await answeredThroughZone();
+  await runDeploymentGuarded("dpl_1");
+  await db.insert(domains).values({
+    id: "dom_auto",
+    appId: APP,
+    name: "web-word-0a000002.deplo.site",
+    status: "valid",
+    isPrimary: false,
+    ssl: false,
+    source: "auto",
+    certProvider: "none",
+    createdAt: "2026-11-21T00:00:00.000Z",
+  });
+  // Each server runs its copy, so a reroute would reach all three.
+  for (const id of MEMBERS)
+    hosts[id].stacks.web = hosts[id].deploys[0]!.composeYaml;
+  const rerouted = () =>
+    MEMBERS.reduce((n, id) => n + hosts[id].reroutes.length, 0);
+  const before = rerouted();
+
+  await event(1, "placement", {
+    kind: "app",
+    workloadId: APP,
+    members: ["srv_3", "srv_3", "srv_4"],
+    epoch: 1,
+  });
+  await event(2, "failed_over", {
+    kind: "app",
+    workloadId: APP,
+    from: "srv_2",
+    to: "srv_3",
+    reason: "stopped_answering",
+  });
+
+  const [auto] = await db
+    .select()
+    .from(domains)
+    .where(eq(domains.id, "dom_auto"));
+  assert.equal(auto.name, "web-word-0a000002.deplo.site");
+  assert.equal(rerouted(), before, "no copy is routed again");
+  assert.ok(!(await activity()).some((m) => /generated address/.test(m)));
+});
+
 test("replicas spread through a tunnel are not load-balanced, and the leader is told so", async () => {
   await withCloudflareDomain();
   await runDeploymentGuarded("dpl_1");
