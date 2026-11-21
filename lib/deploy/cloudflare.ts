@@ -159,6 +159,11 @@ export function isRoutableDomain(d: DomainReach): boolean {
   return d.status === "valid" || isProxiedDomain(d);
 }
 
+/** Routed: reachable now, or served already (`ssl`), which no later DNS verdict takes off the routes. */
+export function isServedDomain(d: DomainReach & { ssl?: boolean }): boolean {
+  return d.ssl === true || isRoutableDomain(d);
+}
+
 // Let's Encrypt works under Cloudflare's Full and Full (strict); Flexible is caught by the probe below.
 export function certProviderForDns<T extends CertProvider | undefined>(
   status: DomainStatus,

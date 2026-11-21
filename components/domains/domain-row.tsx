@@ -477,6 +477,11 @@ export function DomainRow({
             domain.status === "pending") && (
             <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
               <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+              {domain.ssl && (
+                <span className="order-last">
+                  It keeps answering meanwhile.
+                </span>
+              )}
               <DocsLink topic="domains.dnsStates" className="order-last" />
               {stray ? (
                 <>
