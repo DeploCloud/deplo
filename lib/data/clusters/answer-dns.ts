@@ -19,7 +19,11 @@ import { messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { loadProviderSecret } from "../dns-providers/tunnels";
-import { resolveHostIpv4, resolveHostIpv6 } from "../domains/dns-resolve";
+import {
+  lookupHostAddresses,
+  resolveHostIpv4,
+  resolveHostIpv6,
+} from "../domains/dns-resolve";
 import { withKeyedLock } from "../keyed-mutex";
 import { serverAddresses } from "../servers/addresses";
 import { getServerById } from "../servers/roster";
@@ -135,6 +139,7 @@ async function syncAtProvider(
 async function checkByHand(
   d: AnswerDomain,
   set: AnswerRecordSet,
+  changed: Set<string>,
 ): Promise<string | null> {
   const [a, aaaa] = await Promise.all([
     resolveHostIpv4(d.name),
@@ -142,11 +147,13 @@ async function checkByHand(
   ]);
   const check = checkAnswerRecords({ a, aaaa }, set);
   const status = check.status;
-  if (status !== d.status)
+  if (status !== d.status) {
     await getDb()
       .update(domainsTable)
       .set({ status, ssl: status === "valid" })
       .where(eq(domainsTable.id, d.id));
+    changed.add(d.appId);
+  }
   if (check.missing.length === 0 && check.extra.length === 0) return null;
   const parts = [
     check.missing.length > 0 ? `add ${check.missing.join(", ")}` : "",
@@ -169,19 +176,23 @@ async function checkNative(
   d: AnswerDomain,
   clusterId: string,
   native: { zone: string; target: string },
+  changed: Set<string>,
 ): Promise<string | null> {
   const { clusterMemberAddresses } = await import("./dns-zone");
-  const [a, aaaa, members] = await Promise.all([
-    resolveHostIpv4(d.name),
-    resolveHostIpv6(d.name),
+  const [found, members] = await Promise.all([
+    lookupHostAddresses(d.name),
     clusterMemberAddresses(clusterId),
   ]);
-  const status = nativeStatus([...a, ...aaaa], members);
-  if (status !== d.status)
+  // A name server that just stopped makes the lookup fail: that says nothing about the delegation.
+  if (found === null) return null;
+  const status = nativeStatus(found, members);
+  if (status !== d.status) {
     await getDb()
       .update(domainsTable)
       .set({ status, ssl: status === "valid" })
       .where(eq(domainsTable.id, d.id));
+    changed.add(d.appId);
+  }
   if (status === "valid") return null;
   return native.target === d.name
     ? `${d.name} does not reach the cluster yet: delegate ${native.zone} to it where the domain was bought`
@@ -192,8 +203,13 @@ async function checkNative(
  * Puts every domain of the cluster that answers on every server on the cluster's healthy servers: written at its
  * connected provider, or checked against what a person wrote. Called when a server joins, leaves, stops or is back.
  */
-export async function syncClusterAnswerDns(clusterId: string): Promise<void> {
+export async function syncClusterAnswerDns(
+  clusterId: string,
+  reroute: (appId: string) => Promise<unknown> = async (id) =>
+    (await import("../../deploy/build/reroute")).rerouteApp(id),
+): Promise<void> {
   if (await instanceFrozen()) return;
+  const changed = new Set<string>();
   await withKeyedLock(`answer-dns:${clusterId}`, async () => {
     const domains = await answeringDomains(clusterId);
     if (domains.length === 0) return;
@@ -206,7 +222,7 @@ export async function syncClusterAnswerDns(clusterId: string): Promise<void> {
       if (native) {
         let problem: string | null;
         try {
-          problem = await checkNative(d, clusterId, native);
+          problem = await checkNative(d, clusterId, native, changed);
         } catch (e) {
           problem = `Deplo could not check the DNS of ${d.name}: ${messageOf(e)}`;
         }
@@ -228,7 +244,7 @@ export async function syncClusterAnswerDns(clusterId: string): Promise<void> {
       try {
         problem = row
           ? await syncAtProvider(d, row, set)
-          : await checkByHand(d, set);
+          : await checkByHand(d, set, changed);
       } catch (e) {
         problem = `Deplo could not update the DNS records of ${d.name}: ${messageOf(e)}`;
       }
@@ -239,6 +255,13 @@ export async function syncClusterAnswerDns(clusterId: string): Promise<void> {
       }
     }
   });
+  // A domain routed or not by its status: its App is routed again, outside the lock, as that may sync the DNS.
+  for (const appId of changed) {
+    if (await instanceFrozen()) return;
+    await reroute(appId).catch((e) =>
+      console.warn(`[answer-dns] reroute ${appId}: ${messageOf(e)}`),
+    );
+  }
 }
 
 /** A domain that answers on every server is verified against the whole set, not against one server. */

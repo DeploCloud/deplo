@@ -26,6 +26,29 @@ export function __resetDnsResolve4ForTest(): void {
   dnsResolve6 = resolve6;
 }
 
+/**
+ * A name's A and AAAA answers, or null when asking failed (a name server that just stopped, a timeout) rather than
+ * the name having none: no verdict on the name can be read from that.
+ */
+export async function lookupHostAddresses(
+  name: string,
+): Promise<string[] | null> {
+  const ask = async (f: (n: string) => Promise<string[]>) => {
+    try {
+      return await f(name);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      return code === "ENODATA" || code === "ENOTFOUND" ? [] : null;
+    }
+  };
+  const [a, aaaa] = await Promise.all([ask(dnsResolve4), ask(dnsResolve6)]);
+  const found = [
+    ...(a ?? []),
+    ...(aaaa ?? []).map((x) => canonicalIpv6(x) ?? x),
+  ];
+  return found.length === 0 && (a === null || aaaa === null) ? null : found;
+}
+
 export async function resolveHostIpv4(name: string): Promise<string[]> {
   try {
     return await dnsResolve4(name);
