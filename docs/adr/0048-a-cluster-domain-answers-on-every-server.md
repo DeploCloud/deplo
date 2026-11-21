@@ -107,6 +107,8 @@ How it is built:
 - **An App counts as covered** while each of its HTTPS names is served by its Cloudflare tunnel, or by a valid certificate Deplo holds for it, the zone's or its own. A name still waiting for its first certificate keeps the App on one server until a deploy after it arrives.
 - **"Most available" places no such App**: it picks the one Cloudflare connector that runs (`cluster_entrances`), and an App with none is placed by its DNS answers instead.
 
+Checked on the lab with ADR-0049's (21 Nov 2026, its "What the lab showed (a server back, #273, #228)"): the App ran on every server with no Cloudflare, each server served it from its own copy with a valid certificate, each lab subnet landed on its nearest server, and with one server powered off the others kept serving with no error (after panel #280).
+
 Rejected: a renewer per zone for every certificate in it (the first renewer of a name already ordered elsewhere would order it again); an "everywhere" switch on the Replicas setting (load balancing already says it, and a switch the person must find would leave Apps on one server that need not be).
 
 ### What the lab showed (step 2)
