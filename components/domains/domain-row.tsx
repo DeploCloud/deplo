@@ -57,7 +57,8 @@ import { deriveWwwRedirect } from "@/lib/www-redirect";
 import type { Domain } from "@/lib/types/domain";
 import type { StrayRecord } from "@/lib/deploy/cloudflare";
 import { DocsLink } from "@/components/ui/docs-link";
-import { DomainZoneLine, type DomainZone } from "./domain-zone-line";
+import { type DomainZone } from "./domain-zone-line";
+import { DomainClusterLines } from "./domain-cluster-lines";
 
 type Row = Domain & {
   serviceName: string;
@@ -152,29 +153,6 @@ export function DomainRow({
     records.find((r) => r.type === stray?.type)?.value ?? null;
   const router = useRouter();
   const canManage = useAppCan("manage_domains");
-  const [switching, setSwitching] = React.useState(false);
-  const setEverywhere = async (on: boolean) => {
-    setSwitching(true);
-    const res = await gqlAction<{ setDomainAnswersEverywhere: { id: string } }>(
-      /* GraphQL */ `
-        mutation ($id: String!, $on: Boolean!) {
-          setDomainAnswersEverywhere(id: $id, on: $on) {
-            id
-          }
-        }
-      `,
-      { id: domain.id, on },
-    );
-    setSwitching(false);
-    if (!res.ok) toast.error(res.error);
-    else
-      toast.success(
-        on
-          ? `${domain.name} answers on every server`
-          : `${domain.name} answers on its App's server only`,
-      );
-    router.refresh();
-  };
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const { hide, restore } = useOptimisticRow(domain.id);
@@ -562,74 +540,13 @@ export function DomainRow({
               )}
             </div>
           )}
-        {staysOn && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-            <span>
-              Answers only through{" "}
-              <span className="font-medium text-foreground">{staysOn}</span>: if
-              it stops, this domain stops answering until it is back, even when
-              the App moves.
-            </span>
-            <DocsLink topic="clusters.addresses" />
-            {canManage && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={switching}
-                onClick={() => setEverywhere(true)}
-              >
-                Answer on every server
-              </Button>
-            )}
-          </div>
-        )}
-        {domain.answersEverywhere && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <Layers className="size-3.5 shrink-0" />
-            <span>
-              Answers on every server of the cluster, and keeps answering when
-              the App moves.
-            </span>
-            <DocsLink topic="clusters.answerEverywhere" />
-            {canManage && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={switching}
-                onClick={() => setEverywhere(false)}
-              >
-                Turn off
-              </Button>
-            )}
-          </div>
-        )}
-        {domain.answersEverywhere && (
-          <DomainZoneLine
-            domain={domain}
-            native={native}
-            zones={dnsZones}
-            canManage={canManage}
-          />
-        )}
-        {domain.failoverWaitsForCertificate && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-            <span>
-              Failover is not ready yet: Deplo copies its certificate once the
-              App&rsquo;s server has one.
-            </span>
-          </div>
-        )}
-        {domain.answersEverywhere && noHealthCheck && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-            <span>
-              Add a health check, so visitors wait for the App to answer after
-              it moves.
-            </span>
-          </div>
-        )}
+        <DomainClusterLines
+          domain={domain}
+          staysOn={staysOn}
+          native={native}
+          dnsZones={dnsZones}
+          noHealthCheck={noHealthCheck}
+        />
       </TableCell>
       {showContainer && (
         <TableCell className="w-56 max-md:basis-full">
