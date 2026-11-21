@@ -9,19 +9,21 @@ import { Button } from "@/components/ui/button";
 import { DocsLink } from "@/components/ui/docs-link";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
-import type { Domain } from "@/lib/types/domain";
+import type { AddressAway, Domain } from "@/lib/types/domain";
 import { DomainZoneLine, type DomainZone } from "./domain-zone-line";
 
 /** The lines under a domain of an App on a cluster: where it answers, and what failover still waits for. */
 export function DomainClusterLines({
   domain,
   staysOn,
+  away,
   native,
   dnsZones,
   noHealthCheck,
 }: {
   domain: Domain;
   staysOn?: string | null;
+  away?: AddressAway | null;
   native: DomainZone | null;
   dnsZones: { id: string; name: string }[];
   noHealthCheck: boolean;
@@ -54,6 +56,25 @@ export function DomainClusterLines({
 
   return (
     <>
+      {away && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+          <span>
+            Not answering while{" "}
+            <span className="font-medium text-foreground">{away.server}</span>{" "}
+            is offline: this address points at that server only.{" "}
+            {away.use ? (
+              <>
+                <span className="font-mono text-foreground">{away.use}</span>{" "}
+                answers from every server meanwhile.
+              </>
+            ) : (
+              "Add a domain of your own: it answers from every server."
+            )}
+          </span>
+          <DocsLink topic="clusters.loadBalancingServerBack" />
+        </div>
+      )}
       {staysOn && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
           <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />

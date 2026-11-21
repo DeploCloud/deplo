@@ -54,7 +54,7 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { deriveWwwRedirect } from "@/lib/www-redirect";
-import type { Domain } from "@/lib/types/domain";
+import type { AddressAway, Domain } from "@/lib/types/domain";
 import type { StrayRecord } from "@/lib/deploy/cloudflare";
 import { DocsLink } from "@/components/ui/docs-link";
 import { type DomainZone } from "./domain-zone-line";
@@ -74,6 +74,7 @@ export function DomainRows({
   domains,
   strays = {},
   staysOn = {},
+  away = {},
   native = {},
   siblings = domains,
   ...rest
@@ -81,11 +82,13 @@ export function DomainRows({
   domains: Row[];
   strays?: Record<string, StrayRecord>;
   staysOn?: Record<string, string>;
+  /** A load-balanced App's generated addresses whose server is away, by id. */
+  away?: Record<string, AddressAway>;
   /** Domains answered by the cluster's own DNS zone, by id (ADR-0049). */
   native?: Record<string, DomainZone>;
 } & Omit<
   React.ComponentProps<typeof DomainRow>,
-  "domain" | "stray" | "staysOn" | "native"
+  "domain" | "stray" | "staysOn" | "away" | "native"
 >) {
   return (
     <OptimisticList>
@@ -96,6 +99,7 @@ export function DomainRows({
           siblings={siblings}
           stray={strays[d.id] ?? null}
           staysOn={staysOn[d.id] ?? null}
+          away={away[d.id] ?? null}
           native={native[d.id] ?? null}
           {...rest}
         />
@@ -125,6 +129,7 @@ export function DomainRow({
   suggestedDomain,
   stray,
   staysOn,
+  away = null,
   noHealthCheck = false,
   siblings = [],
   native = null,
@@ -139,6 +144,7 @@ export function DomainRow({
   noHealthCheck?: boolean;
   /** The server a cluster App's domain stays pointed at through a failover; null when it follows the App. */
   staysOn?: string | null;
+  away?: AddressAway | null;
   siblings?: { name: string; redirectTo?: string | null }[];
   compose?: string | null;
   isCompose: boolean;
@@ -543,6 +549,7 @@ export function DomainRow({
         <DomainClusterLines
           domain={domain}
           staysOn={staysOn}
+          away={away}
           native={native}
           dnsZones={dnsZones}
           noHealthCheck={noHealthCheck}

@@ -51,3 +51,9 @@ export interface BasicAuthUser {
   createdAt: string;
   updatedAt: string;
 }
+
+/** A load-balanced App's generated address whose server is away: that server, and the App's domain to use meanwhile. */
+export interface AddressAway {
+  server: string;
+  use: string | null;
+}
