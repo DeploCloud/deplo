@@ -8,7 +8,7 @@
 - **2, the certificate in the failover bundle: done** (#231). Agent DeploCloud/deplo-agent#63 (Hello `cluster.answers.certificates`, agent v0.5.3-canary.14), leader DeploCloud/deplo-cluster#8 (v0.1.0-canary.7); lab fixes in agent #64 and #65 (v0.5.3-canary.16) and panel #260, #261, #262, #263.
 - **3, the DNS record set: done** (#255).
 - **4, the switch shown: done** (#230), with every refusal below, past 200 Apps included.
-- **5, load balancing without Cloudflare** (#228): decided below, 21 Nov 2026.
+- **5, load balancing without Cloudflare** (#228): decided below, 21 Nov 2026; agent DeploCloud/deplo-agent#72 (Hello `dns.certificates`, released in v0.5.3-canary.23), panel #277 (migration 0271), manual DeploCloud/docs#17.
 
 A failover moves an App, and its address must follow it **without Cloudflare being required**. Today only a domain served by a Cloudflare tunnel follows; a generated name follows by being renamed (it is a server's IP); any other domain keeps pointing at the server that stopped. **A domain of a cluster App can be set to answer on every server of the cluster ("Answer on every server"): each server passes its encrypted traffic, untouched, over the private network to a server that runs the App, and DNS names every healthy server.** Cloudflare stays a supported way to follow, not the only one.
 
