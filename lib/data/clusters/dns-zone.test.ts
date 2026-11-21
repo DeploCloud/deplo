@@ -361,11 +361,30 @@ test("a domain points at the zone only when it can: on every server, of this clu
 });
 
 test("a domain answered by the zone is valid when it resolves to the cluster's servers only", () => {
-  const members = new Set(["203.0.113.2", "203.0.113.3"]);
+  const members = {
+    addresses: new Set(["203.0.113.2", "203.0.113.3", "2001:db8::2"]),
+    v6Known: true,
+  };
   assert.equal(nativeStatus([], members), "pending");
   assert.equal(nativeStatus(["203.0.113.3"], members), "valid");
   assert.equal(
     nativeStatus(["203.0.113.3", "198.51.100.9"], members),
     "misconfigured",
+  );
+  assert.equal(
+    nativeStatus(["203.0.113.3", "2001:db8::9"], members),
+    "misconfigured",
+  );
+  // Found on the ADR-0049 lab: a server just stopped is still answered, and only its agent knows its IPv6.
+  const away = { ...members, v6Known: false };
+  assert.equal(nativeStatus(["203.0.113.3", "2001:db8::9"], away), "valid");
+  assert.equal(
+    nativeStatus(["203.0.113.3", "198.51.100.9"], away),
+    "misconfigured",
+  );
+  assert.equal(
+    nativeStatus(["2001:db8::9"], away),
+    null,
+    "nothing left to judge",
   );
 });

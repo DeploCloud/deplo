@@ -63,6 +63,8 @@ export type ZoneMemberFacts = {
   fingerprint: string | null;
   v4: string[];
   v6: string[];
+  /** Its IPv6 addresses are known: only its agent reports them, so not while it is away. */
+  v6Known: boolean;
   emptying: boolean;
   joinedAt: string;
   place: ServerPlace | null;
@@ -99,6 +101,7 @@ async function memberFacts(clusterId: string): Promise<ZoneMemberFacts[]> {
         fingerprint: await fingerprintOf(r.serverId),
         v4: a.v4,
         v6: a.v6,
+        v6Known: a.v6Known,
         emptying: r.emptying != null,
         joinedAt: r.joinedAt,
         place: row ? placeOf(row, a, geo) : null,
@@ -663,9 +666,12 @@ export async function checkClusterDnsZone(
 /** Every address of every member: a resolver may still hold one that stopped a moment ago. */
 export async function clusterMemberAddresses(
   clusterId: string,
-): Promise<Set<string>> {
-  const out = new Set<string>();
-  for (const m of await memberFacts(clusterId))
-    for (const a of [...m.v4, ...m.v6]) out.add(a);
-  return out;
+): Promise<{ addresses: Set<string>; v6Known: boolean }> {
+  const addresses = new Set<string>();
+  let v6Known = true;
+  for (const m of await memberFacts(clusterId)) {
+    for (const a of [...m.v4, ...m.v6]) addresses.add(a);
+    v6Known &&= m.v6Known;
+  }
+  return { addresses, v6Known };
 }
