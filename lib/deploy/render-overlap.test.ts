@@ -7,6 +7,7 @@ import { agentProbeMount, portProbeCommand } from "./port-probe";
 import {
   parseStackHealthCheck,
   readStackVolumesFromYaml,
+  stackRunsAgentProbe,
 } from "./build/stack-yaml";
 import type { RoutableDomain } from "../data/domains/routes";
 
@@ -158,6 +159,8 @@ describe("stand-in stack", () => {
       healthCheckKeys: parseStackHealthCheck(live, "deplo-demo"),
     });
     assert.equal(again, live);
+    assert.equal(stackRunsAgentProbe(live), true, "a stack's reroute keeps it");
+    assert.equal(stackRunsAgentProbe(renderOverlapStacks(base).live), false);
   });
 
   test("an in-place deploy renders the stack it always did", () => {

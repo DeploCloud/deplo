@@ -7,7 +7,7 @@ import { parseMountPropagation } from "../../apps/volume-model";
 import type { MountPropagation } from "../../types/container";
 import { dataDir } from "../../data-dir";
 import { RESOURCE_COMPOSE_KEYS } from "../resources";
-import { AGENT_PROBE_DIR } from "../port-probe";
+import { AGENT_PROBE_DIR, runsAgentProbe } from "../port-probe";
 
 export function readStackImageFromYaml(
   stackYaml: string,
@@ -80,6 +80,20 @@ export function parseStackPorts(yamlText: string, service: string): string[] {
       : [];
   } catch {
     return [];
+  }
+}
+
+/** Whether a service of the stack runs the agent's port probe, which a re-render must keep. */
+export function stackRunsAgentProbe(yamlText: string): boolean {
+  try {
+    const doc = yaml.load(yamlText) as {
+      services?: Record<string, { healthcheck?: unknown }>;
+    } | null;
+    return Object.values(doc?.services ?? {}).some((svc) =>
+      runsAgentProbe(svc?.healthcheck),
+    );
+  } catch {
+    return false;
   }
 }
 
