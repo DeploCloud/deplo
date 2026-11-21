@@ -1244,7 +1244,7 @@ clear_old_materials() {
     step "Existing agent materials found - clearing them for a fresh bootstrap"
     systemctl stop deplo-agent >&9 2>&9 || true
     rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt" \
-      "$AGENT_DATA/link-addresses.json" "$AGENT_DATA/no-listener"
+      "$AGENT_DATA/link-addresses.json" "$AGENT_DATA/no-listener" "$AGENT_DATA/identity-in-use"
     ok "Old materials cleared" "the agent will re-provision with the new token"
   fi
 }
