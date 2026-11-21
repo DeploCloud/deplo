@@ -88,7 +88,7 @@ export const CLUSTERS: McpToolDef[] = [
     name: "set_cluster_load_balancing",
     title: "Turn a cluster's load balancing on or off",
     description:
-      "Needs replication on. Apps on a Cloudflare domain that keep no data run on every server from their next deploy; visitors go to the `nearest` one or the `most_available` one. Omit mode to keep it.",
+      "Needs replication on. Apps that keep no data and every server reaches (Cloudflare, or certificates every server holds) run on all of them from their next deploy; visitors go to the `nearest` or `most_available` one.",
     group: "Servers",
     requires: "instanceAdmin",
     idempotent: true,
