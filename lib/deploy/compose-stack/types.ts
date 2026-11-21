@@ -36,6 +36,8 @@ export interface ComposeStackInput {
   network: string;
   /** The server's Docker Engine version, which decides the healthcheck keys it can take. */
   dockerVersion?: string;
+  // The server's agent says Hello `deploy.probe`: a routed service's port probe is its binary, not the image's shell.
+  agentProbe?: boolean;
   onWarn?: (message: string) => void;
   takenNames?: readonly string[];
   /** The App's switch: a routed service with replicas keeps each visitor on one of them. */

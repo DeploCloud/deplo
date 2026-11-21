@@ -28,6 +28,7 @@ import {
   parseStackPorts,
   parseStackReplicas,
   parseStackScaled,
+  stackRunsAgentProbe,
   parseStackResources,
   readStackEnvFromYaml,
   readStackImageFromYaml,
@@ -117,6 +118,8 @@ async function rerouteOn(
         takenNames: await takenNamesForApp(project, appId),
         network: deployNetwork(project),
         dockerVersion: (await getServerById(serverId))?.dockerVersion,
+        // A reroute keeps the port check the stack runs now.
+        agentProbe: stackRunsAgentProbe(current.yaml),
         deployKey,
         appId,
         domainRoutes: routes,

@@ -8,7 +8,11 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
-import { STACK_OVERLAP_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  PROBE_CAPABILITY,
+  STACK_OVERLAP_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
+import { agentProbeMount } from "./port-probe";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
   seedApp,
@@ -222,6 +226,29 @@ describe("visitors reach a copy only once it listens", () => {
       assert.equal(hc.start_interval, "1s");
     }
     assert.equal(servicesOf(req.composeYaml).worker.healthcheck, undefined);
+  });
+
+  test("with the agent's probe it runs from its mount, live and stand-in alike (deplo#281)", async () => {
+    caps = [...caps, PROBE_CAPABILITY];
+    const req = await deploy();
+    for (const [y, name] of [
+      [req.composeYaml, "web"],
+      [req.standInComposeYaml, "web_next"],
+    ] as const) {
+      const svc = servicesOf(y)[name] as Svc & { volumes?: string[] };
+      assert.deepEqual(svc.healthcheck?.test, [
+        "CMD",
+        "/.deplo-probe/deplo-agent",
+        "probe",
+        "80",
+      ]);
+      assert.deepEqual(svc.volumes, [agentProbeMount()]);
+    }
+    assert.doesNotMatch(req.composeYaml, /CMD-SHELL/);
+    assert.equal(
+      (servicesOf(req.composeYaml).worker as { volumes?: unknown }).volumes,
+      undefined,
+    );
   });
 
   test("its own health check is kept", async () => {

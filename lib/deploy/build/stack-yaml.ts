@@ -7,6 +7,7 @@ import { parseMountPropagation } from "../../apps/volume-model";
 import type { MountPropagation } from "../../types/container";
 import { dataDir } from "../../data-dir";
 import { RESOURCE_COMPOSE_KEYS } from "../resources";
+import { AGENT_PROBE_DIR, runsAgentProbe } from "../port-probe";
 
 export function readStackImageFromYaml(
   stackYaml: string,
@@ -79,6 +80,20 @@ export function parseStackPorts(yamlText: string, service: string): string[] {
       : [];
   } catch {
     return [];
+  }
+}
+
+/** Whether a service of the stack runs the agent's port probe, which a re-render must keep. */
+export function stackRunsAgentProbe(yamlText: string): boolean {
+  try {
+    const doc = yaml.load(yamlText) as {
+      services?: Record<string, { healthcheck?: unknown }>;
+    } | null;
+    return Object.values(doc?.services ?? {}).some((svc) =>
+      runsAgentProbe(svc?.healthcheck),
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -155,7 +170,8 @@ export function parseStackVolumes(
   return list.flatMap((e) => {
     if (typeof e !== "string") return [];
     const [source, mountPath, flag] = e.split(":");
-    if (!source || !mountPath) return [];
+    // The agent's port probe is Deplo's, rendered again with its health check, never the App's storage.
+    if (!source || !mountPath || mountPath === AGENT_PROBE_DIR) return [];
     const opts = (flag ?? "").split(",");
     const readOnly = opts.includes("ro");
     const propagation = parseMountPropagation(opts);

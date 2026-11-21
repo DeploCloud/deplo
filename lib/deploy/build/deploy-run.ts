@@ -346,9 +346,14 @@ async function runDeployment(depId: string): Promise<void> {
       );
     };
 
-    const renderStack = async (image: string, member = spreadOn) => {
+    const renderStack = async (
+      image: string,
+      member = spreadOn,
+      on = member?.serverId ?? serverId,
+    ) => {
       const rendered = await renderDeployStack({
         member,
+        serverId: on,
         project,
         name,
         deployKey,
@@ -750,7 +755,7 @@ async function runDeployment(depId: string): Promise<void> {
         project: { ...agentProject, name: project.name },
         plan: replicaPlan,
         imageRef,
-        render: (m) => renderStack(imageRef, spreadOn && m),
+        render: (m) => renderStack(imageRef, spreadOn && m, m.serverId),
         ready,
         forceRecreate,
       });

@@ -47,9 +47,11 @@ import {
   type FakeClusterHost,
 } from "../infra/agent-client/cluster-test-helpers";
 import {
+  PROBE_CAPABILITY,
   SPREAD_CAPABILITY,
   STOP_SERVICES_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
+import { agentProbeMount } from "../deploy/port-probe";
 import { runDeploymentGuarded } from "../deploy/build/deploy-run";
 import { deployOtherMembers } from "../deploy/build/spread-deploy";
 import { __resetQueueForTest } from "../deploy/deploy-queue";
@@ -912,6 +914,34 @@ test("load balancing runs an App on every server with no Cloudflare once every s
   for (const id of MEMBERS) {
     const services = stackOf(hosts[id].deploys[0]!).services;
     assert.deepEqual(Object.keys(services), ["deplo-web"], "no connector");
+  }
+});
+
+// deplo#281: the copy each server starts beside its live one is checked by that server's agent, not by a shell.
+test("a load-balanced App's copies run the agent's probe on every server, image or no shell", async () => {
+  await db.update(appsTable).set({ replicas: 1 }).where(eq(appsTable.id, APP));
+  await balancing();
+  await answeredThroughZone();
+  for (const id of MEMBERS) hosts[id].capabilities.push(PROBE_CAPABILITY);
+
+  await runDeploymentGuarded("dpl_1");
+
+  for (const id of MEMBERS) {
+    const req = hosts[id].deploys[0]!;
+    for (const yaml of [req.composeYaml, req.standInComposeYaml]) {
+      const svc = Object.values(
+        (parse(yaml) as { services: Record<string, Record<string, unknown>> })
+          .services,
+      )[0]!;
+      assert.deepEqual((svc.healthcheck as { test: string[] }).test, [
+        "CMD",
+        "/.deplo-probe/deplo-agent",
+        "probe",
+        "3000",
+      ]);
+      assert.ok((svc.volumes as string[]).includes(agentProbeMount()));
+      assert.doesNotMatch(yaml, /CMD-SHELL/);
+    }
   }
 });
 
