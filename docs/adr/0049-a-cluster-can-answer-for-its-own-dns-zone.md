@@ -144,6 +144,17 @@ The owner's four decisions after the #228 lab, each its own release but the last
 - **Why a health check at all, rather than only the agent's ready check reading the port** (the issue's first option, read literally): the proxy sends visitors to a container with no health check as soon as it runs, so every deploy beside itself would drop the requests of an App that takes a moment to listen. Nothing else gates it. Traefik 3.7.17's passive health check counts the App's own 500s (one 500 took the only copy out, and the next second answered 503), and retries alone still failed 25%, 12% and 6% of the requests to a copy not listening yet with 2, 3 and 4 attempts. The agent's program is the port check that reads nothing from the image.
 - **No fallback to the in-place deploy.** An image that never listens fails at the deploy's deadline as before, with the same message (an agent test measures both checks). The probe's mount is not the App's storage, so a copy that fails still leaves the live one alone.
 
+### A DNS verdict never takes a serving domain off the routes
+
+- **A check only ever adds a route.** A domain that served (`domains.ssl`) stays routed whatever a later check says: `misconfigured`, `pending`, a lookup that failed, a member whose address Deplo does not know. The verdict shows on the domain screen ("It keeps answering meanwhile") and in Activity, as before. It holds for every check: the cluster's own, the twice-a-day drift check and a person's **Check**.
+- **Pending to valid adds the route**, and only then is the App routed again (#278's reroute, now kept for that one change). A person removing or renaming the domain still takes it off.
+- **Why**: #278 made every status change reroute the App, and #280 removed one false `misconfigured`; any other wrong or transient verdict would again have rendered the stack without the domain on every server, a 404 Deplo made itself. A route that stays while DNS truly points elsewhere costs nothing: no visitor reaches it.
+
+### Cloudflare in front of the zone
+
+- Cloudflare proxies a new record by default, and a proxied `CNAME` into the zone puts Cloudflare in the cluster's place: visitors reach Cloudflare, never the nearest server. When every address the domain resolves to is Cloudflare's, the domain screen and Activity say so: "set its record to DNS only (grey cloud)".
+- The manual's DNS zone page has **DNS at Cloudflare**: the subdomain delegated with `NS` records inside the Cloudflare zone, every record there DNS only, and a bare domain through Cloudflare's CNAME flattening, which keeps health but loses geography, since Cloudflare asks the cluster in the visitor's place.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
