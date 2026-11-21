@@ -162,13 +162,22 @@ async function checkByHand(
   return `${d.name} must list every server of its cluster that answers: ${parts.join(" and ")}`;
 }
 
-/** Whether resolved addresses are the cluster's: every one a member's, at least one. */
+/**
+ * Whether resolved addresses are the cluster's: every one a member's, at least one. A member away has no IPv6 Deplo
+ * knows of while the zone still answers it, so IPv6 is then not judged; null when nothing is left to judge.
+ */
 export function nativeStatus(
   resolved: string[],
-  members: Set<string>,
-): "valid" | "misconfigured" | "pending" {
+  members: { addresses: Set<string>; v6Known: boolean },
+): "valid" | "misconfigured" | "pending" | null {
   if (resolved.length === 0) return "pending";
-  return resolved.every((a) => members.has(a)) ? "valid" : "misconfigured";
+  const judged = members.v6Known
+    ? resolved
+    : resolved.filter((a) => !a.includes(":"));
+  if (judged.length === 0) return null;
+  return judged.every((a) => members.addresses.has(a))
+    ? "valid"
+    : "misconfigured";
 }
 
 /** Answered by the cluster's own zone (ADR-0049): nothing to write, only whether the name reaches the zone yet. */
@@ -183,9 +192,10 @@ async function checkNative(
     lookupHostAddresses(d.name),
     clusterMemberAddresses(clusterId),
   ]);
-  // A name server that just stopped makes the lookup fail: that says nothing about the delegation.
+  // A name server that just stopped can make the lookup fail: that says nothing about the delegation.
   if (found === null) return null;
   const status = nativeStatus(found, members);
+  if (status === null) return null;
   if (status !== d.status) {
     await getDb()
       .update(domainsTable)
@@ -284,7 +294,7 @@ export async function answerDomainStatus(
       resolveHostIpv6(name),
       clusterMemberAddresses(clusterId),
     ]);
-    return nativeStatus([...a, ...aaaa], members);
+    return nativeStatus([...a, ...aaaa], members) ?? "pending";
   }
   const [set, a, aaaa] = await Promise.all([
     clusterAnswerRecordSet(clusterId),

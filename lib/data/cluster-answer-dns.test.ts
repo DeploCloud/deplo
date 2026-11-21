@@ -235,4 +235,23 @@ test("a lookup that fails says nothing about a zone's domain; a real change rout
   assert.equal(await status(), "valid");
   assert.ok(reroutes() > after, "and once valid again");
   assert.deepEqual([...new Set(routed)], ["prj_web"]);
+
+  // A member just stopped: its agent is away, so its IPv6 is unknown, and the zone still answers it for a while.
+  const before = reroutes();
+  __setAgentAddressesForTest(async (id) =>
+    id === "srv_4"
+      ? null
+      : PUBLIC[id]
+        ? [PUBLIC[id], `2001:db8::${id.slice(-1)}`]
+        : null,
+  );
+  __setDnsResolve4ForTest(async () => ["10.0.0.2", "10.0.0.3", "10.0.0.4"]);
+  __setDnsResolve6ForTest(async () => [
+    "2001:db8::2",
+    "2001:db8::3",
+    "2001:db8::4",
+  ]);
+  await sync();
+  assert.equal(await status(), "valid");
+  assert.equal(reroutes(), before, "nothing is routed again");
 });
