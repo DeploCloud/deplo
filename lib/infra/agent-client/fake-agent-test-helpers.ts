@@ -1,4 +1,5 @@
 import net from "node:net";
+import type { Duplex } from "node:stream";
 import { webcrypto } from "node:crypto";
 
 import {
@@ -107,7 +108,7 @@ export async function startFakeAgent(
   >();
   const backends: GrpcServer[] = [];
   const links = new Set<FakeLink>();
-  let inject: (link: WebSocket) => void = () => {};
+  let inject: (link: Duplex) => void = () => {};
   let backendPort = 0;
   let pendingKeyPem = "";
   const issued = await issueAgentServerCert(["127.0.0.1"]);
@@ -234,7 +235,7 @@ export async function startFakeAgent(
       ),
     );
     const injector = server.createConnectionInjector(creds());
-    inject = (ws) => injector.injectConnection(createWebSocketStream(ws));
+    inject = (stream) => injector.injectConnection(stream);
     backends.push(server);
   };
   await serve(first.certPem, first.keyPem);
@@ -302,23 +303,24 @@ export async function startFakeAgent(
       for (const state of open.values()) state.stale = true;
     },
     async link(doorPort, opts = {}) {
-      const { ws, status, retryAfter } = await upgrade(doorPort, {
-        claim: opts.claim ?? agent.fingerprint,
-        forwardedFor: opts.forwardedFor,
-      });
-      if (!ws) {
+      const { ws, stream, closedWith, status, retryAfter } = await upgrade(
+        doorPort,
+        {
+          claim: opts.claim ?? agent.fingerprint,
+          forwardedFor: opts.forwardedFor,
+        },
+      );
+      if (!ws || !stream || !closedWith) {
         const refused = Promise.resolve(0);
         return { status, retryAfter, closed: refused, drop() {}, freeze() {} };
       }
       const pinging = opts.pingEveryMs
         ? setInterval(() => ws.ping(), opts.pingEveryMs)
         : undefined;
-      const closed = new Promise<number>((r) =>
-        ws.once("close", (code) => {
-          clearInterval(pinging);
-          r(code);
-        }),
-      );
+      const closed = closedWith.then((code) => {
+        clearInterval(pinging);
+        return code;
+      });
       const link: FakeLink = {
         status,
         retryAfter,
@@ -331,7 +333,7 @@ export async function startFakeAgent(
       };
       links.add(link);
       void closed.then(() => links.delete(link));
-      inject(ws);
+      inject(stream);
       return link;
     },
     async stop() {
@@ -370,6 +372,9 @@ async function upgrade(
   },
 ): Promise<{
   ws: WebSocket | null;
+  /** Read from the moment the socket exists: the door speaks as soon as it upgrades, as the real agent buffers. */
+  stream?: Duplex;
+  closedWith?: Promise<number>;
   status: number;
   retryAfter: string | null;
 }> {
@@ -383,10 +388,17 @@ async function upgrade(
     protocol ? [protocol] : [],
     { headers, perMessageDeflate: false },
   );
+  const stream = createWebSocketStream(ws);
+  stream.on("error", () => {});
+  const closedWith = new Promise<number>((r) =>
+    ws.once("close", (code) => r(code)),
+  );
   return new Promise((resolve, reject) => {
     // Errors after the answer are the link ending, which `closed` reports.
     ws.on("error", reject);
-    ws.once("open", () => resolve({ ws, status: 101, retryAfter: null }));
+    ws.once("open", () =>
+      resolve({ ws, stream, closedWith, status: 101, retryAfter: null }),
+    );
     ws.once("unexpected-response", (req, res) => {
       req.destroy();
       resolve({
