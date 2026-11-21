@@ -99,6 +99,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cluster_name_servers: { kind: "copy", needsServer: ["server_id"] },
   // A zone's own certificate, its key re-sealed: the new Deplo hands it on and orders none while it is valid.
   cluster_zone_certs: { kind: "copy", rekey: { key_enc: SECRET } },
+  // A name's own certificate over DNS, the same way.
+  cluster_name_certs: { kind: "copy", rekey: { key_enc: SECRET } },
   // Read back from the server agents every pass.
   cluster_zone_states: { kind: "skip", clear: true },
   // Re-keyed with the rest; the new machine's leader has its own key, so every bundle is sealed to it again.

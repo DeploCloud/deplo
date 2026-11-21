@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, inArray, gte } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -66,16 +66,16 @@ async function storedBundleOf(appId: string): Promise<FailoverBundle | null> {
     : null;
 }
 
-/** Names the zone's own certificate serves: every server holds it already, so no bundle carries it (ADR-0049). */
+/** Names whose certificate every server holds already, the zone's or their own, so no bundle carries it (ADR-0049). */
 async function zoneServedHosts(clusterId: string): Promise<Set<string>> {
   const rows = await getDb()
-    .select({ name: domainsTable.name })
+    .select({ name: domainsTable.name, mode: domainsTable.certChallenge })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
     .where(
       and(
         eq(appsTable.clusterId, clusterId),
-        eq(domainsTable.certChallenge, "zone"),
+        inArray(domainsTable.certChallenge, ["zone", "shared"]),
       ),
     );
   return new Set(rows.map((r) => r.name));

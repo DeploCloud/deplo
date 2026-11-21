@@ -169,7 +169,9 @@ export async function domainZoneTargets(
       target,
       cert: {
         mode:
-          d.certChallenge === "zone" || d.certChallenge === "dns"
+          d.certChallenge === "zone" ||
+          d.certChallenge === "shared" ||
+          d.certChallenge === "dns"
             ? d.certChallenge
             : "http",
         check: target

@@ -8,6 +8,7 @@
 - **2, the certificate in the failover bundle: done** (#231). Agent DeploCloud/deplo-agent#63 (Hello `cluster.answers.certificates`, agent v0.5.3-canary.14), leader DeploCloud/deplo-cluster#8 (v0.1.0-canary.7); lab fixes in agent #64 and #65 (v0.5.3-canary.16) and panel #260, #261, #262, #263.
 - **3, the DNS record set: done** (#255).
 - **4, the switch shown: done** (#230), with every refusal below, past 200 Apps included.
+- **5, load balancing without Cloudflare** (#228): decided below, 21 Nov 2026; agent DeploCloud/deplo-agent#72 (Hello `dns.certificates`, released in v0.5.3-canary.23), panel #277 (migration 0271), manual DeploCloud/docs#17.
 
 A failover moves an App, and its address must follow it **without Cloudflare being required**. Today only a domain served by a Cloudflare tunnel follows; a generated name follows by being renamed (it is a server's IP); any other domain keeps pointing at the server that stopped. **A domain of a cluster App can be set to answer on every server of the cluster ("Answer on every server"): each server passes its encrypted traffic, untouched, over the private network to a server that runs the App, and DNS names every healthy server.** Cloudflare stays a supported way to follow, not the only one.
 
@@ -21,7 +22,7 @@ The lab facts below come from Traefik 3.7.17 (the version Deplo installs) with P
 - **HTTPS only.** On port 80 an HTTPS host gets only the redirect to HTTPS and the certificate checks: `routing.ts` puts an HTTPS route on `websecure` alone, and the entrypoint's redirect (priority 1) answers the rest. A plain-HTTP domain's requests would be passed on as plain HTTP, which carries no PROXY header, so its App would lose every visitor's address; it cannot turn the switch on.
 - **Never for a hostname shared by path.** One team may serve `app.com` and `app.com/api` from two Apps (AGENTS.md). Passthrough by SNI sends a whole hostname to one server and cannot split it by path, and a failover may separate two Apps that run together now, so the switch is refused for any hostname another App serves a path of, and a path cannot be added to a hostname that has it on.
 - **Never for a domain the App's Cloudflare tunnel serves**, and such a domain cannot move to the tunnel while it has the switch on. Its visitors reach the App's connector, not the servers' proxies, and the two ways of following would each claim the name's DNS record.
-- **Its App runs on one server.** Each proxy that runs the App's router orders a certificate for its hostnames, and only one server can answer the checks. So its replicas stay together, and load balancing passes it by (a new reason beside `LB_KEEPS_DATA`), even when another of its domains is on Cloudflare. **This step gives no load balancing across servers without Cloudflare**: every server answers the domain, and carries every visitor to the one server that runs the App. Spreading it needs the certificate on every server that runs a replica: #228, to take with [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md).
+- **Its App runs on one server, unless every HTTPS name of it has its certificate on every server.** Each proxy that runs the App's router orders a certificate for its hostnames, and only one server can answer an HTTP check. So an App with a name checked over HTTP keeps its replicas together, and load balancing passes it by (`LB_ANSWERS_EVERYWHERE`), even when another of its domains is on Cloudflare: every server answers the domain, and carries every visitor to the one server that runs the App. A name checked over DNS through the cluster's zone has its certificate on every server, and lifts it: below, step 5 (#228).
 - **At most 200 Apps of a cluster**, the most a server agent's table takes. The switch is refused past it, with the reason. An agent refuses a whole table past its limit, so a table never carries more: the Apps past it would wait rather than take the answer from all the others.
 
 ### The path of a connection
@@ -90,6 +91,24 @@ Deplo computes the record set (one A, and one AAAA where there is IPv6, per serv
 - **manual**: the domain lists every address to add, verification checks that each one is there, and a change of the cluster flags the domain until its records match again.
 - **native**: [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md). The backend is a per-domain choice, so it plugs in without changing the rest.
 
+### Load balancing without Cloudflare (step 5, #228)
+
+The owner's decisions of 21 Nov 2026:
+
+1. **Every certificate checked over DNS follows the zone's model** ([ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md) phase 3): one server renews it, every other server gets it as a file, and another takes the renewal over when that one goes. That was the zone's own certificate; it is now each name's own certificate over DNS too: a name outside the zone with its `_acme-challenge` `CNAME`, a name deeper than one label, and every name of the zone when **One certificate per zone** is off. A name checked only over HTTP keeps its certificate on the server that runs its App, so it keeps that App on one server, and the Replicas setting says so in the person's words, with the `_acme-challenge` record that lifts it.
+2. **No new setting.** The cluster's load balancing (an App that keeps no data runs on every server) reaches an App whose every HTTPS name has its certificate on every server: `LB_ANSWERS_EVERYWHERE` no longer applies to it, and since a domain that answers on every server needs no Cloudflare, `LB_NO_CLOUDFLARE` does not either. `LB_KEEPS_DATA` and compose stacks stay excluded, unchanged. It spreads from its next deploy, as load balancing always has: a running App never moves by itself when Deplo updates.
+3. **Which copy serves a visitor is the answers' own policy**: this server first, then the least busy, past any that refuse (above). With a zone that places visitors (ADR-0049 phase 2), a visitor reaches the nearest server, which serves them from its own copy.
+
+How it is built:
+
+- **A name's own certificate over DNS has a renewer of its own** (`cluster_name_certs`, one row per name, beside `cluster_zone_certs`), chosen as the zone's is (`chooseRenewer`: the same server while it can, another after 10 minutes unreachable, emptied or gone). Its first renewer is the server its App runs on, which already holds the certificate it ordered over DNS until now, so Deplo takes that pair from it and nothing is ordered twice. Only its renewer owns the name's check, and Deplo takes a pair from its renewer only.
+- **`SetClusterZone` carries each name's certificate beside the zone's** (`ClusterZoneCertificate.names`, Hello `dns.certificates`): the renewer's agent keeps an order router for it only while its store holds it or none valid exists anywhere, and every other agent serves it from its routes file. The domain's mode is `shared` (`domains.cert_challenge`), routed with no resolver of its own, as `zone` is. Until every reachable member's agent says `dns.certificates`, such a name keeps the phase 3 way (`dns`: its own certificate on its App's server), and an agent that does not say it is never sent a name's certificate.
+- **No failover bundle carries it**, since every server holds it, as for the zone's.
+- **An App counts as covered** while each of its HTTPS names is served by its Cloudflare tunnel, or by a valid certificate Deplo holds for it, the zone's or its own. A name still waiting for its first certificate keeps the App on one server until a deploy after it arrives.
+- **"Most available" places no such App**: it picks the one Cloudflare connector that runs (`cluster_entrances`), and an App with none is placed by its DNS answers instead.
+
+Rejected: a renewer per zone for every certificate in it (the first renewer of a name already ordered elsewhere would order it again); an "everywhere" switch on the Replicas setting (load balancing already says it, and a switch the person must find would leave Apps on one server that need not be).
+
 ### What the lab showed (step 2)
 
 Traefik 3.7.17, Pebble with 30-minute certificates (`certificatesduration=1`), three servers, a lab DNS standing in for a
@@ -105,10 +124,9 @@ v0.1.0-canary.7, panel v0.8.2-canary.42. Each run powered off the server running
 - **What the lab found and is fixed**: a stale record kept a domain from being routed (the DNS sweep, and the record
   check while a stopped server's IPv6 is unknown), the switch routed the App before the proxies were ready, and a server
   the App left renewed its stale entry every 10 minutes on its account's earlier authorization.
-- **What remains**: a server that comes back after its stale certificate entered its renewal window renews it once at
-  boot, before its agent can drop it (Traefik renews at start). With Let's Encrypt's 90-day certificates that needs a
-  server away for weeks; it costs one certificate of the five a week, never more, as the entry goes 2 minutes later.
-  How that boot-time check passed is not explained: it had a fresh check, and every path the code allows passes it on.
+- **Found later, and fixed** (#266): a server that came back after its stale certificate entered its renewal window
+  renewed it once at boot, before its agent could drop it (Traefik renews at start), very likely on a reused
+  authorization with no check at all. Its boot now takes the entry out of the store before the proxy starts.
 - **Records kept by hand slow a renewal**: while a stopped server stays listed, a certificate check can land on it and
   fail; the proxy retries, and it goes through once the record is removed or the server is back.
 
@@ -144,7 +162,7 @@ v0.1.0-canary.7, panel v0.8.2-canary.42. Each run powered off the server running
 - **A server turns visitors away past its caps**: by default 2,048 connections at once for all these domains, and 128 waiting for one App during a failover. A busy site raises them in the cluster's settings, and Activity says when they were reached. Each open connection costs at most two copy buffers of 32 KB in every agent it crosses.
 - **The App's own server carries its visitors through its agent too.** An agent restart (an update) cuts the open connections of these domains through that agent, on any server, that one included. New connections barely notice, measured on the lab with a request every 50 ms through eu-2 to an App on eu-1: restarting eu-2's agent, the one passing the domain on, refused one request and the next answered 0.23 s later; restarting eu-1's, the App's own, which also runs the cluster's leader there, failed none and held one for 1.2 s, then answered. (Before the agent read the health checks docker keeps, that second restart held new connections 4.5 s, from the 3 s it then waited for a healthy database.)
 - **A visitor may wait up to 30 s during a failover**, where today they would get an error.
-- **Such an App keeps its replicas on one server**, and load balancing passes it by, until #228.
+- **Such an App keeps its replicas on one server** while one of its HTTPS names is checked over HTTP, and load balancing passes it by; with every name checked over DNS through the cluster's zone it runs on every server, with no Cloudflare (step 5).
 - **The store's change can add one restart of a server's proxy**, recorded in Activity, up to two months after a failover: only when that proxy has not started again before the renewal window.
 - **Generated names are out of scope.** A generated name is one server's IP by construction; it keeps following by being renamed.
 

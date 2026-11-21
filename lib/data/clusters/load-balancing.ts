@@ -5,12 +5,15 @@ import { appDisk } from "../../apps/failover-copy";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
+  clusterDnsZones,
   clusterEntrances,
   clusterMembers as membersTable,
+  clusterZoneCerts,
 } from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { appConnectorService } from "../../deploy/app-connector";
+import { zoneCertCovers } from "../../deploy/dns-challenge";
 import { appKeepsDataOnDisk } from "../../deploy/replicas";
 import { STOP_SERVICES_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { connectAgent } from "../../infra/agent-client/connect";
@@ -25,6 +28,7 @@ import { appHasTunnel } from "./app-tunnel";
 import { clusterMemberFacts } from "./facts";
 import { listWorkloadPlacements } from "./placement";
 import { getClusterById } from "./roster";
+import { sharedCertNames } from "./zone-certs";
 
 // Load balancing: an App that keeps no data runs on every server of its cluster, each beside its Cloudflare
 // connector. Cloudflare sends a visitor to the connector nearest them; "most available" runs one connector only.
@@ -43,17 +47,99 @@ export const LB_KEEPS_DATA =
 export const LB_ANSWERS_EVERYWHERE =
   "A domain of it answers on every server, which carries every visitor to the one server that runs it.";
 
-/** Why load balancing passes this App by, or null when it spreads it. Its cluster must have it on. */
+/** The reason an App stays on one server: these names have their certificate there only, until checked over DNS. */
+export function lbOneServerNames(names: string[]): string {
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const have = names.length === 1 ? "has its" : "have their";
+  return `It runs on one server: ${list} ${have} certificate on that server only. Add the _acme-challenge record its domain offers, and from its next deploy it runs on every server.`;
+}
+
+/**
+ * Why load balancing passes this App by, or null when it spreads it. Its cluster must have it on. An App with a
+ * domain that answers on every server spreads, with no Cloudflare, once every server holds each HTTPS name's
+ * certificate (ADR-0048 step 5): `oneServer` is the names still on one server.
+ */
 export function loadBalancingSkips(
   app: App,
   hasTunnel: boolean,
   answersEverywhere = false,
+  oneServer?: string[],
 ): string | null {
   if (appDisk(app) !== null || appKeepsDataOnDisk(app) || usesComposeStack(app))
     return LB_KEEPS_DATA;
-  // Its certificate is on one server only, so its replicas stay there (ADR-0048, until #228).
-  if (answersEverywhere) return LB_ANSWERS_EVERYWHERE;
+  if (answersEverywhere) {
+    if (!oneServer) return LB_ANSWERS_EVERYWHERE;
+    return oneServer.length > 0 ? lbOneServerNames(oneServer) : null;
+  }
   return hasTunnel ? null : LB_NO_CLOUDFLARE;
+}
+
+/**
+ * The App's HTTPS names whose certificate only its own server holds: every custom one but those its Cloudflare tunnel
+ * serves, the zone's certificate covers or its own shared certificate does, each valid now. A generated name follows
+ * its server by being renamed (ADR-0048), so it is not one of them.
+ */
+export async function namesOnOneServer(appId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({
+      name: domainsTable.name,
+      ssl: domainsTable.ssl,
+      source: domainsTable.source,
+      tunnel: domainsTable.tunnel,
+      mode: domainsTable.certChallenge,
+      zoneId: domainsTable.dnsZoneId,
+    })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, appId));
+  const held = await heldCertificates(appId);
+  return [
+    ...new Set(
+      rows
+        .filter(
+          (d) =>
+            d.ssl &&
+            d.source !== "auto" &&
+            d.tunnel !== true &&
+            !((d.mode === "zone" || d.mode === "shared") && held.has(d.name)),
+        )
+        .map((d) => d.name),
+    ),
+  ].sort();
+}
+
+/** The App's names every server of its cluster holds a valid certificate for: the zone's or a name's own. */
+async function heldCertificates(appId: string): Promise<Set<string>> {
+  const [app] = await getDb()
+    .select({ clusterId: appsTable.clusterId })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  if (!app?.clusterId) return new Set();
+  const now = Date.now();
+  const zones = await getDb()
+    .select({ name: clusterDnsZones.name, notAfter: clusterZoneCerts.notAfter })
+    .from(clusterZoneCerts)
+    .innerJoin(clusterDnsZones, eq(clusterDnsZones.id, clusterZoneCerts.zoneId))
+    .where(eq(clusterDnsZones.clusterId, app.clusterId));
+  const live = zones
+    .filter((z) => z.notAfter && Date.parse(z.notAfter) > now)
+    .map((z) => z.name);
+  const out = new Set(await sharedCertNames(app.clusterId));
+  const names = await getDb()
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(
+      and(
+        eq(domainsTable.appId, appId),
+        eq(domainsTable.certChallenge, "zone"),
+      ),
+    );
+  for (const d of names)
+    if (live.some((z) => zoneCertCovers(z, d.name))) out.add(d.name);
+  return out;
 }
 
 /** Whether the App runs on every server of its cluster because the cluster balances its visitors. */
@@ -64,6 +150,19 @@ export async function appLoadBalanced(
   if (!app.clusterId) return false;
   const c = cluster ?? (await getClusterById(app.clusterId));
   if (!c?.loadBalancingEnabled || !c.replicationEnabled) return false;
+  return (await appLoadBalancingSkips(app)) === null;
+}
+
+/** The names that alone keep an App of a load-balanced cluster on one server, for its Replicas setting to name. */
+export async function namesKeepingAppOnOneServer(
+  app: App,
+  cluster?: Cluster | null,
+): Promise<string[]> {
+  if (!app.clusterId) return [];
+  const c = cluster ?? (await getClusterById(app.clusterId));
+  if (!c?.loadBalancingEnabled || !c.replicationEnabled) return [];
+  if (appDisk(app) !== null || appKeepsDataOnDisk(app) || usesComposeStack(app))
+    return [];
   const [answering] = await getDb()
     .select({ id: domainsTable.id })
     .from(domainsTable)
@@ -74,9 +173,26 @@ export async function appLoadBalanced(
       ),
     )
     .limit(1);
-  return (
-    loadBalancingSkips(app, await appHasTunnel(app.id), Boolean(answering)) ===
-    null
+  return answering ? namesOnOneServer(app.id) : [];
+}
+
+/** Why load balancing passes the App by on its cluster, or null when it runs it on every server. */
+export async function appLoadBalancingSkips(app: App): Promise<string | null> {
+  const [answering] = await getDb()
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .where(
+      and(
+        eq(domainsTable.appId, app.id),
+        eq(domainsTable.answersEverywhere, true),
+      ),
+    )
+    .limit(1);
+  return loadBalancingSkips(
+    app,
+    await appHasTunnel(app.id),
+    Boolean(answering),
+    answering ? await namesOnOneServer(app.id) : undefined,
   );
 }
 
@@ -222,7 +338,13 @@ async function balancedApps(cluster: Cluster): Promise<App[]> {
   const out: App[] = [];
   for (const r of rows) {
     const app = await loadAppGraph(r.id);
-    if (app && (await appLoadBalanced(app, cluster))) out.push(app);
+    // Only an App with a Cloudflare connector has one to choose: one without is placed by its DNS answers.
+    if (
+      app &&
+      (await appHasTunnel(app.id)) &&
+      (await appLoadBalanced(app, cluster))
+    )
+      out.push(app);
   }
   return out;
 }

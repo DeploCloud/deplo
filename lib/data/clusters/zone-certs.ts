@@ -1,7 +1,7 @@
 import "server-only";
 
 import { X509Certificate, createHash, createPrivateKey } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type {
   ClusterZoneCertificateState,
@@ -10,6 +10,8 @@ import type {
 import { decryptSecretOrThrow, encryptSecret } from "../../crypto";
 import { getDb } from "../../db/client";
 import {
+  clusterDnsZones,
+  clusterNameCerts,
   clusterZoneCerts,
   clusters as clustersTable,
 } from "../../db/schema/control-plane/clusters";
@@ -20,19 +22,25 @@ import {
   withDnsChallenge,
 } from "../../deploy/traefik-cluster";
 import {
+  certKey,
   chooseRenewer,
   clusterCanCheckOverDns,
+  clusterCanShareCerts,
   domainModes,
   renewersLast,
   zoneCertErrorWords,
   zoneCertificatesFor,
   zoneChallenges,
+  type NamePlanCert,
   type ZoneCertDomain,
   type ZoneCertMember,
   type ZonePlanZone,
 } from "../../deploy/zone-certs";
 import { nowIso } from "../../ids";
-import { DNS_CHALLENGE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import {
+  DNS_CERTIFICATES_CAPABILITY,
+  DNS_CHALLENGE_CAPABILITY,
+} from "../../infra/agent-client/hello-capabilities";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { serverSupports } from "../../infra/agent-client/preflight";
 import type { ZoneCertificateView } from "../../types/cluster-dns";
@@ -139,7 +147,14 @@ export async function zoneCertMembers(
             return false;
           });
     } else if (!up) capable = proxies().get(m.serverId)?.on ?? true;
-    out.push({ ...m, fingerprint: m.fingerprint, capable, reachable: up });
+    const shares = caps?.includes(DNS_CERTIFICATES_CAPABILITY) ?? false;
+    out.push({
+      ...m,
+      fingerprint: m.fingerprint,
+      capable,
+      reachable: up,
+      shares,
+    });
   }
   return out;
 }
@@ -178,6 +193,7 @@ export type ZoneCertDomainRow = {
 };
 
 type CertRow = typeof clusterZoneCerts.$inferSelect;
+type NameRow = typeof clusterNameCerts.$inferSelect;
 
 /** What one pass of the zone hands each member about certificates, and how it takes their answers back. */
 export type ZoneCertPass = {
@@ -204,6 +220,7 @@ export async function zoneCertPass(input: {
   const now = Date.now();
   const rows = await certRows(input.zones.map((z) => z.id));
   const eligible = clusterCanCheckOverDns(input.members);
+  const shared = eligible && clusterCanShareCerts(input.members);
   const domains: ZoneCertDomain[] = input.domains.map((d) => ({
     id: d.domainId,
     name: d.name,
@@ -218,7 +235,11 @@ export async function zoneCertPass(input: {
       .filter((d) => (d.certProvider ?? "letsencrypt") === "letsencrypt")
       .map((d) => d.domainId),
   );
-  const all = domainModes(domains, { wildcard: input.wildcard, eligible });
+  const all = domainModes(domains, {
+    wildcard: input.wildcard,
+    eligible,
+    shared,
+  });
   const modes = new Map(
     [...all].map(([id, m]) => [id, managed.has(id) ? m : "http"] as const),
   );
@@ -250,13 +271,16 @@ export async function zoneCertPass(input: {
       pair: pairOf(row),
     });
   }
+  const names = await namePlan(input, domains, modes, now);
   const fpOf = new Map(input.members.map((m) => [m.serverId, m.fingerprint]));
+  const sharesOf = new Map(input.members.map((m) => [m.serverId, m.shares]));
   return {
     modes,
     challenges: zoneChallenges({
       zones,
       domains,
       modes,
+      names,
       fingerprintOf: (id) => fpOf.get(id) ?? null,
     }),
     certificatesFor: (serverId) =>
@@ -265,13 +289,30 @@ export async function zoneCertPass(input: {
         zones,
         domains,
         modes,
-        reported: (zone) => reported().get(`${serverId} ${zone}`),
+        names,
+        shares: sharesOf.get(serverId) ?? false,
+        reported: (key) => reported().get(`${serverId} ${key}`),
         now: Date.now(),
       }),
-    order: (members) => renewersLast(members, zones),
+    order: (members) => renewersLast(members, [...zones, ...names]),
     record: async (serverId, states) => {
       let fresh = false;
       for (const st of states) {
+        if (st.names?.length) {
+          const n = names.find(
+            (x) => x.zone === st.zone && x.name === st.names[0],
+          );
+          if (!n) continue;
+          if (st.sha256) reported().set(`${serverId} ${certKey(n)}`, st.sha256);
+          // Only the renewer's, as for the zone's own.
+          if (n.renewerServerId !== serverId) continue;
+          if (st.certPem && st.keyPem && (await takeNamePair(n, st, input)))
+            fresh = true;
+          await recordNameOrder(n, st, input).catch((e) =>
+            console.warn(`[zone-certs] ${n.name}: ${messageOf(e)}`),
+          );
+          continue;
+        }
         const z = zones.find((x) => x.name === st.zone);
         if (!z) continue;
         if (st.sha256) reported().set(`${serverId} ${z.name}`, st.sha256);
@@ -293,6 +334,186 @@ export async function zoneCertPass(input: {
   };
 }
 
+/**
+ * Each shared name's own certificate: its renewer (first the server its App runs on, which holds the one it ordered
+ * over DNS until now), kept while it can renew, and the pair Deplo holds. A name no longer shared loses its row.
+ */
+async function namePlan(
+  input: {
+    clusterId: string;
+    clusterName: string;
+    zones: { id: string; name: string }[];
+    members: ZoneCertMember[];
+  },
+  domains: ZoneCertDomain[],
+  modes: Map<string, CertChallenge>,
+  now: number,
+): Promise<NamePlanCert[]> {
+  const zoneIds = input.zones.map((z) => z.id);
+  if (zoneIds.length === 0) return [];
+  const rows = await getDb()
+    .select()
+    .from(clusterNameCerts)
+    .where(inArray(clusterNameCerts.zoneId, zoneIds));
+  const want = domains.filter((d) => modes.get(d.id) === "shared");
+  for (const r of rows)
+    if (!want.some((d) => d.zoneId === r.zoneId && d.name === r.name))
+      await getDb()
+        .delete(clusterNameCerts)
+        .where(
+          and(
+            eq(clusterNameCerts.zoneId, r.zoneId),
+            eq(clusterNameCerts.name, r.name),
+          ),
+        );
+  const out: NamePlanCert[] = [];
+  for (const d of want) {
+    if (out.some((n) => n.name === d.name)) continue;
+    const row =
+      rows.find((r) => r.zoneId === d.zoneId && r.name === d.name) ?? null;
+    const pick = chooseRenewer(
+      row ?? { renewerServerId: d.serverId, renewerLostAt: null },
+      input.members,
+      now,
+    );
+    if (
+      !row ||
+      row.renewerServerId !== pick.serverId ||
+      row.renewerLostAt !== pick.lostAt
+    ) {
+      await saveNameRow(d.zoneId, d.name, {
+        renewerServerId: pick.serverId,
+        renewerLostAt: pick.lostAt,
+      });
+      if (row?.renewerServerId && pick.serverId !== row.renewerServerId)
+        await recordClusterActivity(
+          input.clusterId,
+          `Another server of ${input.clusterName} now renews the certificate of ${d.name}`,
+        );
+    }
+    out.push({
+      zoneId: d.zoneId,
+      zone: d.zone,
+      name: d.name,
+      renewerServerId: pick.serverId,
+      sha256: row?.sha256 ?? null,
+      notAfter: row?.notAfter ?? null,
+      pair: pairOf(row),
+    });
+  }
+  return out;
+}
+
+async function saveNameRow(
+  zoneId: string,
+  name: string,
+  set: Partial<Omit<NameRow, "zoneId" | "name">>,
+): Promise<void> {
+  await getDb()
+    .insert(clusterNameCerts)
+    .values({ zoneId, name, ...set })
+    .onConflictDoUpdate({
+      target: [clusterNameCerts.zoneId, clusterNameCerts.name],
+      set,
+    });
+}
+
+/** Keeps a name's pair its renewer reported when it is that name's, whole, and lasts longer than Deplo's. */
+async function takeNamePair(
+  n: NamePlanCert,
+  st: ClusterZoneCertificateState,
+  ctx: { clusterId: string; clusterName: string },
+): Promise<boolean> {
+  const read = readZonePair(st.certPem, st.keyPem);
+  if (
+    !read ||
+    read.sha256 !== st.sha256 ||
+    read.names.length !== 1 ||
+    read.names[0] !== n.name
+  )
+    return false;
+  if (n.notAfter && Date.parse(read.notAfter) <= Date.parse(n.notAfter))
+    return false;
+  const first = n.sha256 == null;
+  const at = nowIso();
+  await saveNameRow(n.zoneId, n.name, {
+    certPem: st.certPem,
+    keyEnc: encryptSecret(st.keyPem),
+    sha256: read.sha256,
+    notAfter: read.notAfter,
+    ...(first ? { issuedAt: at } : {}),
+    renewedAt: at,
+    error: "",
+    errorAt: null,
+  });
+  n.sha256 = read.sha256;
+  n.notAfter = read.notAfter;
+  n.pair = { certPem: st.certPem, keyPem: st.keyPem };
+  await recordClusterActivity(
+    ctx.clusterId,
+    first
+      ? `Every server of ${ctx.clusterName} now holds the certificate of ${n.name}, valid until ${read.notAfter.slice(0, 10)}`
+      : `The certificate of ${n.name} was renewed, valid until ${read.notAfter.slice(0, 10)}`,
+  );
+  return true;
+}
+
+/** The renewer's word on a name's order: a new failure goes to the cluster's Activity once. */
+async function recordNameOrder(
+  n: NamePlanCert,
+  st: ClusterZoneCertificateState,
+  ctx: { clusterId: string },
+): Promise<void> {
+  const [row] = await getDb()
+    .select({
+      error: clusterNameCerts.error,
+      errorAt: clusterNameCerts.errorAt,
+      ordering: clusterNameCerts.ordering,
+    })
+    .from(clusterNameCerts)
+    .where(
+      and(
+        eq(clusterNameCerts.zoneId, n.zoneId),
+        eq(clusterNameCerts.name, n.name),
+      ),
+    );
+  const errorAt = st.error ? new Date(st.errorAtUnixMs).toISOString() : null;
+  if (
+    row &&
+    row.error === st.error &&
+    row.errorAt === errorAt &&
+    row.ordering === st.ordering
+  )
+    return;
+  await saveNameRow(n.zoneId, n.name, {
+    error: st.error,
+    errorAt,
+    ordering: st.ordering,
+  });
+  if (st.error && errorAt !== row?.errorAt)
+    await recordClusterActivity(
+      ctx.clusterId,
+      `The certificate of ${n.name} could not be issued: ${zoneCertErrorWords(st.error)}`,
+    );
+}
+
+/** The names whose own certificate every server of the cluster holds now, valid: no bundle carries them. */
+export async function sharedCertNames(clusterId: string): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({
+      name: clusterNameCerts.name,
+      notAfter: clusterNameCerts.notAfter,
+    })
+    .from(clusterNameCerts)
+    .innerJoin(clusterDnsZones, eq(clusterDnsZones.id, clusterNameCerts.zoneId))
+    .where(eq(clusterDnsZones.clusterId, clusterId));
+  return new Set(
+    rows
+      .filter((r) => r.notAfter && Date.parse(r.notAfter) > Date.now())
+      .map((r) => r.name),
+  );
+}
+
 async function certRows(zoneIds: string[]): Promise<Map<string, CertRow>> {
   if (zoneIds.length === 0) return new Map();
   const rows = await getDb()
@@ -312,7 +533,7 @@ async function saveRow(
     .onConflictDoUpdate({ target: clusterZoneCerts.zoneId, set });
 }
 
-function pairOf(row: CertRow | null): ZonePlanZone["pair"] {
+function pairOf(row: CertRow | NameRow | null): ZonePlanZone["pair"] {
   if (!row?.certPem || !row.keyEnc) return null;
   try {
     return {

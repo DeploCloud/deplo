@@ -62,14 +62,15 @@ export function toRoutableDomain(
   // Passed on by every server of the cluster, it reaches the App's proxy on the internal entrypoint (ADR-0048).
   if (d.answersEverywhere && tls.tls)
     tls.entrypoint = `${tls.entrypoint},${ANSWER_ENTRYPOINT}`;
-  // The cluster's zone checks its certificate over DNS: its own certificate serves it, or one ordered over DNS.
+  // The cluster's zone checks its certificate over DNS: the zone's or its own, renewed by one server and held by
+  // every other, or its own ordered by this App's server over DNS.
   if (
     d.answersEverywhere &&
     d.certChallenge &&
     tls.tls &&
     (d.certProvider ?? "letsencrypt") === "letsencrypt"
   )
-    tls.certResolver = d.certChallenge === "zone" ? "" : DNS_CHALLENGE_RESOLVER;
+    tls.certResolver = d.certChallenge === "dns" ? DNS_CHALLENGE_RESOLVER : "";
   return {
     name: d.name,
     port: d.port ?? null,

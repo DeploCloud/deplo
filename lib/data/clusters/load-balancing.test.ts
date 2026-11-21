@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import { cleanLoadBalancingMode } from "../../types/cluster";
 import {
   ENTRANCE_MARGIN,
+  LB_ANSWERS_EVERYWHERE,
   LB_KEEPS_DATA,
   LB_NO_CLOUDFLARE,
   balancedReplicas,
   chooseEntrance,
+  lbOneServerNames,
   loadBalancingSkips,
   roomOf,
 } from "./load-balancing";
@@ -39,6 +41,33 @@ test("load balancing reaches an App on a Cloudflare domain that keeps nothing on
     loadBalancingSkips(app({ ports: [{ published: 22 } as never] }), true),
     LB_KEEPS_DATA,
     "a published port is held by one copy",
+  );
+});
+
+test("a domain every server answers needs no Cloudflare once every server holds each name's certificate", () => {
+  assert.equal(loadBalancingSkips(app(), false, true, []), null);
+  assert.equal(
+    loadBalancingSkips(app(), true, true, ["shop.example.com"]),
+    lbOneServerNames(["shop.example.com"]),
+  );
+  assert.equal(loadBalancingSkips(app(), true, true), LB_ANSWERS_EVERYWHERE);
+  // Data and compose stacks stay on one server, whatever their names.
+  assert.equal(
+    loadBalancingSkips(
+      app({ volumes: [{ type: "named", name: "data" } as never] }),
+      false,
+      true,
+      [],
+    ),
+    LB_KEEPS_DATA,
+  );
+  assert.equal(
+    loadBalancingSkips(app({ source: "compose" }), false, true, []),
+    LB_KEEPS_DATA,
+  );
+  assert.equal(
+    lbOneServerNames(["a.example.com", "b.example.com"]),
+    "It runs on one server: a.example.com and b.example.com have their certificate on that server only. Add the _acme-challenge record its domain offers, and from its next deploy it runs on every server.",
   );
 });
 

@@ -29,6 +29,7 @@ const member = (
   emptying: false,
   capable: true,
   reachable: true,
+  shares: false,
   ...over,
 });
 const domain = (
@@ -286,4 +287,73 @@ test("a failed order is said in plain words", () => {
     /too many/,
   );
   assert.match(zoneCertErrorWords("something else"), /refused/);
+});
+
+test("a shared name's check is its renewer's, and only an agent that holds such certificates is told of it", () => {
+  const domains = [
+    domain("d1", "shop.example.com", {
+      inside: false,
+      cnameSeen: true,
+      serverId: "s2",
+    }),
+  ];
+  const modes = domainModes(domains, {
+    wildcard: true,
+    eligible: true,
+    shared: true,
+  });
+  assert.equal(modes.get("d1"), "shared");
+  const names = [
+    {
+      zoneId: "z1",
+      zone: "lab.test",
+      name: "shop.example.com",
+      renewerServerId: "s3",
+      sha256: "ab".repeat(32),
+      notAfter: new Date(NOW + 86_400_000).toISOString(),
+      pair: { certPem: "CERT", keyPem: "KEY" },
+    },
+  ];
+  const challenges = zoneChallenges({
+    zones: [zone()],
+    domains,
+    modes,
+    names,
+    fingerprintOf: fp,
+  });
+  assert.equal(
+    challenges.find((c) => c.asked === "_acme-challenge.shop.example.com")
+      ?.ownerFingerprint,
+    fp("s3"),
+  );
+  const certs = (serverId: string, shares: boolean, reported?: string) =>
+    zoneCertificatesFor({
+      serverId,
+      zones: [zone()],
+      domains,
+      modes,
+      names,
+      shares,
+      reported: () => reported,
+      now: NOW,
+    });
+  assert.deepEqual(certs("s1", false), []);
+  const [held] = certs("s1", true);
+  assert.deepEqual(
+    [held.names, held.renew, held.keyPem],
+    [["shop.example.com"], false, "KEY"],
+  );
+  assert.equal(
+    certs("s1", true, "ab".repeat(32))[0].keyPem,
+    "",
+    "the key goes once",
+  );
+  assert.equal(certs("s3", true)[0].renew, true);
+  assert.deepEqual(
+    renewersLast(
+      [{ serverId: "s3" }, { serverId: "s1" }],
+      [zone({ renewerServerId: null }), ...names],
+    ).map((m) => m.serverId),
+    ["s1", "s3"],
+  );
 });

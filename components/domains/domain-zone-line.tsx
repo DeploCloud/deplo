@@ -35,7 +35,7 @@ export type DomainZone = {
   zone: string;
   target: string | null;
   cert?: {
-    mode: "zone" | "dns" | "http";
+    mode: "zone" | "shared" | "dns" | "http";
     check: { name: string; target: string; seen: boolean } | null;
   };
 };
@@ -183,20 +183,17 @@ function DomainCertLine({
         <span className="font-mono text-foreground">*.{zone}</span>
       </span>
     );
+  const throughZone = (
+    <span className="flex basis-full items-center gap-1.5">
+      <ShieldCheck className="size-3.5 shrink-0" />
+      {cert.mode === "shared"
+        ? "Its certificate is checked through the zone, and every server of the cluster holds it."
+        : "Its certificate is checked through the zone."}
+    </span>
+  );
   if (!cert.check)
-    return cert.mode === "dns" ? (
-      <span className="flex basis-full items-center gap-1.5">
-        <ShieldCheck className="size-3.5 shrink-0" />
-        Its certificate is checked through the zone.
-      </span>
-    ) : null;
-  if (cert.check.seen)
-    return (
-      <span className="flex basis-full items-center gap-1.5">
-        <ShieldCheck className="size-3.5 shrink-0" />
-        Its certificate is checked through the zone.
-      </span>
-    );
+    return cert.mode === "dns" || cert.mode === "shared" ? throughZone : null;
+  if (cert.check.seen) return throughZone;
   return (
     <span className="flex basis-full flex-wrap items-center gap-x-1.5 gap-y-1">
       <ShieldCheck className="size-3.5 shrink-0" />
@@ -210,7 +207,7 @@ function DomainCertLine({
       </code>
       <CopyButton value={cert.check.target} className="size-6" />
       <InfoTip
-        content="With it, the certificate is checked through the zone instead of over HTTP."
+        content="With it, the certificate is checked through the zone instead of over HTTP, and every server holds it, so load balancing can run the app on all of them."
         docs="clusters.dnsZoneCertCname"
       />
       {canManage && (

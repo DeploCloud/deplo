@@ -30,8 +30,11 @@ export interface Domain {
   tunnel?: boolean;
   /** Every server of the App's cluster answers it (ADR-0048). */
   answersEverywhere?: boolean;
-  /** How its certificate is checked when not over HTTP: the zone's own certificate, or its own over DNS (ADR-0049). */
-  certChallenge?: "zone" | "dns";
+  /**
+   * How its certificate is checked when not over HTTP: the zone's own certificate, its own over DNS held by every
+   * server (`shared`), or its own over DNS on its App's server (ADR-0049, ADR-0048 step 5).
+   */
+  certChallenge?: "zone" | "shared" | "dns";
   /** It answers everywhere, but its certificate has not reached the App's failover bundle yet. */
   failoverWaitsForCertificate?: boolean;
   createdAt: string;

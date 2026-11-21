@@ -15,7 +15,12 @@ import {
   recordPlacement,
 } from "./placement";
 import { clusterMemberFacts } from "./facts";
-import { appLoadBalanced, balancedReplicas } from "./load-balancing";
+import {
+  appLoadBalanced,
+  balancedReplicas,
+  lbOneServerNames,
+  namesKeepingAppOnOneServer,
+} from "./load-balancing";
 import { getClusterById } from "./roster";
 
 // Replicas across the members of a cluster (spec #176): an App with a Cloudflare domain spreads them, because
@@ -28,7 +33,9 @@ export type ReplicaSpread =
   | { kind: "single" }
   // `replicas`: how many to place in all, more than the App's own count when load balancing runs it everywhere.
   | { kind: "spread"; servers: number; replicas: number; balanced: boolean }
-  | { kind: "together"; why: "no_cloudflare" | "agent" };
+  | { kind: "together"; why: "no_cloudflare" | "agent" }
+  // Load balancing would run it everywhere but for these names, whose certificate is on one server (#228).
+  | { kind: "together"; why: "one_server"; names: string[] };
 
 export const SPREAD_NO_CLOUDFLARE =
   "Its replicas stay on one server: without a Cloudflare domain, visitors reach only that one.";
@@ -56,10 +63,15 @@ const distinct = (members: (string | null)[]) => [
 export async function replicaSpread(app: App): Promise<ReplicaSpread> {
   if (!app.clusterId || usesComposeStack(app)) return { kind: "single" };
   const balanced = await appLoadBalanced(app);
-  if (app.replicas < 2 && !balanced) return { kind: "single" };
   const members = await clusterMemberFacts(app.clusterId);
   if (members.length < 2) return { kind: "single" };
-  if (!(await appHasTunnel(app.id)))
+  if (!balanced) {
+    const names = await namesKeepingAppOnOneServer(app);
+    if (names.length > 0) return { kind: "together", why: "one_server", names };
+  }
+  if (app.replicas < 2 && !balanced) return { kind: "single" };
+  // A balanced App reaches every server through its tunnel, or through domains every server answers and holds.
+  if (!balanced && !(await appHasTunnel(app.id)))
     return { kind: "together", why: "no_cloudflare" };
   const able = await Promise.all(
     members.map((m) => serverSupports(m.id, SPREAD_CAPABILITY)),
@@ -95,6 +107,8 @@ export async function replicaSpreadNote(app: App): Promise<string | null> {
     return s.servers > 1 ? balancedSentence(s.servers) : null;
   if (s.kind === "spread")
     return s.servers > 1 ? spreadSentence(s.servers) : null;
+  if (s.kind === "together" && s.why === "one_server")
+    return lbOneServerNames(s.names);
   if (s.kind === "together")
     return s.why === "agent" ? SPREAD_AGENT : SPREAD_NO_CLOUDFLARE;
   return null;

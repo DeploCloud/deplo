@@ -79,6 +79,7 @@ const CONTROL_PLANE = [
   "cluster_name_servers",
   "cluster_zone_states",
   "cluster_zone_certs",
+  "cluster_name_certs",
   "cluster_image_copies",
   "image_architectures",
   "failover_bundle_pushes",

@@ -341,6 +341,31 @@ export const clusterZoneCerts = pgTable("cluster_zone_certs", {
   ordering: boolean("ordering").notNull().default(false),
 });
 
+// A name's own certificate over DNS, renewed by one server and held by every other (ADR-0048 step 5, #228).
+export const clusterNameCerts = pgTable(
+  "cluster_name_certs",
+  {
+    zoneId: text("zone_id")
+      .notNull()
+      .references(() => clusterDnsZones.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    renewerServerId: text("renewer_server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    renewerLostAt: isoTimestamptz("renewer_lost_at"),
+    certPem: text("cert_pem"),
+    keyEnc: text("key_enc"),
+    sha256: text("sha256"),
+    notAfter: isoTimestamptz("not_after"),
+    issuedAt: isoTimestamptz("issued_at"),
+    renewedAt: isoTimestamptz("renewed_at"),
+    error: text("error").notNull().default(""),
+    errorAt: isoTimestamptz("error_at"),
+    ordering: boolean("ordering").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.zoneId, t.name] })],
+);
+
 // How each server answers for its cluster's zone, as its agent last said. No foreign key to the cluster: a deleted
 // cluster's rows are how the sweep finds the servers to stop.
 export const clusterZoneStates = pgTable(
