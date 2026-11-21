@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import * as cloudflare from "../../cloudflare/tunnel-api";
 import { getDb } from "../../db/client";
@@ -27,6 +27,7 @@ import {
 } from "../domains/dns-resolve";
 import { withKeyedLock } from "../keyed-mutex";
 import { serverAddresses } from "../servers/addresses";
+import { oneMemberPerAddress } from "../../clusters/shared-addresses";
 import { getServerById } from "../servers/roster";
 
 // https://deplo.build/docs/operations/clusters/addresses - ADR-0048 step 3: DNS lists every healthy server.
@@ -47,12 +48,14 @@ export async function clusterAnswerRecordSet(
       lease: clusterMembers.leaseState,
     })
     .from(clusterMembers)
-    .where(eq(clusterMembers.clusterId, clusterId));
+    .where(eq(clusterMembers.clusterId, clusterId))
+    .orderBy(asc(clusterMembers.joinedAt), asc(clusterMembers.serverId));
   const servers = await Promise.all(
     members.map(async (m) => {
       const server = await getServerById(m.serverId);
       const addresses = await serverAddresses(server);
       return {
+        name: m.serverId,
         id: m.serverId,
         // The leader's word first: it hears a stopped server before Deplo's own status does.
         online: server?.status === "online" && m.lease === "ok",
@@ -63,7 +66,8 @@ export async function clusterAnswerRecordSet(
       };
     }),
   );
-  return answerRecordSet(servers);
+  // One address names one member, the one that joined first (ADR-0050).
+  return answerRecordSet(oneMemberPerAddress(servers).members);
 }
 
 type AnswerDomain = {

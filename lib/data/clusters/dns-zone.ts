@@ -33,6 +33,7 @@ import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { withKeyedLock } from "../keyed-mutex";
 import { serverAddresses } from "../servers/addresses";
+import { oneMemberPerAddress } from "../../clusters/shared-addresses";
 import { getServerById } from "../servers/roster";
 import type { ClusterDnsView, DelegationCheck } from "../../types/cluster-dns";
 import { recordClusterActivity } from "./cluster-activity";
@@ -90,7 +91,7 @@ async function memberFacts(clusterId: string): Promise<ZoneMemberFacts[]> {
     .orderBy(asc(clusterMembers.joinedAt), asc(clusterMembers.serverId));
   const geo = await shippedGeo();
   const placed = await placeRows(rows.map((r) => r.serverId));
-  return Promise.all(
+  const facts = await Promise.all(
     rows.map(async (r) => {
       const server = await getServerById(r.serverId);
       const a = await serverAddresses(server);
@@ -108,6 +109,28 @@ async function memberFacts(clusterId: string): Promise<ZoneMemberFacts[]> {
       };
     }),
   );
+  // Its answers, glue and name servers never name one address for two members (ADR-0050).
+  return oneMemberPerAddress(facts).members;
+}
+
+/** The public addresses two members of this cluster share, and who: its screen says why one is left out. */
+export async function sharedClusterAddresses(
+  clusterId: string,
+): Promise<Map<string, string[]>> {
+  const rows = await getDb()
+    .select({ serverId: clusterMembers.serverId })
+    .from(clusterMembers)
+    .where(eq(clusterMembers.clusterId, clusterId))
+    .orderBy(asc(clusterMembers.joinedAt), asc(clusterMembers.serverId));
+  const members = await Promise.all(
+    rows.map(async (r) => {
+      const server = await getServerById(r.serverId);
+      // Read at render: what Deplo stores, never a call to the server.
+      const a = await serverAddresses(server, { askAgent: false });
+      return { name: server?.name ?? r.serverId, v4: a.v4, v6: a.v6 };
+    }),
+  );
+  return oneMemberPerAddress(members).shared;
 }
 
 type ZoneRow = typeof clusterDnsZones.$inferSelect;
