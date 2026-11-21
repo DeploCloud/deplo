@@ -5,6 +5,7 @@ import { listDomains } from "@/lib/data/domains/crud";
 import { domainDnsHints } from "@/lib/data/domains/dns-check";
 import { autoDnsZones } from "@/lib/data/dns-providers/provision";
 import { domainsLeftOnServer } from "@/lib/data/clusters/app-tunnel";
+import { generatedAddressesAway } from "@/lib/data/clusters/failover-address";
 import { answerCertificatesMissing } from "@/lib/data/clusters/answer-certs";
 import {
   appDnsZones,
@@ -36,12 +37,13 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  const [listed, serverIp, zones, staysOn, certWaits, dnsZones, native] =
+  const [listed, serverIp, zones, staysOn, away, certWaits, dnsZones, native] =
     await Promise.all([
       listDomains(project.id),
       serverIpForApp(project.id),
       autoDnsZones(),
       domainsLeftOnServer(project),
+      generatedAddressesAway(project),
       answerCertificatesMissing(project.id),
       appDnsZones(project.id),
       domainZoneTargets(project.id),
@@ -123,6 +125,7 @@ export default async function AppDomainsPage(
             serverIpv6={hints.serverIpv6}
             strays={hints.strays}
             staysOn={staysOn}
+            away={away}
             native={Object.fromEntries(native)}
             dnsZones={dnsZones}
             noHealthCheck={project.healthCheck == null}

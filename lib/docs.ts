@@ -224,6 +224,8 @@ export const DOCS = {
   "clusters.replication": "operations/clusters/replication",
   "clusters.replicationSwitch": "operations/clusters/replication#turn-it-on",
   "clusters.loadBalancing": "operations/clusters/load-balancing",
+  "clusters.loadBalancingServerBack":
+    "operations/clusters/load-balancing#a-server-that-comes-back",
   "clusters.architectures":
     "operations/clusters/replicas-and-architectures#mix-arm-and-x86-servers",
   "registries.overview": "operations/servers/container-registries",

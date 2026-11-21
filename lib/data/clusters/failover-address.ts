@@ -4,6 +4,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { clusterMembers } from "../../db/schema/control-plane/clusters";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { rerouteApp } from "../../deploy/build/reroute";
 import { rehostWildcard, wildcardEmbeddedIp } from "../../deploy/domains";
@@ -19,6 +20,7 @@ import { getServerById } from "../servers/roster";
 import { recordOnce } from "./bundles";
 import { clusterMemberServerIds } from "./roster";
 import type { App } from "../../types/app";
+import type { AddressAway } from "../../types/domain";
 import { messageOf } from "../../utils";
 
 /**
@@ -103,6 +105,41 @@ async function waitsForItsServer(app: App): Promise<Set<string>> {
     ),
   );
   return new Set(ips.filter((ip): ip is string => Boolean(ip)));
+}
+
+/**
+ * By domain id, each generated address of a load-balanced App that names a server away now. It waits for that
+ * server instead of following the App, so it answers nothing until it is back; the App's own domains still do.
+ */
+export async function generatedAddressesAway(
+  app: App,
+): Promise<Record<string, AddressAway>> {
+  const { appLoadBalanced } = await import("./load-balancing");
+  if (!app.clusterId || !(await appLoadBalanced(app))) return {};
+  const members = await getDb()
+    .select({ id: clusterMembers.serverId, lease: clusterMembers.leaseState })
+    .from(clusterMembers)
+    .where(eq(clusterMembers.clusterId, app.clusterId));
+  const away = new Map<string, string>();
+  for (const m of members) {
+    const server = await getServerById(m.id);
+    const ip = await serverWildcardIp(server);
+    if (server && ip && (m.lease !== "ok" || server.status === "offline"))
+      away.set(ip, server.name);
+  }
+  if (away.size === 0) return {};
+  const domains = await loadDomainsForApp(app.id);
+  const use =
+    domains
+      .filter((d) => d.source !== "auto" && (d.answersEverywhere || d.tunnel))
+      .sort((a, b) => Number(b.primary) - Number(a.primary))[0]?.name ?? null;
+  const out: Record<string, AddressAway> = {};
+  for (const d of domains) {
+    const server =
+      d.source === "auto" ? away.get(wildcardEmbeddedIp(d.name) ?? "") : null;
+    if (server) out[d.id] = { server, use };
+  }
+  return out;
 }
 
 /** The sweep's backstop: every cluster App whose generated address names a server it left catches up. */
