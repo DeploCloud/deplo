@@ -28,7 +28,13 @@ import {
   dissolveHarness,
   hosts,
 } from "../cluster-dissolve-test-helpers";
-import { nativeStatus } from "./answer-dns";
+import { activities } from "../../db/schema/control-plane/activity";
+import {
+  __resetDnsResolve4ForTest,
+  __setDnsResolve4ForTest,
+  __setDnsResolve6ForTest,
+} from "../domains/dns-check";
+import { nativeStatus, syncClusterAnswerDns } from "./answer-dns";
 import {
   addClusterDnsZone,
   clusterDnsView,
@@ -65,6 +71,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   __resetAgentAddressesForTest();
+  __resetDnsResolve4ForTest();
   __setApexCheckForTest(null);
 });
 
@@ -182,15 +189,19 @@ test("every member is handed the zone under its own certificate; the name server
     MEMBERS.map((m) => [m, true, "answer"]),
   );
   // What the domains page shows: nothing to add for a name in the zone, one CNAME for the other.
+  __setDnsResolve4ForTest(async () => []);
+  __setDnsResolve6ForTest(async () => []);
   const targets = await asAdmin(() => domainZoneTargets("prj_web"));
   assert.deepEqual(targets.get("dom_in"), {
     zone: "go.example.com",
     target: null,
+    cloudflare: false,
     cert: { mode: "http", check: null },
   });
   assert.deepEqual(targets.get("dom_out"), {
     zone: "go.example.com",
     target: "shop-example-com.go.example.com",
+    cloudflare: false,
     cert: {
       mode: "http",
       check: {
@@ -358,6 +369,39 @@ test("a domain points at the zone only when it can: on every server, of this clu
     .from(domainsTable)
     .where(eq(domainsTable.id, "dom_1"));
   assert.equal(row.dnsZoneId, null);
+});
+
+// Cloudflare proxies a new CNAME by default, and then answers in the cluster's place: nearest first never happens.
+test("a CNAME that leads to Cloudflare's addresses asks for DNS only, on the domain and in Activity", async () => {
+  const eu = await clusterOf("eu", MEMBERS);
+  await answeringDomain(eu.id, "dom_out", "shop.example.com");
+  await asAdmin(() => addClusterDnsZone(eu.id, "go.example.com"));
+  const [zone] = (await asAdmin(() => clusterDnsView(eu.id))).zones;
+  await asAdmin(() => setDomainDnsZone("dom_out", zone.id));
+  __setDnsResolve4ForTest(async () => ["104.16.132.229", "104.16.133.229"]);
+  __setDnsResolve6ForTest(async () => ["2606:4700::6810:84e5"]);
+  assert.equal(
+    (await asAdmin(() => domainZoneTargets("prj_web"))).get("dom_out")
+      ?.cloudflare,
+    true,
+  );
+  await syncClusterAnswerDns(eu.id, async () => {});
+  const said = (await db().select().from(activities)).map((a) => a.message);
+  assert.ok(
+    said.includes(
+      "shop.example.com reaches Cloudflare, not the cluster: in Cloudflare, set its record to DNS only (grey cloud)",
+    ),
+    said.join("\n"),
+  );
+
+  // A record that leads somewhere else is the CNAME still missing, as before.
+  __setDnsResolve4ForTest(async () => ["198.51.100.7"]);
+  __setDnsResolve6ForTest(async () => []);
+  assert.equal(
+    (await asAdmin(() => domainZoneTargets("prj_web"))).get("dom_out")
+      ?.cloudflare,
+    false,
+  );
 });
 
 test("a domain answered by the zone is valid when it resolves to the cluster's servers only", () => {

@@ -21,7 +21,7 @@ import {
 import { ensureAutoDomain } from "./domains/auto-domains";
 import { loadDomain, loadDomainsForApp } from "./app-graph-load";
 import { regenerateAutoDomain } from "../auto-domain-suggestion";
-import { addDomain, updateDomain } from "./domains/crud";
+import { addDomain, removeDomain, updateDomain } from "./domains/crud";
 import {
   domainDnsHints,
   sweepDomainDns,
@@ -480,6 +480,36 @@ test("ipv6: the drift check flips a valid domain when a stray AAAA appears, and 
   );
   assert.equal(hints.serverIpv6, SERVER_V6);
   assert.deepEqual(hints.strays[d.id], { type: "AAAA", address: STRAY_V6 });
+});
+
+// A check only ever adds a route: a domain that serves keeps it through every negative verdict, with the warning.
+test("a served domain keeps its route whatever the checks say, until a person removes it", async () => {
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "kept.example.io", {}));
+  const routed = async () =>
+    (await routableRoutes("prj_1")).some((r) => r.name === d.name);
+  const row = async () => (await loadDomain(d.id))!;
+  assert.equal(await routed(), true);
+
+  __setDnsResolve4ForTest(async () => []);
+  await sweepDomainDns();
+  assert.equal((await row()).status, "pending");
+  assert.equal(await routed(), true, "a name that stopped resolving");
+
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  await asUser1(() => verifyDomain(d.id));
+  __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
+  await sweepDomainDns();
+  assert.equal((await row()).status, "misconfigured");
+  assert.equal(await routed(), true, "a record that moved");
+
+  const checked = await asUser1(() => verifyDomain(d.id));
+  assert.equal(checked.status, "misconfigured");
+  assert.equal(checked.ssl, true);
+  assert.equal(await routed(), true, "a person's Check");
+
+  await asUser1(() => removeDomain(d.id));
+  assert.equal(await routed(), false);
 });
 
 // A domain that answers on every server names every server of its cluster: the drift check must leave it to the

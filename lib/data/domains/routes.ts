@@ -3,7 +3,7 @@ import "server-only";
 import { domainTlsConfig, domainScheme } from "../../deploy/domains";
 import { ANSWER_ENTRYPOINT } from "../../deploy/answer";
 import { DNS_CHALLENGE_RESOLVER } from "../../deploy/dns-challenge";
-import { isRoutableDomain } from "../../deploy/cloudflare";
+import { isServedDomain } from "../../deploy/cloudflare";
 import { loadDomainsForApp } from "../app-graph-load";
 import type {
   CertProvider,
@@ -49,7 +49,7 @@ export function defaultRoute(
 export async function routableRoutes(appId: string): Promise<RoutableDomain[]> {
   const all = await loadDomainsForApp(appId);
   return all
-    .filter(isRoutableDomain)
+    .filter(isServedDomain)
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map((d) => toRoutableDomain(d, all));
 }

@@ -28,6 +28,9 @@ import {
   dissolveHarness,
 } from "./cluster-dissolve-test-helpers";
 import { addClusterDnsZone } from "./clusters/dns-zone";
+import { listClusterAnswers } from "./clusters/answers";
+import { removeDomain } from "./domains/crud";
+import { routableRoutes } from "./domains/routes";
 import {
   __resetDnsResolve4ForTest,
   __setDnsResolve4ForTest,
@@ -188,9 +191,9 @@ test("by hand, the domain is misconfigured until it lists every healthy server, 
   assert.equal(fixed.status, "valid");
 });
 
-// Found on the ADR-0049 lab: a name server that had just stopped failed the lookup, which read as "not delegated",
-// and the failover's reroute then left the App's domain out on every server that still ran it.
-test("a lookup that fails says nothing about a zone's domain; a real change routes its App again", async () => {
+// Found on the ADR-0049 lab: a verdict that took a serving domain off its App's routes rendered the App without it
+// on every server, a 404 Deplo made itself. A verdict now shows on the domain and only ever adds a route.
+test("a zone's domain that serves keeps its route through every negative verdict; only a first valid one routes", async () => {
   const cluster = await clusterOf("eu", MEMBERS);
   await answeringApp(cluster.id);
   await db()
@@ -198,46 +201,53 @@ test("a lookup that fails says nothing about a zone's domain; a real change rout
     .set({ name: "app.go.example.com" })
     .where(eq(domainsTable.id, "dom_1"));
   await asAdmin(() => addClusterDnsZone(cluster.id, "go.example.com"));
-  const status = async () =>
+  const row = async () =>
     (
       await db()
-        .select({ s: domainsTable.status })
+        .select({ status: domainsTable.status, ssl: domainsTable.ssl })
         .from(domainsTable)
         .where(eq(domainsTable.id, "dom_1"))
-    )[0].s;
+    )[0];
+  const routes = async () =>
+    (await routableRoutes("prj_web")).map((r) => r.name);
+  const answered = async () =>
+    (await listClusterAnswers(cluster.id)).flatMap((a) => a.hosts);
+  const warned = async () =>
+    (await db().select().from(activities)).some((a) =>
+      a.message.startsWith("app.go.example.com does not reach the cluster"),
+    );
   const routed: string[] = [];
-  const reroutes = () => routed.length;
   const sync = () =>
     syncClusterAnswerDns(cluster.id, async (id) => void routed.push(id));
+  const kept = async (status: string) => {
+    assert.deepEqual(await row(), { status, ssl: true });
+    assert.deepEqual(await routes(), ["app.go.example.com"]);
+    assert.deepEqual(await answered(), ["app.go.example.com"]);
+    assert.deepEqual(routed, [], "nothing rendered without it");
+  };
 
+  // A lookup that failed: no verdict at all.
   __setDnsResolve4ForTest(async () => {
     throw Object.assign(new Error("queryA ESERVFAIL"), { code: "ESERVFAIL" });
   });
   await sync();
-  assert.equal(await status(), "valid");
-  assert.equal(reroutes(), 0);
-  assert.ok(
-    !(await db().select().from(activities)).some((a) =>
-      a.message.includes("does not reach the cluster"),
-    ),
-  );
+  await kept("valid");
+  assert.equal(await warned(), false);
 
+  // Pending: the name resolves to nothing.
   __setDnsResolve4ForTest(async () => {
     throw Object.assign(new Error("queryA ENODATA"), { code: "ENODATA" });
   });
   await sync();
-  assert.equal(await status(), "pending");
-  const after = reroutes();
-  assert.ok(after > 0, "a domain no longer valid is routed again");
+  await kept("pending");
+  assert.equal(await warned(), true, "the warning shows");
 
-  __setDnsResolve4ForTest(async () => ["10.0.0.2", "10.0.0.3"]);
+  // Misconfigured: an address that is no member's.
+  __setDnsResolve4ForTest(async () => ["10.0.0.2", "198.51.100.9"]);
   await sync();
-  assert.equal(await status(), "valid");
-  assert.ok(reroutes() > after, "and once valid again");
-  assert.deepEqual([...new Set(routed)], ["prj_web"]);
+  await kept("misconfigured");
 
-  // A member just stopped: its agent is away, so its IPv6 is unknown, and the zone still answers it for a while.
-  const before = reroutes();
+  // A member just stopped: its IPv6 is unknown while the zone still answers it.
   __setAgentAddressesForTest(async (id) =>
     id === "srv_4"
       ? null
@@ -246,12 +256,49 @@ test("a lookup that fails says nothing about a zone's domain; a real change rout
         : null,
   );
   __setDnsResolve4ForTest(async () => ["10.0.0.2", "10.0.0.3", "10.0.0.4"]);
-  __setDnsResolve6ForTest(async () => [
-    "2001:db8::2",
-    "2001:db8::3",
-    "2001:db8::4",
-  ]);
+  __setDnsResolve6ForTest(async () => ["2001:db8::2", "2001:db8::4"]);
   await sync();
-  assert.equal(await status(), "valid");
-  assert.equal(reroutes(), before, "nothing is routed again");
+  await kept("valid");
+
+  // A domain that never served: pending, then valid, is routed once.
+  await db()
+    .update(domainsTable)
+    .set({ status: "pending", ssl: false })
+    .where(eq(domainsTable.id, "dom_1"));
+  __setDnsResolve4ForTest(async () => []);
+  await sync();
+  assert.deepEqual(
+    await routes(),
+    [],
+    "not routed before it reaches the cluster",
+  );
+  __setDnsResolve4ForTest(async () => ["10.0.0.2", "10.0.0.3"]);
+  await sync();
+  assert.deepEqual(await row(), { status: "valid", ssl: true });
+  assert.deepEqual(routed, ["prj_web"]);
+  assert.deepEqual(await routes(), ["app.go.example.com"]);
+
+  // A person removing it still removes it.
+  await asAdmin(() => removeDomain("dom_1"));
+  assert.deepEqual(await routes(), []);
+  assert.deepEqual(await answered(), []);
+});
+
+test("by hand, a served domain that no longer lists every server keeps its route and says what to change", async () => {
+  const cluster = await clusterOf("eu", MEMBERS);
+  await answeringApp(cluster.id);
+  const routed: string[] = [];
+  __setDnsResolve4ForTest(async () => ["10.0.0.2", "198.51.100.9"]);
+  await syncClusterAnswerDns(cluster.id, async (id) => void routed.push(id));
+  const [row] = await db()
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, "dom_1"));
+  assert.equal(row.status, "misconfigured");
+  assert.equal(row.ssl, true);
+  assert.deepEqual(
+    (await routableRoutes("prj_web")).map((r) => r.name),
+    ["app.example.com"],
+  );
+  assert.deepEqual(routed, []);
 });

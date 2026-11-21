@@ -15,6 +15,7 @@ import {
   checkAnswerRecords,
   type AnswerRecordSet,
 } from "../../deploy/answer-dns";
+import { resolvesToCloudflare } from "../../deploy/cloudflare";
 import { messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
@@ -71,6 +72,7 @@ type AnswerDomain = {
   appId: string;
   teamId: string;
   status: string;
+  ssl: boolean;
   zoneId: string | null;
 };
 
@@ -83,6 +85,7 @@ async function answeringDomains(clusterId: string): Promise<AnswerDomain[]> {
       appId: domainsTable.appId,
       teamId: appsTable.teamId,
       status: domainsTable.status,
+      ssl: domainsTable.ssl,
       zoneId: domainsTable.dnsZoneId,
     })
     .from(domainsTable)
@@ -135,6 +138,24 @@ async function syncAtProvider(
   return null;
 }
 
+/**
+ * A verdict shows on the domain, and only ever adds a route: a domain that served keeps it whatever the check says,
+ * so a lookup that failed or misread never takes it off every server. Only a domain served for the first time reroutes.
+ */
+async function recordVerdict(
+  d: AnswerDomain,
+  status: "valid" | "misconfigured" | "pending",
+  changed: Set<string>,
+): Promise<void> {
+  if (status === d.status) return;
+  const served = d.ssl || status === "valid";
+  await getDb()
+    .update(domainsTable)
+    .set({ status, ssl: served })
+    .where(eq(domainsTable.id, d.id));
+  if (served && !d.ssl) changed.add(d.appId);
+}
+
 /** Without a provider: whether the records a person wrote are the set, so the domain says when they must change. */
 async function checkByHand(
   d: AnswerDomain,
@@ -146,14 +167,7 @@ async function checkByHand(
     resolveHostIpv6(d.name),
   ]);
   const check = checkAnswerRecords({ a, aaaa }, set);
-  const status = check.status;
-  if (status !== d.status) {
-    await getDb()
-      .update(domainsTable)
-      .set({ status, ssl: status === "valid" })
-      .where(eq(domainsTable.id, d.id));
-    changed.add(d.appId);
-  }
+  await recordVerdict(d, check.status, changed);
   if (check.missing.length === 0 && check.extra.length === 0) return null;
   const parts = [
     check.missing.length > 0 ? `add ${check.missing.join(", ")}` : "",
@@ -196,14 +210,11 @@ async function checkNative(
   if (found === null) return null;
   const status = nativeStatus(found, members);
   if (status === null) return null;
-  if (status !== d.status) {
-    await getDb()
-      .update(domainsTable)
-      .set({ status, ssl: status === "valid" })
-      .where(eq(domainsTable.id, d.id));
-    changed.add(d.appId);
-  }
+  await recordVerdict(d, status, changed);
   if (status === "valid") return null;
+  // Cloudflare proxies a new record by default, and then answers in the cluster's place (ADR-0049).
+  if (resolvesToCloudflare(found))
+    return `${d.name} reaches Cloudflare, not the cluster: in Cloudflare, set its record to DNS only (grey cloud)`;
   return native.target === d.name
     ? `${d.name} does not reach the cluster yet: delegate ${native.zone} to it where the domain was bought`
     : `${d.name} does not point at the cluster yet: add the CNAME record ${d.name} → ${native.target}`;
@@ -265,7 +276,7 @@ export async function syncClusterAnswerDns(
       }
     }
   });
-  // A domain routed or not by its status: its App is routed again, outside the lock, as that may sync the DNS.
+  // A domain served for the first time: its App is routed again, outside the lock, as that may sync the DNS.
   for (const appId of changed) {
     if (await instanceFrozen()) return;
     await reroute(appId).catch((e) =>

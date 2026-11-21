@@ -113,7 +113,8 @@ export async function verifyDomain(
         await import("../clusters/answer-dns")
       ).answerDomainStatus(dom.name, clusterId)
     : await checkDomainDns(dom.name, await appServerAddresses(dom.appId));
-  const ssl = isRoutableDomain({ status, proxied: dom.proxied });
+  // A check only ever adds a route: a domain served already keeps it, whatever the DNS says now.
+  const ssl = dom.ssl || isRoutableDomain({ status, proxied: dom.proxied });
   // Already routed behind Cloudflare: what it does to the live route decides, not the DNS alone.
   const probed =
     dom.status === "cloudflare" && status === "cloudflare" && !dom.tunnel
@@ -178,9 +179,10 @@ export async function sweepDomainDns(): Promise<void> {
         await targets.get(row.appId)!,
       );
       if (status === "valid") continue;
+      // The warning only: a domain that served keeps its route (ADR-0049, "a verdict never removes a route").
       await db
         .update(domainsTable)
-        .set({ status, ssl: status === "cloudflare" })
+        .set({ status })
         .where(eq(domainsTable.id, row.id));
       dispatchAlert({
         teamId: row.teamId,

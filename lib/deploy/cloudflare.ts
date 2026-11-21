@@ -87,6 +87,11 @@ function inV6Cidr(ipInt: bigint, cidr: string): boolean {
   return (ipInt & mask) === (baseInt & mask);
 }
 
+/** Every address a name resolves to is Cloudflare's: its record is proxied ("orange cloud"), not DNS only. */
+export function resolvesToCloudflare(addresses: readonly string[]): boolean {
+  return addresses.length > 0 && addresses.every(isCloudflareIp);
+}
+
 export function isCloudflareIp(ip: string): boolean {
   if (ip.includes(":")) {
     const v6 = ipv6ToBigInt(ip);
@@ -157,6 +162,11 @@ export function isProxiedDomain(d: DomainReach): boolean {
 
 export function isRoutableDomain(d: DomainReach): boolean {
   return d.status === "valid" || isProxiedDomain(d);
+}
+
+/** Routed: reachable now, or served already (`ssl`), which no later DNS verdict takes off the routes. */
+export function isServedDomain(d: DomainReach & { ssl?: boolean }): boolean {
+  return d.ssl === true || isRoutableDomain(d);
 }
 
 // Let's Encrypt works under Cloudflare's Full and Full (strict); Flexible is caught by the probe below.
