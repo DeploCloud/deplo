@@ -130,7 +130,7 @@ const RECORD_COMMENT = "Deplo app";
 
 /**
  * Creates the record for `hostname` when one of the person's zones covers it: an address record,
- * or a CNAME to the server's tunnel. Null when no zone covers it. Throws when it should and cannot.
+ * proxied when asked, or a CNAME to the server's tunnel. Null when no zone covers it. Throws when it should and cannot.
  */
 export async function provisionDomainDns(input: {
   appId: string;
@@ -138,6 +138,7 @@ export async function provisionDomainDns(input: {
   teamId: string;
   userId: string;
   tunnel: boolean;
+  proxied?: boolean;
 }): Promise<ProvisionedDns | null> {
   // Another App answers on this hostname already: one record serves every path, wherever it points.
   const shared = await recordOfAnotherApp(input.hostname, input.appId);
@@ -172,6 +173,7 @@ export async function provisionDomainDns(input: {
       input.hostname,
       { v4: targets.v4[0] ?? null, v6: targets.v6[0] ?? null },
       RECORD_COMMENT,
+      { proxied: input.proxied },
     );
     return {
       providerId: provider.id,

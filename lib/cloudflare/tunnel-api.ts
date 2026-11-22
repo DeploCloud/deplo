@@ -312,8 +312,8 @@ export async function pointAtTunnel(
 }
 
 /**
- * Points `name` straight at a server: an A record, and an AAAA when it has IPv6. Not proxied, so the
- * server's own certificate check sees it. A record already pointing there is kept and not claimed.
+ * Points `name` straight at a server: an A record, or an AAAA when it has only IPv6, DNS only unless `proxied`.
+ * Records Deplo can account for (`ours`) are replaced; another one already pointing there is kept and not claimed.
  */
 export async function pointAtAddress(
   token: string,
@@ -321,6 +321,7 @@ export async function pointAtAddress(
   name: string,
   address: { v4: string | null; v6: string | null },
   comment: string,
+  opts: { proxied?: boolean; ours?: (record: DnsRecord) => boolean } = {},
 ): Promise<PointedRecord | null> {
   const existing = await dnsRecords(token, zoneId, name);
   const wanted = [
@@ -332,23 +333,41 @@ export async function pointAtAddress(
       "Deplo does not know this server's address, so it cannot create the DNS record",
     );
   const routing = existing.filter((r) => ROUTING_TYPES.includes(r.type));
-  const foreign = routing.find(
+  const ours = routing.filter((r) => opts.ours?.(r) === true);
+  const others = routing.filter((r) => !ours.includes(r));
+  const foreign = others.find(
     (r) => !wanted.some((w) => w.type === r.type && w.content === r.content),
   );
   if (foreign)
     throw new Error(
       `${name} already has a ${foreign.type} record in Cloudflare (${foreign.content}). Delete it there, or pick another name.`,
     );
-  if (routing.length > 0) return null;
-  const id = await createDnsRecord(token, zoneId, {
-    type: wanted[0].type,
-    name,
-    content: wanted[0].content,
-    proxied: false,
-    ttl: 1,
-    comment,
-  });
-  return { id, replaced: [], created: true };
+  if (others.length > 0) return null;
+  for (const r of ours) await deleteDnsRecord(token, zoneId, r.id);
+  try {
+    const id = await createDnsRecord(token, zoneId, {
+      type: wanted[0].type,
+      name,
+      content: wanted[0].content,
+      proxied: opts.proxied === true,
+      ttl: 1,
+      comment,
+    });
+    return { id, replaced: ours, created: true };
+  } catch (e) {
+    await restoreDnsRecords(token, zoneId, ours);
+    throw e;
+  }
+}
+
+/** Turns Cloudflare's proxy on or off for one record: the orange cloud. */
+export async function setDnsRecordProxied(
+  token: string,
+  zoneId: string,
+  id: string,
+  proxied: boolean,
+): Promise<void> {
+  await cf(token, "PATCH", `/zones/${zoneId}/dns_records/${id}`, { proxied });
 }
 
 /** Whether the token may create Cloudflare Tunnels in this account. */

@@ -48,7 +48,6 @@ import {
   reconcileTunnelDomains,
 } from "./dns-providers/follow";
 import { invalidateFrozen } from "./deplo-move/freeze";
-import { turnOnExperiments } from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -93,7 +92,6 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [{ id: OWNER, teamId: TEAM_A, role: "owner" }],
   });
-  await turnOnExperiments(db, "tunnels");
   await seedServer(db);
   await seedServerRow(db, {
     id: "srv_2",

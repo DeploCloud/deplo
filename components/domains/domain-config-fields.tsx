@@ -69,6 +69,7 @@ export function initialDomainConfig(
     stripPrefix?: boolean;
     service?: string;
     proxied?: boolean;
+    tunnel?: boolean;
   },
   defaultPort?: number,
   www: WwwRedirect = "none",
@@ -89,7 +90,8 @@ export function initialDomainConfig(
     path: domain?.pathPrefix ?? "",
     stripPath: Boolean(domain?.stripPrefix),
     service: domain?.service ?? "",
-    proxied: Boolean(domain?.proxied),
+    // A tunnel is proxied by itself; this is the proxy the record keeps once it leaves one.
+    proxied: Boolean(domain?.proxied && !domain.tunnel),
     www,
   };
 }
@@ -221,6 +223,7 @@ export function DomainConfigFields({
   serverIp,
   tunnel = false,
   clusterAnswer = false,
+  autoDns = false,
 }: {
   state: DomainConfigState;
   onChange: (next: DomainConfigState) => void;
@@ -233,6 +236,8 @@ export function DomainConfigFields({
   tunnel?: boolean;
   // Answered by the cluster's own DNS zone: HTTPS on every server, with a certificate Deplo gets.
   clusterAnswer?: boolean;
+  // Deplo keeps its record in Cloudflare: the proxy switch sits beside the tunnel's, not here.
+  autoDns?: boolean;
 }) {
   const set = <K extends keyof DomainConfigState>(
     key: K,
@@ -255,7 +260,10 @@ export function DomainConfigFields({
 
   const entrypointValue =
     noCert || !state.manualEntrypoint ? ENTRYPOINT_AUTO : state.entrypoint;
-  const summary = advancedSummary(state, hostname);
+  const summary = advancedSummary(
+    autoDns ? { ...state, proxied: false } : state,
+    hostname,
+  );
 
   const host = (hostname ?? "").trim();
   const counterpart = wwwCounterpart(host);
@@ -267,7 +275,7 @@ export function DomainConfigFields({
 
   return (
     <>
-      {proxied && !tunnel && <CloudflareNote serverIp={serverIp} />}
+      {proxied && !tunnel && !autoDns && <CloudflareNote serverIp={serverIp} />}
       {isCompose && (
         <div className="space-y-2">
           <FieldLabel
@@ -440,7 +448,7 @@ export function DomainConfigFields({
           </AccordionTrigger>
 
           <AccordionContent className="space-y-6 pt-2 text-foreground">
-            {!managed && (
+            {!managed && !autoDns && (
               <FieldGroup icon={Waypoints} title="Proxy">
                 <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
                   <FieldLabel

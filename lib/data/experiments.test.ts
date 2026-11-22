@@ -124,17 +124,29 @@ const upgradeDefaults = readFileSync(
   .split("--> statement-breakpoint")
   .find((s) => s.includes('INSERT INTO "instance_settings"'))!;
 
+// The upgrade ran before migration 0275 dropped the tunnels column, so it replays with that column back.
+async function replayUpgrade(): Promise<void> {
+  const col = `"instance_settings" ADD COLUMN "experiment_tunnels" boolean DEFAULT false NOT NULL`;
+  await pg.exec(`ALTER TABLE ${col}`);
+  try {
+    await pg.exec(upgradeDefaults);
+  } finally {
+    await pg.exec(
+      `ALTER TABLE "instance_settings" DROP COLUMN "experiment_tunnels"`,
+    );
+  }
+}
+
 test("an upgrade turns on exactly the experiments already in use", async () => {
   await db.update(apps).set({ cronEnabled: true });
   await db.insert(clusters).values({ id: "clu_1", name: "eu", createdAt: T0 });
-  await pg.exec(upgradeDefaults);
+  await replayUpgrade();
   const [row] = await db
     .select({
       crons: instanceSettings.experimentCrons,
       zeroDowntime: instanceSettings.experimentZeroDowntime,
       pullRequests: instanceSettings.experimentPullRequests,
       clusters: instanceSettings.experimentClusters,
-      tunnels: instanceSettings.experimentTunnels,
     })
     .from(instanceSettings);
   assert.deepEqual(row, {
@@ -142,11 +154,10 @@ test("an upgrade turns on exactly the experiments already in use", async () => {
     zeroDowntime: false,
     pullRequests: false,
     clusters: true,
-    tunnels: false,
   });
 });
 
 test("an install that uses none of them gets no settings row from the upgrade", async () => {
-  await pg.exec(upgradeDefaults);
+  await replayUpgrade();
   assert.equal((await db.select().from(instanceSettings)).length, 0);
 });

@@ -146,6 +146,19 @@ export function fakeCloudflare(seed: Partial<FakeCloudflare> = {}): {
     }
     if (
       (m = path.match(/^\/zones\/[^/]+\/dns_records\/([^/]+)$/)) &&
+      method === "PATCH"
+    ) {
+      const record = cf.records.get(m[1]);
+      if (!record)
+        return json(404, {
+          success: false,
+          errors: [{ message: "not found" }],
+        });
+      cf.records.set(m[1], { ...record, ...body });
+      return ok({ id: m[1] });
+    }
+    if (
+      (m = path.match(/^\/zones\/[^/]+\/dns_records\/([^/]+)$/)) &&
       method === "DELETE"
     ) {
       if (!cf.records.delete(m[1]))

@@ -53,10 +53,7 @@ import {
 } from "./dns-providers/provision";
 import { restoreTunnelConnectors } from "./dns-providers/tunnels";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import {
-  turnOffExperiments,
-  turnOnExperiments,
-} from "./experiments-test-helpers";
+import { clusters } from "../db/schema/control-plane/clusters";
 
 let db: TestDb;
 let pg: PGlite;
@@ -101,7 +98,6 @@ beforeEach(async () => {
       { id: MATE, teamId: TEAM_A, role: "member" },
     ],
   });
-  await turnOnExperiments(db, "tunnels");
   await seedServer(db);
   await seedApp(db, { id: "prj_1" });
   host = { yaml: STACK, applied: 0 };
@@ -440,12 +436,110 @@ test("a tunnel domain is added beside the name's MX record", async () => {
   assert.deepEqual([...cf.records.keys()], ["mx"], "the MX record stays");
 });
 
-test("with the experiment off, a domain cannot ask for a tunnel", async () => {
-  await connect();
-  await turnOffExperiments(db, "tunnels");
-  await assert.rejects(
-    () =>
-      as(OWNER, () => addDomain("prj_1", "app.example.com", { tunnel: true })),
-    /Tunnels are not turned on for this Deplo/,
+const recordOf = (name: string) =>
+  [...cf.records.values()].find((r) => r.name === name)!;
+const ingressOf = () =>
+  [...cf.tunnels.values()].flatMap((t) =>
+    (t.ingress as { hostname?: string }[])
+      .map((r) => r.hostname)
+      .filter(Boolean),
   );
+
+test("a new record points straight at the server, or through Cloudflare's proxy when asked", async () => {
+  await connect();
+  await as(OWNER, () => addDomain("prj_1", "plain.example.com", {}));
+  const dom = await as(OWNER, () =>
+    addDomain("prj_1", "cdn.example.com", { proxied: true }),
+  );
+  assert.equal(recordOf("plain.example.com").proxied, false);
+  assert.equal(recordOf("cdn.example.com").type, "A");
+  assert.equal(recordOf("cdn.example.com").proxied, true);
+  assert.equal(dom.proxied, true);
+  assert.equal(cf.tunnels.size, 0, "no tunnel unless asked");
+});
+
+test("the proxy switch of an edit turns the record's proxy on and off", async () => {
+  await connect();
+  const dom = await as(OWNER, () => addDomain("prj_1", "app.example.com", {}));
+  const id = recordOf("app.example.com").id;
+  await as(OWNER, () => updateDomain(dom.id, { proxied: true }));
+  assert.equal(cf.records.get(id)?.proxied, true, "the same record, proxied");
+  await as(OWNER, () => updateDomain(dom.id, { proxied: false }));
+  assert.equal(cf.records.get(id)?.proxied, false);
+  assert.equal(cf.records.size, 1);
+});
+
+test("the tunnel switch of an edit moves the record to the tunnel and back", async () => {
+  await connect();
+  const dom = await as(OWNER, () => addDomain("prj_1", "app.example.com", {}));
+  await as(OWNER, () => updateDomain(dom.id, { tunnel: true }));
+  const [tunnelId] = [...cf.tunnels.keys()];
+  assert.equal(cf.records.size, 1, "the A record was replaced");
+  assert.equal(recordOf("app.example.com").type, "CNAME");
+  assert.equal(
+    recordOf("app.example.com").content,
+    `${tunnelId}.cfargotunnel.com`,
+  );
+  assert.deepEqual(ingressOf(), ["app.example.com"]);
+  const [on] = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, dom.id));
+  assert.equal(on!.tunnel, true);
+  assert.equal(on!.proxied, true);
+  assert.equal(on!.certProvider, "cloudflare");
+
+  await as(OWNER, () =>
+    updateDomain(dom.id, { tunnel: false, proxied: false }),
+  );
+  assert.equal(cf.records.size, 1);
+  assert.equal(recordOf("app.example.com").type, "A");
+  assert.equal(recordOf("app.example.com").content, "10.0.0.1");
+  assert.equal(recordOf("app.example.com").proxied, false);
+  assert.deepEqual(ingressOf(), [], "the tunnel no longer serves it");
+  const [off] = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, dom.id));
+  assert.equal(off!.tunnel, null);
+  assert.equal(off!.proxied, null);
+  assert.equal(off!.certProvider, "letsencrypt");
+
+  await as(OWNER, () => removeDomain(dom.id));
+  assert.equal(cf.records.size, 0, "Deplo still deletes the record it made");
+});
+
+test("a record Deplo did not make is never moved to a tunnel", async () => {
+  await connect();
+  cf.records.set("pre", {
+    id: "pre",
+    zoneId: "zone1",
+    type: "A",
+    name: "kept.example.com",
+    content: "10.0.0.1",
+  });
+  const dom = await as(OWNER, () => addDomain("prj_1", "kept.example.com", {}));
+  await assert.rejects(
+    () => as(OWNER, () => updateDomain(dom.id, { tunnel: true })),
+    /does not manage the DNS record/,
+  );
+  assert.equal(cf.records.get("pre")?.content, "10.0.0.1");
+});
+
+test("a cluster App's domain is never switched by an edit", async () => {
+  await connect();
+  const dom = await as(OWNER, () => addDomain("prj_1", "app.example.com", {}));
+  await db
+    .insert(clusters)
+    .values({ id: "clu_1", name: "eu", createdAt: "2026-01-01T00:00:00Z" });
+  await db
+    .update(appsTable)
+    .set({ clusterId: "clu_1" })
+    .where(eq(appsTable.id, "prj_1"));
+  await assert.rejects(
+    () => as(OWNER, () => updateDomain(dom.id, { tunnel: true })),
+    /serves its domains its own way/,
+  );
+  await as(OWNER, () => updateDomain(dom.id, { proxied: true }));
+  assert.equal(recordOf("app.example.com").proxied, false);
 });

@@ -28,7 +28,6 @@ import {
   PendingList,
   PendingRows,
 } from "@/components/shared/pending-create";
-import { experimentOn } from "@/lib/data/experiments";
 import { isInstanceAdmin } from "@/lib/membership";
 
 export const metadata = { title: "App Domains" };
@@ -99,7 +98,6 @@ export default async function AppDomainsPage(
               }}
               suggestedDomain={suggestedDomain}
               autoDnsZones={autoDns}
-              tunnels={await experimentOn("tunnels")}
               cluster={
                 project.clusterId
                   ? { zones: dnsZones.map((z) => z.name), canAddZone }
@@ -131,6 +129,7 @@ export default async function AppDomainsPage(
         >
           <DomainTable
             domains={domains}
+            autoDnsZones={autoDns}
             compose={composeForBrowser}
             isCompose={isComposeStack}
             showContainer={showContainer}

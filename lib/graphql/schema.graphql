@@ -3240,6 +3240,10 @@ input DomainConfigInput {
   middlewares: [String!]
   pathPrefix: String
   port: Int
+
+  """
+  Another proxy answers for it. In a domain connected for automatic DNS, Deplo makes its record with Cloudflare's proxy on; omitted, DNS only.
+  """
   proxied: Boolean
 
   """Omitted means on."""
@@ -3270,10 +3274,19 @@ input DomainPatchInput {
   name: String
   pathPrefix: String
   port: Int
+
+  """
+  Another proxy answers for it. When Deplo made its record in Cloudflare, that record's proxy follows: on, or DNS only straight to the server.
+  """
   proxied: Boolean
   securityHeaders: Boolean
   service: String
   stripPrefix: Boolean
+
+  """
+  Serve it through the server's Cloudflare Tunnel, or point it back at the server. Only for a domain whose record Deplo made, of an App off a cluster.
+  """
+  tunnel: Boolean
   www: DomainWwwRedirect
 }
 
@@ -3448,7 +3461,6 @@ enum ExperimentKey {
   clusters
   crons
   pullRequests
-  tunnels
   zeroDowntime
 }
 

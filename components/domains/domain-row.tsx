@@ -55,6 +55,8 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { type DomainZone } from "./domain-zone-line";
 import { DomainBadges } from "./domain-badges";
 import { DomainClusterLines } from "./domain-cluster-lines";
+import { AutoDnsField } from "./auto-dns-field";
+import { coveringZone } from "@/lib/dns-zone";
 
 type Row = Domain & {
   serviceName: string;
@@ -132,8 +134,11 @@ export function DomainRow({
   dnsZones = [],
   cluster = null,
   everyServer = null,
+  autoDnsZones = [],
 }: {
   domain: Row;
+  /** Domains connected for automatic DNS that the viewer may use in this team. */
+  autoDnsZones?: string[];
   /** The records a domain answering on every server needs when a person keeps them: one per healthy server. */
   everyServer?: { a: string[]; aaaa: string[] } | null;
   /** The App runs on a cluster, and whether the viewer can put a tunnel domain on it. */
@@ -187,9 +192,24 @@ export function DomainRow({
   );
 
   const [name, setName] = React.useState(domain.name);
-  const [config, setConfig] = React.useState<DomainConfigState>(() =>
-    initialDomainConfig(domain, undefined, www),
-  );
+  // A record someone turned orange in Cloudflare by hand still opens as proxied.
+  const edited = () =>
+    initialDomainConfig(
+      cluster == null && domain.autoDns && domain.status === "cloudflare"
+        ? { ...domain, proxied: true }
+        : domain,
+      undefined,
+      www,
+    );
+  const [config, setConfig] = React.useState<DomainConfigState>(edited);
+  const [wantsTunnel, setWantsTunnel] = React.useState(domain.tunnel === true);
+  // Off a cluster, the record Deplo keeps (or makes for a new name) follows the tunnel and proxy switches.
+  const renamed = name.trim().toLowerCase() !== domain.name;
+  const zone = coveringZone(autoDnsZones, name);
+  const autoDns =
+    cluster == null && (renamed ? zone !== null : domain.autoDns === true);
+  const tunnel =
+    cluster == null ? autoDns && wantsTunnel : domain.tunnel === true;
 
   const effectiveProvider = domain.certProvider ?? "letsencrypt";
   const scheme =
@@ -229,7 +249,8 @@ export function DomainRow({
 
   function openEdit() {
     setName(domain.name);
-    setConfig(initialDomainConfig(domain, undefined, www));
+    setConfig(edited());
+    setWantsTunnel(domain.tunnel === true);
     setEditOpen(true);
   }
 
@@ -275,6 +296,7 @@ export function DomainRow({
             stripPrefix: resolved.stripPrefix,
             service: resolved.service,
             proxied: resolved.proxied,
+            ...(cluster == null ? { tunnel } : {}),
             www: resolved.www,
           },
         },
@@ -655,6 +677,16 @@ export function DomainRow({
                   suggestedDomain={suggestedDomain}
                   disabled={pending || !canManage}
                 />
+                {autoDns && (
+                  <AutoDnsField
+                    id={`edit-${domain.id}-cf`}
+                    zone={zone ?? "Cloudflare"}
+                    tunnel={tunnel}
+                    onTunnel={setWantsTunnel}
+                    proxied={config.proxied}
+                    onProxied={(on) => setConfig({ ...config, proxied: on })}
+                  />
+                )}
                 <DomainConfigFields
                   state={config}
                   onChange={setConfig}
@@ -663,7 +695,8 @@ export function DomainRow({
                   proxied={cloudflareDetected}
                   hostname={name}
                   serverIp={serverIp}
-                  tunnel={domain.tunnel === true}
+                  tunnel={tunnel}
+                  autoDns={autoDns}
                 />
               </div>
               <DialogFooter>

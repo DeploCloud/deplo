@@ -183,7 +183,12 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
     pathPrefix: t.string({ required: false }),
     stripPrefix: t.boolean({ required: false }),
     service: t.string({ required: false }),
-    proxied: t.boolean({ required: false }),
+    proxied: t.boolean({
+      required: false,
+      description:
+        "Another proxy answers for it. In a domain connected for automatic DNS, " +
+        "Deplo makes its record with Cloudflare's proxy on; omitted, DNS only.",
+    }),
     tunnel: t.boolean({
       required: false,
       description:
@@ -212,7 +217,18 @@ const DomainPatchInput = builder.inputType("DomainPatchInput", {
     pathPrefix: t.string({ required: false }),
     stripPrefix: t.boolean({ required: false }),
     service: t.string({ required: false }),
-    proxied: t.boolean({ required: false }),
+    proxied: t.boolean({
+      required: false,
+      description:
+        "Another proxy answers for it. When Deplo made its record in Cloudflare, " +
+        "that record's proxy follows: on, or DNS only straight to the server.",
+    }),
+    tunnel: t.boolean({
+      required: false,
+      description:
+        "Serve it through the server's Cloudflare Tunnel, or point it back at the " +
+        "server. Only for a domain whose record Deplo made, of an App off a cluster.",
+    }),
     www: t.field({ type: DomainWwwRedirectEnum, required: false }),
   }),
 });
@@ -318,6 +334,7 @@ builder.mutationFields((t) => ({
         stripPrefix: patch.stripPrefix ?? undefined,
         service: patch.service ?? undefined,
         proxied: patch.proxied ?? undefined,
+        tunnel: patch.tunnel ?? undefined,
         www: patch.www ?? undefined,
       };
       const appId = await updateDomain(id, next);

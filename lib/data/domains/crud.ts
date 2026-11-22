@@ -68,7 +68,11 @@ import {
   registerAppTunnelDomain,
   settleAppTunnel,
 } from "../clusters/app-tunnel";
-import { requireExperiment } from "../experiments";
+import {
+  recordSwitchNote,
+  settleRecordSwitch,
+  switchDomainRecord,
+} from "./record-switch";
 import {
   markClusterAnswer,
   planClusterAnswer,
@@ -195,8 +199,6 @@ async function addDomainUnlocked(
     .from(domainsTable)
     .where(and(eq(domainsTable.name, clean), ne(domainsTable.appId, appId)))
     .limit(1);
-  if (!shared && config.tunnel === true && project.clusterId == null)
-    await requireExperiment("tunnels");
   const service = resolveApp(config.service, project, isCompose);
   if (isCompose && config.port == null)
     throw new Error("Application port is required");
@@ -246,6 +248,7 @@ async function addDomainUnlocked(
         teamId: membership.teamId,
         userId: user.id,
         tunnel,
+        proxied: project.clusterId == null && proxied,
       });
   const status = cluster
     ? "pending"
@@ -366,6 +369,7 @@ export interface DomainPatch {
   www?: WwwRedirect;
   entrypoint?: DomainEntrypoint | null;
   proxied?: boolean;
+  tunnel?: boolean;
 }
 
 export async function updateDomain(
@@ -482,11 +486,24 @@ async function updateDomainUnlocked(
     next.proxied = patch.proxied || undefined;
     next.ssl = isRoutableDomain(next);
   }
+  const wasTunnel = current.tunnel === true;
+  const tunnel = patch.tunnel ?? wasTunnel;
+  if (tunnel !== wasTunnel && project.clusterId != null)
+    throw new Error(
+      `${current.name} belongs to an app on a cluster, which serves its domains its own way`,
+    );
   // A tunnel decides its own HTTPS and proxying; the edit form does not offer them.
-  if (current.tunnel) {
+  if (tunnel) {
+    next.tunnel = true;
     next.proxied = true;
+    next.ssl = true;
     next.entrypoint = undefined;
-    next.certProvider = current.certProvider;
+    next.certProvider = wasTunnel ? current.certProvider : "cloudflare";
+  } else if (wasTunnel) {
+    next.tunnel = undefined;
+    next.proxied = patch.proxied || undefined;
+    next.entrypoint = undefined;
+    if (next.certProvider === "cloudflare") next.certProvider = "letsencrypt";
   }
   // An absent provider already reads as letsencrypt, so only a real switch counts against the cap.
   if (
@@ -500,15 +517,26 @@ async function updateDomainUnlocked(
         hostname: nextName,
         teamId: membership.teamId,
         userId: user.id,
-        tunnel: current.tunnel === true,
+        tunnel,
+        proxied: project.clusterId == null && next.proxied === true,
       })
     : null;
-  if (renamed) {
+  // Same name, another way to serve it: the record Deplo holds in Cloudflare follows.
+  const switched =
+    !renamed && project.clusterId == null
+      ? await switchDomainRecord(current, project.serverId, {
+          tunnel,
+          proxied: next.proxied === true,
+        })
+      : null;
+  if (renamed || switched?.tunnelChanged) {
     next.status = await checkDomainDns(
       nextName,
       await appServerAddresses(current.appId),
     );
-    next.ssl = isRoutableDomain(next);
+    next.ssl = tunnel || isRoutableDomain(next);
+  }
+  if (renamed) {
     const chosen =
       patch.certProvider !== undefined &&
       patch.certProvider !== current.certProvider;
@@ -547,6 +575,7 @@ async function updateDomainUnlocked(
   const dnsWarning = renamed
     ? await swapDomainDns(id, current.name, dns)
     : null;
+  if (switched) await settleRecordSwitch(switched);
   if (renamed && dns?.appId)
     await registerAppTunnelDomain(dom.appId, id, dns.providerId);
   if (renamed)
@@ -563,7 +592,9 @@ async function updateDomainUnlocked(
     "domain",
     (renamed
       ? `Updated domain ${current.name} → ${dom.name}`
-      : `Updated domain ${dom.name}`) + (dnsWarning ? ` (${dnsWarning})` : ""),
+      : `Updated domain ${dom.name}`) +
+      recordSwitchNote(switched) +
+      (dnsWarning ? ` (${dnsWarning})` : ""),
     user.name,
     dom.appId,
   );

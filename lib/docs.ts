@@ -64,6 +64,8 @@ export const DOCS = {
   "domains.automaticDnsAdd": "guides/networking/automatic-dns#add-a-domain",
   "domains.automaticDnsTunnel":
     "guides/networking/automatic-dns#cloudflare-tunnel",
+  "domains.automaticDnsProxy":
+    "guides/networking/automatic-dns#cloudflare-proxy",
   "domains.automaticDnsCluster":
     "guides/networking/automatic-dns#an-app-on-a-cluster",
   "domains.automaticDnsDeletes":

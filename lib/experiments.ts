@@ -4,7 +4,6 @@ export const EXPERIMENTS = [
   "zeroDowntime",
   "pullRequests",
   "clusters",
-  "tunnels",
   "canary",
 ] as const;
 
@@ -32,10 +31,6 @@ export const EXPERIMENT_META: Record<
     label: "Server clusters",
     description: "Several servers that act as one.",
   },
-  tunnels: {
-    label: "Tunnels",
-    description: "Reach the panel and domains through a Cloudflare Tunnel.",
-  },
   canary: {
     label: "Canary releases",
     description:
@@ -48,7 +43,6 @@ export const NO_EXPERIMENTS: ExperimentFlags = {
   zeroDowntime: false,
   pullRequests: false,
   clusters: false,
-  tunnels: false,
   canary: false,
 };
 

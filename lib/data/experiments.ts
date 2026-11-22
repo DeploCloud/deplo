@@ -8,7 +8,6 @@ import { clusters } from "../db/schema/control-plane/clusters";
 import { cronJobs } from "../db/schema/control-plane/crons";
 import { databases } from "../db/schema/control-plane/databases";
 import { appPreviews } from "../db/schema/control-plane/deployments";
-import { domains } from "../db/schema/control-plane/domains";
 import { instanceSettings } from "../db/schema/control-plane/instance";
 import { getCurrentUser } from "../auth/current-user";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
@@ -30,7 +29,6 @@ export const EXPERIMENT_COLUMN = {
   zeroDowntime: "experimentZeroDowntime",
   pullRequests: "experimentPullRequests",
   clusters: "experimentClusters",
-  tunnels: "experimentTunnels",
   canary: "canaryReleases",
 } as const satisfies Record<
   ExperimentKey,
@@ -44,7 +42,6 @@ async function readExperiments(): Promise<ExperimentFlags> {
       zeroDowntime: instanceSettings.experimentZeroDowntime,
       pullRequests: instanceSettings.experimentPullRequests,
       clusters: instanceSettings.experimentClusters,
-      tunnels: instanceSettings.experimentTunnels,
       canary: instanceSettings.canaryReleases,
     })
     .from(instanceSettings)
@@ -150,23 +147,6 @@ async function usageOf(
     // Nothing uses a release channel: off only stops offering canary versions.
     case "canary":
       return { usage: null, lockedOn: null };
-    case "tunnels": {
-      const [[s], [d]] = await Promise.all([
-        db
-          .select({ host: instanceSettings.panelTunnelHostname })
-          .from(instanceSettings)
-          .where(eq(instanceSettings.id, SETTINGS_ID)),
-        db.select({ n: count }).from(domains).where(eq(domains.tunnel, true)),
-      ]);
-      const panel = Boolean(s?.host);
-      if (!panel && d.n === 0) return { usage: null, lockedOn: null };
-      return {
-        usage: list([panel && "the panel", d.n > 0 && plural(d.n, "domain")]),
-        lockedOn: panel
-          ? "The panel is still reached through a tunnel. Turn it off in Advanced first."
-          : `${plural(d.n, "domain")} still ${d.n === 1 ? "uses" : "use"} a tunnel. Remove ${d.n === 1 ? "it" : "them"} first.`,
-      };
-    }
   }
 }
 

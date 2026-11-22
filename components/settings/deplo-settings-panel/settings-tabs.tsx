@@ -139,9 +139,7 @@ export function DeploSettingsPanel({
         <SettingGroup icon={Globe} title="Panel access">
           <PanelBackupAddressCard settings={settings} />
           <PanelHttpCard />
-          {experiments.find((e) => e.key === "tunnels")?.enabled && (
-            <PanelTunnelCard settings={settings} />
-          )}
+          <PanelTunnelCard settings={settings} />
         </SettingGroup>
         <SettingGroup icon={ShieldCheck} title="Privacy">
           <SecurityUpdatesCard status={security} />
