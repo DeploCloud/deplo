@@ -304,7 +304,7 @@ function publicIp(raw: string | null | undefined): string | null {
 }
 
 /** The zone a name server of this server's cluster answers, so 53 can be checked under it; null for any other. */
-async function zoneServed(serverId: string): Promise<string | null> {
+export async function zoneServed(serverId: string): Promise<string | null> {
   const [row] = await getDb()
     .select({ zone: clusterDnsZones.name })
     .from(clusterNameServers)

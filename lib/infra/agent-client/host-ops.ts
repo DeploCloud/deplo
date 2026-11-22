@@ -82,15 +82,23 @@ export function withTraefikStackLock<T>(
   return queued;
 }
 
-export function applyTraefikConfig(
+/** Restarts the proxy, a cluster member's alone and out of its zone's answers meanwhile (`rollProxyRestart`). */
+export async function applyTraefikConfig(
   serverId: string,
   req: { composeYaml?: string; restartOnly?: boolean },
+  opts: { inZonePass?: boolean } = {},
 ): Promise<TraefikConfigResponse> {
-  return withHostOps(serverId, (conn) =>
-    conn.traefikConfig({
-      composeYaml: req.composeYaml ?? "",
-      restartOnly: req.restartOnly ?? false,
-    }),
+  const { rollProxyRestart } = await import("../../data/clusters/proxy-roll");
+  return rollProxyRestart(
+    serverId,
+    () =>
+      withHostOps(serverId, (conn) =>
+        conn.traefikConfig({
+          composeYaml: req.composeYaml ?? "",
+          restartOnly: req.restartOnly ?? false,
+        }),
+      ),
+    opts,
   );
 }
 

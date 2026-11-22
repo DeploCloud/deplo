@@ -79,6 +79,7 @@ export function __forgetZoneCerts(): void {
 export async function syncDnsChallengeProxy(
   serverId: string,
   on: boolean,
+  opts: { inZonePass?: boolean } = {},
 ): Promise<boolean> {
   const { fetchHostInfo, withTraefikStackLock, applyTraefikConfig } =
     await import("../../infra/agent-client/host-ops");
@@ -88,9 +89,11 @@ export async function syncDnsChallengeProxy(
       proxies().set(serverId, { on: Boolean(yaml) && on, at: Date.now() });
       return false;
     }
-    const res = await applyTraefikConfig(serverId, {
-      composeYaml: withDnsChallenge(yaml, on),
-    });
+    const res = await applyTraefikConfig(
+      serverId,
+      { composeYaml: withDnsChallenge(yaml, on) },
+      opts,
+    );
     if (!res.ok)
       throw new Error(
         res.error || "The proxy on this server refused the change",
@@ -139,7 +142,9 @@ export async function zoneCertMembers(
     if (caps?.includes(DNS_CHALLENGE_CAPABILITY)) {
       capable = await dnsChallengeOn(m.serverId);
       if (!capable && !(await instanceFrozen()))
-        capable = await syncDnsChallengeProxy(m.serverId, true)
+        capable = await syncDnsChallengeProxy(m.serverId, true, {
+          inZonePass: true,
+        })
           .then(() => dnsChallengeOn(m.serverId))
           .catch((e) => {
             console.warn(

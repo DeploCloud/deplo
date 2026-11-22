@@ -111,11 +111,12 @@ async function renewNow(serverId: string, now: boolean): Promise<Renewal> {
     const signed = await signAgentCsr(csrPem, dialHosts);
     // Staged before the agent installs it: a rotation cut halfway leaves a key the door still takes.
     await stageNextCert(serverId, signed);
-    // A cluster's servers trust each other by certificate: each holds the next one first (ADR-0050).
+    // A cluster's servers trust each other by certificate: each holds the next one first (ADR-0050). A caught copy
+    // rotates the original at once, as a key near its date does: a server away then trusts it once Deplo is back.
     if ((await clustersOfServer(serverId)).length > 0) {
       const missing = await announceNextKey(serverId);
       const d = leafDates(row.certPem);
-      if (missing.length > 0 && !(d && dateNear(d, Date.now()))) {
+      if (missing.length > 0 && !now && !(d && dateNear(d, Date.now()))) {
         await dropNextCert(serverId, signed.fingerprint);
         await pushRostersForServer(serverId);
         return {
