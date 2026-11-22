@@ -60,6 +60,8 @@ export async function planClusterAnswer(input: {
   pathPrefix: string;
   tunnel: boolean | undefined;
   provider: { id: string; zoneName: string } | null;
+  /** False for an App moved onto the cluster: its domains use a zone the cluster has, never a new one. */
+  createZone?: boolean;
 }): Promise<ClusterAnswerPlan | null> {
   const zones = await zonesOf(input.clusterId);
   const inside = nativeZoneOf({ name: input.name, zoneId: null }, zones);
@@ -74,6 +76,10 @@ export async function planClusterAnswer(input: {
     return { way: "tunnel", fallback: why };
   };
   let zone = inside ?? zones[0] ?? null;
+  if (!zone && input.createZone === false)
+    throw new Error(
+      "The cluster has no DNS zone yet: once one is added in its settings, move the domain from the tunnel.",
+    );
   if (!zone && !(await isInstanceAdmin())) {
     if (input.tunnel === false) throw new Error(NO_ZONE_FOR_MEMBER);
     return { way: "tunnel", fallback: null };
@@ -156,6 +162,21 @@ export async function moveDomainToCluster(domainId: string): Promise<string> {
     throw new Error("Only an App on a cluster can be answered by the cluster.");
   if (d.tunnel !== true)
     throw new Error(`${d.name} is not on the Cloudflare Tunnel.`);
+  await answerFromCluster(d, app.clusterId, membership.teamId);
+  return d.appId;
+}
+
+type DomainRow = typeof domainsTable.$inferSelect;
+
+/** Points a domain whose record Deplo keeps in Cloudflare at the cluster's zone; it throws with the reason it cannot. */
+async function answerFromCluster(
+  d: DomainRow,
+  clusterId: string,
+  teamId: string,
+  createZone = true,
+): Promise<void> {
+  const app = { clusterId };
+  const membership = { teamId };
   const [row] = await getDb()
     .select({
       providerId: domainDnsRecords.providerId,
@@ -177,6 +198,7 @@ export async function moveDomainToCluster(domainId: string): Promise<string> {
     pathPrefix: d.pathPrefix ?? "",
     tunnel: false,
     provider: { id: row.providerId, zoneName: row.zoneName },
+    createZone,
   });
   if (!plan || plan.way === "tunnel") {
     const why =
@@ -222,12 +244,39 @@ export async function moveDomainToCluster(domainId: string): Promise<string> {
   const user = await getCurrentUser();
   await recordActivity(
     "domain",
-    `${d.name} moved from the Cloudflare Tunnel to the cluster: every server of it answers ${d.name}, through its DNS zone ${plan.zone.name}`,
+    d.tunnel
+      ? `${d.name} moved from the Cloudflare Tunnel to the cluster: every server of it answers ${d.name}, through its DNS zone ${plan.zone.name}`
+      : `Every server of the cluster answers ${d.name}, through its DNS zone ${plan.zone.name}`,
     user?.name ?? "Deplo",
     d.appId,
     membership.teamId,
   );
-  return d.appId;
+}
+
+/**
+ * An App moved onto a cluster: each domain whose record Deplo keeps in Cloudflare follows Add domain's rule, the
+ * cluster's zone when it answers and the actor may use it, else the App's tunnel with the reason on the row.
+ */
+export async function answerArrivingDomains(appId: string): Promise<void> {
+  const app = await loadAppGraph(appId);
+  if (!app?.clusterId) return;
+  const rows = await getDb()
+    .select({ d: domainsTable })
+    .from(domainsTable)
+    .innerJoin(domainDnsRecords, eq(domainDnsRecords.domainId, domainsTable.id))
+    .where(eq(domainsTable.appId, appId));
+  for (const { d } of rows) {
+    if (d.answersEverywhere || d.source === "auto" || d.pathPrefix) continue;
+    try {
+      await answerFromCluster(d, app.clusterId, app.teamId, false);
+    } catch (e) {
+      // The tunnel takes it (joinAppTunnel), and the row says why.
+      await getDb()
+        .update(domainsTable)
+        .set({ clusterFallback: e instanceof Error ? e.message : String(e) })
+        .where(eq(domainsTable.id, d.id));
+    }
+  }
 }
 
 /**

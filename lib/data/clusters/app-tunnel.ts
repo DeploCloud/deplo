@@ -257,7 +257,13 @@ async function coveredDomains(
   );
   const out: { id: string; tunnel: boolean; providerId: string }[] = [];
   for (const d of all) {
-    if (held.has(d.id) || d.source === "auto" || elsewhere.has(d.name))
+    // One the cluster's zone answers needs no tunnel.
+    if (
+      held.has(d.id) ||
+      d.source === "auto" ||
+      elsewhere.has(d.name) ||
+      d.answersEverywhere
+    )
       continue;
     const providerId =
       managed.get(d.id) ??
