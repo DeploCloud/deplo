@@ -6,7 +6,6 @@ import {
   CircleCheck,
   Globe,
   Loader2,
-  MapPin,
   Timer,
   Trash2,
   TriangleAlert,
@@ -37,14 +36,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { gql, gqlAction } from "@/lib/graphql-client";
-import { cn } from "@/lib/utils";
 import { useRouter } from "@/lib/nav";
-import type {
-  ClusterDnsView,
-  ClusterServerPlace,
-  DelegationCheck,
-} from "@/lib/types/cluster-dns";
+import type { ClusterDnsView, DelegationCheck } from "@/lib/types/cluster-dns";
 import { DNS_DROP_AFTER, DNS_TTL } from "@/lib/deploy/cluster-zone";
+import { ServerPlaces } from "./server-places";
 import { ZoneCertificateLine, ZoneWildcardSwitch } from "./zone-certificate";
 
 // A cluster's own DNS zone (ADR-0049): https://deplo.build/docs/operations/clusters/dns-zone
@@ -52,6 +47,12 @@ import { ZoneCertificateLine, ZoneWildcardSwitch } from "./zone-certificate";
 const ADD_ZONE = /* GraphQL */ `
   mutation AddClusterDnsZone($clusterId: String!, $name: String!) {
     addClusterDnsZone(clusterId: $clusterId, name: $name)
+  }
+`;
+
+const RENAME_ZONE = /* GraphQL */ `
+  mutation RenameClusterDnsZone($id: String!, $name: String!) {
+    renameClusterDnsZone(id: $id, name: $name)
   }
 `;
 
@@ -89,34 +90,6 @@ const CHECK_ZONE = /* GraphQL */ `
     }
   }
 `;
-
-const SEARCH_CITIES = /* GraphQL */ `
-  query SearchCities($query: String!) {
-    searchCities(query: $query) {
-      label
-      latitude
-      longitude
-    }
-  }
-`;
-
-const SET_PLACE = /* GraphQL */ `
-  mutation SetServerPlace(
-    $serverId: String!
-    $latitude: Float
-    $longitude: Float
-    $label: String
-  ) {
-    setServerPlace(
-      serverId: $serverId
-      latitude: $latitude
-      longitude: $longitude
-      label: $label
-    )
-  }
-`;
-
-type CityHit = { label: string; latitude: number; longitude: number };
 
 const ZONE_HINT =
   "The cluster's servers answer for the domain themselves and name only the healthy ones, so no record changes when a server stops.";
@@ -166,10 +139,17 @@ function DelegateDialog({
         <form className="grid gap-4" onSubmit={run}>
           <DialogHeader>
             <DialogTitle>Delegate {zone.name}</DialogTitle>
-            <DialogDescription>
-              Add these records <strong>where you bought the domain</strong>.{" "}
-              <DocsLink topic="clusters.dnsZoneDelegate" />
-            </DialogDescription>
+            {zone.keptIn ? (
+              <DialogDescription>
+                Deplo keeps these records <strong>in Cloudflare</strong>, in{" "}
+                {zone.keptIn}. <DocsLink topic="clusters.dnsZoneConnected" />
+              </DialogDescription>
+            ) : (
+              <DialogDescription>
+                Add these records <strong>where you bought the domain</strong>,
+                then Check. <DocsLink topic="clusters.dnsZoneDelegate" />
+              </DialogDescription>
+            )}
           </DialogHeader>
           {zone.records.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -269,15 +249,87 @@ function DelegateDialog({
   );
 }
 
+/** A zone's new name: the domains pointed into it follow, and Deplo rewrites the records it keeps. */
+function RenameDialog({
+  zone,
+  open,
+  onOpenChange,
+}: {
+  zone: ClusterDnsView["zones"][number];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = React.useState(zone.name);
+  const [pending, startTransition] = React.useTransition();
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction(RENAME_ZONE, { id: zone.id, name });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`Renamed ${zone.name}`);
+      onOpenChange(false);
+      router.refresh();
+    });
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <form className="grid gap-4" onSubmit={save}>
+          <DialogHeader>
+            <DialogTitle>Rename {zone.name}</DialogTitle>
+            <DialogDescription>
+              Its domains follow{" "}
+              {zone.keptIn ? (
+                <strong>with no record to change</strong>
+              ) : (
+                <strong>once their records point at the new name</strong>
+              )}
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="Zone"
+            disabled={pending}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                pending ||
+                name.trim() === "" ||
+                name.trim().toLowerCase() === zone.name
+              }
+            >
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Rename
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ZoneRow({
   zone,
   dns,
+  justAdded,
 }: {
   zone: ClusterDnsView["zones"][number];
   dns: ClusterDnsView;
+  /** Added by hand a moment ago: its records open at once, as the next step. */
+  justAdded: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  // A zone's row mounts once it exists, so its first state is the moment it was added.
+  const [open, setOpen] = React.useState(justAdded && !zone.keptIn);
+  const [renaming, setRenaming] = React.useState(false);
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
@@ -286,6 +338,9 @@ function ZoneRow({
         </span>
         <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
           Records
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>
+          Rename
         </Button>
         <ConfirmAction
           trigger={
@@ -318,7 +373,13 @@ function ZoneRow({
           open={open}
           onOpenChange={setOpen}
         />
+        <RenameDialog zone={zone} open={renaming} onOpenChange={setRenaming} />
       </div>
+      <p className="text-xs text-muted-foreground">
+        {zone.keptIn
+          ? `Deplo keeps its records in Cloudflare, in ${zone.keptIn}.`
+          : "Add its records where you bought the domain: open Records, then Check."}
+      </p>
       <ZoneCertificateLine
         zone={zone.name}
         cert={zone.certificate}
@@ -399,276 +460,6 @@ function TimesForm({
   );
 }
 
-/** Where one server is: a city found by name, or coordinates behind Advanced, or back to its address. */
-function PlaceDialog({
-  server,
-  open,
-  onOpenChange,
-}: {
-  server: ClusterServerPlace;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const router = useRouter();
-  const was = {
-    lat: String(server.place?.latitude ?? ""),
-    lon: String(server.place?.longitude ?? ""),
-  };
-  const [query, setQuery] = React.useState("");
-  const [hits, setHits] = React.useState<CityHit[]>([]);
-  const [picked, setPicked] = React.useState<CityHit | null>(null);
-  const [lat, setLat] = React.useState(was.lat);
-  const [lon, setLon] = React.useState(was.lon);
-  const [pending, startTransition] = React.useTransition();
-  const q = query.trim();
-  React.useEffect(() => {
-    if (q.length < 2) return;
-    const t = setTimeout(() => {
-      gql<{ searchCities: CityHit[] }>(SEARCH_CITIES, { query: q }).then(
-        (r) => setHits(r.searchCities),
-        () => setHits([]),
-      );
-    }, 200);
-    return () => clearTimeout(t);
-  }, [q]);
-  const shown = q.length < 2 ? [] : hits;
-  const typed =
-    !picked &&
-    (lat !== was.lat || lon !== was.lon) &&
-    lat.trim() !== "" &&
-    lon.trim() !== "";
-  const save = (place: {
-    latitude?: number;
-    longitude?: number;
-    label?: string;
-  }) =>
-    startTransition(async () => {
-      const res = await gqlAction(SET_PLACE, {
-        serverId: server.serverId,
-        ...place,
-      });
-      if (!res.ok) return void toast.error(res.error);
-      toast.success(`Saved where ${server.serverName} is`);
-      onOpenChange(false);
-      router.refresh();
-    });
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (picked)
-      save({
-        latitude: picked.latitude,
-        longitude: picked.longitude,
-        label: picked.label,
-      });
-    else if (typed) save({ latitude: Number(lat), longitude: Number(lon) });
-  };
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <form className="grid gap-4" onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Where is {server.serverName}?</DialogTitle>
-            <DialogDescription>
-              Visitors are answered with{" "}
-              <strong>the servers nearest them</strong>.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-1.5">
-            <FieldLabel htmlFor={`place-${server.serverId}`}>City</FieldLabel>
-            <Input
-              id={`place-${server.serverId}`}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPicked(null);
-              }}
-              placeholder={server.place?.label ?? "Frankfurt"}
-              autoComplete="off"
-              disabled={pending}
-            />
-            {shown.length > 0 && (
-              <ul className="overflow-hidden rounded-lg border border-border bg-card">
-                {shown.map((h) => (
-                  <li key={`${h.label}-${h.latitude}-${h.longitude}`}>
-                    <button
-                      type="button"
-                      onClick={() => setPicked(h)}
-                      aria-pressed={picked === h}
-                      className={cn(
-                        "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface",
-                        picked === h && "bg-primary-wash",
-                      )}
-                    >
-                      <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{h.label}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <AdvancedSection>
-            <div className="flex flex-wrap gap-3">
-              <div className="grid gap-1.5">
-                <FieldLabel
-                  htmlFor={`lat-${server.serverId}`}
-                  info="Degrees from -90 to 90; north is positive."
-                >
-                  Latitude
-                </FieldLabel>
-                <Input
-                  id={`lat-${server.serverId}`}
-                  inputMode="decimal"
-                  value={lat}
-                  onChange={(e) => {
-                    setLat(e.target.value);
-                    setPicked(null);
-                  }}
-                  className="w-36"
-                  disabled={pending}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <FieldLabel
-                  htmlFor={`lon-${server.serverId}`}
-                  info="Degrees from -180 to 180; east is positive."
-                >
-                  Longitude
-                </FieldLabel>
-                <Input
-                  id={`lon-${server.serverId}`}
-                  inputMode="decimal"
-                  value={lon}
-                  onChange={(e) => {
-                    setLon(e.target.value);
-                    setPicked(null);
-                  }}
-                  className="w-36"
-                  disabled={pending}
-                />
-              </div>
-            </div>
-          </AdvancedSection>
-          <DialogFooter>
-            {server.place && server.place.source !== "address" && (
-              <Button
-                variant="ghost"
-                disabled={pending}
-                onClick={() => save({})}
-              >
-                Use its address
-              </Button>
-            )}
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={pending || (!picked && !typed)}>
-              {pending && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function PlaceRow({ server }: { server: ClusterServerPlace }) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-32 shrink-0 truncate text-sm">
-        {server.serverName}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-        {server.place
-          ? `${server.place.label}${server.place.source === "address" ? " · from its address" : ""}`
-          : "Not placed"}
-      </span>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        Change
-      </Button>
-      <PlaceDialog server={server} open={open} onOpenChange={setOpen} />
-    </div>
-  );
-}
-
-const MONTH = new Intl.DateTimeFormat("en", {
-  month: "long",
-  year: "numeric",
-  timeZone: "UTC",
-});
-
-/** Where each server is, and the location table visitors are placed with, credited to DB-IP as its licence asks. */
-function ServerPlaces({ dns }: { dns: ClusterDnsView }) {
-  const unplaced = dns.places.filter((p) => !p.place);
-  const behind = dns.servers.filter(
-    (s) => s.serving && !s.nearest && unplaced.length === 0,
-  );
-  const { geo } = dns;
-  return (
-    <SettingItem
-      icon={MapPin}
-      title="Server locations"
-      info="Each visitor is answered with the healthy servers nearest it, always at least two when two are up."
-      docs="clusters.dnsZoneNearest"
-    >
-      <div className="space-y-3">
-        {dns.places.map((p) => (
-          <PlaceRow key={p.serverId} server={p} />
-        ))}
-        {geo.state === "ready" && unplaced.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Place every server to answer each visitor with the nearest ones.
-          </p>
-        )}
-        {geo.state === "ready" && behind.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {behind.map((s) => s.serverName).join(", ")} answer every healthy
-            server until {behind.length === 1 ? "its" : "their"} server agent
-            updates.
-          </p>
-        )}
-        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-          {geo.state === "ready" && geo.release ? (
-            <>
-              <a
-                href="https://db-ip.com"
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                IP geolocation by DB-IP
-              </a>
-              <span>
-                · location table of{" "}
-                {MONTH.format(new Date(`${geo.release}-01T00:00:00Z`))}
-              </span>
-              {geo.stale && (
-                <span className="inline-flex items-center gap-1">
-                  <TriangleAlert className="size-3.5 text-[var(--warning,#d97706)]" />
-                  Over three months old: update Deplo for a newer one.
-                </span>
-              )}
-            </>
-          ) : geo.state === "damaged" ? (
-            <span className="inline-flex items-center gap-1">
-              <TriangleAlert className="size-3.5 text-[var(--warning,#d97706)]" />
-              This build&apos;s location table is damaged, so every healthy
-              server is answered.
-            </span>
-          ) : (
-            <span>
-              This build carries no location table, so every healthy server is
-              answered.
-            </span>
-          )}
-        </p>
-      </div>
-    </SettingItem>
-  );
-}
-
 /** The cluster's own DNS zones: add one, see what to add at the registrar, and the two times behind Advanced. */
 export function ClusterDnsRow({
   cluster,
@@ -679,15 +470,20 @@ export function ClusterDnsRow({
 }) {
   const router = useRouter();
   const [name, setName] = React.useState("");
+  const [added, setAdded] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const add = (e: React.FormEvent) => {
     e.preventDefault();
     startTransition(async () => {
-      const res = await gqlAction(ADD_ZONE, { clusterId: cluster.id, name });
+      const res = await gqlAction<{ addClusterDnsZone: string }>(ADD_ZONE, {
+        clusterId: cluster.id,
+        name,
+      });
       if (!res.ok) return void toast.error(res.error);
       toast.success(
         `${cluster.name} answers for ${name.trim().toLowerCase()} once it is delegated`,
       );
+      setAdded(res.data?.addClusterDnsZone ?? null);
       setName("");
       router.refresh();
     });
@@ -703,7 +499,7 @@ export function ClusterDnsRow({
       >
         <div className="space-y-3">
           {dns.zones.map((z) => (
-            <ZoneRow key={z.id} zone={z} dns={dns} />
+            <ZoneRow key={z.id} zone={z} dns={dns} justAdded={z.id === added} />
           ))}
           <form className="flex flex-wrap items-center gap-2" onSubmit={add}>
             <Input

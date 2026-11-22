@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  answerRecordChange,
   answerRecordSet,
   checkAnswerRecords,
   type AnswerServer,
@@ -112,33 +111,4 @@ test("a stopped server still listed keeps the domain routed, and is still said",
     checkAnswerRecords({ a: ["203.0.113.1"], aaaa: [] }, set).status,
     "valid",
   );
-});
-
-test("a provider gets only what differs, and a record Deplo did not write is never touched", () => {
-  const set = { a: ["203.0.113.1", "203.0.113.2"], aaaa: ["2001:db8::2"] };
-  const change = answerRecordChange(
-    [
-      { id: "r1", type: "A", content: "203.0.113.1", ours: true },
-      { id: "r3", type: "A", content: "203.0.113.3", ours: true },
-      { id: "t1", type: "TXT", content: "v=spf1", ours: false },
-    ],
-    set,
-  );
-  assert.deepEqual(change, {
-    foreign: null,
-    create: [
-      { type: "A", content: "203.0.113.2" },
-      { type: "AAAA", content: "2001:db8::2" },
-    ],
-    remove: ["r3"],
-  });
-  const theirs = answerRecordChange(
-    [{ id: "x", type: "CNAME", content: "elsewhere.example.com", ours: false }],
-    set,
-  );
-  assert.deepEqual(theirs.foreign, {
-    type: "CNAME",
-    content: "elsewhere.example.com",
-  });
-  assert.deepEqual(theirs.remove, []);
 });

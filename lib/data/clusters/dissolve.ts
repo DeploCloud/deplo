@@ -389,12 +389,22 @@ async function leave(clusterId: string, serverIds: string[]): Promise<void> {
 async function leaveTunnels(
   held: Held[],
   actor: { id: string; name: string },
+  zoneKept?: Map<string, string[]>,
 ): Promise<void> {
   const { rerouteApp } = await import("../../deploy/build/reroute");
   const { appTunnels } =
     await import("../../db/schema/control-plane/dns-providers");
   const apps = ofKind(held, "app");
   if (apps.length === 0) return;
+  // A domain the cluster's zone answered points at its App's server again, the zone being gone.
+  const { leaveClusterZone } = await import("../domains/cluster-answer");
+  for (const h of held)
+    if (h.kind === "app" && (!zoneKept || zoneKept.has(h.id)))
+      await leaveClusterZone(
+        { id: h.id, teamId: h.teamId },
+        actor.name,
+        zoneKept?.get(h.id),
+      ).catch((e) => warn(h.id, e));
   const tunnelled = await getDb()
     .select({ appId: appTunnels.appId })
     .from(appTunnels)
@@ -616,6 +626,11 @@ export async function deleteCluster(clusterId: string): Promise<void> {
   await assertHoldersAnswer(cluster, held, "deleting");
   const placed = await placedElsewhere(held);
   const lost = await namesLost(clusterId, held);
+  // What the cluster's zones answered, read before they go with the cluster.
+  const { zoneKeptDomains } = await import("../domains/cluster-answer");
+  const { zonesOf } = await import("./dns-zone");
+  const zoneKept = await zoneKeptDomains(clusterId);
+  const zones = await zonesOf(clusterId);
 
   await getDb().transaction(async (tx) => {
     const locked = await tx
@@ -641,7 +656,10 @@ export async function deleteCluster(clusterId: string): Promise<void> {
   await retireCluster(cluster);
   await stopOtherReplicas(held, placed);
   await endStandbys(held);
-  await leaveTunnels(held, user);
+  await leaveTunnels(held, user, zoneKept);
+  const { dropZoneDelegation } = await import("./zone-cloudflare");
+  for (const z of zones)
+    await dropZoneDelegation(z).catch((e) => warn(clusterId, e));
 
   const failover = failoverOn(members.length, cluster.failoverEnabled);
   const mine = held.filter((w) => w.teamId === teamId);

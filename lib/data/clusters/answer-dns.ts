@@ -2,15 +2,11 @@ import "server-only";
 
 import { and, asc, eq } from "drizzle-orm";
 
-import * as cloudflare from "../../cloudflare/tunnel-api";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { clusterMembers } from "../../db/schema/control-plane/clusters";
-import { domainDnsRecords } from "../../db/schema/control-plane/dns-providers";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import {
-  ANSWER_RECORD_TTL,
-  answerRecordChange,
   answerRecordSet,
   checkAnswerRecords,
   type AnswerRecordSet,
@@ -19,7 +15,6 @@ import { resolvesToCloudflare } from "../../deploy/cloudflare";
 import { messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
-import { loadProviderSecret } from "../dns-providers/tunnels";
 import {
   lookupHostAddresses,
   resolveHostIpv4,
@@ -31,8 +26,6 @@ import { oneMemberPerAddress } from "../../clusters/shared-addresses";
 import { getServerById } from "../servers/roster";
 
 // https://deplo.build/docs/operations/clusters/addresses - ADR-0048 step 3: DNS lists every healthy server.
-
-export const ANSWER_RECORD_COMMENT = "Deplo app";
 
 // The last problem said per domain, so a sync every minute says it once and again only when it changes.
 const said = new Map<string, string>();
@@ -102,44 +95,6 @@ async function answeringDomains(clusterId: string): Promise<AnswerDomain[]> {
     );
   // A domain on the App's tunnel follows by its connector, never by these records.
   return rows.filter((r) => r.tunnel !== true);
-}
-
-/** At a connected provider: the name's records become exactly the set; a record Deplo did not write stops it. */
-async function syncAtProvider(
-  d: AnswerDomain,
-  row: { providerId: string; zoneId: string },
-  set: AnswerRecordSet,
-): Promise<string | null> {
-  const provider = await loadProviderSecret(row.providerId);
-  if (!provider) return "its DNS provider is no longer connected";
-  const existing = await cloudflare.dnsRecords(
-    provider.token,
-    row.zoneId,
-    d.name,
-  );
-  const change = answerRecordChange(
-    existing.map((r) => ({
-      id: r.id,
-      type: r.type,
-      content: r.content,
-      ours: r.comment === ANSWER_RECORD_COMMENT,
-    })),
-    set,
-  );
-  if (change.foreign)
-    return `${d.name} has a ${change.foreign.type} record Deplo did not write (${change.foreign.content}). Delete it at the provider.`;
-  for (const c of change.create)
-    await cloudflare.createDnsRecord(provider.token, row.zoneId, {
-      type: c.type,
-      name: d.name,
-      content: c.content,
-      proxied: false,
-      ttl: ANSWER_RECORD_TTL,
-      comment: ANSWER_RECORD_COMMENT,
-    });
-  for (const id of change.remove)
-    await cloudflare.deleteDnsRecord(provider.token, row.zoneId, id);
-  return null;
 }
 
 /**
@@ -225,8 +180,9 @@ async function checkNative(
 }
 
 /**
- * Puts every domain of the cluster that answers on every server on the cluster's healthy servers: written at its
- * connected provider, or checked against what a person wrote. Called when a server joins, leaves, stops or is back.
+ * Checks every domain of the cluster that answers on every server: through the cluster's zone, or against the records
+ * a person wrote. Called when a server joins, leaves, stops or is back. Under a domain connected for automatic DNS the
+ * zone answers (ADR-0049), so Deplo writes no record per server anywhere.
  */
 export async function syncClusterAnswerDns(
   clusterId: string,
@@ -258,18 +214,9 @@ export async function syncClusterAnswerDns(
         }
         continue;
       }
-      const [row] = await getDb()
-        .select({
-          providerId: domainDnsRecords.providerId,
-          zoneId: domainDnsRecords.zoneId,
-        })
-        .from(domainDnsRecords)
-        .where(eq(domainDnsRecords.domainId, d.id));
       let problem: string | null;
       try {
-        problem = row
-          ? await syncAtProvider(d, row, set)
-          : await checkByHand(d, set, changed);
+        problem = await checkByHand(d, set, changed);
       } catch (e) {
         problem = `Deplo could not update the DNS records of ${d.name}: ${messageOf(e)}`;
       }

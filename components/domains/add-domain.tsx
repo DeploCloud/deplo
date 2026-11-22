@@ -3,7 +3,7 @@
 import * as React from "react";
 import { servicesOf } from "@/lib/deploy/compose-lint/document";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Globe, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,7 @@ import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { DomainNameField } from "./domain-name-field";
 import { AutoDnsField } from "./auto-dns-field";
+import { ClusterAnswerField, type ClusterWay } from "./cluster-answer-field";
 import { coveringZone } from "@/lib/dns-zone";
 import { DocsLink } from "@/components/ui/docs-link";
 
@@ -43,6 +44,8 @@ export interface AddDomainProps {
   autoDnsZones?: string[];
   // The Tunnels experiment is on, so a domain may be served through Cloudflare Tunnel.
   tunnels?: boolean;
+  // The App runs on a cluster: its DNS zones, and whether the viewer may make the first one (an instance admin).
+  cluster?: { zones: string[]; canAddZone: boolean } | null;
 }
 
 export function AddDomain({
@@ -50,6 +53,7 @@ export function AddDomain({
   suggestedDomain,
   autoDnsZones = [],
   tunnels = false,
+  cluster = null,
 }: AddDomainProps) {
   const canManage = useAppCan("manage_domains");
   const [open, setOpen] = React.useState(false);
@@ -59,8 +63,20 @@ export function AddDomain({
     initialDomainConfig(undefined, project.defaultPort),
   );
   const [wantsTunnel, setWantsTunnel] = React.useState(false);
+  const [way, setWay] = React.useState<ClusterWay | null>(null);
   const zone = coveringZone(autoDnsZones, name);
-  const tunnel = tunnels && wantsTunnel && zone !== null;
+  // A name inside the cluster's own zone is answered by it, never by a tunnel.
+  const inside = cluster ? coveringZone(cluster.zones, name) : null;
+  const choosing = cluster != null && zone !== null && inside === null;
+  const clusterWay: ClusterWay =
+    way ??
+    (cluster && (cluster.zones.length > 0 || cluster.canAddZone)
+      ? "cluster"
+      : "tunnel");
+  const tunnel = choosing
+    ? clusterWay === "tunnel"
+    : tunnels && wantsTunnel && zone !== null && inside === null;
+  const byCluster = inside !== null || (choosing && clusterWay === "cluster");
 
   const services = React.useMemo(
     () => Object.keys(servicesOf(project.compose ?? null) ?? {}),
@@ -71,6 +87,7 @@ export function AddDomain({
     setName("");
     setConfig(initialDomainConfig(undefined, project.defaultPort));
     setWantsTunnel(false);
+    setWay(null);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -88,15 +105,22 @@ export function AddDomain({
       toast.error(resolved.error);
       return;
     }
-    const typed = { name: name.trim(), config, tunnel };
+    const typed = { name: name.trim(), config, tunnel, way, choosing };
     setOpen(false);
     reset();
     create(
       { label: typed.name, note: "Adding domain…" },
       () =>
-        gqlAction<{ addDomain: { id: string; status: string } }>(
+        gqlAction<{
+          addDomain: {
+            id: string;
+            status: string;
+            answersEverywhere: boolean;
+            clusterFallback: string | null;
+          };
+        }>(
           `mutation AddDomain($appId: String!, $name: String!, $config: DomainConfigInput) {
-          addDomain(appId: $appId, name: $name, config: $config) { id status }
+          addDomain(appId: $appId, name: $name, config: $config) { id status answersEverywhere clusterFallback }
         }`,
           {
             appId: project.id,
@@ -113,14 +137,26 @@ export function AddDomain({
               service: resolved.service,
               proxied: resolved.proxied,
               www: resolved.www,
-              ...(typed.tunnel ? { tunnel: true } : {}),
+              ...(typed.choosing
+                ? { tunnel: typed.tunnel }
+                : typed.tunnel
+                  ? { tunnel: true }
+                  : {}),
             },
           },
         ),
       {
         onSuccess: (data) => {
           const status = data?.addDomain.status;
-          if (typed.tunnel)
+          if (data?.addDomain.clusterFallback)
+            toast.warning(
+              "Domain added on the Cloudflare Tunnel for now - its row says why",
+            );
+          else if (data?.addDomain.answersEverywhere)
+            toast.success(
+              "Domain added - every server of the cluster answers it, HTTPS included",
+            );
+          else if (typed.tunnel)
             toast.success(
               "Domain added - Cloudflare serves it through a tunnel, HTTPS included",
             );
@@ -155,6 +191,7 @@ export function AddDomain({
           setName(typed.name);
           setConfig(typed.config);
           setWantsTunnel(typed.tunnel);
+          setWay(typed.way);
           setOpen(true);
         },
       },
@@ -197,13 +234,32 @@ export function AddDomain({
                 onChange={setName}
                 suggestedDomain={suggestedDomain}
               />
-              {zone && (
-                <AutoDnsField
-                  id="add-domain-tunnel"
+              {inside ? (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Globe className="size-3.5 shrink-0" />
+                  <span>
+                    The cluster&rsquo;s DNS zone{" "}
+                    <span className="font-mono text-foreground">{inside}</span>{" "}
+                    answers it. <DocsLink topic="clusters.dnsZoneDomains" />
+                  </span>
+                </p>
+              ) : choosing && cluster ? (
+                <ClusterAnswerField
                   zone={zone}
-                  tunnel={tunnel}
-                  onTunnel={tunnels ? setWantsTunnel : undefined}
+                  clusterZone={cluster.zones[0] ?? null}
+                  canAddZone={cluster.canAddZone}
+                  way={clusterWay}
+                  onWay={setWay}
                 />
+              ) : (
+                zone && (
+                  <AutoDnsField
+                    id="add-domain-tunnel"
+                    zone={zone}
+                    tunnel={tunnel}
+                    onTunnel={tunnels ? setWantsTunnel : undefined}
+                  />
+                )
               )}
               <DomainConfigFields
                 state={config}
@@ -212,6 +268,7 @@ export function AddDomain({
                 idPrefix="add-domain"
                 hostname={name}
                 tunnel={tunnel}
+                clusterAnswer={byCluster}
               />
             </div>
           </AnimatedHeight>

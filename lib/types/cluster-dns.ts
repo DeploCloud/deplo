@@ -64,6 +64,8 @@ export type ClusterDnsZoneView = {
   records: DelegationRecord[];
   /** The domains it answers, as each one's name in the zone. */
   names: string[];
+  /** The domain connected for automatic DNS where Deplo keeps its NS and glue, in Cloudflare; null when typed by hand. */
+  keptIn: string | null;
   certificate: ZoneCertificateView;
 };
 

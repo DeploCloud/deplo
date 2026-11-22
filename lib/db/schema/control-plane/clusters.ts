@@ -11,6 +11,7 @@ import {
 
 import { isoTimestamptz } from "../columns";
 import { apps } from "./apps";
+import { dnsProviders } from "./dns-providers";
 import { teams, users } from "./identity";
 import { servers } from "./servers";
 
@@ -295,6 +296,10 @@ export const clusterDnsZones = pgTable(
       .references(() => clusters.id, { onDelete: "cascade" }),
     // Lower case, no trailing dot: "go.example.com".
     name: text("name").notNull(),
+    // The connected Cloudflare zone above it, where Deplo keeps its NS and glue; null when a person types them.
+    providerId: text("provider_id").references(() => dnsProviders.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

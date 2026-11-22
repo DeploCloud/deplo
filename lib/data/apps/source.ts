@@ -23,6 +23,7 @@ import {
 import { assertMemberTakes } from "../clusters/member-choice";
 import { resolveTeamCluster } from "../clusters/roster";
 import { joinAppTunnel, leaveAppTunnel } from "../clusters/app-tunnel";
+import { leaveClusterZone } from "../domains/cluster-answer";
 import {
   canHostWorkloads,
   getServerById,
@@ -473,10 +474,12 @@ async function applyAppSource(
   const moved = { id, teamId: membership.teamId };
   if (after.moved && move?.cluster && !current?.clusterId)
     await joinAppTunnel(id, user).catch((e) => tunnelWarn(moved, "set up", e));
-  if (after.moved && current?.clusterId && !move?.cluster)
+  if (after.moved && current?.clusterId && !move?.cluster) {
     await leaveAppTunnel(id, user).catch((e) =>
       tunnelWarn(moved, "switch back from", e),
     );
+    await leaveClusterZone(moved, user.name);
+  }
 
   if (after.moved && (move ? move.deploy : input.source !== "upload")) {
     try {

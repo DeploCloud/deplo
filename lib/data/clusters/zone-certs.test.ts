@@ -31,12 +31,8 @@ import {
 } from "../cluster-dissolve-test-helpers";
 import { routableRoutes } from "../domains/routes";
 import { proxyRestartMessage } from "./answer-certs";
-import {
-  addClusterDnsZone,
-  clusterDnsView,
-  removeClusterDnsZone,
-  syncClusterZone,
-} from "./dns-zone";
+import { clusterDnsView, syncClusterZone } from "./dns-zone";
+import { addClusterDnsZone, removeClusterDnsZone } from "./zone-settings";
 import { domainZoneTargets, setDomainDnsZone } from "./zone-domains";
 import { __setCnameLookupForTest } from "./zone-cnames";
 import { __forgetZoneCerts, setClusterDnsWildcard } from "./zone-certs";

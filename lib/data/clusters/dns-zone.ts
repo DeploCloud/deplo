@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -8,15 +8,13 @@ import {
   clusterDnsZones,
   clusterMembers,
   clusterNameServers,
-  clusters as clustersTable,
   clusterZoneStates,
 } from "../../db/schema/control-plane/clusters";
+import { dnsProviders } from "../../db/schema/control-plane/dns-providers";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import {
   chooseNameServers,
-  cleanZoneName,
   delegationRecords,
-  dnsTimesRefusal,
   renderClusterZone,
   zoneTarget,
   type NameServerChoice,
@@ -24,20 +22,18 @@ import {
 } from "../../deploy/cluster-zone";
 import { zoneCovers } from "../../dns-zone";
 import { GEO_STALE_MONTHS, geoAgeMonths, shippedGeo } from "../../geo/shipped";
-import { newId, nowIso } from "../../ids";
+import { nowIso } from "../../ids";
 import { setClusterZone } from "../../infra/agent-client/cluster-host";
 import { AgentClusterZoneUnsupportedError } from "../../infra/agent-client/errors";
 import { requireInstanceAdmin } from "../../membership";
 import { messageOf } from "../../utils";
-import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { withKeyedLock } from "../keyed-mutex";
 import { serverAddresses } from "../servers/addresses";
 import { oneMemberPerAddress } from "../../clusters/shared-addresses";
 import { getServerById } from "../servers/roster";
-import type { ClusterDnsView, DelegationCheck } from "../../types/cluster-dns";
+import type { ClusterDnsView } from "../../types/cluster-dns";
 import { recordClusterActivity } from "./cluster-activity";
-import { checkDelegation } from "./dns-delegation";
 import { refreshAcmeCnames } from "./zone-cnames";
 import {
   applyCertModes,
@@ -47,14 +43,11 @@ import {
   zoneCertPass,
   type ZoneCertDomainRow,
 } from "./zone-certs";
-import {
-  placeOf,
-  placeRows,
-  setServerPlace,
-  type ServerPlace,
-} from "./server-place";
+import { placeOf, placeRows, type ServerPlace } from "./server-place";
+import { listWorkloadPlacements } from "./placement";
+import { syncZoneDelegation } from "./zone-cloudflare";
 import { fingerprintOf } from "./relay";
-import { getClusterById, requireClusterAdmin } from "./roster";
+import { getClusterById } from "./roster";
 
 // A cluster's own DNS zone (ADR-0049): https://deplo.build/docs/operations/clusters/dns-zone
 
@@ -79,7 +72,9 @@ export async function zonesOf(clusterId: string) {
     .orderBy(asc(clusterDnsZones.createdAt), asc(clusterDnsZones.name));
 }
 
-async function memberFacts(clusterId: string): Promise<ZoneMemberFacts[]> {
+export async function memberFacts(
+  clusterId: string,
+): Promise<ZoneMemberFacts[]> {
   const rows = await getDb()
     .select({
       serverId: clusterMembers.serverId,
@@ -195,7 +190,9 @@ export function nativeZoneOf<Z extends { id: string; name: string }>(
   return inside ?? zones.find((z) => z.id === d.zoneId) ?? null;
 }
 
-async function currentChoice(clusterId: string): Promise<NameServerChoice[]> {
+export async function currentChoice(
+  clusterId: string,
+): Promise<NameServerChoice[]> {
   return getDb()
     .select({
       position: clusterNameServers.position,
@@ -318,6 +315,7 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           }
         : null;
     const fpOf = new Map(members.map((m) => [m.serverId, m.fingerprint]));
+    const homes = await appHomes([...byZone.values()].flat());
     const heard = new Map(
       (await statesOf(clusterId)).map((s) => [s.serverId, s.state]),
     );
@@ -373,6 +371,10 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           zones: zones.map((z) => ({
             name: z.name,
             names: byZone.get(z.id)!.map((d) => d.target),
+            homes: byZone.get(z.id)!.flatMap((d) => {
+              const fp = fpOf.get(homes.get(d.appId) ?? "");
+              return fp ? [{ name: d.target, fingerprint: fp }] : [];
+            }),
           })),
           servers,
           nameServers,
@@ -430,17 +432,50 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           (c) => c.serverId === b.serverId && c.position === b.position,
         ),
     );
-    if (moved.length > 0) {
-      const names = zones.map((z) => z.name).join(", ");
+    // A zone under a domain connected for automatic DNS: Deplo keeps its NS and glue in Cloudflare itself.
+    const byId = new Map(members.map((m) => [m.serverId, m]));
+    const ns = choice
+      .map((c) => byId.get(c.serverId))
+      .filter((m): m is ZoneMemberFacts => !!m);
+    for (const z of zones) {
+      const problem = await syncZoneDelegation(z, ns);
+      if (problem && delegationSaid.get(z.id) !== problem)
+        await recordClusterActivity(clusterId, problem);
+      if (problem) delegationSaid.set(z.id, problem);
+      else delegationSaid.delete(z.id);
+    }
+    const byHand = zones.filter((z) => !z.providerId);
+    if (moved.length > 0 && byHand.length > 0) {
+      const names = byHand.map((z) => z.name).join(", ");
       await recordClusterActivity(
         clusterId,
-        `The name servers of ${cluster.name}'s DNS ${zones.length === 1 ? "zone" : "zones"} ${names} changed: update the records where the domain was bought, as the cluster's settings list them`,
+        `The name servers of ${cluster.name}'s DNS ${byHand.length === 1 ? "zone" : "zones"} ${names} changed: update the records where the domain was bought, as the cluster's settings list them`,
       );
     }
   });
   // Outside the lock: routing an App again may itself ask for the zone to be synced.
   if (routes) await (routes as () => Promise<void>)();
 }
+
+/** The server each App runs on when it runs on one at a time: its names are answered with it first. */
+async function appHomes(
+  domains: { appId: string; serverId: string | null }[],
+): Promise<Map<string, string>> {
+  const placed = await listWorkloadPlacements("app", [
+    ...new Set(domains.map((d) => d.appId)),
+  ]);
+  const out = new Map<string, string>();
+  for (const d of domains) {
+    const on = new Set(
+      (placed.get(d.appId) ?? []).map((p) => p.serverId).filter(Boolean),
+    );
+    if (on.size < 2 && d.serverId) out.set(d.appId, d.serverId);
+  }
+  return out;
+}
+
+// The last problem said per zone about its records in Cloudflare, so a pass every minute says it once.
+const delegationSaid = new Map<string, string>();
 
 /** Fire-and-forget for a change that moves what the zone answers. */
 export function syncClusterZoneSoon(clusterId: string): void {
@@ -491,6 +526,19 @@ export async function clusterDnsView(
     zones,
     (id) => byId.get(id)?.name ?? id,
   );
+  const providerIds = zones.flatMap((z) =>
+    z.providerId ? [z.providerId] : [],
+  );
+  const keptIn = new Map(
+    providerIds.length === 0
+      ? []
+      : (
+          await getDb()
+            .select({ id: dnsProviders.id, zoneName: dnsProviders.zoneName })
+            .from(dnsProviders)
+            .where(inArray(dnsProviders.id, providerIds))
+        ).map((p) => [p.id, p.zoneName]),
+  );
   return {
     wildcard: cluster.dnsWildcard,
     zones: zones.map((z) => ({
@@ -498,6 +546,7 @@ export async function clusterDnsView(
       name: z.name,
       records: delegationRecords(z.name, ns),
       names: byZone.get(z.id)!.map((d) => d.target),
+      keptIn: keptIn.get(z.providerId ?? "") ?? null,
       certificate: certs.get(z.id)!,
     })),
     nameServers: choice.map((c) => ({
@@ -541,149 +590,6 @@ export async function clusterDnsView(
     answerTtl: cluster.dnsAnswerTtl,
     dropAfter: cluster.dnsDropAfter,
   };
-}
-
-/** Places a server of a cluster (null: by its address again); its cluster's zone answers from there next. */
-export async function placeClusterServer(
-  serverId: string,
-  place: { latitude: number; longitude: number; label?: string | null } | null,
-): Promise<void> {
-  const clusterId = await setServerPlace(serverId, place);
-  if (clusterId) syncClusterZoneSoon(clusterId);
-}
-
-/** Delegates a zone to a cluster: its servers answer for it once the registrar points there. */
-export async function addClusterDnsZone(
-  clusterId: string,
-  raw: string,
-): Promise<string> {
-  if (await instanceFrozen())
-    throw new Error(
-      "Deplo is moving to another machine; try again once it is done.",
-    );
-  const { teamId, user } = await requireClusterAdmin();
-  const cluster = await getClusterById(clusterId);
-  if (!cluster) throw new Error("Cluster not found");
-  const clean = cleanZoneName(raw);
-  if (clean.error !== undefined) throw new Error(clean.error);
-  const name = clean.name;
-  const clash = await getDb()
-    .select({ name: clusterDnsZones.name, cluster: clustersTable.name })
-    .from(clusterDnsZones)
-    .innerJoin(clustersTable, eq(clustersTable.id, clusterDnsZones.clusterId))
-    .where(
-      or(
-        eq(clusterDnsZones.name, name),
-        sql`${name} like '%.' || ${clusterDnsZones.name}`,
-        sql`${clusterDnsZones.name} like '%.' || ${name}`,
-      ),
-    )
-    .limit(1);
-  if (clash[0])
-    throw new Error(
-      clash[0].name === name
-        ? `${name} is already answered by cluster ${clash[0].cluster}.`
-        : `${name} overlaps ${clash[0].name}, which cluster ${clash[0].cluster} answers. A zone and a zone inside it cannot both be delegated here.`,
-    );
-  const id = newId("czone");
-  await getDb()
-    .insert(clusterDnsZones)
-    .values({ id, clusterId, name, createdAt: nowIso() });
-  await recordActivity(
-    "server",
-    `Cluster ${cluster.name} now answers for the DNS zone ${name}, once it is delegated where the domain was bought`,
-    user.name,
-    null,
-    teamId,
-  );
-  syncClusterZoneSoon(clusterId);
-  return id;
-}
-
-/** Takes a zone off its cluster; the domains it answered go back to records written elsewhere. */
-export async function removeClusterDnsZone(zoneId: string): Promise<string> {
-  if (await instanceFrozen())
-    throw new Error(
-      "Deplo is moving to another machine; try again once it is done.",
-    );
-  const { teamId, user } = await requireClusterAdmin();
-  const [zone] = await getDb()
-    .select()
-    .from(clusterDnsZones)
-    .where(eq(clusterDnsZones.id, zoneId))
-    .limit(1);
-  if (!zone) throw new Error("DNS zone not found");
-  const cluster = await getClusterById(zone.clusterId);
-  await getDb().delete(clusterDnsZones).where(eq(clusterDnsZones.id, zoneId));
-  await recordActivity(
-    "server",
-    `Cluster ${cluster?.name ?? zone.clusterId} no longer answers for the DNS zone ${zone.name}`,
-    user.name,
-    null,
-    teamId,
-  );
-  syncClusterZoneSoon(zone.clusterId);
-  return zone.clusterId;
-}
-
-/** How long resolvers keep an answer, and how long a stopped server stays in it. */
-export async function setClusterDnsTimes(
-  clusterId: string,
-  ttl: number,
-  dropAfter: number,
-): Promise<void> {
-  if (await instanceFrozen())
-    throw new Error(
-      "Deplo is moving to another machine; try again once it is done.",
-    );
-  const { teamId, user } = await requireClusterAdmin();
-  const cluster = await getClusterById(clusterId);
-  if (!cluster) throw new Error("Cluster not found");
-  const why = dnsTimesRefusal(ttl, dropAfter);
-  if (why) throw new Error(why);
-  if (cluster.dnsAnswerTtl === ttl && cluster.dnsDropAfter === dropAfter)
-    return;
-  await getDb()
-    .update(clustersTable)
-    .set({ dnsAnswerTtl: ttl, dnsDropAfter: dropAfter })
-    .where(eq(clustersTable.id, clusterId));
-  await recordActivity(
-    "server",
-    `Cluster ${cluster.name}'s DNS answers now last ${ttl} s, and a stopped server leaves them after ${dropAfter} s`,
-    user.name,
-    null,
-    teamId,
-  );
-  syncClusterZoneSoon(clusterId);
-}
-
-/** Whether a zone is delegated to its cluster, and what to fix if not. */
-export async function checkClusterDnsZone(
-  zoneId: string,
-): Promise<DelegationCheck> {
-  await requireInstanceAdmin();
-  const [zone] = await getDb()
-    .select()
-    .from(clusterDnsZones)
-    .where(eq(clusterDnsZones.id, zoneId))
-    .limit(1);
-  if (!zone) throw new Error("DNS zone not found");
-  const members = await memberFacts(zone.clusterId);
-  const byId = new Map(members.map((m) => [m.serverId, m]));
-  const expected = (await currentChoice(zone.clusterId))
-    .map((c) => byId.get(c.serverId))
-    .filter((m): m is ZoneMemberFacts => !!m)
-    .map((m, i) => ({ name: `ns${i + 1}.${zone.name}`, v4: m.v4, v6: m.v6 }));
-  if (expected.length === 0)
-    return {
-      delegated: false,
-      parent: null,
-      problems: [
-        "No server of the cluster answers on port 53 yet, so there is no name server to delegate to.",
-      ],
-      nameServers: [],
-    };
-  return checkDelegation(zone.name, expected);
 }
 
 /** Every address of every member: a resolver may still hold one that stopped a moment ago. */

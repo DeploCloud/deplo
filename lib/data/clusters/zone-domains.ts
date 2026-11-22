@@ -12,12 +12,15 @@ import { zoneTarget } from "../../deploy/cluster-zone";
 import { challengeName, type CertChallenge } from "../../deploy/dns-challenge";
 import { resolvesToCloudflare } from "../../deploy/cloudflare";
 import { zoneCovers } from "../../dns-zone";
+import { nowIso } from "../../ids";
 import { lookupHostAddresses } from "../domains/dns-resolve";
 import { recordActivity } from "../activity";
 import { loadAppGraph } from "../app-graph-load";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { loadProviderSecret } from "../dns-providers/tunnels";
 import { requireAppCapability } from "../node-access";
 import { nativeZoneOf, syncClusterZoneSoon, zonesOf } from "./dns-zone";
+import { pointDomainAtZone } from "./zone-cloudflare";
 
 // The domains a cluster's own DNS zone answers (ADR-0049): https://deplo.build/docs/operations/clusters/dns-zone
 
@@ -82,6 +85,18 @@ export async function setDomainDnsZone(
   if (!app || app.teamId !== membership.teamId) throw new Error("Not found");
   const user = await getCurrentUser();
   if ((d.dnsZoneId ?? null) === zoneId) return d.appId;
+  const [provider] = await getDb()
+    .select({
+      providerId: domainDnsRecords.providerId,
+      recordId: domainDnsRecords.recordId,
+      acmeRecordId: domainDnsRecords.acmeRecordId,
+    })
+    .from(domainDnsRecords)
+    .where(eq(domainDnsRecords.domainId, d.id));
+  if (!zoneId && provider && d.dnsZoneId)
+    throw new Error(
+      `Deplo keeps ${d.name}'s record in Cloudflare pointed at the cluster. To stop, remove the domain.`,
+    );
   let zoneName = "";
   if (zoneId) {
     const [zone] = await getDb()
@@ -95,19 +110,40 @@ export async function setDomainDnsZone(
       throw new Error(
         `Turn on "Answer on every server" for ${d.name} first: the cluster answers only for those.`,
       );
-    const [provider] = await getDb()
-      .select({ id: domainDnsRecords.domainId })
-      .from(domainDnsRecords)
-      .where(eq(domainDnsRecords.domainId, d.id));
-    if (provider && !zoneCovers(zone.name, d.name))
-      throw new Error(
-        `${d.name}'s records are written at your connected DNS provider, which keeps them right already.`,
-      );
     if (!zoneCovers(zone.name, d.name) && (await apexCheck(d.name)))
       throw new Error(
         `${d.name} is a bare domain, and DNS gives no way to point one at another name. Add ${d.name} itself as a zone of the cluster, or use an ALIAS record at a DNS provider that offers one.`,
       );
     zoneName = zone.name;
+    // Its record is Deplo's in Cloudflare: pointed at the zone there, DNS only, with its certificate's CNAME.
+    const secret =
+      provider && !zoneCovers(zone.name, d.name)
+        ? await loadProviderSecret(provider.providerId)
+        : null;
+    if (provider && secret) {
+      const cn = await pointDomainAtZone(
+        secret,
+        d.name,
+        zoneTarget(d.name, zone.name),
+        [
+          provider.recordId,
+          ...(provider.acmeRecordId ? [provider.acmeRecordId] : []),
+        ],
+      );
+      await getDb()
+        .update(domainDnsRecords)
+        .set({
+          recordId: cn.recordId,
+          acmeRecordId: cn.acmeRecordId,
+          created: true,
+        })
+        .where(eq(domainDnsRecords.domainId, d.id));
+      if (cn.acmeRecordId)
+        await getDb()
+          .update(domainsTable)
+          .set({ acmeCnameSeenAt: nowIso() })
+          .where(eq(domainsTable.id, d.id));
+    }
   }
   await getDb()
     .update(domainsTable)
@@ -129,6 +165,8 @@ export async function setDomainDnsZone(
 export type DomainZoneInfo = {
   zone: string;
   target: string | null;
+  /** Deplo keeps its CNAME in Cloudflare: nothing for the person to type. */
+  kept?: boolean;
   /** Not answered by the cluster yet, and Cloudflare's addresses are where its record should lead: proxied, not DNS only. */
   cloudflare: boolean;
   /** How its certificate is checked as routed now, and for a name outside the zone the CNAME that moves it to DNS. */
@@ -163,6 +201,15 @@ export async function domainZoneTargets(
         eq(domainsTable.answersEverywhere, true),
       ),
     );
+  const kept = new Set(
+    (
+      await getDb()
+        .select({ id: domainDnsRecords.domainId })
+        .from(domainDnsRecords)
+        .innerJoin(domainsTable, eq(domainsTable.id, domainDnsRecords.domainId))
+        .where(eq(domainsTable.appId, appId))
+    ).map((r) => r.id),
+  );
   for (const d of rows) {
     const z = nativeZoneOf(d, zones);
     if (!z) continue;
@@ -174,6 +221,7 @@ export async function domainZoneTargets(
     out.set(d.id, {
       zone: z.name,
       target,
+      ...(kept.has(d.id) ? { kept: true } : {}),
       cloudflare: found !== null && resolvesToCloudflare(found),
       cert: {
         mode:

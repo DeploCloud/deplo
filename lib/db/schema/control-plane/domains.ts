@@ -46,6 +46,8 @@ export const domains = pgTable(
     acmeCnameSeenAt: isoTimestamptz("acme_cname_seen_at"),
     // How its certificate is checked as Deplo last routed it: "zone", "dns", or null for HTTP-01.
     certChallenge: text("cert_challenge"),
+    // Why it went on the App's tunnel instead of the cluster's own zone, in the person's words.
+    clusterFallback: text("cluster_fallback"),
     securityHeaders: boolean("security_headers").notNull().default(true),
     importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),

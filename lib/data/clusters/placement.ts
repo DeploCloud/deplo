@@ -5,6 +5,7 @@ import { peakMemoryMb } from "../../monitoring/container-history";
 import { type DbTx, getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
+  clusterDnsZones,
   clusterImageCopies,
   workloadPlacements,
 } from "../../db/schema/control-plane/clusters";
@@ -259,13 +260,33 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
     if (m && !members.has(m))
       throw new Error("A placement named a server that is not in the cluster.");
   const table = r.kind === "app" ? appsTable : databasesTable;
-  return getDb().transaction(async (tx) => {
+  let moved = false;
+  const recorded = await getDb().transaction(async (tx) => {
     const owned = await tx
-      .select({ id: table.id })
+      .select({ id: table.id, serverId: table.serverId })
       .from(table)
       .where(and(eq(table.id, r.workloadId), eq(table.clusterId, r.clusterId)))
       .limit(1);
     if (owned.length === 0) return false;
+    const before = await tx
+      .select({ m: workloadPlacements.memberServerId })
+      .from(workloadPlacements)
+      .where(
+        and(
+          eq(workloadPlacements.kind, r.kind),
+          eq(workloadPlacements.workloadId, r.workloadId),
+        ),
+      );
+    moved =
+      r.kind === "app" &&
+      homeOf(
+        before.map((b) => b.m),
+        owned[0].serverId,
+      ) !==
+        homeOf(
+          r.members,
+          r.members.find((m): m is string => Boolean(m)) ?? owned[0].serverId,
+        );
     const now = nowIso();
     await tx
       .delete(workloadPlacements)
@@ -294,6 +315,24 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
         .where(eq(table.id, r.workloadId));
     return true;
   });
+  // The cluster's zone answers an App on one server with that server first (ADR-0049): it follows the App.
+  if (moved && (await clusterHasZone(r.clusterId)))
+    void import("./dns-zone").then((m) => m.syncClusterZoneSoon(r.clusterId));
+  return recorded;
+}
+
+/** The one server an App runs on, or null when it runs on several. */
+function homeOf(members: (string | null)[], serverId: string | null) {
+  return new Set(members.filter(Boolean)).size < 2 ? serverId : null;
+}
+
+async function clusterHasZone(clusterId: string): Promise<boolean> {
+  const [z] = await getDb()
+    .select({ id: clusterDnsZones.id })
+    .from(clusterDnsZones)
+    .where(eq(clusterDnsZones.clusterId, clusterId))
+    .limit(1);
+  return z != null;
 }
 
 /**

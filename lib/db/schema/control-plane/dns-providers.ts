@@ -130,6 +130,8 @@ export const domainDnsRecords = pgTable(
     }),
     // Deplo made this record, so it may delete it; one that was already there is never touched.
     created: boolean("created").notNull().default(true),
+    // The "_acme-challenge" CNAME into the cluster's zone Deplo wrote beside it (ADR-0049).
+    acmeRecordId: text("acme_record_id"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

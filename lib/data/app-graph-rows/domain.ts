@@ -58,6 +58,7 @@ export function assembleDomain(
       ? { certChallenge: row.certChallenge }
       : {}),
     ...(row.importedFrom != null ? { importedFrom: row.importedFrom } : {}),
+    ...(row.clusterFallback ? { clusterFallback: row.clusterFallback } : {}),
     createdAt: row.createdAt,
   };
 }

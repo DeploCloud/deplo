@@ -184,6 +184,10 @@ function goldenRequest() {
           "go.example.com",
           "go.example.com",
         ],
+        homes: [
+          { name: "shop-example-com.go.example.com", fingerprint: FP("2") },
+          { name: "elsewhere.example.com", fingerprint: FP("1") },
+        ],
       },
     ],
     servers: [

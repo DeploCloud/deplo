@@ -4,7 +4,13 @@
   "zones": [
     {
       "name": "go.example.com",
-      "names": ["go.example.com", "shop-example-com.go.example.com"]
+      "names": ["go.example.com", "shop-example-com.go.example.com"],
+      "homes": [
+        {
+          "name": "shop-example-com.go.example.com",
+          "fingerprint": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
     }
   ],
   "servers": [

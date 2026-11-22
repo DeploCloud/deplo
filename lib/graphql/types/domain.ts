@@ -15,6 +15,7 @@ import { rerouteApp } from "@/lib/deploy/build/reroute";
 import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import type { Domain } from "@/lib/types/domain";
 import { setDomainAnswersEverywhere } from "@/lib/data/domains/answer-switch";
+import { moveDomainToCluster } from "@/lib/data/domains/cluster-answer";
 import { answerCertificatesMissing } from "@/lib/data/clusters/answer-certs";
 import { syncClusterAnswerDnsSoon } from "@/lib/data/clusters/answer-dns";
 import { loadAppGraph } from "@/lib/data/app-graph-load";
@@ -120,6 +121,13 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
         "configurable, and the server needs no open port.",
       resolve: (d) => d.tunnel === true,
     }),
+    clusterFallback: t.string({
+      nullable: true,
+      description:
+        "Why this domain of a cluster App is on its Cloudflare Tunnel instead of the cluster's own DNS zone, in " +
+        "plain words; null when it was not a fallback. `moveDomainToCluster` moves it once that is fixed.",
+      resolve: (d) => d.clusterFallback ?? null,
+    }),
     autoDns: t.boolean({
       description:
         "Deplo created this domain's DNS record through a connected DNS " +
@@ -181,7 +189,10 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
       description:
         "Serve it through a Cloudflare Tunnel. Needs a domain connected for " +
         "automatic DNS that covers this name; certProvider, entrypoint, " +
-        "proxied and www are then ignored.",
+        "proxied and www are then ignored. For an App on a cluster, false " +
+        "asks the cluster's own DNS zone to answer it instead (made first " +
+        "when the cluster has none, by an instance admin), and omitted picks " +
+        "the zone when it can and the tunnel otherwise (ADR-0049).",
     }),
     www: t.field({ type: DomainWwwRedirectEnum, required: false }),
   }),
@@ -260,8 +271,26 @@ builder.mutationFields((t) => ({
         www: config?.www ?? undefined,
       };
       const domain = await addDomain(appId, name, cfg);
-      await applyRouting(appId);
+      if (domain.answersEverywhere) await routeOnEveryServer(appId);
+      else await applyRouting(appId);
       return domain;
+    },
+  }),
+  moveDomainToCluster: t.field({
+    type: DomainRef,
+    authScopes: { capability: "manage_domains" },
+    unauthorizedError: () =>
+      "You can’t change this domain with your current team role. Ask a team admin for the Manage domains capability.",
+    description:
+      "Moves a cluster App's domain from its Cloudflare Tunnel to the cluster's own DNS zone (ADR-0049): Deplo " +
+      "points its record in Cloudflare at the zone, DNS only, and every server of the cluster answers it. The zone " +
+      "is made first when the cluster has none, which takes an instance admin. Refused, with the reason, while the " +
+      "zone cannot answer.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      const appId = await moveDomainToCluster(id);
+      await routeOnEveryServer(appId);
+      return reloadDomain(id, appId);
     },
   }),
   updateDomain: t.field({
@@ -312,18 +341,14 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id, on }) => {
       const appId = await setDomainAnswersEverywhere(id, on);
       const clusterId = (await loadAppGraph(appId))?.clusterId;
-      if (on && clusterId)
-        // The proxies first, the App's router after: a certificate order's check may land on any server.
-        void routeAfterAnswers(clusterId, appId).catch((e) =>
-          console.warn(
-            `[answer-switch] ${appId}: ${e instanceof Error ? e.message : String(e)}`,
-          ),
-        );
+      if (on) await routeOnEveryServer(appId);
       else {
         await applyRouting(appId);
-        if (clusterId) syncNameForwardersSoon(clusterId);
+        if (clusterId) {
+          syncNameForwardersSoon(clusterId);
+          syncClusterAnswerDnsSoon(clusterId);
+        }
       }
-      if (clusterId) syncClusterAnswerDnsSoon(clusterId);
       return reloadDomain(id, appId);
     },
   }),
@@ -384,6 +409,18 @@ async function applyRouting(
       }. Deploy the app to apply it.`,
     );
   }
+}
+
+/** The proxies first, the App's router after: a certificate order's check may land on any server. */
+async function routeOnEveryServer(appId: string): Promise<void> {
+  const clusterId = (await loadAppGraph(appId))?.clusterId;
+  if (!clusterId) return applyRouting(appId);
+  void routeAfterAnswers(clusterId, appId).catch((e) =>
+    console.warn(
+      `[answer-switch] ${appId}: ${e instanceof Error ? e.message : String(e)}`,
+    ),
+  );
+  syncClusterAnswerDnsSoon(clusterId);
 }
 
 async function reloadDomain(id: string, appId: string): Promise<DomainRow> {

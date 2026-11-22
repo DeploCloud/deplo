@@ -218,6 +218,20 @@ export async function dnsRecords(
   return (res ?? []).filter((r) => r.name.toLowerCase() === name);
 }
 
+/** Every record of a zone, for a name nothing uses yet. ponytail: one page of 5,000; page through a zone bigger than that. */
+export async function zoneDnsRecords(
+  token: string,
+  zoneId: string,
+): Promise<DnsRecord[]> {
+  return (
+    (await cf<DnsRecord[]>(
+      token,
+      "GET",
+      `/zones/${zoneId}/dns_records?per_page=5000`,
+    )) ?? []
+  );
+}
+
 export async function deleteDnsRecord(
   token: string,
   zoneId: string,

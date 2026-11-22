@@ -134,7 +134,7 @@ export function fakeCloudflare(seed: Partial<FakeCloudflare> = {}): {
         const name = url.searchParams.get("name");
         return ok(
           [...cf.records.values()].filter(
-            (r) => r.zoneId === zoneId && r.name === name,
+            (r) => r.zoneId === zoneId && (name === null || r.name === name),
           ),
         );
       }

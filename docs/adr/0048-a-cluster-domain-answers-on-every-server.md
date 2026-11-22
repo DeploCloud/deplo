@@ -9,6 +9,7 @@
 - **3, the DNS record set: done** (#255).
 - **4, the switch shown: done** (#230), with every refusal below, past 200 Apps included.
 - **5, load balancing without Cloudflare** (#228): decided below, 21 Nov 2026; agent DeploCloud/deplo-agent#72 (Hello `dns.certificates`, released in v0.5.3-canary.23), panel #277 (migration 0271), manual DeploCloud/docs#17.
+- **The connected provider's backend: deleted** (22 Nov 2026, [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md) "Under a domain connected to Deplo", decision 5). Under a domain connected for Automatic DNS the cluster's own zone answers, made and kept in Cloudflare by Deplo.
 
 A failover moves an App, and its address must follow it **without Cloudflare being required**. Today only a domain served by a Cloudflare tunnel follows; a generated name follows by being renamed (it is a server's IP); any other domain keeps pointing at the server that stopped. **A domain of a cluster App can be set to answer on every server of the cluster ("Answer on every server"): each server passes its encrypted traffic, untouched, over the private network to a server that runs the App, and DNS names every healthy server.** Cloudflare stays a supported way to follow, not the only one.
 
@@ -87,9 +88,9 @@ How it is built (step 2):
 
 Deplo computes the record set (one A, and one AAAA where there is IPv6, per server that is online and not being emptied) and the domain's **DNS backend** applies it:
 
-- **a connected provider** (Cloudflare today, `DnsProviderKind`): Deplo writes the set as plain records (`pointAtAddress` writes one today), TTL 60 s, and rewrites it when a server joins, leaves, goes offline or comes back.
 - **manual**: the domain lists every address to add, verification checks that each one is there, and a change of the cluster flags the domain until its records match again.
-- **native**: [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md). The backend is a per-domain choice, so it plugs in without changing the rest.
+- **native**: [ADR-0049](0049-a-cluster-can-answer-for-its-own-dns-zone.md). The backend is a per-domain choice, so it plugs in without changing the rest. Under a domain connected for Automatic DNS it is the default, and Deplo writes everything in Cloudflare.
+- **a connected provider** (first built: Deplo wrote the set as plain records at Cloudflare, TTL 60 s, rewritten when a server joined, left, stopped or came back): **deleted on 22 Nov 2026**. The App's tunnel, forced on every such domain, had left it reachable only for a domain in a second Cloudflare account, and the zone does the same with one `CNAME`, follows with Deplo down, and places visitors. A domain that still holds such records is checked as manual.
 
 ### Load balancing without Cloudflare (step 5, #228)
 

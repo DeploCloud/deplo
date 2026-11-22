@@ -7,6 +7,7 @@ import { autoDnsZones } from "@/lib/data/dns-providers/provision";
 import { domainsLeftOnServer } from "@/lib/data/clusters/app-tunnel";
 import { generatedAddressesAway } from "@/lib/data/clusters/failover-address";
 import { answerCertificatesMissing } from "@/lib/data/clusters/answer-certs";
+import { clusterAnswerRecordSet } from "@/lib/data/clusters/answer-dns";
 import {
   appDnsZones,
   domainZoneTargets,
@@ -28,6 +29,7 @@ import {
   PendingRows,
 } from "@/components/shared/pending-create";
 import { experimentOn } from "@/lib/data/experiments";
+import { isInstanceAdmin } from "@/lib/membership";
 
 export const metadata = { title: "App Domains" };
 
@@ -54,6 +56,13 @@ export default async function AppDomainsPage(
       : d,
   );
   const autoDns = zones.map((z) => z.zoneName);
+  const canAddZone = project.clusterId != null && (await isInstanceAdmin());
+  // A domain that answers on every server with records a person keeps: one per healthy server (ADR-0048).
+  const everyServer =
+    project.clusterId &&
+    domains.some((d) => d.answersEverywhere && !native.has(d.id))
+      ? await clusterAnswerRecordSet(project.clusterId)
+      : null;
   const hints = await domainDnsHints(project.id, domains);
   const suggestedDomain = serverIp
     ? productionDomain(project.slug, serverIp)
@@ -91,6 +100,11 @@ export default async function AppDomainsPage(
               suggestedDomain={suggestedDomain}
               autoDnsZones={autoDns}
               tunnels={await experimentOn("tunnels")}
+              cluster={
+                project.clusterId
+                  ? { zones: dnsZones.map((z) => z.name), canAddZone }
+                  : null
+              }
             />
           }
         />
@@ -129,6 +143,14 @@ export default async function AppDomainsPage(
             native={Object.fromEntries(native)}
             dnsZones={dnsZones}
             noHealthCheck={project.healthCheck == null}
+            cluster={
+              project.clusterId
+                ? { canMove: dnsZones.length > 0 || canAddZone }
+                : null
+            }
+            everyServer={
+              everyServer && { a: everyServer.a, aaaa: everyServer.aaaa }
+            }
           >
             <PendingRows columns={showContainer ? 4 : 3} />
           </DomainTable>
