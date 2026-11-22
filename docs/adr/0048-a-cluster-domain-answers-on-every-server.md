@@ -133,6 +133,14 @@ v0.1.0-canary.7, panel v0.8.2-canary.42. Each run powered off the server running
 - **Records kept by hand slow a renewal**: while a stopped server stays listed, a certificate check can land on it and
   fail; the proxy retries, and it goes through once the record is removed or the server is back.
 
+### What fise on the owner's cluster changed (22 Nov 2026)
+
+- **A broken App's visitors are passed on, not held** (problem 2). On eu-1, fise's database failed its health check, so its web service never started and the readiness rule above held every TLS connection for 30 s and closed it: the visitor's ClientHello got no answer. A health check that fails, or a container created and never started (`answerStuck`, 30 s), will not get better by waiting, so the App counts as **broken**: a ready copy elsewhere is tried first, and otherwise the connection goes to this server's proxy at once, which answers with whatever the App answers. Only an App that is still starting is waited for.
+- **A domain change re-applies routing only** (decision C). Removing a domain re-ran `compose up` on the whole stack, which started fise's stopped database, waited for its health and failed with compose's raw output. A reroute now brings up only the services whose rendering changed, `up -d --no-deps` (Hello `reroute.services`), never starting, stopping or waiting on another service; a change every service reads (networks, volumes) or a service gone still brings the stack up as before. A failure is one line naming what failed ("fise-db did not pass its health check").
+- **Every hint shows the record the domain needs** (decision E): for a domain the cluster's zone answers, its `CNAME` into the zone and the optional `_acme-challenge` one, never an A or AAAA to one server.
+- **An App moved onto a cluster follows Add domain's rule** (decision F): each domain whose record Deplo keeps in Cloudflare is answered by the cluster's zone when the zone answers and the person may use it, and otherwise stays on the App's tunnel with the reason on its row. Nothing makes a zone for it, and the tunnel domains of Apps already on a cluster are not touched.
+- **What takes time shows as it moves** (decision G): a domain's row lists its record, the caches, its certificate (about a minute) and failover as steps with the current one marked, and refreshes itself while one is open.
+
 ## Rollout
 
 - **The agent first**, behind the Hello capability `cluster.forwarders.answers`, then the panel in small steps: (1) the proxy change and the answer table, driven by a domain setting nothing can turn on yet; (2) the certificate in the bundle, with the agent's part of it; (3) the DNS record set; (4) the switch, shown. It stays hidden until step 2 is in: before it, a failover would order a new certificate each time, and the duplicate limit would be the risk this ADR removes.
