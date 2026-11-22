@@ -14,7 +14,7 @@ export const templateListQuerySchema = z
     order: z.enum(["asc", "desc"]).default("asc"),
     category: slugSchema.optional(),
     featured: z.literal(true).optional(),
-    sort: z.enum(["name"]).default("name"),
+    sort: z.literal("name").optional(),
   })
   .strict();
 
