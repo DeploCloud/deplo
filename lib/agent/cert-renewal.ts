@@ -162,7 +162,8 @@ export async function sweepExpiringAgentCerts(): Promise<void> {
   for (const s of rows) {
     try {
       const r = await renewAgentCertIfDue(s.id);
-      if (r.renewed) console.log(`[cert-renewal] ${s.name}: ${r.reason}`);
+      if (r.renewed || r.reason.startsWith("waiting for"))
+        console.log(`[cert-renewal] ${s.name}: ${r.reason}`);
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       console.warn(`[cert-renewal] ${s.name} (${s.id}): ${why}`);
