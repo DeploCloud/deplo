@@ -55,6 +55,10 @@ Decision 7 held a caught copy's rotation back like any other: while a member of 
 - **Found and fixed** (panel #300, not released yet): after a rotation the other name servers heard the server under its new certificate at once but named it by the old one until the zone's next pass, so it left their answers for 45 s (21:53:03 to 21:53:48). Deplo now hands every member the zone right after the promotion.
 - **Found, not fixed**: a copy keeps the original's private network key ([ADR-0047](0047-a-cluster-shares-a-private-network-over-wireguard.md)), which no rotation of the certificate replaces. While a clone ran, eu-2 and eu-3 kept naming eu-1 through the 20 s it was frozen; eu-1, its tunnels taken over, heard too few servers and answered SERVFAIL (21:54:40 to 21:55:07); with eu-3 off as well, eu-1 and eu-2 both answered SERVFAIL for 5 s (22:03:45 to 22:03:49), the whole zone. A caught copy needs the original's network key replaced over its own link, and the others handed the new one.
 
+## A caught copy gets a new network key too (23 Nov 2026)
+
+19. **When a copy is caught, the original's private network key is replaced together with its identity.** After the rotation of decision 18, Deplo asks the original's agent to replace the key it names (`SetClusterNetworkRequest.retire_public_key`, Hello `network.rekey`) and hands every other server of its clusters the new public key in the same pass. A key it no longer holds is never replaced twice. The others' tables name only the new key, so the copy, which still holds the old one, is heard by none of them and can never be heard as the original. Between the new key and the others learning it, a few seconds, the original is not heard over the private network; that is under the removal time, so no name server drops it.
+
 ## How comparable systems do it
 
 | System                    | Identity                                     | Expiry                                               | Off past its date                         | A copy                                       |
