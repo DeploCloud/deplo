@@ -9,7 +9,10 @@ import {
 } from "../../db/schema/control-plane/servers";
 import { parseHostAddress } from "../../host-address";
 import { nowIso } from "../../ids";
+import { isLoopbackIp } from "../../deploy/domains";
 import { dispatchServerAlert } from "../../notify/dispatch";
+import { serverAddresses } from "./addresses";
+import { getServerById } from "./roster";
 
 // A server is known by its agent's key, never by its address (ADR-0050).
 
@@ -188,7 +191,7 @@ export function identityCopied(
   });
 }
 
-/** Where its link came from, and, for a server added without one, the address its Apps answer on. */
+/** Where its link came from, whether that is one of its own addresses, and, for a server added without one, its address. */
 export async function recordLinkOrigin(
   serverId: string,
   from: string | null,
@@ -196,14 +199,23 @@ export async function recordLinkOrigin(
 ): Promise<void> {
   const own = publicAddresses
     .map((a) => parseHostAddress(a))
-    .filter((p) => p && p.kind !== "hostname");
+    .filter((p) => p && p.kind !== "hostname")
+    .map((p) => p!.host);
   const first =
-    own.find((p) => p!.kind === "ipv4")?.host ?? own[0]?.host ?? null;
+    own.find((a) => parseHostAddress(a)?.kind === "ipv4") ?? own[0] ?? null;
   try {
+    const server = await getServerById(serverId);
+    if (!server) return;
+    const stored = await serverAddresses(server, { askAgent: false });
+    const mine = new Set([...own, ...stored.v4, ...stored.v6]);
+    const at = parseHostAddress(from)?.host;
+    const behindRouter =
+      !!at && !isLoopbackIp(at) && at !== "::1" && !mine.has(at);
     await getDb()
       .update(serversTable)
       .set({
         connectedFrom: from,
+        behindRouter,
         ...(first
           ? {
               ip: sql`case when ${serversTable.ip} = '' then ${first} else ${serversTable.ip} end`,

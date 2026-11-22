@@ -185,12 +185,11 @@ export async function serverAddresses(
   return { v4: [...v4], v6: [...v6], v6Known };
 }
 
-/** Where its link comes from when that is not one of its own addresses: it is behind a router (ADR-0050). */
-export async function connectsFromElsewhere(
-  server: AddressedServer & Partial<Pick<Server, "connectedFrom">>,
-): Promise<string | null> {
-  const from = parseHostAddress(server.connectedFrom)?.host;
-  if (!from || isDeploHostServer(server) || isLoopbackIp(from)) return null;
-  const own = await serverAddresses(server, { askAgent: false });
-  return [...own.v4, ...own.v6].includes(from) ? null : from;
+/** Where its link comes from when that is none of its own addresses: it is behind a router (ADR-0050). */
+export function connectsFromElsewhere(
+  server: Pick<Server, "connectedFrom" | "behindRouter" | "deploHost">,
+): string | null {
+  return server.behindRouter && !server.deploHost
+    ? (server.connectedFrom ?? null)
+    : null;
 }

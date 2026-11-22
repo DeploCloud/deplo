@@ -20,7 +20,11 @@ import {
   USER_1,
 } from "../../data/identity-test-helpers";
 import { completeBootstrap } from "../../data/servers/agent-handshake";
-import { __setCopyAlertForTest } from "../../data/servers/agent-identity";
+import {
+  __setCopyAlertForTest,
+  recordLinkOrigin,
+} from "../../data/servers/agent-identity";
+import { connectsFromElsewhere } from "../../data/servers/addresses";
 import { addServer } from "../../data/servers/enrollment";
 import { getServerById } from "../../data/servers/roster";
 import { runWithIdentity } from "../../auth/request-context";
@@ -138,9 +142,10 @@ test("a certificate past its date links with no reinstall, and gets a new key at
   const link = await agent.link(door);
   assert.equal(link.status, 101);
   await up;
-  // The key it proved was rotated over that link: the agent relinks with the new one.
-  assert.equal(await link.closed, LINK_CLOSE.revoked);
+  // The key it proved was rotated over that link, which stays open.
   await eventually(() => agent.fingerprint !== old, 5_000);
+  assert.equal(await helloOver("srv_off"), AGENT_VERSION);
+  link.drop();
   const [row] = await db
     .select()
     .from(servers)
@@ -150,6 +155,7 @@ test("a certificate past its date links with no reinstall, and gets a new key at
     new Date(new x509.X509Certificate(row.agentCertPem!).notAfter) > new Date(),
   );
 
+  await eventually(() => !currentLink("srv_off"));
   const again = linkUp("srv_off");
   assert.equal((await agent.link(door)).status, 101);
   await again;
@@ -275,6 +281,35 @@ test("a server added without an address takes the public address its agent repor
   assert.equal((await getServerById("srv_new"))?.ip, "10.1.2.3");
 });
 
+test("behind a router is decided with the agent's own addresses, so a dual-stack server on its IPv6 is not", async () => {
+  await seedServerRow(db, {
+    id: "srv_dual",
+    ip: "203.0.113.9",
+    host: "203.0.113.9",
+  });
+  await recordLinkOrigin("srv_dual", "2001:db8::5", [
+    "203.0.113.9",
+    "2001:db8::5",
+  ]);
+  let row = (await getServerById("srv_dual"))!;
+  assert.equal(row.connectedFrom, "2001:db8::5");
+  assert.equal(connectsFromElsewhere(row), null);
+
+  // A virtual machine with only a private address, reached through its router's.
+  await recordLinkOrigin("srv_dual", "198.51.100.20", []);
+  row = (await getServerById("srv_dual"))!;
+  assert.equal(connectsFromElsewhere(row), "198.51.100.20");
+
+  await seedServerRow(db, { id: "srv_lan", ip: "", host: "" });
+  await recordLinkOrigin("srv_lan", "198.51.100.20", []);
+  assert.equal(
+    connectsFromElsewhere((await getServerById("srv_lan"))!),
+    "198.51.100.20",
+  );
+  await recordLinkOrigin("srv_lan", "127.0.0.1", []);
+  assert.equal(connectsFromElsewhere((await getServerById("srv_lan"))!), null);
+});
+
 // A certificate whose key is a rotation old or more: linking with it rotates the key at once.
 function aged(daysOld: number, daysLeft: number) {
   const day = 24 * 3_600_000;
@@ -288,8 +323,9 @@ function aged(daysOld: number, daysLeft: number) {
 async function rotated(id: string, agent: FakeAgent): Promise<string> {
   const old = agent.fingerprint;
   const link = await agent.link(door);
-  assert.equal(await link.closed, LINK_CLOSE.revoked);
   await eventually(() => agent.fingerprint !== old, 5_000);
+  link.drop();
+  await eventually(() => !currentLink(id));
   const up = linkUp(id);
   await agent.link(door);
   await up;

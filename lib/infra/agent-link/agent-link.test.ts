@@ -405,7 +405,7 @@ test("removing a server closes its link and turns its agent away", async () => {
   await assert.rejects(connectAgent(SERVER), AgentUnreachableError);
 });
 
-test("a renewed certificate closes the link it verified, and the agent relinks with the new one", async () => {
+test("a renewed key keeps the link it ran over, and the next link proves the new one", async () => {
   let up = linkUp();
   const link = await agent.link(door);
   await up;
@@ -416,8 +416,12 @@ test("a renewed certificate closes the link it verified, and the agent relinks w
     .where(eq(servers.id, SERVER));
 
   assert.equal((await renewAgentCertIfDue(SERVER)).renewed, true);
-  assert.equal(await link.closed, LINK_CLOSE.revoked);
   assert.ok(old !== agent.fingerprint, "a renewal is a new key");
+  assert.equal(await stillOpen(link), "open", "no call on it is cut");
+  assert.equal(await helloOver(), AGENT_VERSION);
+  const down = linkDown();
+  link.drop();
+  await down;
   up = linkUp();
   assert.equal((await agent.link(door)).status, 101);
   await up;

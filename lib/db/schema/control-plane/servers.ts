@@ -38,6 +38,8 @@ export const servers = pgTable(
     deploHost: boolean("deplo_host").notNull().default(false),
     // Where its agent link last came from, as the panel's proxy saw it: shown, never trusted.
     connectedFrom: text("connected_from"),
+    // That address is none of its own (the agent's reported ones or its stored one): it is behind a router.
+    behindRouter: boolean("behind_router").notNull().default(false),
     agentVersion: text("agent_version"),
     bootstrapTokenHash: text("bootstrap_token_hash"),
     bootstrapExpiresAt: isoTimestamptz("bootstrap_expires_at"),

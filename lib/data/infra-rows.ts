@@ -53,6 +53,7 @@ const SERVER_FIELDS = {
   leftBehindAt: true,
   deploHost: true,
   connectedFrom: true,
+  behindRouter: true,
 } satisfies Record<keyof Server, true>;
 void SERVER_FIELDS;
 
@@ -91,6 +92,7 @@ export function serverToRow(s: Server): ServerInsert {
     leftBehindAt: s.leftBehindAt ?? null,
     deploHost: s.deploHost ?? false,
     connectedFrom: s.connectedFrom ?? null,
+    behindRouter: s.behindRouter ?? false,
     createdAt: s.createdAt,
   };
 }
@@ -146,6 +148,7 @@ export function assembleServer(row: ServerRow): Server {
   if (row.leftBehindAt !== null) server.leftBehindAt = row.leftBehindAt;
   if (row.deploHost) server.deploHost = true;
   if (row.connectedFrom) server.connectedFrom = row.connectedFrom;
+  if (row.behindRouter) server.behindRouter = true;
   return server;
 }
 
