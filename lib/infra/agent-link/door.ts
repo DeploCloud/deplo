@@ -162,6 +162,9 @@ async function holdLink(
     const open = currentLink(serverId);
     if (open && (await answers(open))) {
       identityCopied(claimed, "both-answer");
+      void import("../../agent/cert-renewal").then((m) =>
+        m.rotateAfterCopy(serverId),
+      );
       return void ws.close(LINK_CLOSE.copied, "identity in use");
     }
     if (ws.readyState !== ws.OPEN) return;

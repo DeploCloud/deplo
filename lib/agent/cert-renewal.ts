@@ -55,15 +55,32 @@ type Renewal = { renewed: boolean; reason: string };
 const renewing = new Map<string, Promise<Renewal>>();
 
 /** One rotation per server at a time: a second would replace the agent's pending key under the first. */
-export function renewAgentCertIfDue(serverId: string): Promise<Renewal> {
+export function renewAgentCertIfDue(
+  serverId: string,
+  opts: { now?: boolean } = {},
+): Promise<Renewal> {
   const running = renewing.get(serverId);
   if (running) return running;
-  const run = renewNow(serverId).finally(() => renewing.delete(serverId));
+  const run = renewNow(serverId, !!opts.now).finally(() =>
+    renewing.delete(serverId),
+  );
   renewing.set(serverId, run);
   return run;
 }
 
-async function renewNow(serverId: string): Promise<Renewal> {
+const lockedOut = new Map<string, number>();
+
+/** A copy was caught: the server that kept its link gets a new key now, so the copy is refused for good (ADR-0050). */
+export function rotateAfterCopy(serverId: string): void {
+  if (Date.now() - (lockedOut.get(serverId) ?? 0) < 3_600_000) return;
+  lockedOut.set(serverId, Date.now());
+  void renewAgentCertIfDue(serverId, { now: true }).then(
+    (r) => console.log(`[cert-renewal] ${serverId} after a copy: ${r.reason}`),
+    (e) => console.warn(`[cert-renewal] ${serverId} after a copy: ${e}`),
+  );
+}
+
+async function renewNow(serverId: string, now: boolean): Promise<Renewal> {
   const [row] = await getDb()
     .select({
       ip: serversTable.ip,
@@ -78,7 +95,7 @@ async function renewNow(serverId: string): Promise<Renewal> {
   const due = rotationDue(row.certPem);
   if (due === null)
     return { renewed: false, reason: "unparseable stored cert" };
-  if (!due) return { renewed: false, reason: "not due" };
+  if (!due && !now) return { renewed: false, reason: "not due" };
 
   const conn = await connectAgent(serverId);
   try {
