@@ -162,8 +162,8 @@ test("a whole copy on another server makes the App fail over from it, and Activi
 
   await replicateCluster(cluster.id);
   assert.deepEqual(
-    (await said()).filter((m) => m.startsWith("Replicated")),
-    ["Replicated web's data to server-3: it can fail over now"],
+    (await said()).filter((m) => m.startsWith("web: Copies")),
+    ["web: Copies: 1 of 2 up to date. It can move if server-2 goes off."],
   );
 });
 

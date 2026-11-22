@@ -4,7 +4,9 @@ import { and, eq } from "drizzle-orm";
 
 import {
   type AppDisk,
+  type CopyRow,
   appDisk,
+  copiesLine,
   backupName,
   bindSentence,
   bringBackLabel,
@@ -32,7 +34,12 @@ import {
 } from "../clusters/bundles";
 import { backupClock } from "../clusters/failover";
 import { leaderHost } from "../clusters/host";
-import { replicaRows, replicationStates } from "../clusters/replica-state";
+import {
+  following,
+  replicaRows,
+  replicationStates,
+  type ReplicaRow,
+} from "../clusters/replica-state";
 import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { requireFolderCapabilityForApp } from "../folder-access";
 import { requireAppCapability } from "../node-access";
@@ -94,6 +101,43 @@ export interface AppFailover {
   bringBack: string | null;
   /** Why nothing can bring it back, while it waits. */
   why: string | null;
+  /** "Copies: 2 of 2 up to date", and each other server's copy under Advanced; null without replication. */
+  copies: string | null;
+  copyRows: CopyRow[];
+}
+
+/** Each other member's copy of the App, in its page's words. */
+export async function copyRows(
+  app: { id: string; serverId: string },
+  memberIds: string[],
+  rows: ReplicaRow[],
+  now = Date.now(),
+): Promise<CopyRow[]> {
+  const out: CopyRow[] = [];
+  for (const id of memberIds.filter((m) => m !== app.serverId)) {
+    const r = rows.find((x) => x.appId === app.id && x.serverId === id);
+    const state: CopyRow["state"] = !r
+      ? "Not copied"
+      : following(r, now)
+        ? "Up to date"
+        : r.synced
+          ? "Behind"
+          : r.connected
+            ? "Copying"
+            : "Not copied";
+    out.push({
+      server: (await getServerById(id))?.name ?? id,
+      state,
+      lastCopyAt: r?.appliedAt ?? null,
+      behindSeconds:
+        state === "Behind" && r?.appliedAt
+          ? Math.round((now - Date.parse(r.appliedAt)) / 1000)
+          : null,
+      bytes: r?.bytes ?? 0,
+      error: r?.error ?? "",
+    });
+  }
+  return out.sort((a, b) => a.server.localeCompare(b.server));
 }
 
 /** What an App that keeps data on a cluster member relies on, as its page states it; null for every other App. */
@@ -112,6 +156,8 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
     replicatedTo: 0,
     upToDateAt: null,
     heldBy: 0,
+    copies: null,
+    copyRows: [],
   };
   if (disk === "bind")
     return {
@@ -135,6 +181,8 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
   const waiting = member?.state === "fenced";
   const way = waiting ? await wayBack(app) : null;
   const replicated = cluster.replicationEnabled;
+  const memberIds = replicated ? await clusterMemberServerIds(cluster.id) : [];
+  const rows = replicated ? await replicaRows([app.id]) : [];
   const [copy] = replicated
     ? await replicationStates(
         [
@@ -145,10 +193,11 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
             clusterId: cluster.id,
           },
         ],
-        new Map([[cluster.id, await clusterMemberServerIds(cluster.id)]]),
-        await replicaRows([app.id]),
+        new Map([[cluster.id, memberIds]]),
+        rows,
       )
     : [];
+  const each = replicated ? await copyRows(app, memberIds, rows) : [];
   return {
     ...base,
     waiting,
@@ -163,6 +212,8 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
         : copyPendingSentence(app.name),
     bringBack: way?.label ?? null,
     why: way?.why ? `${app.name} cannot be brought back: ${way.why}` : null,
+    copies: replicated ? copiesLine(serverName, each) : null,
+    copyRows: each,
   };
 }
 

@@ -4,6 +4,7 @@ import { createElement } from "react";
 
 import { renderServerView } from "@/components/servers/server-test-helpers";
 import type { AppFailover } from "@/lib/data/apps/failover";
+import { type CopyRow, copiesLine } from "@/lib/apps/failover-copy";
 import { AppFailoverCard } from "./app-failover";
 
 const failover = (over: Partial<AppFailover> = {}): AppFailover => ({
@@ -19,6 +20,8 @@ const failover = (over: Partial<AppFailover> = {}): AppFailover => ({
   waiting: false,
   bringBack: null,
   why: null,
+  copies: null,
+  copyRows: [],
   ...over,
 });
 
@@ -35,6 +38,17 @@ test("a replicated App with a Volume reads the two promises and how far its copi
       replicatedTo: 2,
       heldBy: 2,
       upToDateAt: new Date(Date.now() - 1_000).toISOString(),
+      copies: "Copies: 2 of 2 up to date",
+      copyRows: [
+        {
+          server: "eu-2",
+          state: "Up to date",
+          lastCopyAt: null,
+          behindSeconds: null,
+          bytes: 4096,
+          error: "",
+        },
+      ],
     }),
   );
   assert.match(card, /Never two writers/);
@@ -42,7 +56,35 @@ test("a replicated App with a Volume reads the two promises and how far its copi
     card,
     /A failover starts it from its copy on the new server, as up to date as the copy was/,
   );
-  assert.match(card, /Replicated to\s+2 servers\s*, up to date/);
+  assert.match(card, /Copies: 2 of 2 up to date/);
+  assert.match(card, /Advanced/);
+});
+
+test("the copies line says up to date, copying, or why the App cannot move yet", () => {
+  const row = (server: string, state: CopyRow["state"]): CopyRow => ({
+    server,
+    state,
+    lastCopyAt: null,
+    behindSeconds: null,
+    bytes: 0,
+    error: "",
+  });
+  assert.equal(
+    copiesLine("eu-1", [row("eu-2", "Up to date"), row("eu-3", "Up to date")]),
+    "Copies: 2 of 2 up to date",
+  );
+  assert.equal(
+    copiesLine("eu-1", [row("eu-2", "Copying"), row("eu-3", "Copying")]),
+    "Copying to eu-2 and eu-3",
+  );
+  assert.equal(
+    copiesLine("eu-1", [row("eu-2", "Not copied"), row("eu-3", "Not copied")]),
+    "Not copied yet: this App cannot move if eu-1 goes off",
+  );
+  assert.equal(
+    copiesLine("eu-1", [row("eu-2", "Up to date"), row("eu-3", "Copying")]),
+    "Copies: 1 of 2 up to date",
+  );
 });
 
 test("an App with a Volume on a cluster that does not replicate is promised no failover", () => {

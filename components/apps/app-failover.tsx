@@ -8,8 +8,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DocsLink } from "@/components/ui/docs-link";
 import { FailoverPromises } from "@/components/storage/database-failover";
 import { TimeAgo } from "@/components/shared/time-ago";
+import { AdvancedSection } from "@/components/apps/wizard/advanced-section";
 import { REPLICATION_PROMISES } from "@/lib/apps/failover-copy";
 import { gqlAction } from "@/lib/graphql-client";
+import { formatBytes } from "@/lib/utils";
 import type { AppFailover } from "@/lib/data/apps/failover";
 
 const BRING_BACK = /* GraphQL */ `
@@ -99,14 +101,34 @@ export function AppFailoverCard({
           {failover.disk === "volume" && failover.automatic && (
             <>
               <FailoverPromises promises={REPLICATION_PROMISES} />
-              {failover.upToDateAt && (
-                <p className="text-xs text-muted-foreground">
-                  Replicated to{" "}
-                  {failover.replicatedTo === 1
-                    ? "1 server"
-                    : `${failover.replicatedTo} servers`}
-                  , up to date <TimeAgo at={failover.upToDateAt} live />.
-                </p>
+              {failover.copies && <p className="text-sm">{failover.copies}</p>}
+              {failover.copyRows.length > 0 && (
+                <AdvancedSection>
+                  <ul className="space-y-2 text-sm">
+                    {failover.copyRows.map((r) => (
+                      <li
+                        key={r.server}
+                        className="flex flex-wrap justify-between gap-x-4"
+                      >
+                        <span className="font-medium">{r.server}</span>
+                        <span className="text-muted-foreground">
+                          {r.state}
+                          {r.lastCopyAt && (
+                            <>
+                              , last copy <TimeAgo at={r.lastCopyAt} live />
+                            </>
+                          )}
+                          {r.behindSeconds != null &&
+                            `, ${r.behindSeconds} s behind`}
+                          {r.bytes > 0 && `, ${formatBytes(r.bytes)}`}
+                          {r.error &&
+                            r.state !== "Up to date" &&
+                            `: ${r.error}`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </AdvancedSection>
               )}
             </>
           )}
