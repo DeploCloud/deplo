@@ -123,6 +123,26 @@ const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
       description: "Why nothing can bring it back, while it waits.",
       resolve: (f) => f.why,
     }),
+    copies: t.string({
+      nullable: true,
+      description:
+        '"Copies: 2 of 2 up to date", "Copying to eu-2 and eu-3" or "Not copied yet: ..."; null without replication.',
+      resolve: (f) => f.copies,
+    }),
+    copyRows: t.stringList({
+      description:
+        "Each other server's copy as its page lists it under Advanced: server, state, last copy, seconds behind, bytes.",
+      resolve: (f) =>
+        f.copyRows.map((r) =>
+          [
+            r.server,
+            r.state,
+            r.lastCopyAt ?? "",
+            r.behindSeconds ?? "",
+            r.bytes,
+          ].join(" | "),
+        ),
+    }),
   }),
 });
 
