@@ -7,6 +7,7 @@ import {
   ANSWER_PORT,
   ANSWER_TRANSPORT,
 } from "./answer";
+import { acmeAuthority, type AcmeAuthority } from "./acme-authority";
 import {
   CHALLENGE_PORT,
   CHALLENGE_SECRET_FILE,
@@ -173,16 +174,21 @@ export function dnsChallengePresent(currentYaml: string): boolean {
 }
 
 /** Whether this server's proxy can get a certificate over DNS through its agent (ADR-0049), as Deplo writes it now. */
-export function hasDnsChallenge(currentYaml: string): boolean {
+export function hasDnsChallenge(
+  currentYaml: string,
+  authority: AcmeAuthority = acmeAuthority(),
+): boolean {
   if (!dnsChallengePresent(currentYaml)) return false;
   const service = traefikService(parseCompose(currentYaml));
   const own = `${dnsResolverFlag}acme.`;
   const env = new Set(listOf(service.get("environment", true)));
+  const test = authority.directory && `caserver=${authority.directory}`;
   return (
     !listOf(service.get("command", true)).some(
       (c) =>
         c.startsWith(own) &&
-        /^(caserver|certificatesduration)=/.test(c.slice(own.length)),
+        /^(caserver|certificatesduration)=/.test(c.slice(own.length)) &&
+        c.slice(own.length) !== test,
     ) && challengeEnv.every((e) => env.has(e))
   );
 }
@@ -192,7 +198,11 @@ export function hasDnsChallenge(currentYaml: string): boolean {
  * account settings, whose checks its server agent sets on the proxy's loopback, asking a secret only the proxy reads.
  * No DNS provider's token is involved. Taking it out leaves the stack as it was before.
  */
-export function withDnsChallenge(currentYaml: string, on: boolean): string {
+export function withDnsChallenge(
+  currentYaml: string,
+  on: boolean,
+  authority: AcmeAuthority = acmeAuthority(),
+): string {
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
   const command = listOf(service.get("command", true)).filter(
@@ -213,6 +223,10 @@ export function withDnsChallenge(currentYaml: string, on: boolean): string {
       ? [
           `${dnsResolverFlag}acme.dnschallenge.provider=httpreq`,
           `${dnsResolverFlag}acme.dnschallenge.propagation.disablechecks=true`,
+          // Only Deplo's certificate test mode names an authority of its own.
+          ...(authority.directory
+            ? [`${dnsResolverFlag}acme.caserver=${authority.directory}`]
+            : []),
         ]
       : []),
   ]);

@@ -22,6 +22,7 @@ export function agentSelfRpc(
   | "setLinkAddresses"
   | "stopListening"
   | "proveAddresses"
+  | "claimServer"
 > {
   const { client } = channel;
   return {
@@ -39,6 +40,9 @@ export function agentSelfRpc(
         { echoUrl },
         STACK_DEADLINE_MS,
       );
+    },
+    claimServer(req) {
+      return unary(client.claimServer.bind(client), req, HELLO_TIMEOUT_MS);
     },
     async stopListening() {
       await unary(client.stopListening.bind(client), {}, HELLO_TIMEOUT_MS);

@@ -17,6 +17,8 @@ import type {
   S3Target,
   StoreTarget,
   RestoreChunk_Header,
+  ClaimServerRequest,
+  ClaimServerResponse,
   DockerCleanupRequest,
   DockerCleanupResponse,
   InventoryCandidateResponse,
@@ -452,6 +454,8 @@ export interface AgentConnection {
     trafficAddresses: string[];
     dnsIdent: string;
   }>;
+  /** Needs `panel.claim` (ADR-0050): this Deplo's clusters; the agent sets aside what another Deplo left. */
+  claimServer(req: ClaimServerRequest): Promise<ClaimServerResponse>;
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
   // Needs `image-inventory` (ADR-0038).
   listWorkloadImages(): Promise<ListWorkloadImagesResponse>;

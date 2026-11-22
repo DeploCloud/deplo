@@ -3533,6 +3533,31 @@ export interface ClusterReplicaState {
   fromServerId: string;
 }
 
+export interface ClaimServerRequest {
+  /** Every cluster this Deplo has, on any server. */
+  clusterIds: string[];
+  /** Whether this Deplo runs a cluster leader or relay on this server. */
+  clusterHost: boolean;
+}
+
+export interface ClaimServerResponse {
+  /** The agent found another Deplo's state and restarts now to set it aside. */
+  restarting: boolean;
+  /** The folder the last set-aside went to, and when (Unix ms); empty when nothing ever was. */
+  setAside: string;
+  setAsideAtMs: number;
+  /** Containers and volumes of another Deplo's Apps still on this server, left for its owner. */
+  left: LeftWorkload[];
+}
+
+export interface LeftWorkload {
+  /** "container" or "volume". */
+  kind: string;
+  name: string;
+  /** The App's slug on the Deplo that left it. */
+  app: string;
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -28335,6 +28360,325 @@ export const ClusterReplicaState: MessageFns<ClusterReplicaState> = {
   },
 };
 
+function createBaseClaimServerRequest(): ClaimServerRequest {
+  return { clusterIds: [], clusterHost: false };
+}
+
+export const ClaimServerRequest: MessageFns<ClaimServerRequest> = {
+  encode(message: ClaimServerRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.clusterIds) {
+      writer.uint32(10).string(v!);
+    }
+    if (message.clusterHost !== false) {
+      writer.uint32(16).bool(message.clusterHost);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClaimServerRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClaimServerRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.clusterIds.push(reader.string());
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.clusterHost = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClaimServerRequest {
+    return {
+      clusterIds: globalThis.Array.isArray(object?.clusterIds)
+        ? object.clusterIds.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.cluster_ids)
+        ? object.cluster_ids.map((e: any) => globalThis.String(e))
+        : [],
+      clusterHost: isSet(object.clusterHost)
+        ? globalThis.Boolean(object.clusterHost)
+        : isSet(object.cluster_host)
+        ? globalThis.Boolean(object.cluster_host)
+        : false,
+    };
+  },
+
+  toJSON(message: ClaimServerRequest): unknown {
+    const obj: any = {};
+    if (message.clusterIds?.length) {
+      obj.clusterIds = message.clusterIds;
+    }
+    if (message.clusterHost !== false) {
+      obj.clusterHost = message.clusterHost;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClaimServerRequest>, I>>(base?: I): ClaimServerRequest {
+    return ClaimServerRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClaimServerRequest>, I>>(object: I): ClaimServerRequest {
+    const message = createBaseClaimServerRequest();
+    message.clusterIds = object.clusterIds?.map((e) => e) || [];
+    message.clusterHost = object.clusterHost ?? false;
+    return message;
+  },
+};
+
+function createBaseClaimServerResponse(): ClaimServerResponse {
+  return { restarting: false, setAside: "", setAsideAtMs: 0, left: [] };
+}
+
+export const ClaimServerResponse: MessageFns<ClaimServerResponse> = {
+  encode(message: ClaimServerResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.restarting !== false) {
+      writer.uint32(8).bool(message.restarting);
+    }
+    if (message.setAside !== "") {
+      writer.uint32(18).string(message.setAside);
+    }
+    if (message.setAsideAtMs !== 0) {
+      writer.uint32(24).int64(message.setAsideAtMs);
+    }
+    for (const v of message.left) {
+      LeftWorkload.encode(v!, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClaimServerResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClaimServerResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.restarting = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.setAside = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.setAsideAtMs = longToNumber(reader.int64());
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.left.push(LeftWorkload.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClaimServerResponse {
+    return {
+      restarting: isSet(object.restarting) ? globalThis.Boolean(object.restarting) : false,
+      setAside: isSet(object.setAside)
+        ? globalThis.String(object.setAside)
+        : isSet(object.set_aside)
+        ? globalThis.String(object.set_aside)
+        : "",
+      setAsideAtMs: isSet(object.setAsideAtMs)
+        ? globalThis.Number(object.setAsideAtMs)
+        : isSet(object.set_aside_at_ms)
+        ? globalThis.Number(object.set_aside_at_ms)
+        : 0,
+      left: globalThis.Array.isArray(object?.left) ? object.left.map((e: any) => LeftWorkload.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: ClaimServerResponse): unknown {
+    const obj: any = {};
+    if (message.restarting !== false) {
+      obj.restarting = message.restarting;
+    }
+    if (message.setAside !== "") {
+      obj.setAside = message.setAside;
+    }
+    if (message.setAsideAtMs !== 0) {
+      obj.setAsideAtMs = Math.round(message.setAsideAtMs);
+    }
+    if (message.left?.length) {
+      obj.left = message.left.map((e) => LeftWorkload.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClaimServerResponse>, I>>(base?: I): ClaimServerResponse {
+    return ClaimServerResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClaimServerResponse>, I>>(object: I): ClaimServerResponse {
+    const message = createBaseClaimServerResponse();
+    message.restarting = object.restarting ?? false;
+    message.setAside = object.setAside ?? "";
+    message.setAsideAtMs = object.setAsideAtMs ?? 0;
+    message.left = object.left?.map((e) => LeftWorkload.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseLeftWorkload(): LeftWorkload {
+  return { kind: "", name: "", app: "" };
+}
+
+export const LeftWorkload: MessageFns<LeftWorkload> = {
+  encode(message: LeftWorkload, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.kind !== "") {
+      writer.uint32(10).string(message.kind);
+    }
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
+    if (message.app !== "") {
+      writer.uint32(26).string(message.app);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LeftWorkload {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLeftWorkload();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.kind = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.app = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LeftWorkload {
+    return {
+      kind: isSet(object.kind) ? globalThis.String(object.kind) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      app: isSet(object.app) ? globalThis.String(object.app) : "",
+    };
+  },
+
+  toJSON(message: LeftWorkload): unknown {
+    const obj: any = {};
+    if (message.kind !== "") {
+      obj.kind = message.kind;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.app !== "") {
+      obj.app = message.app;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LeftWorkload>, I>>(base?: I): LeftWorkload {
+    return LeftWorkload.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LeftWorkload>, I>>(object: I): LeftWorkload {
+    const message = createBaseLeftWorkload();
+    message.kind = object.kind ?? "";
+    message.name = object.name ?? "";
+    message.app = object.app ?? "";
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -29508,6 +29852,19 @@ export const AgentService = {
       Buffer.from(ProveAddressesResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): ProveAddressesResponse => ProveAddressesResponse.decode(value),
   },
+  /**
+   * Which Deplo this server belongs to now (ADR-0050): the agent sets aside what another Deplo left
+   * and restarts to load only this one's state. Advertised as `panel.claim`.
+   */
+  claimServer: {
+    path: "/deplo.agent.v1.Agent/ClaimServer" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ClaimServerRequest): Buffer => Buffer.from(ClaimServerRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClaimServerRequest => ClaimServerRequest.decode(value),
+    responseSerialize: (value: ClaimServerResponse): Buffer => Buffer.from(ClaimServerResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClaimServerResponse => ClaimServerResponse.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -29913,6 +30270,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    * its traffic leaves from, per family. Advertised as `address.prove`.
    */
   proveAddresses: handleUnaryCall<ProveAddressesRequest, ProveAddressesResponse>;
+  /**
+   * Which Deplo this server belongs to now (ADR-0050): the agent sets aside what another Deplo left
+   * and restarts to load only this one's state. Advertised as `panel.claim`.
+   */
+  claimServer: handleUnaryCall<ClaimServerRequest, ClaimServerResponse>;
 }
 
 export interface AgentClient extends Client {
@@ -31407,6 +31769,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ProveAddressesResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Which Deplo this server belongs to now (ADR-0050): the agent sets aside what another Deplo left
+   * and restarts to load only this one's state. Advertised as `panel.claim`.
+   */
+  claimServer(
+    request: ClaimServerRequest,
+    callback: (error: ServiceError | null, response: ClaimServerResponse) => void,
+  ): ClientUnaryCall;
+  claimServer(
+    request: ClaimServerRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ClaimServerResponse) => void,
+  ): ClientUnaryCall;
+  claimServer(
+    request: ClaimServerRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ClaimServerResponse) => void,
   ): ClientUnaryCall;
 }
 
