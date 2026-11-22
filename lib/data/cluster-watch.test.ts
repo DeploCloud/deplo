@@ -1,3 +1,4 @@
+import { __forgetGone } from "./clusters/gone";
 import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -622,4 +623,28 @@ test("a leader below the pinned floor is refused for the watch as for a call", a
   __setClusterPinForTest({ version: "0.3.0", min: "0.3.0" });
   await assert.rejects(() => watchClusterOnce(cluster.id), /0\.2\.0|0\.3\.0/);
   assert.deepEqual(leader.watch.opens, []);
+});
+
+test("a member gone past the grace no longer counts, so the next one to stop is not too few (ADR-0049)", async () => {
+  __forgetGone();
+  const cluster = await eu();
+  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
+  leader.watch.push("member_state", cluster.id, {
+    member: "srv_3",
+    state: "not_responding",
+  });
+  leader.watch.push("member_gone", cluster.id, { member: "srv_3" });
+  leader.watch.push("member_state", cluster.id, {
+    member: "srv_2",
+    state: "not_responding",
+  });
+  await watchUntil(cluster.id, 3);
+  // Two of three answer while srv_3 counts: with it gone, one of two is enough with Deplo's word.
+  const said = await activityTexts();
+  assert.ok(
+    said.includes("srv_2 is not responding in cluster eu."),
+    said.join(" | "),
+  );
+  assert.ok(!said.some((t) => t.startsWith("Too few")), said.join(" | "));
+  __forgetGone();
 });

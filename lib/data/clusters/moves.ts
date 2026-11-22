@@ -11,7 +11,8 @@ import type { App } from "../../types/app";
 import { getServerById } from "../servers/roster";
 import { serverAddresses } from "../servers/addresses";
 import { promotable, replicaRows } from "./replica-state";
-import { clusterLeaseStates, getClusterById } from "./roster";
+import { votingLeaseStates } from "./gone";
+import { getClusterById } from "./roster";
 
 // An App the cluster is moving reads "Moving to eu-2" until its new server answers with a valid certificate,
 // and one that cannot move says why (ADR-0049). https://deplo.build/docs/operations/clusters/failover
@@ -88,7 +89,8 @@ export async function moveLanded(
   });
   const all = [...addrs.v6, ...addrs.v4];
   let ok = names.length === 0 || all.length === 0;
-  while (!ok && Date.now() < end) {
+  // A newer move, or one that ended, stops this wait.
+  while (!ok && Date.now() < end && moves().get(appId)?.to === to) {
     ok = (
       await Promise.all(
         names.map(async (n) => {
@@ -124,7 +126,7 @@ export async function appMoveState(
       offlineWhy: null,
     };
   if (!unreachable || !app.clusterId) return { move: null, offlineWhy: null };
-  const leases = await clusterLeaseStates(app.clusterId);
+  const leases = await votingLeaseStates(app.clusterId);
   const answering = leases.filter((s) => s === "ok").length;
   if (leases.length >= 2 && !leaderHearsEnough(answering, leases.length))
     return { move: null, offlineWhy: NO_MAJORITY };
