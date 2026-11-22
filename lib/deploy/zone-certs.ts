@@ -267,6 +267,10 @@ export function renewersLast<M extends { serverId: string }>(
 /** A failed order, said in the words of someone who never ordered a certificate. */
 export function zoneCertErrorWords(raw: string): string {
   const e = raw.toLowerCase();
+  // An order sent anywhere but Let's Encrypt is a proxy left pointed at a test authority (the lab's, on eu-1..3).
+  const at = raw.match(/https:\/\/([^/:\s]+)(?::\d+)?\//)?.[1];
+  if (at && !/(^|\.)letsencrypt\.org$/i.test(at))
+    return `The proxy asked ${at}, not Let's Encrypt, for the certificate. Deplo moves it to Let's Encrypt and asks again.`;
   if (e.includes("ratelimited") || e.includes("too many"))
     return "The certificate authority issued too many certificates for this zone lately. Deplo asks again later.";
   if (e.includes("caa"))

@@ -148,7 +148,12 @@ const challengeEnv = [
   `HTTPREQ_PASSWORD_FILE=${CHALLENGE_SECRET_TARGET}`,
   // The agent maps a name outside the zone to its CNAME's target itself, so the proxy looks nothing up.
   "LEGO_DISABLE_CNAME_SUPPORT=true",
+  // A root added for another resolver's authority must not hide the system's from Let's Encrypt.
+  "LEGO_CA_SYSTEM_CERT_POOL=true",
 ];
+// The zone's names are public, so their certificates come from Let's Encrypt whatever authority the proxy's own
+// resolver was pointed at (the lab's test one, on 22 Nov 2026, which no browser trusts).
+const NOT_COPIED = /^(http|tls|dns)challenge|^caserver=|^certificatesduration=/;
 const challengeEnvNames = new Set(challengeEnv.map(entryName));
 
 const isChallengeMount = (entry: unknown) =>
@@ -156,8 +161,8 @@ const isChallengeMount = (entry: unknown) =>
     CHALLENGE_SECRET_TARGET,
   );
 
-/** Whether this server's proxy can get a certificate over DNS through its agent (ADR-0049). */
-export function hasDnsChallenge(currentYaml: string): boolean {
+/** Whether this server's proxy has the resolver that gets a certificate over DNS, in any shape. */
+export function dnsChallengePresent(currentYaml: string): boolean {
   try {
     return listOf(
       traefikService(parseCompose(currentYaml)).get("command", true),
@@ -165,6 +170,21 @@ export function hasDnsChallenge(currentYaml: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Whether this server's proxy can get a certificate over DNS through its agent (ADR-0049), as Deplo writes it now. */
+export function hasDnsChallenge(currentYaml: string): boolean {
+  if (!dnsChallengePresent(currentYaml)) return false;
+  const service = traefikService(parseCompose(currentYaml));
+  const own = `${dnsResolverFlag}acme.`;
+  const env = new Set(listOf(service.get("environment", true)));
+  return (
+    !listOf(service.get("command", true)).some(
+      (c) =>
+        c.startsWith(own) &&
+        /^(caserver|certificatesduration)=/.test(c.slice(own.length)),
+    ) && challengeEnv.every((e) => env.has(e))
+  );
 }
 
 /**
@@ -182,9 +202,7 @@ export function withDnsChallenge(currentYaml: string, on: boolean): string {
   const copied = on
     ? command
         .filter(
-          (c) =>
-            c.startsWith(own) &&
-            !/^(http|tls|dns)challenge/.test(c.slice(own.length)),
+          (c) => c.startsWith(own) && !NOT_COPIED.test(c.slice(own.length)),
         )
         .map((c) => `${dnsResolverFlag}acme.${c.slice(own.length)}`)
     : [];
