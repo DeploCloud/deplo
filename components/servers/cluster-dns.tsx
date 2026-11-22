@@ -50,6 +50,12 @@ const ADD_ZONE = /* GraphQL */ `
   }
 `;
 
+const RENAME_ZONE = /* GraphQL */ `
+  mutation RenameClusterDnsZone($id: String!, $name: String!) {
+    renameClusterDnsZone(id: $id, name: $name)
+  }
+`;
+
 const REMOVE_ZONE = /* GraphQL */ `
   mutation RemoveClusterDnsZone($id: String!) {
     removeClusterDnsZone(id: $id)
@@ -133,10 +139,17 @@ function DelegateDialog({
         <form className="grid gap-4" onSubmit={run}>
           <DialogHeader>
             <DialogTitle>Delegate {zone.name}</DialogTitle>
-            <DialogDescription>
-              Add these records <strong>where you bought the domain</strong>.{" "}
-              <DocsLink topic="clusters.dnsZoneDelegate" />
-            </DialogDescription>
+            {zone.keptIn ? (
+              <DialogDescription>
+                Deplo keeps these records <strong>in Cloudflare</strong>, in{" "}
+                {zone.keptIn}. <DocsLink topic="clusters.dnsZoneConnected" />
+              </DialogDescription>
+            ) : (
+              <DialogDescription>
+                Add these records <strong>where you bought the domain</strong>,
+                then Check. <DocsLink topic="clusters.dnsZoneDelegate" />
+              </DialogDescription>
+            )}
           </DialogHeader>
           {zone.records.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -236,15 +249,87 @@ function DelegateDialog({
   );
 }
 
+/** A zone's new name: the domains pointed into it follow, and Deplo rewrites the records it keeps. */
+function RenameDialog({
+  zone,
+  open,
+  onOpenChange,
+}: {
+  zone: ClusterDnsView["zones"][number];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = React.useState(zone.name);
+  const [pending, startTransition] = React.useTransition();
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction(RENAME_ZONE, { id: zone.id, name });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`Renamed ${zone.name}`);
+      onOpenChange(false);
+      router.refresh();
+    });
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <form className="grid gap-4" onSubmit={save}>
+          <DialogHeader>
+            <DialogTitle>Rename {zone.name}</DialogTitle>
+            <DialogDescription>
+              Its domains follow{" "}
+              {zone.keptIn ? (
+                <strong>with no record to change</strong>
+              ) : (
+                <strong>once their records point at the new name</strong>
+              )}
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="Zone"
+            disabled={pending}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                pending ||
+                name.trim() === "" ||
+                name.trim().toLowerCase() === zone.name
+              }
+            >
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Rename
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ZoneRow({
   zone,
   dns,
+  justAdded,
 }: {
   zone: ClusterDnsView["zones"][number];
   dns: ClusterDnsView;
+  /** Added by hand a moment ago: its records open at once, as the next step. */
+  justAdded: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  // A zone's row mounts once it exists, so its first state is the moment it was added.
+  const [open, setOpen] = React.useState(justAdded && !zone.keptIn);
+  const [renaming, setRenaming] = React.useState(false);
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
@@ -253,6 +338,9 @@ function ZoneRow({
         </span>
         <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
           Records
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>
+          Rename
         </Button>
         <ConfirmAction
           trigger={
@@ -285,7 +373,13 @@ function ZoneRow({
           open={open}
           onOpenChange={setOpen}
         />
+        <RenameDialog zone={zone} open={renaming} onOpenChange={setRenaming} />
       </div>
+      <p className="text-xs text-muted-foreground">
+        {zone.keptIn
+          ? `Deplo keeps its records in Cloudflare, in ${zone.keptIn}.`
+          : "Add its records where you bought the domain: open Records, then Check."}
+      </p>
       <ZoneCertificateLine
         zone={zone.name}
         cert={zone.certificate}
@@ -376,15 +470,20 @@ export function ClusterDnsRow({
 }) {
   const router = useRouter();
   const [name, setName] = React.useState("");
+  const [added, setAdded] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const add = (e: React.FormEvent) => {
     e.preventDefault();
     startTransition(async () => {
-      const res = await gqlAction(ADD_ZONE, { clusterId: cluster.id, name });
+      const res = await gqlAction<{ addClusterDnsZone: string }>(ADD_ZONE, {
+        clusterId: cluster.id,
+        name,
+      });
       if (!res.ok) return void toast.error(res.error);
       toast.success(
         `${cluster.name} answers for ${name.trim().toLowerCase()} once it is delegated`,
       );
+      setAdded(res.data?.addClusterDnsZone ?? null);
       setName("");
       router.refresh();
     });
@@ -400,7 +499,7 @@ export function ClusterDnsRow({
       >
         <div className="space-y-3">
           {dns.zones.map((z) => (
-            <ZoneRow key={z.id} zone={z} dns={dns} />
+            <ZoneRow key={z.id} zone={z} dns={dns} justAdded={z.id === added} />
           ))}
           <form className="flex flex-wrap items-center gap-2" onSubmit={add}>
             <Input

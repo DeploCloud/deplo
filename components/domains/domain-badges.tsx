@@ -21,10 +21,13 @@ export function DomainBadges({
   domain,
   effectiveProvider,
   cloudflare,
+  onCluster = false,
 }: {
   domain: Domain;
   effectiveProvider: CertProvider;
   cloudflare: boolean;
+  /** Its App runs on a cluster, whose own zone can take a tunnel domain over. */
+  onCluster?: boolean;
 }) {
   const middlewares = domain.middlewares ?? [];
   const oneCloudflareChip = cloudflare && effectiveProvider === "cloudflare";
@@ -54,8 +57,9 @@ export function DomainBadges({
         <SimpleTooltip
           content={
             <>
-              Cloudflare serves it, HTTPS included. To turn the tunnel off,
-              remove the domain and add it again.{" "}
+              {onCluster
+                ? "Cloudflare serves it, HTTPS included. Let the cluster answer moves it to the cluster."
+                : "Cloudflare serves it, HTTPS included. To turn the tunnel off, remove the domain and add it again."}{" "}
               <DocsLink topic="domains.automaticDnsTunnel" />
             </>
           }

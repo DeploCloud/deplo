@@ -123,11 +123,16 @@ export const liveDelegationDeps: DelegationDeps = {
 const sameName = (a: string, b: string) =>
   a.replace(/\.$/, "") === b.replace(/\.$/, "");
 
+let testDeps: DelegationDeps | null = null;
+export function __setDelegationDepsForTest(d: DelegationDeps | null): void {
+  testDeps = d;
+}
+
 /** Checks a zone's delegation at its parent and that each of the cluster's name servers answers for it. */
 export async function checkDelegation(
   zone: string,
   expected: ExpectedNameServer[],
-  deps: DelegationDeps = liveDelegationDeps,
+  deps: DelegationDeps = testDeps ?? liveDelegationDeps,
 ): Promise<DelegationCheck> {
   const problems: string[] = [];
   const parent = await deps.parentOf(zone).catch(() => null);

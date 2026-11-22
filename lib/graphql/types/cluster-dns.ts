@@ -5,6 +5,7 @@ import {
   checkClusterDnsZone,
   placeClusterServer,
   removeClusterDnsZone,
+  renameClusterDnsZone,
   setClusterDnsTimes,
 } from "@/lib/data/clusters/zone-settings";
 import {
@@ -107,6 +108,11 @@ const ClusterDnsZoneRef = builder
       names: t.exposeStringList("names", {
         description:
           "The names it answers: each domain answered by it, as its name in the zone.",
+      }),
+      keptIn: t.exposeString("keptIn", {
+        nullable: true,
+        description:
+          "The domain connected for automatic DNS where Deplo keeps these records itself, in Cloudflare; null when a person adds them where the domain was bought.",
       }),
       certificate: t.field({
         type: ZoneCertificateRef,
@@ -339,6 +345,16 @@ builder.mutationFields((t) => ({
       name: t.arg.string({ required: true }),
     },
     resolve: (_r, { clusterId, name }) => addClusterDnsZone(clusterId, name),
+  }),
+  renameClusterDnsZone: t.string({
+    authScopes: { instanceAdmin: true },
+    description:
+      "Gives a cluster's DNS zone another name. The domains pointed into it follow: Deplo rewrites the records it keeps in Cloudflare, and says which ones a person must change. Refused while a name inside the old zone is in use. Returns the cluster's id.",
+    args: {
+      id: t.arg.string({ required: true }),
+      name: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { id, name }) => renameClusterDnsZone(id, name),
   }),
   removeClusterDnsZone: t.string({
     authScopes: { instanceAdmin: true },

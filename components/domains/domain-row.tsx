@@ -130,8 +130,14 @@ export function DomainRow({
   siblings = [],
   native = null,
   dnsZones = [],
+  cluster = null,
+  everyServer = null,
 }: {
   domain: Row;
+  /** The records a domain answering on every server needs when a person keeps them: one per healthy server. */
+  everyServer?: { a: string[]; aaaa: string[] } | null;
+  /** The App runs on a cluster, and whether the viewer can put a tunnel domain on it. */
+  cluster?: { canMove: boolean } | null;
   /** Answered by the cluster's own DNS zone (ADR-0049), and the CNAME it needs when outside it. */
   native?: DomainZone | null;
   /** The zones of the App's cluster it could be answered through. */
@@ -150,7 +156,13 @@ export function DomainRow({
   suggestedDomain?: string;
   stray?: StrayRecord | null;
 }) {
-  const records = dnsRecordsFor(serverIp, serverIpv6);
+  const byHand = domain.answersEverywhere === true && everyServer != null;
+  const records = byHand
+    ? [
+        ...everyServer.a.map((value) => ({ type: "A", value })),
+        ...everyServer.aaaa.map((value) => ({ type: "AAAA", value })),
+      ]
+    : dnsRecordsFor(serverIp, serverIpv6);
   const strayTarget =
     records.find((r) => r.type === stray?.type)?.value ?? null;
   const router = useRouter();
@@ -358,6 +370,7 @@ export function DomainRow({
             domain={domain}
             effectiveProvider={effectiveProvider}
             cloudflare={cloudflare}
+            onCluster={cluster != null}
           />
         </div>
         {!proxied &&
@@ -394,6 +407,28 @@ export function DomainRow({
                       <span>or remove it.</span>
                     </>
                   )}
+                </>
+              ) : byHand && records.length > 0 ? (
+                <>
+                  <span>
+                    Add one record for{" "}
+                    <span className="font-mono text-foreground">
+                      {domain.name}
+                    </span>{" "}
+                    per server of the cluster:
+                  </span>
+                  {records.map((r) => (
+                    <span
+                      key={`${r.type} ${r.value}`}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <span className="font-medium text-foreground">
+                        {r.type}
+                      </span>
+                      <AddressChip value={r.value} />
+                    </span>
+                  ))}
+                  <span>It&rsquo;s re-checked automatically.</span>
                 </>
               ) : records.length > 0 ? (
                 <>
@@ -458,6 +493,7 @@ export function DomainRow({
           native={native}
           dnsZones={dnsZones}
           noHealthCheck={noHealthCheck}
+          cluster={cluster}
         />
       </TableCell>
       {showContainer && (

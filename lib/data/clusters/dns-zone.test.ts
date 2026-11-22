@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { encryptSecret } from "../../crypto";
+import { fakeCloudflare } from "../../cloudflare/cloudflare-test-helpers";
 import { nowIso } from "../../ids";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
@@ -345,7 +346,7 @@ test("the two times keep their ranges and reach every member", async () => {
   assert.equal(lastTable("srv_2")!.dropAfterSeconds, 20);
 });
 
-test("a domain points at the zone only when it can: on every server, of this cluster, not a bare domain, not at a provider", async () => {
+test("a domain points at the zone only when it can: on every server, of this cluster, not a bare domain; Deplo rewrites a record it keeps", async () => {
   const eu = await clusterOf("eu", MEMBERS);
   const us = await clusterOf("us", []);
   await asAdmin(() => addClusterDnsZone(eu.id, "go.example.com"));
@@ -395,10 +396,44 @@ test("a domain points at the zone only when it can: on every server, of this clu
     recordId: "r1",
     createdAt: nowIso(),
   });
-  await assert.rejects(
-    asAdmin(() => setDomainDnsZone("dom_cf", zone.id)),
-    /connected DNS provider/,
-  );
+  // A record Deplo keeps in Cloudflare is pointed at the zone there, DNS only, with its certificate's CNAME.
+  const { cf, restore } = fakeCloudflare({
+    zones: [{ id: "z1", name: "example.com", accountId: "a1" }],
+  });
+  try {
+    cf.records.set("r1", {
+      id: "r1",
+      zoneId: "z1",
+      type: "A",
+      name: "cf.example.com",
+      content: "203.0.113.2",
+      comment: "Deplo app",
+    });
+    await asAdmin(() => setDomainDnsZone("dom_cf", zone.id));
+    assert.deepEqual(
+      [...cf.records.values()].map((r) => [
+        r.type,
+        r.name,
+        r.content,
+        r.proxied,
+      ]),
+      [
+        ["CNAME", "cf.example.com", "cf-example-com.go.example.com", false],
+        [
+          "CNAME",
+          "_acme-challenge.cf.example.com",
+          "_acme-challenge.cf-example-com.go.example.com",
+          false,
+        ],
+      ],
+    );
+    await assert.rejects(
+      asAdmin(() => setDomainDnsZone("dom_cf", null)),
+      /Deplo keeps cf\.example\.com's record in Cloudflare/,
+    );
+  } finally {
+    restore();
+  }
   await asAdmin(() => setDomainDnsZone("dom_1", zone.id));
   await asAdmin(() => setDomainDnsZone("dom_1", null));
   const [row] = await db()

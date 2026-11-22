@@ -68,6 +68,12 @@ import {
   settleAppTunnel,
 } from "../clusters/app-tunnel";
 import { requireExperiment } from "../experiments";
+import {
+  markClusterAnswer,
+  planClusterAnswer,
+  writeClusterAnswer,
+  type ClusterAnswerPlan,
+} from "./cluster-answer";
 
 export async function listDomains(
   appId?: string,
@@ -190,44 +196,69 @@ async function addDomainUnlocked(
     .limit(1);
   if (!shared && config.tunnel === true && project.clusterId == null)
     await requireExperiment("tunnels");
-  // A cluster App's domain in a connected Cloudflare zone is always served by the App's own tunnel.
-  const tunnel = shared
-    ? shared.tunnel === true
-    : config.tunnel === true ||
-      (project.clusterId != null &&
-        (await providerForHostname(clean, membership.teamId, user.id)) != null);
-  await assertTeamLetsencryptQuota(
-    membership.teamId,
-    tunnel ? "cloudflare" : (config.certProvider ?? "none"),
-  );
-
   const service = resolveApp(config.service, project, isCompose);
   if (isCompose && config.port == null)
     throw new Error("Application port is required");
   const middlewares = normalizeMiddlewares(config.middlewares);
   const corsOrigins = normalizeCorsOrigins(config.corsOrigins);
+  // A cluster App's domain in a connected Cloudflare zone, or in the cluster's own zone: the zone answers it by
+  // default, the App's own tunnel when asked or when the zone cannot yet (ADR-0049).
+  const provider =
+    project.clusterId != null && !shared
+      ? await providerForHostname(clean, membership.teamId, user.id)
+      : null;
+  const plan =
+    project.clusterId != null && !shared
+      ? await planClusterAnswer({
+          appId,
+          teamId: membership.teamId,
+          clusterId: project.clusterId,
+          name: clean,
+          pathPrefix,
+          tunnel: config.tunnel,
+          provider,
+        })
+      : null;
+  const cluster = plan?.way === "cluster" ? plan : null;
+  const tunnel = shared
+    ? shared.tunnel === true
+    : config.tunnel === true || plan?.way === "tunnel";
+  await assertTeamLetsencryptQuota(
+    membership.teamId,
+    tunnel
+      ? "cloudflare"
+      : cluster
+        ? "letsencrypt"
+        : (config.certProvider ?? "none"),
+  );
+
   const stripPrefix = Boolean(pathPrefix && config.stripPrefix);
   const existing = await loadDomainsForApp(appId);
   const isFirst = existing.length === 0;
   const sibling = existing.find((d) => d.name === clean && isRoutableDomain(d));
-  const proxied = config.proxied === true || tunnel;
-  const dns = await provisionDomainDns({
-    appId,
-    hostname: clean,
-    teamId: membership.teamId,
-    userId: user.id,
-    tunnel,
-  });
-  const status =
-    sibling?.status ??
-    (await checkDomainDns(clean, await appServerAddresses(appId)));
+  const proxied = !cluster && (config.proxied === true || tunnel);
+  const dns = cluster
+    ? await clusterDns(cluster, clean, provider?.id ?? null)
+    : await provisionDomainDns({
+        appId,
+        hostname: clean,
+        teamId: membership.teamId,
+        userId: user.id,
+        tunnel,
+      });
+  const status = cluster
+    ? "pending"
+    : (sibling?.status ??
+      (await checkDomainDns(clean, await appServerAddresses(appId))));
   const certProvider = tunnel
     ? "cloudflare"
-    : await certProviderForDnsWithinQuota(
-        membership.teamId,
-        status,
-        config.certProvider ?? "none",
-      );
+    : cluster
+      ? "letsencrypt"
+      : await certProviderForDnsWithinQuota(
+          membership.teamId,
+          status,
+          config.certProvider ?? "none",
+        );
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -235,9 +266,16 @@ async function addDomainUnlocked(
     status,
     primary: isFirst,
     redirectTo: null,
-    ssl: sibling ? sibling.ssl : isRoutableDomain({ status, proxied }),
+    // Deplo wrote its records itself: routed at once, so its certificate is ordered now.
+    ssl: cluster
+      ? true
+      : sibling
+        ? sibling.ssl
+        : isRoutableDomain({ status, proxied }),
     port: config.port ?? portFor(project!),
-    ...(config.entrypoint && !tunnel ? { entrypoint: config.entrypoint } : {}),
+    ...(config.entrypoint && !tunnel && !cluster
+      ? { entrypoint: config.entrypoint }
+      : {}),
     certProvider,
     ...(middlewares.length ? { middlewares } : {}),
     securityHeaders: config.securityHeaders ?? true,
@@ -247,6 +285,7 @@ async function addDomainUnlocked(
     ...(service ? { service } : {}),
     ...(proxied ? { proxied: true } : {}),
     ...(tunnel ? { tunnel: true } : {}),
+    ...(cluster ? { answersEverywhere: true } : {}),
     createdAt: nowIso(),
   };
   try {
@@ -256,6 +295,13 @@ async function addDomainUnlocked(
     throw e;
   }
   if (dns) await rememberDomainDns(domain.id, dns);
+  if (cluster)
+    await markClusterAnswer(domain.id, cluster, dns?.acmeRecordId != null);
+  if (plan?.way === "tunnel" && plan.fallback)
+    await getDb()
+      .update(domainsTable)
+      .set({ clusterFallback: plan.fallback })
+      .where(eq(domainsTable.id, domain.id));
   if (dns?.appId)
     await registerAppTunnelDomain(appId, domain.id, dns.providerId);
   if (config.www && config.www !== "none" && !tunnel)
@@ -263,16 +309,47 @@ async function addDomainUnlocked(
   await syncProductionUrl(appId);
   await recordActivity(
     "domain",
-    `Added domain ${clean}${dnsNote(dns, tunnel)}`,
+    `Added domain ${clean}${dnsNote(dns, tunnel, plan)}`,
     user.name,
     appId,
   );
-  return domain;
+  return {
+    ...domain,
+    ...(plan?.way === "tunnel" && plan.fallback
+      ? { clusterFallback: plan.fallback }
+      : {}),
+  };
 }
 
-function dnsNote(dns: ProvisionedDns | null, tunnel: boolean): string {
+function dnsNote(
+  dns: ProvisionedDns | null,
+  tunnel: boolean,
+  plan: ClusterAnswerPlan | null,
+): string {
+  if (plan?.way === "cluster")
+    return `, answered by every server of the cluster through its DNS zone ${plan.zone.name}`;
+  if (tunnel && plan?.way === "tunnel" && plan.fallback)
+    return `, served through a Cloudflare Tunnel for now: ${plan.fallback}`;
   if (tunnel) return ", served through a Cloudflare Tunnel";
   return dns?.created ? " and created its DNS record in Cloudflare" : "";
+}
+
+async function clusterDns(
+  plan: Extract<ClusterAnswerPlan, { way: "cluster" }>,
+  name: string,
+  providerId: string | null,
+): Promise<ProvisionedDns | null> {
+  const cn = await writeClusterAnswer(plan, name, providerId);
+  return cn
+    ? {
+        providerId: cn.providerId,
+        zoneId: cn.zoneId,
+        recordId: cn.recordId,
+        tunnelRowId: null,
+        created: true,
+        acmeRecordId: cn.acmeRecordId,
+      }
+    : null;
 }
 
 export interface DomainPatch {

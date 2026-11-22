@@ -42,6 +42,27 @@ export function answerSwitchRefusal(f: AnswerSwitchFacts): string | null {
   return null;
 }
 
+/** Every reason the switch is refused, the cluster's limits and its proxies included, or null. */
+export async function answerEverywhereRefusal(
+  f: AnswerSwitchFacts,
+  appId: string,
+  clusterId: string | null | undefined,
+): Promise<string | null> {
+  const why = answerSwitchRefusal(f);
+  if (why || !clusterId) return why;
+  const full = await answerAppsRefusal(clusterId, appId);
+  if (full) return full;
+  const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
+  for (const serverId of await clusterMemberServerIds(clusterId)) {
+    const yaml = await fetchHostInfo(serverId)
+      .then((h) => h.traefikComposeYaml ?? "")
+      .catch(() => "");
+    if (proxyOffersHttp3(yaml))
+      return `The proxy on ${(await getServerById(serverId))?.name ?? "a server of the cluster"} offers HTTP/3, which these domains cannot carry. Turn HTTP/3 off there first.`;
+  }
+  return null;
+}
+
 /** A proxy edited by hand to offer HTTP/3 on its secure entrypoint: browsers would try UDP that nothing carries. */
 export function proxyOffersHttp3(composeYaml: string): boolean {
   return /--entrypoints\.websecure\.http3/i.test(composeYaml);
@@ -92,27 +113,19 @@ export async function setDomainAnswersEverywhere(
       certProvider: (d.certProvider ?? undefined) as CertProvider | undefined,
       entrypoint: (d.entrypoint ?? undefined) as DomainEntrypoint | undefined,
     });
-    const why = answerSwitchRefusal({
-      name: d.name,
-      inCluster: app.clusterId != null,
-      tunnel: d.tunnel === true,
-      https: tls.tls,
-      pathPrefix: d.pathPrefix ?? "",
-      sharedByPath,
-    });
+    const why = await answerEverywhereRefusal(
+      {
+        name: d.name,
+        inCluster: app.clusterId != null,
+        tunnel: d.tunnel === true,
+        https: tls.tls,
+        pathPrefix: d.pathPrefix ?? "",
+        sharedByPath,
+      },
+      d.appId,
+      app.clusterId,
+    );
     if (why) throw new Error(why);
-    const full = await answerAppsRefusal(app.clusterId!, d.appId);
-    if (full) throw new Error(full);
-    const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
-    for (const serverId of await clusterMemberServerIds(app.clusterId!)) {
-      const yaml = await fetchHostInfo(serverId)
-        .then((h) => h.traefikComposeYaml ?? "")
-        .catch(() => "");
-      if (proxyOffersHttp3(yaml))
-        throw new Error(
-          `The proxy on ${(await getServerById(serverId))?.name ?? "a server of the cluster"} offers HTTP/3, which these domains cannot carry. Turn HTTP/3 off there first.`,
-        );
-    }
   }
   await getDb()
     .update(domainsTable)

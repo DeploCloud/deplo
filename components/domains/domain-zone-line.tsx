@@ -36,6 +36,8 @@ export type DomainZone = {
   target: string | null;
   /** Cloudflare answers where the cluster should: the record is proxied, not DNS only. */
   cloudflare?: boolean;
+  /** Deplo keeps its records in Cloudflare: nothing for the person to type. */
+  kept?: boolean;
   cert?: {
     mode: "zone" | "shared" | "dns" | "http";
     check: { name: string; target: string; seen: boolean } | null;
@@ -80,6 +82,12 @@ export function DomainZoneLine({
             <span className="font-medium text-foreground">DNS only</span> (grey
             cloud).
           </span>
+        ) : native.kept ? (
+          <span>
+            Deplo keeps its records in Cloudflare, pointed at the
+            cluster&rsquo;s zone{" "}
+            <span className="font-mono text-foreground">{native.zone}</span>.
+          </span>
         ) : native.target && domain.status !== "valid" ? (
           <>
             <span>
@@ -103,10 +111,12 @@ export function DomainZoneLine({
           topic={
             native.cloudflare && domain.status !== "valid"
               ? "clusters.dnsZoneCloudflare"
-              : "clusters.dnsZoneDomains"
+              : native.kept
+                ? "clusters.dnsZoneConnected"
+                : "clusters.dnsZoneDomains"
           }
         />
-        {canManage && !(native.target === null) && (
+        {canManage && native.target !== null && !native.kept && (
           <Button
             variant="ghost"
             size="sm"

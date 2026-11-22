@@ -35,6 +35,8 @@ export interface Domain {
    * server (`shared`), or its own over DNS on its App's server (ADR-0049, ADR-0048 step 5).
    */
   certChallenge?: "zone" | "shared" | "dns";
+  /** Why it went on the App's tunnel instead of the cluster's own zone (ADR-0049). */
+  clusterFallback?: string | null;
   /** It answers everywhere, but its certificate has not reached the App's failover bundle yet. */
   failoverWaitsForCertificate?: boolean;
   createdAt: string;

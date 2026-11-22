@@ -1319,6 +1319,11 @@ A DNS zone delegated to a cluster: its servers answer for it, naming the healthy
 type ClusterDnsZone {
   certificate: ZoneCertificate
   id: ID
+
+  """
+  The domain connected for automatic DNS where Deplo keeps these records itself, in Cloudflare; null when a person adds them where the domain was bought.
+  """
+  keptIn: String
   name: String
 
   """
@@ -3167,6 +3172,11 @@ type Domain {
   certProvider: CertProvider
 
   """
+  Why this domain of a cluster App is on its Cloudflare Tunnel instead of the cluster's own DNS zone, in plain words; null when it was not a fallback. `moveDomainToCluster` moves it once that is fixed.
+  """
+  clusterFallback: String
+
+  """
   Browser origins allowed to call this domain (CORS). Empty means CORS is off; `*` allows any.
   """
   corsOrigins: [String!]
@@ -3238,7 +3248,7 @@ input DomainConfigInput {
   stripPrefix: Boolean
 
   """
-  Serve it through a Cloudflare Tunnel. Needs a domain connected for automatic DNS that covers this name; certProvider, entrypoint, proxied and www are then ignored.
+  Serve it through a Cloudflare Tunnel. Needs a domain connected for automatic DNS that covers this name; certProvider, entrypoint, proxied and www are then ignored. For an App on a cluster, false asks the cluster's own DNS zone to answer it instead (made first when the cluster has none, by an instance admin), and omitted picks the zone when it can and the tunnel otherwise (ADR-0049).
   """
   tunnel: Boolean
   www: DomainWwwRedirect
@@ -5091,6 +5101,11 @@ type Mutation {
   moveDatabaseToEnvironment(environmentId: ID, id: String!): Boolean
 
   """
+  Moves a cluster App's domain from its Cloudflare Tunnel to the cluster's own DNS zone (ADR-0049): Deplo points its record in Cloudflare at the zone, DNS only, and every server of the cluster answers it. The zone is made first when the cluster has none, which takes an instance admin. Refused, with the reason, while the zone cannot answer.
+  """
+  moveDomainToCluster(id: String!): Domain
+
+  """
   Move a folder under a new parent folder, or to the top level when parentId is omitted/null. Rejects moving a folder into itself or a descendant.
   """
   moveFolder(id: ID!, parentId: ID): Boolean
@@ -5241,6 +5256,11 @@ type Mutation {
   removeUserFromTeam(input: UserTeamInput!): [UserTeamAccess!]
   renameApp(id: String!, name: String!): App
   renameCluster(id: String!, name: String!): Cluster
+
+  """
+  Gives a cluster's DNS zone another name. The domains pointed into it follow: Deplo rewrites the records it keeps in Cloudflare, and says which ones a person must change. Refused while a name inside the old zone is in use. Returns the cluster's id.
+  """
+  renameClusterDnsZone(id: String!, name: String!): String
 
   """
   Rename a database - its DISPLAY name only. The container's identity (compose project, data volume, DNS name and therefore the connection string) is fixed at creation and is untouched, so nothing restarts. The name must be unique within the team.

@@ -122,6 +122,8 @@ export interface ProvisionedDns {
   created: boolean;
   // The record points at a cluster App's own tunnel, which the domain must be registered under.
   appId?: string;
+  // The `_acme-challenge` CNAME into the cluster's zone written beside it (ADR-0049).
+  acmeRecordId?: string | null;
 }
 
 const RECORD_COMMENT = "Deplo app";
@@ -248,6 +250,7 @@ export async function rememberDomainDns(
       recordId: dns.recordId,
       tunnelId: dns.tunnelRowId,
       created: dns.created,
+      acmeRecordId: dns.acmeRecordId ?? null,
       createdAt: nowIso(),
     })
     .onConflictDoNothing();
@@ -257,10 +260,11 @@ export async function rememberDomainDns(
 export async function undoProvision(dns: ProvisionedDns): Promise<void> {
   const provider = await loadProviderSecret(dns.providerId).catch(() => null);
   if (!provider) return;
-  if (dns.created && dns.recordId)
-    await cloudflare
-      .deleteDnsRecord(provider.token, dns.zoneId, dns.recordId)
-      .catch(() => {});
+  for (const id of [dns.created ? dns.recordId : null, dns.acmeRecordId])
+    if (id)
+      await cloudflare
+        .deleteDnsRecord(provider.token, dns.zoneId, id)
+        .catch(() => {});
   if (dns.tunnelRowId) await resyncTunnel(provider, dns.tunnelRowId);
   if (dns.appId) await settleAppTunnel(dns.appId).catch(() => {});
 }
@@ -272,6 +276,7 @@ type HeldRecord = {
   recordId: string;
   tunnelId: string | null;
   created: boolean;
+  acmeRecordId: string | null;
   name: string;
 };
 
@@ -292,6 +297,7 @@ export async function takeDomainDns(
       recordId: domainDnsRecords.recordId,
       tunnelId: domainDnsRecords.tunnelId,
       created: domainDnsRecords.created,
+      acmeRecordId: domainDnsRecords.acmeRecordId,
       name: domains.name,
     })
     .from(domainDnsRecords)
@@ -356,11 +362,21 @@ export async function deleteReleasedDns(
           .values({ ...r, domainId: heir.id, createdAt: nowIso() })
           .onConflictDoUpdate({
             target: domainDnsRecords.domainId,
-            set: { created: true, recordId: r.recordId },
+            set: {
+              created: true,
+              recordId: r.recordId,
+              acmeRecordId: r.acmeRecordId,
+            },
           });
         continue;
       }
       await cloudflare.deleteDnsRecord(provider.token, r.zoneId, r.recordId);
+      if (r.acmeRecordId)
+        await cloudflare.deleteDnsRecord(
+          provider.token,
+          r.zoneId,
+          r.acmeRecordId,
+        );
     } catch (e) {
       problems.push(
         `Cloudflare still has the DNS record for ${r.name}: ${

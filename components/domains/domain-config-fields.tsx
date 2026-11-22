@@ -220,6 +220,7 @@ export function DomainConfigFields({
   hostname,
   serverIp,
   tunnel = false,
+  clusterAnswer = false,
 }: {
   state: DomainConfigState;
   onChange: (next: DomainConfigState) => void;
@@ -230,6 +231,8 @@ export function DomainConfigFields({
   hostname?: string;
   // Served through a Cloudflare Tunnel: Cloudflare owns HTTPS, so none of it is offered.
   tunnel?: boolean;
+  // Answered by the cluster's own DNS zone: HTTPS on every server, with a certificate Deplo gets.
+  clusterAnswer?: boolean;
 }) {
   const set = <K extends keyof DomainConfigState>(
     key: K,
@@ -256,8 +259,9 @@ export function DomainConfigFields({
 
   const host = (hostname ?? "").trim();
   const counterpart = wwwCounterpart(host);
+  const managed = tunnel || clusterAnswer;
   const showWww =
-    !tunnel && counterpart != null && (!hasPath || state.www !== "none");
+    !managed && counterpart != null && (!hasPath || state.www !== "none");
   const redirectingHost =
     state.www === "toCounterpart" ? host : (counterpart ?? "");
 
@@ -324,7 +328,14 @@ export function DomainConfigFields({
         </p>
       )}
 
-      {!tunnel && (
+      {clusterAnswer && (
+        <p className="text-xs text-muted-foreground">
+          Every server of the cluster serves it over HTTPS, with a certificate
+          Deplo gets for it. <DocsLink topic="clusters.dnsZoneCertificates" />
+        </p>
+      )}
+
+      {!managed && (
         <FieldGroup icon={Lock} title="HTTPS">
           <div className="space-y-2">
             <FieldLabel
@@ -429,7 +440,7 @@ export function DomainConfigFields({
           </AccordionTrigger>
 
           <AccordionContent className="space-y-6 pt-2 text-foreground">
-            {!tunnel && (
+            {!managed && (
               <FieldGroup icon={Waypoints} title="Proxy">
                 <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
                   <FieldLabel

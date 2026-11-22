@@ -64,6 +64,8 @@ export const DOCS = {
   "domains.automaticDnsAdd": "guides/networking/automatic-dns#add-a-domain",
   "domains.automaticDnsTunnel":
     "guides/networking/automatic-dns#cloudflare-tunnel",
+  "domains.automaticDnsCluster":
+    "guides/networking/automatic-dns#an-app-on-a-cluster",
   "domains.automaticDnsDeletes":
     "guides/networking/automatic-dns#what-deplo-deletes",
   "domains.security":
@@ -206,6 +208,8 @@ export const DOCS = {
   "clusters.dnsZoneApex": "operations/clusters/dns-zone#a-bare-domain",
   "clusters.dnsZoneCloudflare":
     "operations/clusters/dns-zone#dns-at-cloudflare",
+  "clusters.dnsZoneConnected":
+    "operations/clusters/dns-zone#a-domain-connected-to-deplo",
   "clusters.dnsZoneNearest":
     "operations/clusters/dns-zone#nearest-servers-first",
   "clusters.dnsZoneCertificates": "operations/clusters/dns-zone#certificates",

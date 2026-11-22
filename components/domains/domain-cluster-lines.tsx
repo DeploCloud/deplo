@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Layers, TriangleAlert } from "lucide-react";
+import { Layers, Loader2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAppCan } from "@/components/apps/app-capabilities";
+import { CloudflareIcon } from "@/components/shared/brand-icons";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DocsLink } from "@/components/ui/docs-link";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
@@ -20,8 +22,11 @@ export function DomainClusterLines({
   native,
   dnsZones,
   noHealthCheck,
+  cluster = null,
 }: {
   domain: Domain;
+  /** The App runs on a cluster; `canMove`: the viewer can put a tunnel domain on it (a zone exists, or they may add one). */
+  cluster?: { canMove: boolean } | null;
   staysOn?: string | null;
   away?: AddressAway | null;
   native: DomainZone | null;
@@ -54,8 +59,63 @@ export function DomainClusterLines({
     router.refresh();
   };
 
+  const [moving, setMoving] = React.useState(false);
+  const moveToCluster = async () => {
+    setMoving(true);
+    const res = await gqlAction<{ moveDomainToCluster: { id: string } }>(
+      /* GraphQL */ `
+        mutation ($id: String!) {
+          moveDomainToCluster(id: $id) {
+            id
+          }
+        }
+      `,
+      { id: domain.id },
+    );
+    setMoving(false);
+    if (!res.ok) toast.error(res.error);
+    else toast.success(`Every server of the cluster answers ${domain.name}`);
+    router.refresh();
+  };
+
   return (
     <>
+      {cluster && domain.tunnel && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          {domain.clusterFallback ? (
+            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+          ) : (
+            <CloudflareIcon className="size-3.5 shrink-0 text-[#f38020]" />
+          )}
+          <span>
+            {domain.clusterFallback
+              ? `On the Cloudflare Tunnel for now: ${domain.clusterFallback}. Once fixed, let the cluster answer it.`
+              : "Served through the App's Cloudflare Tunnel."}
+          </span>
+          <DocsLink topic="clusters.dnsZoneConnected" />
+          {canManage && (
+            <SimpleTooltip
+              content={
+                cluster.canMove
+                  ? "Every server of the cluster answers it, nearest first. Visitors may see errors for a few minutes while DNS moves over."
+                  : "An instance admin has to add the cluster's DNS zone first."
+              }
+            >
+              <span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={moving || !cluster.canMove}
+                  onClick={moveToCluster}
+                >
+                  {moving && <Loader2 className="size-3.5 animate-spin" />}
+                  Let the cluster answer
+                </Button>
+              </span>
+            </SimpleTooltip>
+          )}
+        </div>
+      )}
       {away && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
           <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />

@@ -1842,6 +1842,13 @@
       "when": 1796065000000,
       "tag": "0273_server_behind_router",
       "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1796066000000,
+      "tag": "0274_cluster_zone_provider",
+      "breakpoints": true
     }
   ]
 }

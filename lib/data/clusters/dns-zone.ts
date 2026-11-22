@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -10,6 +10,7 @@ import {
   clusterNameServers,
   clusterZoneStates,
 } from "../../db/schema/control-plane/clusters";
+import { dnsProviders } from "../../db/schema/control-plane/dns-providers";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import {
   chooseNameServers,
@@ -44,6 +45,7 @@ import {
 } from "./zone-certs";
 import { placeOf, placeRows, type ServerPlace } from "./server-place";
 import { listWorkloadPlacements } from "./placement";
+import { syncZoneDelegation } from "./zone-cloudflare";
 import { fingerprintOf } from "./relay";
 import { getClusterById } from "./roster";
 
@@ -430,11 +432,24 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           (c) => c.serverId === b.serverId && c.position === b.position,
         ),
     );
-    if (moved.length > 0) {
-      const names = zones.map((z) => z.name).join(", ");
+    // A zone under a domain connected for automatic DNS: Deplo keeps its NS and glue in Cloudflare itself.
+    const byId = new Map(members.map((m) => [m.serverId, m]));
+    const ns = choice
+      .map((c) => byId.get(c.serverId))
+      .filter((m): m is ZoneMemberFacts => !!m);
+    for (const z of zones) {
+      const problem = await syncZoneDelegation(z, ns);
+      if (problem && delegationSaid.get(z.id) !== problem)
+        await recordClusterActivity(clusterId, problem);
+      if (problem) delegationSaid.set(z.id, problem);
+      else delegationSaid.delete(z.id);
+    }
+    const byHand = zones.filter((z) => !z.providerId);
+    if (moved.length > 0 && byHand.length > 0) {
+      const names = byHand.map((z) => z.name).join(", ");
       await recordClusterActivity(
         clusterId,
-        `The name servers of ${cluster.name}'s DNS ${zones.length === 1 ? "zone" : "zones"} ${names} changed: update the records where the domain was bought, as the cluster's settings list them`,
+        `The name servers of ${cluster.name}'s DNS ${byHand.length === 1 ? "zone" : "zones"} ${names} changed: update the records where the domain was bought, as the cluster's settings list them`,
       );
     }
   });
@@ -458,6 +473,9 @@ async function appHomes(
   }
   return out;
 }
+
+// The last problem said per zone about its records in Cloudflare, so a pass every minute says it once.
+const delegationSaid = new Map<string, string>();
 
 /** Fire-and-forget for a change that moves what the zone answers. */
 export function syncClusterZoneSoon(clusterId: string): void {
@@ -508,6 +526,19 @@ export async function clusterDnsView(
     zones,
     (id) => byId.get(id)?.name ?? id,
   );
+  const providerIds = zones.flatMap((z) =>
+    z.providerId ? [z.providerId] : [],
+  );
+  const keptIn = new Map(
+    providerIds.length === 0
+      ? []
+      : (
+          await getDb()
+            .select({ id: dnsProviders.id, zoneName: dnsProviders.zoneName })
+            .from(dnsProviders)
+            .where(inArray(dnsProviders.id, providerIds))
+        ).map((p) => [p.id, p.zoneName]),
+  );
   return {
     wildcard: cluster.dnsWildcard,
     zones: zones.map((z) => ({
@@ -515,6 +546,7 @@ export async function clusterDnsView(
       name: z.name,
       records: delegationRecords(z.name, ns),
       names: byZone.get(z.id)!.map((d) => d.target),
+      keptIn: keptIn.get(z.providerId ?? "") ?? null,
       certificate: certs.get(z.id)!,
     })),
     nameServers: choice.map((c) => ({
