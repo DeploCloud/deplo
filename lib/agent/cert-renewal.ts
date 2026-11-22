@@ -16,7 +16,8 @@ import {
   stageNextCert,
 } from "../data/servers/agent-identity";
 import { instanceFrozen } from "../data/deplo-move/freeze";
-import { pushRostersForServer } from "../data/clusters/relay";
+import { clustersOfServer, pushRostersForServer } from "../data/clusters/relay";
+import { announceNextKey } from "../data/clusters/rotations";
 
 export const CERT_RENEWAL_CAPABILITY = "cert-renewal";
 
@@ -43,11 +44,12 @@ function leafNotAfter(certPem: string): Date | null {
 export function rotationDue(certPem: string, now = Date.now()): boolean | null {
   const d = leafDates(certPem);
   if (!d) return null;
-  return (
-    d.to.getTime() - now <= RENEWAL_WINDOW_MS ||
-    now - d.from.getTime() >= KEY_ROTATION_MS
-  );
+  return dateNear(d, now) || now - d.from.getTime() >= KEY_ROTATION_MS;
 }
+
+// Past this the cluster's members would refuse the certificate itself: it rotates whoever cannot hear of it.
+const dateNear = (d: { to: Date }, now: number) =>
+  d.to.getTime() - now <= RENEWAL_WINDOW_MS;
 
 type Renewal = { renewed: boolean; reason: string };
 const renewing = new Map<string, Promise<Renewal>>();
@@ -92,6 +94,19 @@ async function renewNow(serverId: string): Promise<Renewal> {
     const signed = await signAgentCsr(csrPem, dialHosts);
     // Staged before the agent installs it: a rotation cut halfway leaves a key the door still takes.
     await stageNextCert(serverId, signed);
+    // A cluster's servers trust each other by certificate: each holds the next one first (ADR-0050).
+    if ((await clustersOfServer(serverId)).length > 0) {
+      const missing = await announceNextKey(serverId);
+      const d = leafDates(row.certPem);
+      if (missing.length > 0 && !(d && dateNear(d, Date.now()))) {
+        await dropNextCert(serverId, signed.fingerprint);
+        await pushRostersForServer(serverId);
+        return {
+          renewed: false,
+          reason: `waiting for ${missing.join(", ")} to hold its next key`,
+        };
+      }
+    }
     const res = await conn.installRenewedCert({
       certPem: signed.certPem,
       caPem: "",

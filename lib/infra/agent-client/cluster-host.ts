@@ -48,6 +48,7 @@ import {
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
   CLUSTER_NETWORK_CAPABILITY,
+  CLUSTER_ROTATION_CAPABILITY,
   CLUSTER_ZONE_CAPABILITY,
   CLUSTER_ZONE_GEO_CAPABILITY,
   CLUSTER_STANDBY_CAPABILITY,
@@ -448,6 +449,25 @@ export async function setClusterNetwork(
         "The server agent on this server is too old for its cluster's private network.",
       );
     return await conn.setClusterNetwork(table);
+  } finally {
+    conn.close();
+  }
+}
+
+/** Hands one server its cluster's key rotations (ADR-0050); refused before the RPC when its agent is too old. */
+export async function setClusterRotations(
+  serverId: string,
+  clusterId: string,
+  rotations: { from: string; to: string }[],
+): Promise<void> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_ROTATION_CAPABILITY))
+      throw new Error(
+        "The server agent on this server is too old to keep a key rotation.",
+      );
+    await conn.setClusterRotations(clusterId, rotations);
   } finally {
     conn.close();
   }

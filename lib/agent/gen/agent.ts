@@ -3304,6 +3304,22 @@ export interface ClusterNetworkPeerState {
   lastHandshakeUnix: number;
 }
 
+export interface ClusterKeyRotation {
+  /** Certificate fingerprints, lowercase hex sha256. */
+  from: string;
+  to: string;
+}
+
+export interface SetClusterRotationsRequest {
+  clusterId: string;
+  rotations: ClusterKeyRotation[];
+}
+
+export interface SetClusterRotationsResponse {
+  /** How many rotations this server now holds for the cluster. */
+  rotations: number;
+}
+
 export interface SetClusterZoneRequest {
   clusterId: string;
   /** The certificate of the server this is sent to, as its member entry names it. */
@@ -25745,6 +25761,249 @@ export const ClusterNetworkPeerState: MessageFns<ClusterNetworkPeerState> = {
   },
 };
 
+function createBaseClusterKeyRotation(): ClusterKeyRotation {
+  return { from: "", to: "" };
+}
+
+export const ClusterKeyRotation: MessageFns<ClusterKeyRotation> = {
+  encode(message: ClusterKeyRotation, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.from !== "") {
+      writer.uint32(10).string(message.from);
+    }
+    if (message.to !== "") {
+      writer.uint32(18).string(message.to);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterKeyRotation {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterKeyRotation();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.from = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.to = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterKeyRotation {
+    return {
+      from: isSet(object.from) ? globalThis.String(object.from) : "",
+      to: isSet(object.to) ? globalThis.String(object.to) : "",
+    };
+  },
+
+  toJSON(message: ClusterKeyRotation): unknown {
+    const obj: any = {};
+    if (message.from !== "") {
+      obj.from = message.from;
+    }
+    if (message.to !== "") {
+      obj.to = message.to;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterKeyRotation>, I>>(base?: I): ClusterKeyRotation {
+    return ClusterKeyRotation.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterKeyRotation>, I>>(object: I): ClusterKeyRotation {
+    const message = createBaseClusterKeyRotation();
+    message.from = object.from ?? "";
+    message.to = object.to ?? "";
+    return message;
+  },
+};
+
+function createBaseSetClusterRotationsRequest(): SetClusterRotationsRequest {
+  return { clusterId: "", rotations: [] };
+}
+
+export const SetClusterRotationsRequest: MessageFns<SetClusterRotationsRequest> = {
+  encode(message: SetClusterRotationsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.clusterId !== "") {
+      writer.uint32(10).string(message.clusterId);
+    }
+    for (const v of message.rotations) {
+      ClusterKeyRotation.encode(v!, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterRotationsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterRotationsRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.clusterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.rotations.push(ClusterKeyRotation.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterRotationsRequest {
+    return {
+      clusterId: isSet(object.clusterId)
+        ? globalThis.String(object.clusterId)
+        : isSet(object.cluster_id)
+        ? globalThis.String(object.cluster_id)
+        : "",
+      rotations: globalThis.Array.isArray(object?.rotations)
+        ? object.rotations.map((e: any) => ClusterKeyRotation.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: SetClusterRotationsRequest): unknown {
+    const obj: any = {};
+    if (message.clusterId !== "") {
+      obj.clusterId = message.clusterId;
+    }
+    if (message.rotations?.length) {
+      obj.rotations = message.rotations.map((e) => ClusterKeyRotation.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterRotationsRequest>, I>>(base?: I): SetClusterRotationsRequest {
+    return SetClusterRotationsRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterRotationsRequest>, I>>(object: I): SetClusterRotationsRequest {
+    const message = createBaseSetClusterRotationsRequest();
+    message.clusterId = object.clusterId ?? "";
+    message.rotations = object.rotations?.map((e) => ClusterKeyRotation.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterRotationsResponse(): SetClusterRotationsResponse {
+  return { rotations: 0 };
+}
+
+export const SetClusterRotationsResponse: MessageFns<SetClusterRotationsResponse> = {
+  encode(message: SetClusterRotationsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.rotations !== 0) {
+      writer.uint32(8).int32(message.rotations);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterRotationsResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterRotationsResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.rotations = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterRotationsResponse {
+    return { rotations: isSet(object.rotations) ? globalThis.Number(object.rotations) : 0 };
+  },
+
+  toJSON(message: SetClusterRotationsResponse): unknown {
+    const obj: any = {};
+    if (message.rotations !== 0) {
+      obj.rotations = Math.round(message.rotations);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterRotationsResponse>, I>>(base?: I): SetClusterRotationsResponse {
+    return SetClusterRotationsResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterRotationsResponse>, I>>(object: I): SetClusterRotationsResponse {
+    const message = createBaseSetClusterRotationsResponse();
+    message.rotations = object.rotations ?? 0;
+    return message;
+  },
+};
+
 function createBaseSetClusterZoneRequest(): SetClusterZoneRequest {
   return {
     clusterId: "",
@@ -28273,6 +28532,22 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): SetClusterNetworkResponse => SetClusterNetworkResponse.decode(value),
   },
   /**
+   * Hand this server the key rotations of its cluster's servers: a peer its tables name by `from` may
+   * now present `to`, and is still that peer. Deplo hands them before a rotated key is installed, so
+   * a server off when it is promoted still reaches it. The full set each time; none forgets them.
+   */
+  setClusterRotations: {
+    path: "/deplo.agent.v1.Agent/SetClusterRotations" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterRotationsRequest): Buffer =>
+      Buffer.from(SetClusterRotationsRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterRotationsRequest => SetClusterRotationsRequest.decode(value),
+    responseSerialize: (value: SetClusterRotationsResponse): Buffer =>
+      Buffer.from(SetClusterRotationsResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterRotationsResponse => SetClusterRotationsResponse.decode(value),
+  },
+  /**
    * Hand this member the DNS zones delegated to its cluster. It answers for them on port 53 from an
    * unprivileged process, naming the members it hears over the private network. The full set each
    * time; no zones stops it answering for the cluster. Kept on disk, so it answers with Deplo down.
@@ -29069,6 +29344,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * it off with no peers. The full set each time; it answers with its key and how each peer is reached.
    */
   setClusterNetwork: handleUnaryCall<SetClusterNetworkRequest, SetClusterNetworkResponse>;
+  /**
+   * Hand this server the key rotations of its cluster's servers: a peer its tables name by `from` may
+   * now present `to`, and is still that peer. Deplo hands them before a rotated key is installed, so
+   * a server off when it is promoted still reaches it. The full set each time; none forgets them.
+   */
+  setClusterRotations: handleUnaryCall<SetClusterRotationsRequest, SetClusterRotationsResponse>;
   /**
    * Hand this member the DNS zones delegated to its cluster. It answers for them on port 53 from an
    * unprivileged process, naming the members it hears over the private network. The full set each
@@ -29931,6 +30212,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SetClusterNetworkResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Hand this server the key rotations of its cluster's servers: a peer its tables name by `from` may
+   * now present `to`, and is still that peer. Deplo hands them before a rotated key is installed, so
+   * a server off when it is promoted still reaches it. The full set each time; none forgets them.
+   */
+  setClusterRotations(
+    request: SetClusterRotationsRequest,
+    callback: (error: ServiceError | null, response: SetClusterRotationsResponse) => void,
+  ): ClientUnaryCall;
+  setClusterRotations(
+    request: SetClusterRotationsRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterRotationsResponse) => void,
+  ): ClientUnaryCall;
+  setClusterRotations(
+    request: SetClusterRotationsRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterRotationsResponse) => void,
   ): ClientUnaryCall;
   /**
    * Hand this member the DNS zones delegated to its cluster. It answers for them on port 53 from an

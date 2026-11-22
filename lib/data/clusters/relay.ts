@@ -34,6 +34,7 @@ import type { Server } from "../../types/server";
 import { getServerById } from "../servers/roster";
 import { leaderHostOf } from "./host";
 import { clusterMemberServerIds, getClusterById } from "./roster";
+import { nextFingerprints } from "./rotations";
 import { messageOf } from "../../utils";
 
 // Every party of a cluster reaches the others through a relay: the one on Deplo's machine, and the one beside a leader
@@ -81,20 +82,26 @@ export async function clusterRoster(
   const parties: RelayParty[] = [];
   const cluster = await getClusterById(clusterId);
   if (cluster) {
-    const leaders = new Set<string>();
+    const leaderIds = new Set<string>();
     for (const id of new Set([cluster.leaderServerId, null])) {
       const host = await leaderHostOf(id);
-      const fp = host ? await fingerprintOf(host.id) : null;
-      if (fp) leaders.add(fp);
+      if (host) leaderIds.add(host.id);
     }
+    // A key staged for a rotation is let in before it is installed (ADR-0050).
+    const next = await nextFingerprints([...leaderIds, ...memberServerIds]);
+    const prints = async (id: string) =>
+      [await fingerprintOf(id), next.get(id) ?? null].filter(
+        (fp): fp is string => !!fp,
+      );
+    const leaders = new Set<string>();
+    for (const id of leaderIds)
+      for (const fp of await prints(id)) leaders.add(fp);
     for (const fp of leaders) parties.push({ fingerprint: fp, role: "leader" });
     // A leader's own server is on the cluster's network too, and its agent needs the relay for the packets no
     // direct path carries (ADR-0047): it is let through as a member as well.
     const members = new Set<string>(leaders);
-    for (const id of new Set(memberServerIds)) {
-      const m = await fingerprintOf(id);
-      if (m) members.add(m);
-    }
+    for (const id of new Set(memberServerIds))
+      for (const fp of await prints(id)) members.add(fp);
     for (const fp of members) parties.push({ fingerprint: fp, role: "member" });
   }
   return { cluster: clusterId, parties };

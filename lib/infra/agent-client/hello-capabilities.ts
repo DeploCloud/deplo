@@ -128,6 +128,8 @@ export const CLUSTER_ANSWER_CERTIFICATES_CAPABILITY =
   "cluster.answers.certificates";
 // The cluster's private network (ADR-0047): a WireGuard tunnel between its servers, run inside each agent.
 export const CLUSTER_NETWORK_CAPABILITY = "cluster.network";
+// SetClusterRotations: a peer that rotated its key is still reached, and still known, by its old one (ADR-0050).
+export const CLUSTER_ROTATION_CAPABILITY = "cluster.rotation";
 // The cluster's DNS zone (ADR-0049): an unprivileged name server on port 53, answered from what the agent hears.
 export const CLUSTER_ZONE_CAPABILITY = "dns.zone";
 // SetGeoTable and a server's place in SetClusterZone: the name server answers a visitor with the nearest servers.

@@ -425,6 +425,11 @@ export interface AgentConnection {
   ): Promise<ProxyCertificateReport[]>;
   // Needs `cluster.network` (ADR-0047): this server's place on its cluster's network; no peers takes it off.
   setClusterNetwork(table: ClusterNetworkTable): Promise<ClusterNetworkReport>;
+  // Needs `cluster.rotation` (ADR-0050): the key rotations of the cluster's servers; none forgets them.
+  setClusterRotations(
+    clusterId: string,
+    rotations: { from: string; to: string }[],
+  ): Promise<{ rotations: number }>;
   // Needs `dns.zone` (ADR-0049): the zones delegated to its cluster; none stops it answering for the cluster.
   setClusterZone(table: SetClusterZoneRequest): Promise<ClusterZoneReport>;
   // Needs `dns.geo`: the release's location table, gzip'd, named by the digest of the table itself.
