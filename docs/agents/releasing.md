@@ -147,9 +147,9 @@ stable `0.3.0` is offered to canary instances as an update too.
 2. **Then** it creates the GitHub Release with generated notes. That order is deliberate
    (`bc600ac`): the release is published last so a release page always has an image behind it.
    `v1.1.0` once had one without, and `install.sh` on that version pulled a tag that never existed.
-3. `ci.yml` runs on the tag as well, in parallel. It is **not** a gate on the build: the red arrives
-   while the image is being pushed and tells you to pull the release, rather than letting one flaky
-   test hold a release hostage.
+3. `ci.yml` does **not** run on the tag: it already tested that commit on `main`, and the build
+   refuses a tag on a commit that is not on `main`. Its result is **not** a gate on the build: a red
+   on `main` tells you to pull the release, rather than letting one flaky test hold it hostage.
 4. Every running instance sees it within the hour: `getUpdateInfo` (`lib/data/updates.ts`) polls
    `releases/latest`, the dashboard banner offers the update, and `deplo_update_available` fires
    once per version.

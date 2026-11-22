@@ -20,6 +20,17 @@ jobs:
   agent-pin:
     runs-on: ubuntu-latest
     steps:
+      # ci.yml tests main, not the tag, so a tag on a commit outside main would ship untested.
+      - name: The tagged commit is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 8); do
+            [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .ahead_by)" = 0 ] && exit 0
+            sleep 15
+          done
+          echo "::error::${GITHUB_REF_NAME} is not on main: push main first"
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The pinned agent release is published
         run: |
