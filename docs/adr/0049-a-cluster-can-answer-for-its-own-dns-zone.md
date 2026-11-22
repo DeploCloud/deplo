@@ -241,6 +241,20 @@ The owner's nine decisions after cluster eu. memos' timeline, rebuilt from the p
 8. **The relay on Deplo's own address**: on apps.idra.app a hand-written `Host(...)` route for the panel, left from before Deplo wrote its own, sat at Traefik's default priority (the rule's length) and took `/api/cluster/relay` from Deplo's route at priority 3, so every member's relay dial there reached the panel and timed out. The relay's route now has a priority no plain route reaches; a server takes it the next time its panel route is written.
 9. **Restart Traefik on a cluster member** says what now happens: the server leaves the cluster's answers, restarts and is back in about 30 seconds; Apps on other servers are not affected; an App only on this server loses a few seconds. A standalone server keeps the old words.
 
+## What cluster eu showed (23 Nov 2026, panel v0.8.2-canary.70, agent v0.5.3-canary.33, leader v0.1.0-canary.10)
+
+A power cut is Proxmox's `stop` (an immediate kill); a hang is a freeze. The prober on Deplo's machine asked each name server every second and fetched fise and memos over IPv6.
+
+- **The rollout**: the four agents updated one at a time within 2.5 minutes of the panel's restart, each name server silent for about a second (one probe timeout each, never two at once), no SERVFAIL, no fise error; the leader and relay followed. memos, which had served the proxy's default certificate since its move to eu-1 the night before, answered with its own again: eu-1 and eu-3 then held both shared certificates in their routes file.
+- **A new App** (`lab-pg`, a web container and Postgres in a volume, a name inside the zone): first deploy ready 5 s after create, both copies up to date 14.5 s after that (25 MB), valid HTTPS 39.5 s after the deploy and 25 s after its domain was added. The page read "Not copied yet: this App cannot move if eu-3 goes off", then "Copies: 2 of 2 up to date".
+- **A cut before the first copy** (`lab-pg2`, its server cut 0.3 s after its deploy was ready): "Offline: no up-to-date copy" 5 s later, and it did not move. memos on the same server read "Moving to eu-3" from 24 s after the cut until 16 s later; visitors had no answer for 32 s, and the first answer had its certificate.
+- **After the copy**: `lab-pg` moved in 40 s, the first answer with its certificate. fise moved in 34 s, read "Moving to eu-3" from 5 s after the cut.
+- **Servers lost one after another**: eu-3 cut, gone for the majority 2 minutes later; then eu-2 cut: `lab-pg` and fise moved to eu-1 and the zone answered from eu-1 alone; memos, already on eu-1, never stopped. Back, eu-2 and eu-3 counted again 2 minutes after they answered, and were named by the others only then.
+- **Two at once** (eu-2 and eu-3): eu-1 answered SERVFAIL from 10 s later until eu-2 was back, stopped memos and `lab-pg` within 9 s, and Activity said so ("eu-1 stopped memos, lab-pg and lab-pg2"); eu-2 and eu-3 "ran nothing that must never run twice". fise kept running (below). memos ran again 13 s after eu-2 was powered on.
+- **A clone of eu-1**: refused, its identity rotated and its network key replaced within 20 s of the clone's start, and the others held the new key; with eu-1 frozen for 29 s they left it out 10 to 12 s later, and the zone never answered SERVFAIL.
+- **Found and fixed, not released yet**: a start order renewed a member's lease without the gone members, so eu-1 counted eu-3 again and the whole zone answered SERVFAIL for one second (deplo-cluster#12); after a shrink the panel said "nothing moves" and "Offline: waiting for a majority of servers" for 22 s while the leader moved `lab-pg` (deplo#302).
+- **Found, not fixed**: a new name's first check still writes "does not reach the cluster yet" to Activity a second before the zone answers it; a returning name server answers its last agreed set, itself included, for about 8 s; the relay's new priority reaches apps.idra.app only when its panel route is next written. **fise keeps its database where nothing carries it**: its compose binds `./data/db` at `/var/lib/postgresql`, but `postgres:17` keeps its data in `/var/lib/postgresql/data`, a volume of the image, so every container re-creation, each move included, starts it on an empty anonymous volume. Deplo counts neither as data, so fise is fenced nowhere, replicated nowhere, and moves without its data.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
@@ -256,14 +270,15 @@ The owner's nine decisions after cluster eu. memos' timeline, rebuilt from the p
 
 ## Before a stable release
 
-**Now proven on cluster eu** (22 Nov 2026): a real Cloudflare zone, the delegation from it and its glue (fise); a wildcard from Let's Encrypt checked over DNS through the zone; one server off and two off, as decided above; load balancing with no Cloudflare in front; proxy restarts one member at a time.
+**Now proven on cluster eu** (22 and 23 Nov 2026): a real Cloudflare zone, the delegation from it and its glue (fise); a wildcard from Let's Encrypt checked over DNS through the zone; one server off and two off, as decided above; load balancing with no Cloudflare in front; proxy restarts one member at a time; a real power cut; certificates on every server and a move whose first answer has its certificate; servers lost one after another; a caught clone's network key replaced.
 
 **Still not proven**:
 
 - **The delegation check against a registrar other than Cloudflare**: records typed by hand, glue and a stray `DS`, which CI checks only against fake parent servers (`dns-delegation.test.ts`).
 - **Nearest first through a real public resolver** that sends EDNS Client Subnet, and a visitor placed by its resolver's address: eu-1..3 sit in one place.
 - **A server back while Deplo is down**, a real power cut (a freeze stands in for it), servers in different places or networks, more than three servers, and IPv4: eu-1..3 are reached over IPv6 only.
-- **The two fixes above**, agent#87 and panel #300, which wait for the next release.
+- **The two fixes found on 23 Nov**, deplo-cluster#12 and panel #302, which wait for the next release.
+- **An App whose own data an image volume holds** (fise): Deplo neither sees nor carries it.
 
 ## Considered options
 
