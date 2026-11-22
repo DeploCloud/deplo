@@ -9,6 +9,40 @@ import { cn } from "@/lib/utils";
 // What a screen shows while something takes time: its steps with the current one marked, and a countdown
 // where the wait has a known length. Both update by themselves.
 
+type Clock = {
+  setInterval: (fn: () => void, ms: number) => number;
+  clearInterval: (id: number) => void;
+  visible: () => boolean;
+  onVisible: (fn: () => void) => () => void;
+};
+
+const browser = (): Clock => ({
+  setInterval: (fn, ms) => window.setInterval(fn, ms),
+  clearInterval: (id) => window.clearInterval(id),
+  visible: () => document.visibilityState === "visible",
+  onVisible: (fn) => {
+    document.addEventListener("visibilitychange", fn);
+    return () => document.removeEventListener("visibilitychange", fn);
+  },
+});
+
+/** Calls fn every `ms` while the page is visible, and at once when it comes back; returns the stop. */
+export function every(
+  ms: number,
+  fn: () => void,
+  clock: Clock = browser(),
+): () => void {
+  const tick = () => {
+    if (clock.visible()) fn();
+  };
+  const id = clock.setInterval(tick, ms);
+  const off = clock.onVisible(tick);
+  return () => {
+    clock.clearInterval(id);
+    off();
+  };
+}
+
 /** Calls fn every `ms` while the page is visible, and once at once when it comes back. */
 export function useEvery(ms: number, fn: () => void, on = true): void {
   const ref = React.useRef(fn);
@@ -17,15 +51,7 @@ export function useEvery(ms: number, fn: () => void, on = true): void {
   });
   React.useEffect(() => {
     if (!on) return;
-    const tick = () => {
-      if (document.visibilityState === "visible") ref.current();
-    };
-    const id = window.setInterval(tick, ms);
-    document.addEventListener("visibilitychange", tick);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", tick);
-    };
+    return every(ms, () => ref.current());
   }, [ms, on]);
 }
 

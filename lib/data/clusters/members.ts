@@ -70,9 +70,13 @@ function nameList(names: string[], max = 4): string {
 /** The cluster a server is a member of, if any. */
 export async function clusterOfServer(
   serverId: string,
-): Promise<{ id: string; name: string } | null> {
+): Promise<{ id: string; name: string; dnsDropAfter: number } | null> {
   const rows = await getDb()
-    .select({ id: clustersTable.id, name: clustersTable.name })
+    .select({
+      id: clustersTable.id,
+      name: clustersTable.name,
+      dnsDropAfter: clustersTable.dnsDropAfter,
+    })
     .from(membersTable)
     .innerJoin(clustersTable, eq(clustersTable.id, membersTable.clusterId))
     .where(eq(membersTable.serverId, serverId))
