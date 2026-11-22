@@ -2,7 +2,7 @@
   "name": "deplo",
   "version": "0.8.2-canary.62",
   "deplo": {
-    "agent": "0.5.3-canary.26",
+    "agent": "0.5.3-canary.27",
     "agentMin": "0.5.1-canary.10",
     "cluster": "0.1.0-canary.8",
     "clusterMin": "0.1.0-canary.1",
