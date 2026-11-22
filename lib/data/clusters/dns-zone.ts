@@ -458,6 +458,29 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
   });
   // Outside the lock: routing an App again may itself ask for the zone to be synced.
   if (routes) await (routes as () => Promise<void>)();
+  // A name added a moment ago was checked before the zone answered it: once it does, its row stops saying "delegate".
+  if (routes && (await pendingZoneDomain(clusterId))) {
+    const { syncClusterAnswerDns } = await import("./answer-dns");
+    await syncClusterAnswerDns(clusterId).catch((e) =>
+      console.warn(`[cluster-zone] ${clusterId}: ${messageOf(e)}`),
+    );
+  }
+}
+
+async function pendingZoneDomain(clusterId: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .innerJoin(clusterDnsZones, eq(clusterDnsZones.id, domainsTable.dnsZoneId))
+    .where(
+      and(
+        eq(clusterDnsZones.clusterId, clusterId),
+        eq(domainsTable.status, "pending"),
+        eq(domainsTable.answersEverywhere, true),
+      ),
+    )
+    .limit(1);
+  return !!row;
 }
 
 /** The server each App runs on when it runs on one at a time: its names are answered with it first. */

@@ -539,3 +539,26 @@ test("a one-server App's name is answered with its server first, follows a place
   });
   await until("");
 });
+
+// Found on cluster eu: a name added inside the zone was checked before the zone answered it, and said "delegate" until
+// a server stopped or came back.
+test("a name just added inside the zone is checked again once the zone answers it", async () => {
+  const eu = await clusterOf("eu", MEMBERS);
+  await answeringDomain(eu.id, "dom_in", "shop.go.example.com");
+  await asAdmin(() => addClusterDnsZone(eu.id, "go.example.com"));
+  const [zone] = (await asAdmin(() => clusterDnsView(eu.id))).zones;
+  await asAdmin(() => setDomainDnsZone("dom_in", zone.id));
+  __setDnsResolve4ForTest(async () => []);
+  await syncClusterAnswerDns(eu.id, async () => {});
+  const status = async () =>
+    (
+      await db()
+        .select({ s: domainsTable.status })
+        .from(domainsTable)
+        .where(eq(domainsTable.id, "dom_in"))
+    )[0].s;
+  assert.equal(await status(), "pending");
+  __setDnsResolve4ForTest(async () => Object.values(PUBLIC));
+  await syncClusterZone(eu.id);
+  assert.equal(await status(), "valid");
+});
