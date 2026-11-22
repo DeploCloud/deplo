@@ -19,7 +19,8 @@ release would strand every server they manage.
    for the version: `Makefile` stamps `internal/server.AgentVersion` from `git describe`, and
    `.github/workflows/release.yml` stamps it from `${GITHUB_REF_NAME#v}` - the leading `v` is
    stripped so it matches how `lib/agent/release.ts` normalizes tags.
-2. **`release.yml` gates on `go test ./...`** before it builds anything. A red test = no release,
+2. **`release.yml` gates on `ci.yml`**: it waits for that run on the tagged commit (so the commit
+   must be on `main`) and builds nothing unless it passed. A red test = no release,
    so there is nothing for the fleet to pick up. It then builds static
    (`CGO_ENABLED=0 -trimpath`) `linux/amd64` + `linux/arm64`, runs `sha256sum` over both into
    `checksums.txt`, and publishes all three as release assets.
