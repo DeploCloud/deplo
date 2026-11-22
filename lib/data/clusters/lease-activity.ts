@@ -11,7 +11,7 @@ import {
   type ClusterLeaseState,
 } from "../../types/cluster";
 import { placementEntries } from "./leader-sync";
-import { clusterLeaseStates } from "./roster";
+import { votingLeaseStates } from "./gone";
 
 /** Whether the server agent says none of these stacks runs a container; null when it does not answer. */
 async function allStopped(
@@ -41,7 +41,8 @@ export async function leaseChangeSentence(
   state: ClusterLeaseState,
   serverId?: string,
 ): Promise<string> {
-  const leases = await clusterLeaseStates(clusterId);
+  // A member gone past the grace no longer counts: the last ones keep serving (ADR-0049).
+  const leases = await votingLeaseStates(clusterId);
   const answering = leases.filter((s) => s === "ok").length;
   // In a cluster of one nothing could move anyway: the server's own silence is the news.
   const tooFew =

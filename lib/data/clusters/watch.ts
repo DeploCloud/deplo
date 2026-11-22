@@ -30,6 +30,7 @@ import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-memb
 import { getServerById } from "../servers/roster";
 import { messageOf } from "../../utils";
 import { leaseChangeSentence } from "./lease-activity";
+import { memberGone } from "./gone";
 import { moveStarted } from "./moves";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
@@ -193,6 +194,7 @@ export async function applyLeaderEvent(
     case "member_gone":
     case "member_rejoined": {
       if (typeof d.member === "string") {
+        memberGone(clusterId, d.member, e.type === "member_gone");
         const name = (await getServerById(d.member))?.name ?? "A server";
         await recordClusterActivity(
           clusterId,
