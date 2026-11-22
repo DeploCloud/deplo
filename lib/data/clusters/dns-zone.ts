@@ -554,18 +554,27 @@ export async function clusterDnsView(
       serverId: c.serverId,
       serverName: byId.get(c.serverId)?.name ?? c.serverId,
     })),
-    servers: states
-      .filter((s) => byId.has(s.serverId))
-      .map((s) => ({
-        serverId: s.serverId,
-        serverName: byId.get(s.serverId)!.name,
-        serving: s.serving,
-        problem: s.problem,
-        state: s.state,
-        heard: s.heard,
-        checkedAt: s.checkedAt,
-        nearest: everyonePlaced && digest != null && s.geoSha256 === digest,
-      })),
+    servers: await Promise.all(
+      states
+        .filter((s) => byId.has(s.serverId))
+        .map(async (s) => {
+          const server = await getServerById(s.serverId);
+          return {
+            serverId: s.serverId,
+            serverName: byId.get(s.serverId)!.name,
+            serving: s.serving,
+            problem: s.problem,
+            state: s.state,
+            heard: s.heard,
+            checkedAt: s.checkedAt,
+            nearest: everyonePlaced && digest != null && s.geoSha256 === digest,
+            offlineSince:
+              server && server.status !== "online"
+                ? (server.lastSeenAt ?? s.checkedAt)
+                : null,
+          };
+        }),
+    ),
     places: members.map((m) => ({
       serverId: m.serverId,
       serverName: m.name,

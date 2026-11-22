@@ -41,6 +41,7 @@ import type { ClusterDnsView, DelegationCheck } from "@/lib/types/cluster-dns";
 import { DNS_DROP_AFTER, DNS_TTL } from "@/lib/deploy/cluster-zone";
 import { ServerPlaces } from "./server-places";
 import { ZoneCertificateLine, ZoneWildcardSwitch } from "./zone-certificate";
+import { ZoneServerStates, ZoneSteps } from "./zone-live-states";
 
 // A cluster's own DNS zone (ADR-0049): https://deplo.build/docs/operations/clusters/dns-zone
 
@@ -380,6 +381,7 @@ function ZoneRow({
           ? `Deplo keeps its records in Cloudflare, in ${zone.keptIn}.`
           : "Add its records where you bought the domain: open Records, then Check."}
       </p>
+      <ZoneSteps dns={dns} zone={zone} />
       <ZoneCertificateLine
         zone={zone.name}
         cert={zone.certificate}
@@ -501,6 +503,7 @@ export function ClusterDnsRow({
           {dns.zones.map((z) => (
             <ZoneRow key={z.id} zone={z} dns={dns} justAdded={z.id === added} />
           ))}
+          {dns.zones.length > 0 && <ZoneServerStates dns={dns} />}
           <form className="flex flex-wrap items-center gap-2" onSubmit={add}>
             <Input
               value={name}
