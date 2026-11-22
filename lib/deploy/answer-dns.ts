@@ -22,9 +22,6 @@ export interface AnswerRecordSet {
   complete?: boolean;
 }
 
-/** TTL of each record Deplo writes: a stopped server drops out of answers within a minute. */
-export const ANSWER_RECORD_TTL = 60;
-
 const sorted = (xs: string[]) => [...new Set(xs)].sort();
 
 /** The records the domain must hold: each healthy server's first address of each family. */
@@ -78,46 +75,4 @@ export function checkAnswerRecords(
       answered.some((ip) => healthy.has(ip))
     : missing.length === 0 && extra.length === 0;
   return { status: reaches ? "valid" : "misconfigured", missing, extra };
-}
-
-export interface RecordChange {
-  create: { type: "A" | "AAAA"; content: string }[];
-  /** Ids of records Deplo wrote that the set no longer has. */
-  remove: string[];
-}
-
-/**
- * What to change at a connected provider so the name holds exactly the set. A record Deplo did not write (another
- * comment, or a CNAME) is never touched: the caller refuses instead, naming it.
- */
-export function answerRecordChange(
-  existing: { id: string; type: string; content: string; ours: boolean }[],
-  set: AnswerRecordSet,
-): RecordChange & { foreign: { type: string; content: string } | null } {
-  const wanted = [
-    ...set.a.map((content) => ({ type: "A" as const, content })),
-    ...set.aaaa.map((content) => ({ type: "AAAA" as const, content })),
-  ];
-  const routing = existing.filter((r) =>
-    ["A", "AAAA", "CNAME"].includes(r.type),
-  );
-  const has = (w: { type: string; content: string }) =>
-    routing.some((r) => r.type === w.type && r.content === w.content);
-  const foreign =
-    routing.find(
-      (r) =>
-        !r.ours &&
-        !wanted.some((w) => w.type === r.type && w.content === r.content),
-    ) ?? null;
-  return {
-    foreign: foreign ? { type: foreign.type, content: foreign.content } : null,
-    create: wanted.filter((w) => !has(w)),
-    remove: routing
-      .filter(
-        (r) =>
-          r.ours &&
-          !wanted.some((w) => w.type === r.type && w.content === r.content),
-      )
-      .map((r) => r.id),
-  };
 }

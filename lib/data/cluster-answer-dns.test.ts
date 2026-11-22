@@ -16,7 +16,6 @@ import {
 import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { seedApp } from "./app-graph-test-helpers";
 import {
-  ANSWER_RECORD_COMMENT,
   clusterAnswerRecordSet,
   syncClusterAnswerDns,
 } from "./clusters/answer-dns";
@@ -96,7 +95,7 @@ test("the set is every server the leader hears, and a stopped one drops out", as
   ]);
 });
 
-test("at a connected provider the records become the set, and only Deplo's own records are removed", async () => {
+test("records left at a connected provider are no longer rewritten there: they are checked as written by hand", async () => {
   const cluster = await clusterOf("eu", MEMBERS);
   await answeringApp(cluster.id);
   const { cf, restore } = fakeCloudflare();
@@ -121,45 +120,14 @@ test("at a connected provider the records become the set, and only Deplo's own r
       recordId: "rec_old",
       createdAt: nowIso(),
     });
-    // What Deplo wrote when the App ran on one server: srv_2 only.
-    cf.records.set("rec_old", {
-      id: "rec_old",
-      zoneId: "zone1",
-      type: "A",
-      name: "app.example.com",
-      content: "10.0.0.2",
-      comment: ANSWER_RECORD_COMMENT,
-    });
+    __setDnsResolve4ForTest(async () => ["10.0.0.2"]);
     await syncClusterAnswerDns(cluster.id);
-    const a = () =>
-      [...cf.records.values()]
-        .filter((r) => r.name === "app.example.com" && r.type === "A")
-        .map((r) => r.content)
-        .sort();
-    assert.deepEqual(a(), ["10.0.0.2", "10.0.0.3", "10.0.0.4"]);
+    assert.deepEqual(cf.calls, []);
+    const said = (await db().select().from(activities)).map((r) => r.message);
     assert.ok(
-      [...cf.records.values()].every(
-        (r) => r.ttl === undefined || r.ttl === 60,
-      ),
+      said.some((m) => m.includes("add 10.0.0.3, 10.0.0.4")),
+      said.join("\n"),
     );
-    await stopped(cluster.id, "srv_4");
-    await syncClusterAnswerDns(cluster.id);
-    assert.deepEqual(a(), ["10.0.0.2", "10.0.0.3"]);
-    // A record a person wrote is never touched, and the domain says so once.
-    cf.records.set("rec_theirs", {
-      id: "rec_theirs",
-      zoneId: "zone1",
-      type: "A",
-      name: "app.example.com",
-      content: "198.51.100.9",
-    });
-    await syncClusterAnswerDns(cluster.id);
-    await syncClusterAnswerDns(cluster.id);
-    assert.ok(cf.records.has("rec_theirs"));
-    const said = (await db().select().from(activities)).filter((r) =>
-      r.message.includes("Deplo did not write"),
-    );
-    assert.equal(said.length, 1);
   } finally {
     restore();
   }
