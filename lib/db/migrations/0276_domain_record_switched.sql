@@ -1,0 +1,1 @@
+ALTER TABLE "domains" ADD COLUMN "record_switched_at" timestamp with time zone;

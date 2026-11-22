@@ -211,6 +211,7 @@ export async function moveDomainToCluster(domainId: string): Promise<string> {
       answersEverywhere: true,
       status: "pending",
       ssl: true,
+      recordSwitchedAt: nowIso(),
     })
     .where(eq(domainsTable.id, d.id));
   await markClusterAnswer(d.id, plan, cn?.acmeRecordId != null);

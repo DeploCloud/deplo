@@ -59,6 +59,7 @@ export function assembleDomain(
       : {}),
     ...(row.importedFrom != null ? { importedFrom: row.importedFrom } : {}),
     ...(row.clusterFallback ? { clusterFallback: row.clusterFallback } : {}),
+    ...(row.recordSwitchedAt ? { recordSwitchedAt: row.recordSwitchedAt } : {}),
     createdAt: row.createdAt,
   };
 }

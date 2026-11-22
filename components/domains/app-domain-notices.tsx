@@ -5,7 +5,8 @@ import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import { clusterAddressNote } from "@/lib/data/clusters/app-tunnel";
 import type { App } from "@/lib/types/app";
 import { ClusterAddressNote } from "@/components/shared/cluster-address-note";
-import { DomainNotices } from "./domain-notices";
+import { DomainNotices, zoneTargetsOf } from "./domain-notices";
+import { domainZoneTargets } from "@/lib/data/clusters/zone-domains";
 
 /** On a cluster with no domain on Cloudflare: the App's address changes when it fails over. */
 export async function AppAddressNotice({ app }: { app: App }) {
@@ -21,9 +22,10 @@ export async function AppDomainNotices({ app }: { app: App }) {
     )
   )
     return null;
-  const [serverIp, hints] = await Promise.all([
+  const [serverIp, hints, native] = await Promise.all([
     serverIpForApp(app.id),
     domainDnsHints(app.id, domains),
+    domainZoneTargets(app.id),
   ]);
   return (
     <DomainNotices
@@ -31,6 +33,7 @@ export async function AppDomainNotices({ app }: { app: App }) {
       domains={domains}
       serverIp={serverIp}
       serverIpv6={hints.serverIpv6}
+      zoneTargets={zoneTargetsOf(native)}
       domainsHref={`/apps/${app.slug}/domains`}
     />
   );

@@ -128,6 +128,13 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
         "plain words; null when it was not a fallback. `moveDomainToCluster` moves it once that is fixed.",
       resolve: (d) => d.clusterFallback ?? null,
     }),
+    recordSwitchedAt: t.string({
+      nullable: true,
+      description:
+        "When Deplo last rewrote this domain's DNS record (a switch from the tunnel to the cluster). Resolvers may " +
+        "serve the old record for up to 5 minutes after: the domain row counts that wait down.",
+      resolve: (d) => d.recordSwitchedAt ?? null,
+    }),
     autoDns: t.boolean({
       description:
         "Deplo created this domain's DNS record through a connected DNS " +

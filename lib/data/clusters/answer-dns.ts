@@ -15,11 +15,7 @@ import { resolvesToCloudflare } from "../../deploy/cloudflare";
 import { messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
-import {
-  lookupHostAddresses,
-  resolveHostIpv4,
-  resolveHostIpv6,
-} from "../domains/dns-resolve";
+import { lookupHostAddresses, resolveAtSource } from "../domains/dns-resolve";
 import { withKeyedLock } from "../keyed-mutex";
 import { serverAddresses } from "../servers/addresses";
 import { oneMemberPerAddress } from "../../clusters/shared-addresses";
@@ -121,11 +117,9 @@ async function checkByHand(
   set: AnswerRecordSet,
   changed: Set<string>,
 ): Promise<string | null> {
-  const [a, aaaa] = await Promise.all([
-    resolveHostIpv4(d.name),
-    resolveHostIpv6(d.name),
-  ]);
-  const check = checkAnswerRecords({ a, aaaa }, set);
+  const found = await resolveAtSource(d.name);
+  if (!found) return null;
+  const check = checkAnswerRecords(found, set);
   await recordVerdict(d, check.status, changed);
   if (check.missing.length === 0 && check.extra.length === 0) return null;
   const parts = [
@@ -251,19 +245,20 @@ export async function answerDomainStatus(
   if (
     await domainNativeZone(clusterId, { name, zoneId: row?.zoneId ?? null })
   ) {
-    const [a, aaaa, members] = await Promise.all([
-      resolveHostIpv4(name),
-      resolveHostIpv6(name),
+    // Asked of the domain's own name servers, then of the zone's, never a cache (decision D, 22 Nov 2026).
+    const [found, members] = await Promise.all([
+      resolveAtSource(name),
       clusterMemberAddresses(clusterId),
     ]);
-    return nativeStatus([...a, ...aaaa], members) ?? "pending";
+    if (!found) return "pending";
+    return nativeStatus([...found.a, ...found.aaaa], members) ?? "pending";
   }
-  const [set, a, aaaa] = await Promise.all([
+  const [set, found] = await Promise.all([
     clusterAnswerRecordSet(clusterId),
-    resolveHostIpv4(name),
-    resolveHostIpv6(name),
+    resolveAtSource(name),
   ]);
-  return checkAnswerRecords({ a, aaaa }, set).status;
+  if (!found) return "pending";
+  return checkAnswerRecords(found, set).status;
 }
 
 /** Fire-and-forget for a change of the cluster; what called it never waits on, or fails with, DNS. */
