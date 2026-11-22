@@ -243,5 +243,11 @@ test("rerouteApp: a compose stack's file bind is created before the reroute", as
     rerouteApp("app_1"),
   );
   assert.equal(result, "rerouted");
-  assert.deepEqual(calls, ["read config.yml", "write config.yml", "reroute"]);
+  // Hello says whether the agent can bring up only the services the reroute changed.
+  assert.deepEqual(calls, [
+    "read config.yml",
+    "write config.yml",
+    "hello",
+    "reroute",
+  ]);
 });
