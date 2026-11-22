@@ -62,6 +62,12 @@ const LAB_PROXY = `services:
     volumes:
       - /var/lib/deplo-agent/traefik/acme:/acme
       - /root/certlab/pebble.minica.pem:/pebble-ca.pem:ro
+    configs:
+      - source: deplo-cluster-relay
+        target: /deplo-dynamic/deplo-cluster-relay.yml
+configs:
+  deplo-cluster-relay:
+    content: "http: {routers: {deplo-cluster-relay: {rule: 'Host(\`10.0.0.54\`)'}}}"
 `;
 
 function fakeAgent(answers: Partial<ClaimServerResponse>[], yaml = LAB_PROXY) {
@@ -135,6 +141,11 @@ test("a server another Deplo ran is told this Deplo's clusters, sets the rest as
   );
   assert.match(host.yaml, /LEGO_CA_SYSTEM_CERT_POOL=true/);
   assert.match(host.yaml, /\/var\/lib\/deplo-agent\/traefik\/acme:\/acme/);
+  assert.doesNotMatch(
+    host.yaml,
+    /deplo-cluster-relay/,
+    "the other Deplo's relay door stays",
+  );
 
   // Settled: a relink changes nothing.
   await claimServer("srv_eu1");

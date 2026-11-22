@@ -3,6 +3,7 @@ import "server-only";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { getDb } from "../../db/client";
 import { acmeAuthority, withAcmeAuthority } from "../../deploy/acme-authority";
+import { relayRouteHost, withRelayRoute } from "../../deploy/traefik-stack";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { PANEL_CLAIM_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import {
@@ -83,6 +84,7 @@ async function reconcile(serverId: string, claim: boolean): Promise<void> {
   if (await instanceFrozen()) return;
   const server = await getServerById(serverId);
   if (!server || server.importOnly) return;
+  let dropRelay = false;
   if (claim) {
     const clusterIds = (
       await getDb().select({ id: clustersTable.id }).from(clustersTable)
@@ -111,22 +113,29 @@ async function reconcile(serverId: string, claim: boolean): Promise<void> {
         left: r.left.map((l) => ({ kind: l.kind, name: l.name, app: l.app })),
       });
     else claims.last.delete(serverId);
-    if (claims.restarting.delete(serverId))
+    if (claims.restarting.delete(serverId)) {
       for (const id of clusterIds) syncClusterNetworkSoon(id);
+      // The other Deplo's relay is gone with its leader: so is its door in the proxy.
+      dropRelay = !clusterHost;
+    }
   }
-  await pointProxyAtAuthority(serverId, server.name);
+  await pointProxyAtAuthority(serverId, server.name, dropRelay);
 }
 
 /** The proxy orders from this Deplo's authority, whatever its file said before. */
 async function pointProxyAtAuthority(
   serverId: string,
   name: string,
+  dropRelay: boolean,
 ): Promise<void> {
   const authority = acmeAuthority();
   const res = await withTraefikStackLock(serverId, async () => {
     // Empty: Deplo did not install this server's Traefik, so it is not Deplo's to change.
-    const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
-    const next = yaml ? withAcmeAuthority(yaml, authority) : null;
+    let yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
+    if (!yaml) return null;
+    const relay = dropRelay && relayRouteHost(yaml) !== null;
+    if (relay) yaml = withRelayRoute(yaml, null);
+    const next = withAcmeAuthority(yaml, authority) ?? (relay ? yaml : null);
     return next ? applyTraefikConfig(serverId, { composeYaml: next }) : null;
   });
   if (!res) return;
