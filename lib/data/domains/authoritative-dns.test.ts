@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   __setAuthoritativeAskForTest,
   authoritativeAddresses,
+  authoritativeCname,
   type DnsAsk,
 } from "./authoritative-dns";
 
@@ -58,4 +59,24 @@ test("name servers that cannot be asked give no verdict", async () => {
     servers.length === 0 ? world(servers, name, type) : null,
   );
   assert.equal(await authoritativeAddresses("fise.pixelfederico.com"), null);
+});
+
+// memos on 22 Nov 2026: Deplo wrote the _acme-challenge CNAME in Cloudflare a second after the resolver had cached
+// "no such record", and the certificate waited the 30 minutes that answer was kept.
+test("a check record Deplo just wrote is read from the zone's own name servers, not a resolver's cache", async () => {
+  const acme = "_acme-challenge.memos.pixelfederico.com";
+  __setAuthoritativeAskForTest(async (servers, name, type) =>
+    servers.length === 0
+      ? world(servers, name, type)
+      : servers.every((s) => CF.includes(s)) &&
+          name === acme &&
+          type === "CNAME"
+        ? ["_acme-challenge.memos-pixelfederico-com.cluster.pixelfederico.com"]
+        : [],
+  );
+  assert.deepEqual(await authoritativeCname(acme), [
+    "_acme-challenge.memos-pixelfederico-com.cluster.pixelfederico.com",
+  ]);
+  __setAuthoritativeAskForTest(async () => null);
+  assert.equal(await authoritativeCname(acme), null);
 });

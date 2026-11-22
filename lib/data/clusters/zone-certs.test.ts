@@ -542,3 +542,26 @@ test("while one server's agent cannot hold it, a name keeps its own certificate 
   assert.equal(await modeOf("d1"), "dns");
   for (const id of MEMBERS) assert.equal(nameCert(id), undefined, id);
 });
+
+test("a server that lost a name's certificate is handed it again on the next pass", async () => {
+  const { eu } = await sharedName();
+  const pair = await pairFor(["shop.example.com"], 90);
+  holdsName(MEMBERS[1], pair);
+  await syncClusterZone(eu.id);
+  const other = MEMBERS[2];
+  const base = hosts[other].zoneReport;
+  holdsName(other, pair);
+  await syncClusterZone(eu.id);
+  await syncClusterZone(eu.id);
+  assert.equal(
+    nameCert(other)?.keyPem,
+    "",
+    "a server that holds it is not sent the key again",
+  );
+  // Its proxy no longer serves it: it says so, and the next pass sends the pair back.
+  hosts[other].zoneReport = base;
+  await syncClusterZone(eu.id);
+  await syncClusterZone(eu.id);
+  assert.equal(nameCert(other)?.sha256, pair.sha256);
+  assert.equal(nameCert(other)?.keyPem, pair.keyPem);
+});
