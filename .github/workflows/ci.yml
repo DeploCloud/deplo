@@ -8,8 +8,8 @@ on:
     paths-ignore: [".github/cla/**"]
   pull_request:
   # So a newly-published advisory turns the repo red on its own, without waiting
-  # for somebody to push. The audit job is the only one that finds work when the
-  # code has not changed.
+  # for somebody to push. Only the audit and the agent contract can find work on
+  # code that has not changed, so they are all it runs.
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
@@ -27,8 +27,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A merge whose tree a pull request already tested green has nothing new to check.
+  tested:
+    name: Already tested
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.pr.outputs.skip }}
+    steps:
+      - id: pr
+        if: github.event_name == 'push'
+        # A failure here runs every check, never skips one.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          api() { gh api "repos/$GITHUB_REPOSITORY/$1" --jq "$2"; }
+          tree=$(api "commits/$GITHUB_SHA" .commit.tree.sha)
+          skip=false
+          # The head held all of main and is this exact tree, so the pull request's run tested this commit.
+          for head in $(api "commits/$GITHUB_SHA/pulls" '.[] | select(.merged_at) | .head.sha'); do
+            [ "$(api "compare/$BEFORE...$head" .behind_by)" = 0 ] || continue
+            [ "$(api "commits/$head" .commit.tree.sha)" = "$tree" ] || continue
+            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event pull_request --commit "$head" --status success --limit 1 --json databaseId --jq '.[].databaseId')
+            [ -n "$run" ] || continue
+            echo "::notice::pull request run $run already tested this tree green"
+            skip=true
+          done
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint
+    needs: tested
+    if: github.event_name != 'schedule' && needs.tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,6 +79,8 @@ jobs:
 
   test:
     name: Tests
+    needs: tested
+    if: github.event_name != 'schedule' && needs.tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     # The suite runs in-process against pglite and takes ~15 minutes on a decent
     # box; a hosted runner is slower. The cap is a runaway guard, not a target,
@@ -67,6 +104,8 @@ jobs:
 
   audit:
     name: Dependency audit
+    needs: tested
+    if: needs.tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -83,6 +122,8 @@ jobs:
 
   typecheck:
     name: Types
+    needs: tested
+    if: github.event_name != 'schedule' && needs.tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,6 +151,8 @@ jobs:
   # pins, which is what its servers run.
   answer-contract:
     name: Answer contract
+    needs: tested
+    if: needs.tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
