@@ -44,6 +44,7 @@ import {
   type ZoneCertDomainRow,
 } from "./zone-certs";
 import { placeOf, placeRows, type ServerPlace } from "./server-place";
+import { keepZoneTables, rememberZoneTable, withDrained } from "./proxy-roll";
 import { listWorkloadPlacements } from "./placement";
 import { syncZoneDelegation } from "./zone-cloudflare";
 import { fingerprintOf } from "./relay";
@@ -271,6 +272,7 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
     const zones = cluster ? await zonesOf(clusterId) : [];
     const members = zones.length > 0 ? await memberFacts(clusterId) : [];
     const keep = new Set(members.map((m) => m.serverId));
+    keepZoneTables(clusterId, [...keep]);
     for (const st of await statesOf(clusterId)) {
       if (keep.has(st.serverId)) continue;
       try {
@@ -365,7 +367,7 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
       let fresh = false;
       for (const m of certs.order(members)) {
         if (!m.fingerprint) continue;
-        const req = renderClusterZone({
+        const base = renderClusterZone({
           clusterId,
           self: m.fingerprint,
           zones: zones.map((z) => ({
@@ -383,8 +385,9 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           challenges: certs.challenges,
           certificates: certs.certificatesFor(m.serverId),
         });
+        rememberZoneTable(clusterId, m.serverId, base);
         try {
-          const r = await setClusterZone(m.serverId, req, table);
+          const r = await setClusterZone(m.serverId, withDrained(base), table);
           if (await certs.record(m.serverId, r.certificates ?? []))
             fresh = true;
           await saveState(clusterId, m.serverId, {

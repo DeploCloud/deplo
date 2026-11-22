@@ -267,3 +267,15 @@ test("a key near its date rotates even while a server cannot hear of it: the oth
   assert.equal(r.renewed, true, r.reason);
   assert.ok(events.includes("install"));
 });
+
+test("a caught copy rotates the original at once, even while another server of its cluster is off", async () => {
+  hosts.srv_3.unreachable = true;
+  const r = await renewAgentCertIfDue("srv_2", { now: true });
+  assert.equal(r.renewed, true, r.reason);
+  assert.ok(events.includes("install"), `${events}`);
+  const { current, next } = await stored("srv_2");
+  assert.notEqual(current, fp(2));
+  assert.equal(next, null);
+  // The copy holds the retired key: the door refuses it for good.
+  assert.equal((await claimedIdentity(fp(2)))?.kind, "retired");
+});

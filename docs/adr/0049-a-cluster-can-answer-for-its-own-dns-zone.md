@@ -196,6 +196,15 @@ Tested in CI only (`zone-automatic.test.ts` against an in-memory Cloudflare and 
 - **Each name server says which server it is**: `_deplo-server.<zone>` TXT, the server's certificate hashed, answered even in SERVFAIL, so Deplo proves an address's port 53 reaches that server ([ADR-0050](0050-a-server-is-known-by-its-key-never-by-its-address.md) decision 9). The zone's glue and answers name only proven addresses.
 - **The cluster's DNS settings show each name server live**: answering and how many it hears, or offline with the drop time (10 s by default) counted down before the others leave it out.
 
+### A proxy restarts on one member at a time (22 Nov 2026)
+
+At 18:11 UTC on 22 Nov the panel rewrote and restarted the proxies of eu-1, eu-2 and eu-3 within 11 seconds: each server linked again after the panel's update, and each link pointed its proxy at Let's Encrypt (ADR-0050 decision 16). fise answered nowhere for a few seconds. Decided by the owner:
+
+1. **When Deplo restarts the proxy of a cluster member, it restarts that member's alone** (`rollProxyRestart`, `lib/data/clusters/proxy-roll.ts`, under every caller of `applyTraefikConfig`): it takes the member out of the zone's answers on every name server (the same mark as a member being emptied, handed again from the last zone table), waits one answer TTL, restarts the proxy, waits until the member's proven addresses answer on 443 with its proxy's own certificate and, for a name server, its port 53 answers its ident, puts it back, and only then lets the next member's restart start. Right after Deplo starts it first waits, at most 90 s, for the zone's first pass, so the restarts of every server linking at once drain too. A member that does not answer within 2 minutes is put back anyway, and the cluster's Activity says so.
+2. **What a visitor sees**: an App that answers on every server sees no error, since no resolver names the member while its proxy is down. An App that runs on one server keeps the few seconds of its own server's restart: the other members pass its visitors to that server, which is the one restarting.
+3. **A server in no cluster restarts as before.** A cluster without a zone still restarts one member at a time, with nothing to drain.
+4. **Out of scope**: the restarts an agent makes on its own (a certificate's quiet hour, a moved App's certificate dropped), and the restart of every agent at once when it sets aside what another Deplo left, which happens once per machine.
+
 ## What the lab showed (before a stable release)
 
 Released agent v0.5.3-canary.24 and .25, leader v0.1.0-canary.8, panel v0.8.2-canary.56 to .60 (the two fixes below in .59 and .60); the three lab servers and `lab.test` as before, Pebble at its default settings, removal time 10 s. App `web` on `traefik/whoami:v1.10.3` (no shell), load balancing on, no Cloudflare, with `cert.lab.test` in the zone and `shop.outside.test` outside it. A prober on LXC 103 asked lab-1's name server and every server, every 0.5 s, verifying against Pebble's root.
