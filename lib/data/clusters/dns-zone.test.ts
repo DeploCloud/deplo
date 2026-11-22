@@ -37,14 +37,16 @@ import {
 } from "../domains/dns-check";
 import { nativeStatus, syncClusterAnswerDns } from "./answer-dns";
 import {
-  addClusterDnsZone,
   clusterDnsView,
   reconcileClusterZones,
-  removeClusterDnsZone,
-  setClusterDnsTimes,
   syncClusterZone,
   sharedClusterAddresses,
 } from "./dns-zone";
+import {
+  addClusterDnsZone,
+  removeClusterDnsZone,
+  setClusterDnsTimes,
+} from "./zone-settings";
 import {
   __setApexCheckForTest,
   domainZoneTargets,

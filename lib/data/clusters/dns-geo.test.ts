@@ -28,12 +28,8 @@ import {
   dissolveHarness,
   hosts,
 } from "../cluster-dissolve-test-helpers";
-import {
-  addClusterDnsZone,
-  clusterDnsView,
-  placeClusterServer,
-  syncClusterZone,
-} from "./dns-zone";
+import { clusterDnsView, syncClusterZone } from "./dns-zone";
+import { addClusterDnsZone, placeClusterServer } from "./zone-settings";
 import { findCities } from "./server-place";
 import {
   __resetAgentAddressesForTest,

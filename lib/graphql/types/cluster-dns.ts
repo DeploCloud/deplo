@@ -1,12 +1,12 @@
 import { builder } from "../builder";
+import { clusterDnsView } from "@/lib/data/clusters/dns-zone";
 import {
   addClusterDnsZone,
   checkClusterDnsZone,
-  clusterDnsView,
   placeClusterServer,
   removeClusterDnsZone,
   setClusterDnsTimes,
-} from "@/lib/data/clusters/dns-zone";
+} from "@/lib/data/clusters/zone-settings";
 import {
   appDnsZones,
   setDomainDnsZone,

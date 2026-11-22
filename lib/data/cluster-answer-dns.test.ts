@@ -27,7 +27,7 @@ import {
   db,
   dissolveHarness,
 } from "./cluster-dissolve-test-helpers";
-import { addClusterDnsZone } from "./clusters/dns-zone";
+import { addClusterDnsZone } from "./clusters/zone-settings";
 import { listClusterAnswers } from "./clusters/answers";
 import { removeDomain } from "./domains/crud";
 import { routableRoutes } from "./domains/routes";
