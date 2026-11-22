@@ -1,7 +1,7 @@
 import "server-only";
 
 import { and, eq, inArray, notInArray, or } from "drizzle-orm";
-import { appDisk } from "../../apps/failover-copy";
+import { appDisk, copiesLine } from "../../apps/failover-copy";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
@@ -187,20 +187,16 @@ async function recordReports(
     const now = promotable(after, app);
     if (was === now) continue;
     await refreshAppBundle(app.id).catch(quietly(app.slug));
-    if (!now) continue;
-    const names = await Promise.all(
-      after
-        .filter(
-          (r) => r.appId === app.id && r.serverId !== app.serverId && r.synced,
-        )
-        .map(
-          async (r) =>
-            (await getServerById(r.serverId))?.name ?? "another server",
-        ),
-    );
+    // The App's page and its Activity say the same line.
+    const { copyRows } = await import("../apps/failover");
+    const rows = await copyRows(app, [...reports.keys()], after);
+    const server = (await getServerById(app.serverId))?.name ?? "its server";
+    const line = copiesLine(server, rows);
     await recordActivity(
       "app",
-      `Replicated ${app.name}'s data to ${names.join(" and ")}: it can fail over now`,
+      now
+        ? `${app.name}: ${line}. It can move if ${server} goes off.`
+        : `${app.name}: ${line}`,
       "Deplo",
       app.id,
       app.teamId,
@@ -248,6 +244,22 @@ export async function runReplicationPass(): Promise<void> {
     passing = false;
   }
 }
+
+const now = new Map<string, Promise<void>>();
+
+/** An App's first copy starts the moment it runs on the cluster, not on the watch's next pass; once per cluster at a time. */
+export function replicateNow(clusterId: string): Promise<void> {
+  const running = now.get(clusterId);
+  if (running) return running;
+  const p = replicateCluster(clusterId)
+    .catch(quietly(clusterId))
+    .finally(() => now.delete(clusterId));
+  now.set(clusterId, p);
+  return p;
+}
+
+/** Test seam: what replicateNow still has under way. */
+export const __replicationsUnderWay = () => Promise.all(now.values());
 
 /** Replication turned on or off: every member hears at once, in the background. */
 export function replicateClusterSoon(clusterId: string): void {

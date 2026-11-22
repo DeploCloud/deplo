@@ -26,6 +26,7 @@ type AnyStatus =
   | "unresponsive"
   | "down"
   | "unreachable"
+  | "moving"
   | "not_deployed"
   | "blocked"
   | "evicted";
@@ -50,6 +51,7 @@ const COLORS: Record<string, string> = {
   evicted: "bg-muted-foreground",
   cloudflare: "bg-[var(--warning)]",
   restarting: "bg-[var(--warning)]",
+  moving: "bg-[var(--warning)]",
   unhealthy: "bg-[var(--warning)]",
   unresponsive: "bg-[var(--warning)]",
   warning: "bg-[var(--warning)]",
@@ -74,6 +76,7 @@ const PULSE = new Set([
   "stopping",
   "restoring",
   "restarting",
+  "moving",
 ]);
 
 const VARIANTS: Record<
@@ -98,6 +101,7 @@ const VARIANTS: Record<
   cloudflare: "warning",
   warning: "warning",
   restarting: "warning",
+  moving: "warning",
   unhealthy: "warning",
   unresponsive: "warning",
   error: "destructive",
@@ -167,7 +171,11 @@ export function StatusBadge({
   return (
     <Badge
       variant={tinted ? (VARIANTS[key] ?? "muted") : "outline"}
-      className={cn("gap-1.5 capitalize", PULSE.has(key) && "animate-pulse")}
+      className={cn(
+        "gap-1.5",
+        !labels?.[key] && "capitalize",
+        PULSE.has(key) && "animate-pulse",
+      )}
     >
       <StatusDot status={status} />
       {label}

@@ -27,7 +27,7 @@ test("the cluster relay rides the panel's own names beside the link, to the rela
     rule: RELAY_ON("deplo.example.com"),
     entryPoints: ["websecure"],
     service: "deplo-relay",
-    priority: 3,
+    priority: 100_000,
     tls: { certResolver: "letsencrypt" },
   });
   assert.equal(
@@ -122,5 +122,19 @@ test("a panel run on the host keeps the gateway name on the proxy with no relay 
     hosts(withPanelRoute(routed, PANEL_ROUTE)),
     undefined,
     "and none once the panel is a container again",
+  );
+});
+
+// On apps.idra.app a hand-written `Host(...)` route at its default priority (the rule's length) took the relay's
+// path, and every member's dial there was answered by the panel (22 Nov 2026).
+test("the relay's route outranks any plain route for the panel's own name", () => {
+  const on = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    relay: true,
+  });
+  const relay = panelFileOf(on).http.routers["deplo-panel-relay"];
+  assert.ok(
+    Number(relay.priority) >
+      "Host(`a-very-long-panel-name.example.com`)".length * 100,
   );
 });

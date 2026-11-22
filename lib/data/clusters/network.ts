@@ -144,6 +144,22 @@ async function saveLinks(
  * that answers with a key for the first time is handed to the others in the next round, so a new cluster is
  * whole after three; a pass with nothing new is one.
  */
+// The servers whose network key a caught copy holds: replaced on the next pass, once (ADR-0050).
+const RETIRE = Symbol.for("deplo.cluster.network.retire");
+const gr = globalThis as unknown as { [RETIRE]?: Set<string> };
+const retiring = () => (gr[RETIRE] ??= new Set());
+
+/** A copy of this server was caught: its network key goes with its identity, and the others learn the new one. */
+export async function retireNetworkKey(serverId: string): Promise<void> {
+  retiring().add(serverId);
+  const rows = await getDb()
+    .select({ id: clusterNetworkPeers.clusterId })
+    .from(clusterNetworkPeers)
+    .where(eq(clusterNetworkPeers.serverId, serverId));
+  for (const r of rows)
+    await syncClusterNetwork(r.id).catch((e) => warn(r.id, e));
+}
+
 export async function syncClusterNetwork(clusterId: string): Promise<void> {
   if (await instanceFrozen()) return;
   const servers = await networkServers(clusterId);
@@ -174,7 +190,20 @@ export async function syncClusterNetwork(clusterId: string): Promise<void> {
     for (const [serverId, table] of planNetwork(input)) {
       if (await instanceFrozen()) return;
       try {
-        const r = await setClusterNetwork(serverId, { clusterId, ...table });
+        const retire = retiring().has(serverId)
+          ? (keys.get(serverId)?.publicKey ?? undefined)
+          : undefined;
+        const r = await setClusterNetwork(serverId, {
+          clusterId,
+          ...table,
+          ...(retire ? { retirePublicKey: retire } : {}),
+        });
+        if (retire && r.publicKey && r.publicKey !== retire) {
+          retiring().delete(serverId);
+          console.log(
+            `[cluster-network] ${serverId}: network key replaced after a copy`,
+          );
+        }
         const before = addresses().get(serverId)?.join(",");
         addresses().set(serverId, r.addresses);
         const had = keys.get(serverId);

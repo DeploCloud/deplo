@@ -116,6 +116,10 @@ export async function pushAppBundle(input: {
     : null;
   // Before its first copy it waits; the cluster's banner and the App's page say so, and a copy that fails says why.
   await pushFailoverBundle({ ...kept, ...(restore ? { restore } : {}) });
+  if (!restore) {
+    const { replicateNow } = await import("./replication");
+    void replicateNow(app.clusterId);
+  }
 }
 
 /** Sends the App's bundle again as its cluster and its newest copy stand now, `edit` applied. Nothing deployed: nothing to send. */

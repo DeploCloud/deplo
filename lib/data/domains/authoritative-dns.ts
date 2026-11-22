@@ -86,3 +86,11 @@ export async function authoritativeAddresses(
   }
   return null;
 }
+
+/** A name's CNAME as its zone's own name servers answer it: [] for none, null when they could not be asked. */
+export async function authoritativeCname(
+  name: string,
+): Promise<string[] | null> {
+  const servers = await zoneServers(name);
+  return servers ? ask(servers, name.replace(/\.$/, ""), "CNAME") : null;
+}

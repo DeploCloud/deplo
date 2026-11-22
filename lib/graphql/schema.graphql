@@ -396,6 +396,16 @@ type AppFailover {
   bringBack: String
   cluster: String
 
+  """
+  "Copies: 2 of 2 up to date", "Copying to eu-2 and eu-3" or "Not copied yet: ..."; null without replication.
+  """
+  copies: String
+
+  """
+  Each other server's copy as its page lists it under Advanced: server, state, last copy, seconds behind, bytes.
+  """
+  copyRows: [String!]
+
   """`volume` or `bind`: what ties it to that server."""
   disk: String
 
@@ -562,6 +572,19 @@ type AppRuntime {
   Declared services with NO container on the host - the failure the running/total counts cannot see, because a container that was never created is not there to be counted as stopped.
   """
   missing: [String!]
+
+  """When the cluster decided that move."""
+  moveSince: String
+
+  """
+  The server a cluster is moving the app to, until it answers there with a valid certificate.
+  """
+  moveTo: String
+
+  """
+  Why an offline cluster app cannot move: "Offline: no up-to-date copy" or "Offline: waiting for a majority of servers".
+  """
+  offlineWhy: String
   restarting: Int
   running: Int
   total: Int

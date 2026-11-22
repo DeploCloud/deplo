@@ -74,10 +74,18 @@ const lockedOut = new Map<string, number>();
 export function rotateAfterCopy(serverId: string): void {
   if (Date.now() - (lockedOut.get(serverId) ?? 0) < 10 * 60_000) return;
   lockedOut.set(serverId, Date.now());
-  void renewAgentCertIfDue(serverId, { now: true }).then(
-    (r) => console.log(`[cert-renewal] ${serverId} after a copy: ${r.reason}`),
-    (e) => console.warn(`[cert-renewal] ${serverId} after a copy: ${e}`),
-  );
+  void renewAgentCertIfDue(serverId, { now: true })
+    .then(
+      (r) =>
+        console.log(`[cert-renewal] ${serverId} after a copy: ${r.reason}`),
+      (e) => console.warn(`[cert-renewal] ${serverId} after a copy: ${e}`),
+    )
+    // The copy also holds its network key: a new one, so the copy is heard by no server of its clusters.
+    .then(() => import("../data/clusters/network"))
+    .then((m) => m.retireNetworkKey(serverId))
+    .catch((e) =>
+      console.warn(`[cluster-network] ${serverId} after a copy: ${e}`),
+    );
 }
 
 async function renewNow(serverId: string, now: boolean): Promise<Renewal> {

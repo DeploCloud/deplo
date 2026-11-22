@@ -42,6 +42,9 @@ export interface AppRuntime {
   unreachable: boolean;
   // Only for an App on several servers: the ones that did not answer, by name. The counts leave them out.
   unreachableServers?: string[];
+  // A cluster moving it, by the new server's name, or why it cannot move while it is offline.
+  move?: { to: string; since: string } | null;
+  offlineWhy?: string | null;
 }
 
 const RUNTIME_TTL_MS = 3_000;
@@ -56,7 +59,9 @@ export async function getAppRuntime(appId: string): Promise<AppRuntime | null> {
   const hit = runtimeCache.get(p.id);
   if (hit && Date.now() - hit.at < RUNTIME_TTL_MS) return hit.value;
 
-  const value = await probeRuntime(p);
+  const probed = await probeRuntime(p);
+  const { appMoveState } = await import("../clusters/moves");
+  const value = { ...probed, ...(await appMoveState(p, probed.unreachable)) };
   runtimeCache.set(p.id, { at: Date.now(), value });
   sweepStale(runtimeCache, (e) => e.at, RUNTIME_TTL_MS);
   return value;

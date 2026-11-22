@@ -69,6 +69,10 @@ const proxies = () =>
 // A proxy is read again after this long, in case it was put back by hand.
 const PROXY_KNOWN_FOR_MS = 60 * 60_000;
 
+function heldBy(serverId: string, key: string, sha256: string): void {
+  if (sha256) reported().set(`${serverId} ${key}`, sha256);
+}
+
 /** Test seam: forget what the members said and what their proxies were seen to have. */
 export function __forgetZoneCerts(): void {
   reported().clear();
@@ -303,13 +307,16 @@ export async function zoneCertPass(input: {
     order: (members) => renewersLast(members, [...zones, ...names]),
     record: async (serverId, states) => {
       let fresh = false;
+      // Its report is whole: a pair it no longer names is one it lost, and goes to it again on the next pass.
+      for (const k of [...reported().keys()])
+        if (k.startsWith(`${serverId} `)) reported().delete(k);
       for (const st of states) {
         if (st.names?.length) {
           const n = names.find(
             (x) => x.zone === st.zone && x.name === st.names[0],
           );
           if (!n) continue;
-          if (st.sha256) reported().set(`${serverId} ${certKey(n)}`, st.sha256);
+          heldBy(serverId, certKey(n), st.sha256);
           // Only the renewer's, as for the zone's own.
           if (n.renewerServerId !== serverId) continue;
           if (st.certPem && st.keyPem && (await takeNamePair(n, st, input)))
@@ -321,7 +328,7 @@ export async function zoneCertPass(input: {
         }
         const z = zones.find((x) => x.name === st.zone);
         if (!z) continue;
-        if (st.sha256) reported().set(`${serverId} ${z.name}`, st.sha256);
+        heldBy(serverId, z.name, st.sha256);
         // Only the renewer's: a server back from a power cut may have renewed a pair it no longer renews.
         if (
           z.renewerServerId === serverId &&

@@ -19,6 +19,7 @@ import { setClusterReplication } from "./clusters/manage";
 import {
   AGENT_TOO_OLD,
   __forgetHandedTables,
+  __replicationsUnderWay,
   refreshVolumeAppBundles,
   replicateCluster,
 } from "./clusters/replication";
@@ -78,6 +79,12 @@ async function replicated(able = ["srv_2", "srv_3", "srv_4"]) {
   });
   for (const id of able)
     host[id].capabilities.push(CLUSTER_REPLICAS_CAPABILITY);
+  // The first copy the bundle started: each test hands the tables itself.
+  await __replicationsUnderWay();
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    host[id].replicaTables.length = 0;
+  __forgetHandedTables();
+  await db.delete(clusterAppReplicas);
   return cluster;
 }
 
@@ -155,8 +162,8 @@ test("a whole copy on another server makes the App fail over from it, and Activi
 
   await replicateCluster(cluster.id);
   assert.deepEqual(
-    (await said()).filter((m) => m.startsWith("Replicated")),
-    ["Replicated web's data to server-3: it can fail over now"],
+    (await said()).filter((m) => m.startsWith("web: Copies")),
+    ["web: Copies: 1 of 2 up to date. It can move if server-2 goes off."],
   );
 });
 
@@ -246,4 +253,23 @@ test("a standby copy a person turned on stays when replication goes", async () =
   const db0 = await row();
   assert.equal(db0.standby, true);
   assert.equal(db0.standbyFromCluster, false);
+});
+
+test("an App's first copy starts the moment its bundle is stored, not on the watch's next pass", async () => {
+  const cluster = await replicated();
+  await __replicationsUnderWay();
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    host[id].replicaTables.length = 0;
+  __forgetHandedTables();
+  await pushAppBundle({
+    appId: "prj_web",
+    deploymentId: "dpl_1",
+    stack: STACK,
+  });
+  await __replicationsUnderWay();
+  assert.deepEqual(
+    host.srv_3.replicaTables.at(-1)?.entries.map((e) => e.appId),
+    ["prj_web"],
+  );
+  assert.equal(host.srv_3.replicaTables.at(-1)?.clusterId, cluster.id);
 });

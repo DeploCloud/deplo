@@ -165,6 +165,23 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
       description:
         "The agent did not answer: the counts are unknown, not zero.",
     }),
+    moveTo: t.string({
+      nullable: true,
+      description:
+        "The server a cluster is moving the app to, until it answers there with a valid certificate.",
+      resolve: (r) => r.move?.to ?? null,
+    }),
+    moveSince: t.string({
+      nullable: true,
+      description: "When the cluster decided that move.",
+      resolve: (r) => r.move?.since ?? null,
+    }),
+    offlineWhy: t.string({
+      nullable: true,
+      description:
+        'Why an offline cluster app cannot move: "Offline: no up-to-date copy" or "Offline: waiting for a majority of servers".',
+      resolve: (r) => r.offlineWhy ?? null,
+    }),
     unreachableServers: t.stringList({
       description:
         "For an app on several servers: the ones that did not answer, by " +

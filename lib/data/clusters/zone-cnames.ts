@@ -1,25 +1,28 @@
 import "server-only";
 
-import { promises as dnsp } from "node:dns";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { challengeName } from "../../deploy/dns-challenge";
 import { nowIso } from "../../ids";
+import { authoritativeCname } from "../domains/authoritative-dns";
 
 // A name outside the zone gets its certificate over DNS once its `_acme-challenge` CNAME points into the zone
 // (ADR-0049 phase 3): https://deplo.build/docs/operations/clusters/dns-zone
 
 type Lookup = (name: string) => Promise<string[]>;
 
-const lookupCname: Lookup = (name) =>
-  Promise.race([
-    dnsp.resolveCname(name),
-    new Promise<string[]>((_, reject) =>
-      setTimeout(() => reject(new Error("ETIMEOUT")), 3000),
-    ),
-  ]);
+// Asked where it is written: a resolver keeps a "no such record" from before Deplo wrote it for up to the zone's
+// negative TTL, 30 minutes at Cloudflare, and memos waited that long for its certificate (22 Nov 2026).
+const lookupCname: Lookup = async (name) => {
+  const got = await authoritativeCname(name);
+  if (got === null)
+    throw Object.assign(new Error("ETIMEOUT"), { code: "ETIMEOUT" });
+  if (got.length === 0)
+    throw Object.assign(new Error("ENODATA"), { code: "ENODATA" });
+  return got;
+};
 
 let lookup = lookupCname;
 export function __setCnameLookupForTest(fn: Lookup | null): void {

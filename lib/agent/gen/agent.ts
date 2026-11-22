@@ -3303,6 +3303,8 @@ export interface SetClusterNetworkRequest {
   /** This server's own address inside the tunnel. */
   address: string;
   peers: ClusterNetworkPeer[];
+  /** This server's network key when it must be replaced first, since a caught copy holds it (Hello network.rekey). */
+  retirePublicKey: string;
 }
 
 export interface ClusterNetworkPeer {
@@ -25557,7 +25559,7 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
 };
 
 function createBaseSetClusterNetworkRequest(): SetClusterNetworkRequest {
-  return { clusterId: "", address: "", peers: [] };
+  return { clusterId: "", address: "", peers: [], retirePublicKey: "" };
 }
 
 export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
@@ -25570,6 +25572,9 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
     }
     for (const v of message.peers) {
       ClusterNetworkPeer.encode(v!, writer.uint32(26).fork()).join();
+    }
+    if (message.retirePublicKey !== "") {
+      writer.uint32(34).string(message.retirePublicKey);
     }
     return writer;
   },
@@ -25611,6 +25616,14 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
             message.peers.push(ClusterNetworkPeer.decode(reader, reader.uint32()));
             continue;
           }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.retirePublicKey = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -25634,6 +25647,11 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
       peers: globalThis.Array.isArray(object?.peers)
         ? object.peers.map((e: any) => ClusterNetworkPeer.fromJSON(e))
         : [],
+      retirePublicKey: isSet(object.retirePublicKey)
+        ? globalThis.String(object.retirePublicKey)
+        : isSet(object.retire_public_key)
+        ? globalThis.String(object.retire_public_key)
+        : "",
     };
   },
 
@@ -25648,6 +25666,9 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
     if (message.peers?.length) {
       obj.peers = message.peers.map((e) => ClusterNetworkPeer.toJSON(e));
     }
+    if (message.retirePublicKey !== "") {
+      obj.retirePublicKey = message.retirePublicKey;
+    }
     return obj;
   },
 
@@ -25659,6 +25680,7 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
     message.clusterId = object.clusterId ?? "";
     message.address = object.address ?? "";
     message.peers = object.peers?.map((e) => ClusterNetworkPeer.fromPartial(e)) || [];
+    message.retirePublicKey = object.retirePublicKey ?? "";
     return message;
   },
 };

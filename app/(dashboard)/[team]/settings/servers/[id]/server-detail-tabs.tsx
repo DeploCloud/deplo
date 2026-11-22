@@ -79,6 +79,8 @@ export type ServerSummary = {
   expectedAgentVersion: string;
   agentReach: AgentReach;
   agentUpdate: AgentUpdateDTO | null;
+  /** The cluster it is a member of, whose proxies restart one member at a time. */
+  clusterName?: string | null;
 };
 
 const TABS = [

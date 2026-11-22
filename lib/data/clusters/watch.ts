@@ -30,6 +30,7 @@ import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-memb
 import { getServerById } from "../servers/roster";
 import { messageOf } from "../../utils";
 import { leaseChangeSentence } from "./lease-activity";
+import { moveStarted } from "./moves";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
 // Events carry a sequence; the last one applied is stored, so a restart or a reconnect replays only what is new.
@@ -95,7 +96,13 @@ async function memberLeaseChanged(
   // A preview never fails over: it reads offline until it is deployed again (#212).
   if (state === "fenced") await markPreviewsOffline(serverId);
   const name = (await getServerById(serverId))?.name ?? "A server";
-  const text = await leaseChangeSentence(clusterId, clusterName, name, state);
+  const text = await leaseChangeSentence(
+    clusterId,
+    clusterName,
+    name,
+    state,
+    serverId,
+  );
   await recordClusterActivity(clusterId, text);
   // A server that stopped or is back changes which addresses a domain on every server lists.
   syncClusterAnswerDnsSoon(clusterId);
@@ -169,6 +176,30 @@ export async function applyLeaderEvent(
           // A placement naming a server that has left is stale; it must not hold up what follows it.
           console.warn(`[cluster-watch] ${clusterId}: ${messageOf(err)}`);
         }
+      }
+      await advance();
+      return "applied";
+    }
+    case "moving": {
+      if (
+        d.kind === "app" &&
+        typeof d.workloadId === "string" &&
+        typeof d.to === "string"
+      )
+        moveStarted(d.workloadId, d.to);
+      await advance();
+      return "applied";
+    }
+    case "member_gone":
+    case "member_rejoined": {
+      if (typeof d.member === "string") {
+        const name = (await getServerById(d.member))?.name ?? "A server";
+        await recordClusterActivity(
+          clusterId,
+          e.type === "member_gone"
+            ? `${name} has been gone from cluster ${cluster.name} for 2 minutes, so the others no longer count it for a majority: if another server stops, the last ones keep serving.`
+            : `${name} caught up and counts for a majority of cluster ${cluster.name} again.`,
+        );
       }
       await advance();
       return "applied";

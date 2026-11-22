@@ -100,3 +100,34 @@ export function moveRefusal(reason: string, name: string): string {
   }
   return `The cluster's leader could not move ${name}.`;
 }
+
+/** How one other server's copy of an App stands, as its page lists it under Advanced. */
+export interface CopyRow {
+  server: string;
+  state: "Up to date" | "Copying" | "Behind" | "Not copied";
+  /** When the newest change reached it; null before the first. */
+  lastCopyAt: string | null;
+  /** How long since the App's server last reached it, while it is behind. */
+  behindSeconds: number | null;
+  bytes: number;
+  error: string;
+}
+
+const and = (names: string[]) =>
+  names.length < 2
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
+/** The App's one line about its copies: the page shows it, and Activity says the same. */
+export function copiesLine(serverName: string, rows: CopyRow[]): string {
+  const up = rows.filter((r) => r.state === "Up to date").length;
+  const copying = rows
+    .filter((r) => r.state === "Copying")
+    .map((r) => r.server);
+  if (rows.length > 0 && up === rows.length)
+    return `Copies: ${up} of ${rows.length} up to date`;
+  if (up === 0 && copying.length > 0) return `Copying to ${and(copying)}`;
+  if (up === 0 && !rows.some((r) => r.state === "Behind"))
+    return `Not copied yet: this App cannot move if ${serverName} goes off`;
+  return `Copies: ${up} of ${rows.length} up to date`;
+}

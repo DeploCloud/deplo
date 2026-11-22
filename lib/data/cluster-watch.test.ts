@@ -277,7 +277,7 @@ test("a leader that hears too few servers is never read as each server going sil
     "srv_2 is not responding in cluster eu.",
     "Too few servers answer in cluster eu, so nothing moves and srv_3 no longer counts as answering.",
     `Too few servers answer in cluster eu, so nothing moves and ${SERVER_1} no longer counts as answering.`,
-    `Too few servers answer in cluster eu, so ${SERVER_1} stopped the databases and Apps with files that must never run twice.`,
+    `Too few servers answer in cluster eu. ${SERVER_1} runs no database or App that must never run twice, so nothing on it had to stop.`,
   ]);
 });
 

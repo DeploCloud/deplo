@@ -17,6 +17,7 @@ import { membershipCapabilities } from "../db/schema/control-plane/access-contro
 import { seedApp, seedDeployment } from "./app-graph-test-helpers";
 import { bringAppBack, getAppFailover } from "./apps/failover";
 import { seedDestination, seedRun } from "./backup-test-helpers";
+import { __replicationsUnderWay } from "./clusters/replication";
 import { pushAppBundle } from "./clusters/app-restore";
 import {
   LOAD_BALANCING_NEEDS_REPLICATION,
@@ -89,6 +90,9 @@ async function deployed(clusterId: string, type: Kind | "nothing" = "named") {
     deploymentId: "dpl_1",
     stack: STACK,
   });
+  // The first copy it started at once: each test says how its copies stand.
+  await __replicationsUnderWay();
+  await db.delete(clusterAppReplicas);
 }
 
 /** A finished backup of "web" in the team's bucket. */

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   leaderHearsEnough,
   leaseSentence,
+  stoppedSentence,
   tooFewSentence,
 } from "./failover-reach";
 
@@ -47,5 +48,24 @@ test("a silent server reads as silent only while the leader still hears enough o
   assert.equal(
     leaseSentence("server-b", "eu", "ok", true),
     "server-b answers again in cluster eu.",
+  );
+});
+
+test("a member whose lease ran out is said as it is: what it had to stop, and whether it did", () => {
+  assert.equal(
+    stoppedSentence("eu-2", "eu", true, [], true),
+    "Too few servers answer in cluster eu. eu-2 runs no database or App that must never run twice, so nothing on it had to stop.",
+  );
+  assert.equal(
+    stoppedSentence("eu-3", "eu", true, ["memos"], true),
+    "Too few servers answer in cluster eu, so eu-3 stopped memos: it must never run twice.",
+  );
+  assert.match(
+    stoppedSentence("eu-3", "eu", false, ["memos", "db-main"], null),
+    /stops memos and db-main on its own if it is still running; Deplo cannot reach it/,
+  );
+  assert.match(
+    stoppedSentence("eu-3", "eu", true, ["memos"], false),
+    /still runs memos/,
   );
 });

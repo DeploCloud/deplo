@@ -36,3 +36,32 @@ export function leaseSentence(
     ? `${name} is not responding in cluster ${cluster}.`
     : `${name} stopped responding in cluster ${cluster}, so it stopped the databases and Apps with files that must never run twice.`;
 }
+
+const list = (names: string[]) =>
+  names.length < 2
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
+/**
+ * A member whose lease ran out, said as it is: what it held that must never run twice, and whether its agent says
+ * it stopped it (true), still runs it (false) or does not answer (null).
+ */
+export function stoppedSentence(
+  name: string,
+  cluster: string,
+  tooFew: boolean,
+  writers: string[],
+  stopped: boolean | null,
+): string {
+  const why = tooFew
+    ? `Too few servers answer in cluster ${cluster}`
+    : `${name} stopped responding in cluster ${cluster}`;
+  if (writers.length === 0)
+    return `${why}. ${name} runs no database or App that must never run twice, so nothing on it had to stop.`;
+  const what = list(writers);
+  if (stopped === true)
+    return `${why}, so ${name} stopped ${what}: it must never run twice.`;
+  if (stopped === false)
+    return `${why}, but ${name} still runs ${what}, which must never run twice. Its server agent stops it once its lease is over.`;
+  return `${why}. Its lease ran out, so ${name} stops ${what} on its own if it is still running; Deplo cannot reach it to check.`;
+}

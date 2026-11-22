@@ -30,6 +30,7 @@ import { createCluster } from "./clusters/manage";
 import { addClusterMember, listClusterMembers } from "./clusters/members";
 import {
   reconcileClusterNetworks,
+  retireNetworkKey,
   syncClusterNetwork,
 } from "./clusters/network";
 import { clusterRoster } from "./clusters/relay";
@@ -245,4 +246,31 @@ test("the relay lets a leader's server through as a member too, for the network'
       .length,
     1,
   );
+});
+
+// ADR-0050 decision 6: a caught copy holds its original's network key, so the original gets a new one and every
+// other server is handed it in the same pass; the old one is named nowhere after.
+test("a caught copy's network key is replaced once and the others are handed the new one", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  await retireNetworkKey("srv_2");
+  assert.equal(
+    last(hosts.srv_2).retirePublicKey,
+    undefined,
+    "asked once, then never again",
+  );
+  assert.equal(
+    hosts.srv_2.networkTables.filter((t) => t.retirePublicKey === "key-srv_2")
+      .length,
+    1,
+  );
+  assert.equal(hosts.srv_2.networkKey, "key-srv_2+");
+  for (const id of ["srv_1", "srv_3"])
+    assert.deepEqual(
+      last(hosts[id]).peers.find((p) => p.fingerprint === fp(2))?.publicKey,
+      "key-srv_2+",
+      id,
+    );
+  await syncClusterNetwork(c.id);
+  assert.equal(hosts.srv_2.networkKey, "key-srv_2+");
 });
