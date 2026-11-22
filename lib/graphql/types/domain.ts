@@ -421,9 +421,9 @@ async function applyRouting(
     await rerouteApp(appId);
   } catch (e) {
     throw new Error(
-      `The domain was ${done}, but the routing could not be applied on the server: ${
+      `The domain was ${done}, but its route did not apply: ${
         e instanceof Error ? e.message : String(e)
-      }. Deploy the app to apply it.`,
+      }.`,
     );
   }
 }

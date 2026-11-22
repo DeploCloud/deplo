@@ -85,6 +85,10 @@ export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
 
 // Without it a reroute pulls only missing images, so a database Update would change nothing.
 export const REROUTE_PULL_CAPABILITY = "reroute.pull";
+// Without it a reroute brings the whole stack up: a stopped service starts, and its health is waited on.
+export const REROUTE_SERVICES_CAPABILITY = "reroute.services";
+// Without it Deplo cannot prove an address reaches the server, so the addresses it was added at stay in use.
+export const ADDRESS_PROVE_CAPABILITY = "address.prove";
 
 // The deploy's restart rule: the agent restarts an app that stops answering.
 export const RESTART_CAPABILITY = "health.restart";

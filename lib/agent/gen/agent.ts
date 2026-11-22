@@ -1498,6 +1498,12 @@ export interface RerouteRequest {
    * Unset keeps pulling only the missing ones. Advertised as `reroute.pull`.
    */
   pullImages: boolean;
+  /**
+   * Only these compose services are brought up, without their dependencies: a routing change
+   * never starts, stops or waits on another service of the App. Empty brings the whole stack up,
+   * as before. Advertised as `reroute.services`.
+   */
+  services: string[];
 }
 
 export interface RerouteRequest_EnvEntry {
@@ -2978,6 +2984,29 @@ export interface InventoryCandidateResponse {
     | undefined;
   /** The pulled build's image id, which keys its package list. */
   imageId: string;
+}
+
+export interface ProveAddressesRequest {
+  /**
+   * A URL of Deplo's that answers the caller's own address as text. Asked once over IPv4 and
+   * once over IPv6; empty asks neither.
+   */
+  echoUrl: string;
+}
+
+export interface ProveAddressesResponse {
+  /**
+   * sha256 (hex, of the DER) of the certificate the proxy presents on this machine's port 443
+   * for a name no route has. Empty when no proxy answers there.
+   */
+  proxyCertificateSha256: string;
+  /** The address this server's traffic leaves from, at most one per family, as echo_url saw it. */
+  trafficAddresses: string[];
+  /**
+   * The TXT its name server answers for _deplo-server.<zone> in every zone; empty when it
+   * answers none.
+   */
+  dnsIdent: string;
 }
 
 export interface CaptureScreenshotRequest {
@@ -9147,6 +9176,7 @@ function createBaseRerouteRequest(): RerouteRequest {
     network: "",
     filesBindSources: [],
     pullImages: false,
+    services: [],
   };
 }
 
@@ -9175,6 +9205,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     }
     if (message.pullImages !== false) {
       writer.uint32(64).bool(message.pullImages);
+    }
+    for (const v of message.services) {
+      writer.uint32(74).string(v!);
     }
     return writer;
   },
@@ -9259,6 +9292,14 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
             message.pullImages = reader.bool();
             continue;
           }
+          case 9: {
+            if (tag !== 74) {
+              break;
+            }
+
+            message.services.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -9310,6 +9351,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
         : isSet(object.pull_images)
         ? globalThis.Boolean(object.pull_images)
         : false,
+      services: globalThis.Array.isArray(object?.services)
+        ? object.services.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -9345,6 +9389,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     if (message.pullImages !== false) {
       obj.pullImages = message.pullImages;
     }
+    if (message.services?.length) {
+      obj.services = message.services;
+    }
     return obj;
   },
 
@@ -9369,6 +9416,7 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     message.network = object.network ?? "";
     message.filesBindSources = object.filesBindSources?.map((e) => e) || [];
     message.pullImages = object.pullImages ?? false;
+    message.services = object.services?.map((e) => e) || [];
     return message;
   },
 };
@@ -21803,6 +21851,192 @@ export const InventoryCandidateResponse: MessageFns<InventoryCandidateResponse> 
   },
 };
 
+function createBaseProveAddressesRequest(): ProveAddressesRequest {
+  return { echoUrl: "" };
+}
+
+export const ProveAddressesRequest: MessageFns<ProveAddressesRequest> = {
+  encode(message: ProveAddressesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.echoUrl !== "") {
+      writer.uint32(10).string(message.echoUrl);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProveAddressesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseProveAddressesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.echoUrl = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ProveAddressesRequest {
+    return {
+      echoUrl: isSet(object.echoUrl)
+        ? globalThis.String(object.echoUrl)
+        : isSet(object.echo_url)
+        ? globalThis.String(object.echo_url)
+        : "",
+    };
+  },
+
+  toJSON(message: ProveAddressesRequest): unknown {
+    const obj: any = {};
+    if (message.echoUrl !== "") {
+      obj.echoUrl = message.echoUrl;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProveAddressesRequest>, I>>(base?: I): ProveAddressesRequest {
+    return ProveAddressesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProveAddressesRequest>, I>>(object: I): ProveAddressesRequest {
+    const message = createBaseProveAddressesRequest();
+    message.echoUrl = object.echoUrl ?? "";
+    return message;
+  },
+};
+
+function createBaseProveAddressesResponse(): ProveAddressesResponse {
+  return { proxyCertificateSha256: "", trafficAddresses: [], dnsIdent: "" };
+}
+
+export const ProveAddressesResponse: MessageFns<ProveAddressesResponse> = {
+  encode(message: ProveAddressesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.proxyCertificateSha256 !== "") {
+      writer.uint32(10).string(message.proxyCertificateSha256);
+    }
+    for (const v of message.trafficAddresses) {
+      writer.uint32(18).string(v!);
+    }
+    if (message.dnsIdent !== "") {
+      writer.uint32(26).string(message.dnsIdent);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProveAddressesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseProveAddressesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.proxyCertificateSha256 = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.trafficAddresses.push(reader.string());
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.dnsIdent = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ProveAddressesResponse {
+    return {
+      proxyCertificateSha256: isSet(object.proxyCertificateSha256)
+        ? globalThis.String(object.proxyCertificateSha256)
+        : isSet(object.proxy_certificate_sha256)
+        ? globalThis.String(object.proxy_certificate_sha256)
+        : "",
+      trafficAddresses: globalThis.Array.isArray(object?.trafficAddresses)
+        ? object.trafficAddresses.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.traffic_addresses)
+        ? object.traffic_addresses.map((e: any) => globalThis.String(e))
+        : [],
+      dnsIdent: isSet(object.dnsIdent)
+        ? globalThis.String(object.dnsIdent)
+        : isSet(object.dns_ident)
+        ? globalThis.String(object.dns_ident)
+        : "",
+    };
+  },
+
+  toJSON(message: ProveAddressesResponse): unknown {
+    const obj: any = {};
+    if (message.proxyCertificateSha256 !== "") {
+      obj.proxyCertificateSha256 = message.proxyCertificateSha256;
+    }
+    if (message.trafficAddresses?.length) {
+      obj.trafficAddresses = message.trafficAddresses;
+    }
+    if (message.dnsIdent !== "") {
+      obj.dnsIdent = message.dnsIdent;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProveAddressesResponse>, I>>(base?: I): ProveAddressesResponse {
+    return ProveAddressesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProveAddressesResponse>, I>>(object: I): ProveAddressesResponse {
+    const message = createBaseProveAddressesResponse();
+    message.proxyCertificateSha256 = object.proxyCertificateSha256 ?? "";
+    message.trafficAddresses = object.trafficAddresses?.map((e) => e) || [];
+    message.dnsIdent = object.dnsIdent ?? "";
+    return message;
+  },
+};
+
 function createBaseCaptureScreenshotRequest(): CaptureScreenshotRequest {
   return { url: "", basicAuthUsername: "", basicAuthPassword: "" };
 }
@@ -29258,6 +29492,22 @@ export const AgentService = {
       Buffer.from(CaptureScreenshotResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): CaptureScreenshotResponse => CaptureScreenshotResponse.decode(value),
   },
+  /**
+   * What tells this server apart from any other, so Deplo can prove an address reaches it
+   * (ADR-0050): its proxy's certificate on 443, its name server's ident on 53, and the address
+   * its traffic leaves from, per family. Advertised as `address.prove`.
+   */
+  proveAddresses: {
+    path: "/deplo.agent.v1.Agent/ProveAddresses" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ProveAddressesRequest): Buffer =>
+      Buffer.from(ProveAddressesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ProveAddressesRequest => ProveAddressesRequest.decode(value),
+    responseSerialize: (value: ProveAddressesResponse): Buffer =>
+      Buffer.from(ProveAddressesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ProveAddressesResponse => ProveAddressesResponse.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -29657,6 +29907,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * a light and a dark picture of it. Advertised as `screenshot`.
    */
   captureScreenshot: handleUnaryCall<CaptureScreenshotRequest, CaptureScreenshotResponse>;
+  /**
+   * What tells this server apart from any other, so Deplo can prove an address reaches it
+   * (ADR-0050): its proxy's certificate on 443, its name server's ident on 53, and the address
+   * its traffic leaves from, per family. Advertised as `address.prove`.
+   */
+  proveAddresses: handleUnaryCall<ProveAddressesRequest, ProveAddressesResponse>;
 }
 
 export interface AgentClient extends Client {
@@ -31131,6 +31387,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CaptureScreenshotResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * What tells this server apart from any other, so Deplo can prove an address reaches it
+   * (ADR-0050): its proxy's certificate on 443, its name server's ident on 53, and the address
+   * its traffic leaves from, per family. Advertised as `address.prove`.
+   */
+  proveAddresses(
+    request: ProveAddressesRequest,
+    callback: (error: ServiceError | null, response: ProveAddressesResponse) => void,
+  ): ClientUnaryCall;
+  proveAddresses(
+    request: ProveAddressesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ProveAddressesResponse) => void,
+  ): ClientUnaryCall;
+  proveAddresses(
+    request: ProveAddressesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ProveAddressesResponse) => void,
   ): ClientUnaryCall;
 }
 

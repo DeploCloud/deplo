@@ -651,7 +651,7 @@ test("a host that cannot be reached is reported as saved-but-not-applied", async
       port: 3002,
     });
     assert.equal(res.error, true);
-    assert.match(res.text, /saved, but the routing could not be applied/i);
+    assert.match(res.text, /saved, but its route did not apply/i);
     assert.match(res.text, /agent unreachable/);
     assert.equal((await domainRows()).length, 1, "the row is there either way");
   } finally {
@@ -700,4 +700,49 @@ test("an edit the editor would refuse is refused in the editor's words", async (
   assert.match(res.text, /merges configuration from another file/);
   const app = await callTool(raw, "get_app", { slug: "analytics" });
   assert.equal((json(app.text).app as { compose: string }).compose, STACK);
+});
+
+// A domain change re-applies routing only: the database of the stack is never brought up or waited on, only the
+// service whose routes changed is, without its dependencies (fise, 22 Nov 2026).
+test("a domain change brings up only the routed service", async () => {
+  let onDisk = "";
+  const sent: { services?: string[] }[] = [];
+  __setAgentConnectorForTest(async () => {
+    const conn = (await agentStub()) as unknown as Record<string, unknown>;
+    conn.hello = async () => ({ capabilities: ["reroute.services"] });
+    conn.readStack = async () => ({
+      exists: onDisk !== "",
+      yaml: onDisk || "x",
+    });
+    conn.reroute = async (req: {
+      composeYaml: string;
+      services?: string[];
+    }) => {
+      sent.push({ services: req.services });
+      onDisk = req.composeYaml;
+      return { ok: true, error: "" };
+    };
+    return conn as unknown as AgentConnection;
+  });
+  try {
+    const { raw } = await mintToken();
+    onDisk = "services: {}\n";
+    const first = await callTool(raw, "add_domain", {
+      appId: "prj_analytics",
+      name: "app.acme.com",
+      service: "client",
+      port: 3002,
+    });
+    assert.equal(first.error, false, first.text);
+    const second = await callTool(raw, "add_domain", {
+      appId: "prj_analytics",
+      name: "api.acme.com",
+      service: "backend",
+      port: 3001,
+    });
+    assert.equal(second.error, false, second.text);
+    assert.deepEqual(sent.at(-1)?.services, ["backend"]);
+  } finally {
+    __setAgentConnectorForTest(agentStub);
+  }
 });

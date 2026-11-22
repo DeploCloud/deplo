@@ -9,6 +9,8 @@ import { basicAuthUsersValue } from "../../data/basic-auth";
 import { primaryDomainName } from "../../data/domains/primary-domain";
 import { withKeyedLock } from "../../data/keyed-mutex";
 import { connectAgent } from "../../infra/agent-client/connect";
+import { REROUTE_SERVICES_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import { changedServices, composeFailureLine } from "./reroute-services";
 import type { App, AppStatus } from "../../types/app";
 import { mapLimit, usesComposeStack, usesPastedCompose } from "../../utils";
 import { ensureFileBinds } from "../agent-deploy";
@@ -191,6 +193,13 @@ async function rerouteOn(
         if (level === "warn") console.warn(`[deplo] ${appId}: ${text}`);
       },
     );
+    // Only what changed comes up again, without its dependencies: a stopped database stays stopped.
+    const only = (await capabilitiesOf(conn)).includes(
+      REROUTE_SERVICES_CAPABILITY,
+    )
+      ? changedServices(current.yaml, rendered)
+      : null;
+    if (only?.length === 0) return "unchanged";
     const r = await conn.reroute({
       slug: deployKey,
       composeYaml: rendered,
@@ -198,10 +207,13 @@ async function rerouteOn(
       mounts,
       network: deployNetwork(project),
       composeUpArgs: parseComposeUpArgs(project.composeUpArgs),
+      ...(only ? { services: only } : {}),
     });
     if (!r.ok)
       throw new Error(
-        explainNetworkError(r.error || "agent failed to reroute the stack"),
+        explainNetworkError(
+          composeFailureLine(r.error || "agent failed to reroute the stack"),
+        ),
       );
     if (project.clusterId)
       offerReroutedBundle(
@@ -213,6 +225,17 @@ async function rerouteOn(
     return "rerouted";
   } finally {
     conn.close();
+  }
+}
+
+// An agent that cannot say what it supports gets the whole stack brought up, as before.
+async function capabilitiesOf(conn: {
+  hello(): Promise<{ capabilities?: string[] }>;
+}): Promise<string[]> {
+  try {
+    return (await conn.hello()).capabilities ?? [];
+  } catch {
+    return [];
   }
 }
 
