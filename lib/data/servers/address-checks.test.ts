@@ -197,3 +197,16 @@ test("an address Deplo cannot reach the family of is shown as not checked, never
   assert.match(v6.problem, /^Not checked/);
   assert.deepEqual((await publishedServerAddresses(SERVER_1))?.v6, [OLD_V6]);
 });
+
+test("another address appearing on the machine renames nothing while the one in use still reaches it", async () => {
+  await checkServerAddresses();
+  const OTHER = "2a07:7e87:546d:0:1111:2222:3333:4444";
+  machine = [OTHER, OLD_V6];
+  at443[OTHER] = CERT;
+  await checkServerAddresses();
+  assert.deepEqual(
+    [...((await publishedServerAddresses(SERVER_1))?.v6 ?? [])].sort(),
+    [OLD_V6, OTHER].sort(),
+  );
+  assert.equal((await getServerById(SERVER_1))!.ip, OLD_V6);
+});

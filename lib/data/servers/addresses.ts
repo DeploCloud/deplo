@@ -90,7 +90,14 @@ export async function serverWildcardIp(
   // Once Deplo checked its addresses, only one it proved reaches it is ever named (ADR-0050).
   const proven =
     server && !deploHost ? await publishedServerAddresses(server.id) : null;
-  if (proven) return pickAddress({ ...proven, v6Known: true }, family);
+  if (proven) {
+    // The one it carries now stays while it is still used: another address appearing renames nothing.
+    const kind = family ?? (proven.v4.length > 0 ? "ipv4" : "ipv6");
+    const current = server?.ip ?? "";
+    if ((kind === "ipv4" ? proven.v4 : proven.v6).includes(current))
+      return current;
+    return pickAddress({ ...proven, v6Known: true }, family);
+  }
   // Automatic on the Deplo host is the kind the installer chose. Its address is the row's once
   // Settings moved it: DEPLO_SERVER_IP stays where the installer saw the machine.
   const kind =
