@@ -192,3 +192,23 @@ test("the note stays a week, and as long as another Deplo's Apps are there", asy
   await claimServer("srv_eu2");
   assert.ok(leftByAnotherDeplo("srv_eu2", at + 30 * 24 * 3600 * 1000));
 });
+
+test("a proxy already on Let's Encrypt only loses the relay another Deplo left, and says so", async () => {
+  await seedServerRow(db, { id: "srv_eu1", name: "eu-1" });
+  const relayOnly = LAB_PROXY.replace(
+    /.*(pebble|LEGO_CA_CERTIFICATES|caserver|certificatesduration).*\n/g,
+    "",
+  );
+  const host = fakeAgent(
+    [{ restarting: true }, { setAside: "/x", setAsideAtMs: Date.now() }],
+    relayOnly,
+  );
+  await claimServer("srv_eu1");
+  await claimServer("srv_eu1");
+  assert.equal(host.applied, 1);
+  assert.doesNotMatch(host.yaml, /deplo-cluster-relay/);
+  assert.deepEqual(await trail(), [
+    "Setting aside what another Deplo left on eu-1",
+    "Took the relay another Deplo left out of the proxy on eu-1",
+  ]);
+});
