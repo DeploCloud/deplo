@@ -34,6 +34,7 @@ import { listStandbys } from "./placement";
 import { leaderHost } from "./host";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
+import { clusterRotations } from "./rotations";
 import { getServerById } from "../servers/roster";
 import {
   AGENT_SHORT_FENCE_VERSION,
@@ -247,7 +248,7 @@ export function forgetLeaderRoster(clusterId?: string): void {
  */
 export async function pushLeaderRoster(
   cluster: Cluster,
-  opts: { onlyIfChanged?: boolean } = {},
+  opts: { onlyIfChanged?: boolean; requireRotations?: boolean } = {},
 ): Promise<boolean> {
   const host = await leaderHost(cluster);
   if (!host) return false;
@@ -296,10 +297,13 @@ export async function pushLeaderRoster(
     singleWriter: false,
     standby: true,
   }));
+  // A member named by its old certificate answers with its new one (ADR-0050); an older leader ignores them.
+  const rotations = await clusterRotations(cluster.id);
   const roster = {
     members,
     placement,
     ...(standbys.length > 0 ? { standbys } : {}),
+    ...(rotations.length > 0 ? { rotations } : {}),
   };
   const body = (epoch: number) =>
     callClusterLeader(
@@ -309,11 +313,16 @@ export async function pushLeaderRoster(
     );
   const epoch = Math.max(cluster.leaderEpoch, 1);
   const signature = JSON.stringify({ epoch, ...roster });
-  if (opts.onlyIfChanged && pushed.get(cluster.id) === signature) return false;
+  if (
+    opts.onlyIfChanged &&
+    !opts.requireRotations &&
+    pushed.get(cluster.id) === signature
+  )
+    return false;
+  let reply: Uint8Array;
   try {
-    await body(epoch);
+    reply = await body(epoch);
     pushed.set(cluster.id, signature);
-    return true;
   } catch (e) {
     const snap = await readLeaderSnapshot(cluster).catch(() => null);
     const held = snap?.clusters[cluster.id]?.epoch ?? 0;
@@ -322,9 +331,24 @@ export async function pushLeaderRoster(
       .update(clustersTable)
       .set({ leaderEpoch: held })
       .where(eq(clustersTable.id, cluster.id));
-    await body(held);
+    reply = await body(held);
     pushed.delete(cluster.id);
-    return true;
+  }
+  if (opts.requireRotations && !keptRotations(reply))
+    throw new Error(
+      `The cluster leader on ${host.name} is too old to keep a key rotation. Deplo updates it on its own.`,
+    );
+  return true;
+}
+
+/** A leader that keeps rotations says how many it took; an older one only says ok. */
+function keptRotations(reply: Uint8Array): boolean {
+  try {
+    return (
+      typeof JSON.parse(new TextDecoder().decode(reply))?.rotations === "number"
+    );
+  } catch {
+    return false;
   }
 }
 

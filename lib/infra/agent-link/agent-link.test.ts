@@ -239,6 +239,7 @@ test("a second link with the same identity is refused while the first answers, a
   const first = await agent.link(door);
   await up;
   assert.equal(await helloOver(), AGENT_VERSION);
+  const old = agent.fingerprint;
 
   const second = await agent.link(door);
   assert.equal(second.status, 101, "only the handshake can tell");
@@ -248,6 +249,9 @@ test("a second link with the same identity is refused while the first answers, a
   await eventually(() => alerts.length > 0);
   assert.equal(alerts[0].key, "server_identity_copied");
   assert.match(alerts[0].title, /^Two machines are using the identity of /);
+  // The one that kept its link gets a new key over it, so the copy is locked out for good.
+  await eventually(() => agent.fingerprint !== old, 5_000);
+  assert.equal(await stillOpen(first), "open");
 
   // A link that stopped answering was the same machine before it went quiet: the new one replaces it.
   first.freeze();

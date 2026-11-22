@@ -162,10 +162,17 @@ async function holdLink(
     const open = currentLink(serverId);
     if (open && (await answers(open))) {
       identityCopied(claimed, "both-answer");
+      void import("../../agent/cert-renewal").then((m) =>
+        m.rotateAfterCopy(serverId),
+      );
       return void ws.close(LINK_CLOSE.copied, "identity in use");
     }
     if (ws.readyState !== ws.OPEN) return;
-    if (still.kind === "next") await promoteNextCert(serverId, fingerprint);
+    if (still.kind === "next" && (await promoteNextCert(serverId, fingerprint)))
+      // A rotation cut halfway: the retired key is cut off at every cluster relay now, as a whole one does.
+      void import("../../data/clusters/relay").then((m) =>
+        m.pushRostersForServer(serverId),
+      );
     // As the door admits it, before anyone hears it come up (ADR-0041).
     await recordFirstLink(serverId);
     await recordLinkOrigin(

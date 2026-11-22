@@ -189,6 +189,29 @@ test("a copy that missed a rotation is refused and flagged, and the original kee
   );
 });
 
+test("a copy caught beside the original is locked out for good: the original gets a new key at once", async () => {
+  // A key a day old, nowhere near its rotation.
+  const identity = await aged(1, 364);
+  const original = await fake({ identity });
+  await enrolled("srv_vm", original);
+  const up = linkUp("srv_vm");
+  const kept = await original.link(door);
+  await up;
+  const old = original.fingerprint;
+
+  const copy = await fake({ identity });
+  assert.equal(await (await copy.link(door)).closed, LINK_CLOSE.copied);
+  await eventually(() => original.fingerprint !== old, 5_000);
+  assert.ok(currentLink("srv_vm"), "the original's link stays");
+  assert.equal(await helloOver("srv_vm"), AGENT_VERSION);
+
+  // The original goes off: its link no longer answers, and the copy still is refused.
+  kept.drop();
+  await eventually(() => !currentLink("srv_vm"));
+  assert.equal(await (await copy.link(door)).closed, LINK_CLOSE.copied);
+  assert.match(alerts.at(-1)!.body, /gave up when Deplo last renewed it/);
+});
+
 test("a stranger presenting a retired fingerprint without its key is refused and flags nothing", async () => {
   const original = await fake({ identity: await aged(40, 300) });
   await enrolled("srv_vm", original);

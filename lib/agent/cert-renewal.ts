@@ -16,7 +16,8 @@ import {
   stageNextCert,
 } from "../data/servers/agent-identity";
 import { instanceFrozen } from "../data/deplo-move/freeze";
-import { pushRostersForServer } from "../data/clusters/relay";
+import { clustersOfServer, pushRostersForServer } from "../data/clusters/relay";
+import { announceNextKey } from "../data/clusters/rotations";
 
 export const CERT_RENEWAL_CAPABILITY = "cert-renewal";
 
@@ -43,25 +44,43 @@ function leafNotAfter(certPem: string): Date | null {
 export function rotationDue(certPem: string, now = Date.now()): boolean | null {
   const d = leafDates(certPem);
   if (!d) return null;
-  return (
-    d.to.getTime() - now <= RENEWAL_WINDOW_MS ||
-    now - d.from.getTime() >= KEY_ROTATION_MS
-  );
+  return dateNear(d, now) || now - d.from.getTime() >= KEY_ROTATION_MS;
 }
+
+// Past this the cluster's members would refuse the certificate itself: it rotates whoever cannot hear of it.
+const dateNear = (d: { to: Date }, now: number) =>
+  d.to.getTime() - now <= RENEWAL_WINDOW_MS;
 
 type Renewal = { renewed: boolean; reason: string };
 const renewing = new Map<string, Promise<Renewal>>();
 
 /** One rotation per server at a time: a second would replace the agent's pending key under the first. */
-export function renewAgentCertIfDue(serverId: string): Promise<Renewal> {
+export function renewAgentCertIfDue(
+  serverId: string,
+  opts: { now?: boolean } = {},
+): Promise<Renewal> {
   const running = renewing.get(serverId);
   if (running) return running;
-  const run = renewNow(serverId).finally(() => renewing.delete(serverId));
+  const run = renewNow(serverId, !!opts.now).finally(() =>
+    renewing.delete(serverId),
+  );
   renewing.set(serverId, run);
   return run;
 }
 
-async function renewNow(serverId: string): Promise<Renewal> {
+const lockedOut = new Map<string, number>();
+
+/** A copy was caught: the server that kept its link gets a new key now, so the copy is refused for good (ADR-0050). */
+export function rotateAfterCopy(serverId: string): void {
+  if (Date.now() - (lockedOut.get(serverId) ?? 0) < 10 * 60_000) return;
+  lockedOut.set(serverId, Date.now());
+  void renewAgentCertIfDue(serverId, { now: true }).then(
+    (r) => console.log(`[cert-renewal] ${serverId} after a copy: ${r.reason}`),
+    (e) => console.warn(`[cert-renewal] ${serverId} after a copy: ${e}`),
+  );
+}
+
+async function renewNow(serverId: string, now: boolean): Promise<Renewal> {
   const [row] = await getDb()
     .select({
       ip: serversTable.ip,
@@ -76,7 +95,7 @@ async function renewNow(serverId: string): Promise<Renewal> {
   const due = rotationDue(row.certPem);
   if (due === null)
     return { renewed: false, reason: "unparseable stored cert" };
-  if (!due) return { renewed: false, reason: "not due" };
+  if (!due && !now) return { renewed: false, reason: "not due" };
 
   const conn = await connectAgent(serverId);
   try {
@@ -92,6 +111,19 @@ async function renewNow(serverId: string): Promise<Renewal> {
     const signed = await signAgentCsr(csrPem, dialHosts);
     // Staged before the agent installs it: a rotation cut halfway leaves a key the door still takes.
     await stageNextCert(serverId, signed);
+    // A cluster's servers trust each other by certificate: each holds the next one first (ADR-0050).
+    if ((await clustersOfServer(serverId)).length > 0) {
+      const missing = await announceNextKey(serverId);
+      const d = leafDates(row.certPem);
+      if (missing.length > 0 && !(d && dateNear(d, Date.now()))) {
+        await dropNextCert(serverId, signed.fingerprint);
+        await pushRostersForServer(serverId);
+        return {
+          renewed: false,
+          reason: `waiting for ${missing.join(", ")} to hold its next key`,
+        };
+      }
+    }
     const res = await conn.installRenewedCert({
       certPem: signed.certPem,
       caPem: "",
@@ -130,7 +162,8 @@ export async function sweepExpiringAgentCerts(): Promise<void> {
   for (const s of rows) {
     try {
       const r = await renewAgentCertIfDue(s.id);
-      if (r.renewed) console.log(`[cert-renewal] ${s.name}: ${r.reason}`);
+      if (r.renewed || r.reason.startsWith("waiting for"))
+        console.log(`[cert-renewal] ${s.name}: ${r.reason}`);
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       console.warn(`[cert-renewal] ${s.name} (${s.id}): ${why}`);

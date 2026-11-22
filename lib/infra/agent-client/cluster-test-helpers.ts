@@ -78,6 +78,11 @@ export interface FakeClusterHost {
   certReads: { hosts: string[]; known: Record<string, string> }[];
   /** Every network table this host's agent was handed, in order, and how it says it reaches a peer (ADR-0047). */
   networkTables: ClusterNetworkTable[];
+  /** Every setClusterRotations, in order. */
+  rotationTables: {
+    clusterId: string;
+    rotations: { from: string; to: string }[];
+  }[];
   networkPath: (fingerprint: string) => "direct" | "relay" | "none";
   /** Every DNS zone table it was handed (ADR-0049), and what its agent answers to one. */
   zoneTables: SetClusterZoneRequest[];
@@ -432,6 +437,11 @@ export function fakeClusterHosts(): {
             })),
           };
         }),
+      setClusterRotations: (clusterId, rotations) =>
+        guard(() => {
+          h.rotationTables.push({ clusterId, rotations });
+          return { rotations: rotations.length };
+        }),
       setClusterZone: (table) =>
         guard(() => {
           h.zoneTables.push(table);
@@ -487,6 +497,7 @@ export function fakeClusterHosts(): {
         imageExpects: [],
         forwarders: [],
         networkTables: [],
+        rotationTables: [],
         networkPath: () => "direct",
         zoneTables: [],
         zoneReport: (table) =>

@@ -26,6 +26,7 @@ export function clusterRpc(
   | "setClusterForwarders"
   | "readProxyCertificates"
   | "setClusterNetwork"
+  | "setClusterRotations"
   | "setClusterZone"
   | "setGeoTable"
   | "setClusterReplicas"
@@ -172,6 +173,14 @@ export function clusterRpc(
               : "none",
         })),
       };
+    },
+    async setClusterRotations(clusterId, rotations) {
+      const r = await unary(
+        client.setClusterRotations.bind(client),
+        { clusterId, rotations },
+        CLUSTER_CALL_TIMEOUT_MS,
+      );
+      return { rotations: r.rotations };
     },
     async setClusterZone(table) {
       const r = await unary(
