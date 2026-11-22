@@ -899,7 +899,9 @@ A DNS zone delegated to a **cluster** (`go.example.com`): every member answers f
 and names only the members it hears on the **cluster network**, so a domain pointed into it needs
 no record edited when a server stops. Its **name servers** are the up to four members named at the
 registrar. In copy it is "DNS zone", and the answer comes from "the cluster"
-([ADR-0049](docs/adr/0049-a-cluster-can-answer-for-its-own-dns-zone.md)).
+([ADR-0049](docs/adr/0049-a-cluster-can-answer-for-its-own-dns-zone.md)). Under a domain connected
+for Automatic DNS, Deplo makes it (`cluster.<domain>`) and keeps its records in Cloudflare; the
+choice at Add domain is "Let the cluster answer" or "Cloudflare Tunnel".
 _Avoid_: nameserver mode, DNS backend (in copy), native DNS (in copy).
 
 **Location table**:
