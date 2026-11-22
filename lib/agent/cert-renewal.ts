@@ -72,7 +72,7 @@ const lockedOut = new Map<string, number>();
 
 /** A copy was caught: the server that kept its link gets a new key now, so the copy is refused for good (ADR-0050). */
 export function rotateAfterCopy(serverId: string): void {
-  if (Date.now() - (lockedOut.get(serverId) ?? 0) < 3_600_000) return;
+  if (Date.now() - (lockedOut.get(serverId) ?? 0) < 10 * 60_000) return;
   lockedOut.set(serverId, Date.now());
   void renewAgentCertIfDue(serverId, { now: true }).then(
     (r) => console.log(`[cert-renewal] ${serverId} after a copy: ${r.reason}`),
