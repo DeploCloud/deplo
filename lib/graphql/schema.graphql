@@ -3205,6 +3205,11 @@ type Domain {
   proxied: Boolean
 
   """
+  When Deplo last rewrote this domain's DNS record (a switch from the tunnel to the cluster). Resolvers may serve the old record for up to 5 minutes after: the domain row counts that wait down.
+  """
+  recordSwitchedAt: String
+
+  """
   Hostname this domain answers a permanent 301 to (the canonical half of its www / non-www pair), or null when it serves the app itself.
   """
   redirectTo: String
