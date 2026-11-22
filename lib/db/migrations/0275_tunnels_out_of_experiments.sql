@@ -1,1 +1,0 @@
-ALTER TABLE "instance_settings" DROP COLUMN "experiment_tunnels";
