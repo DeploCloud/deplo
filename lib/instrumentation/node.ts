@@ -36,6 +36,12 @@ export async function register(): Promise<void> {
   } catch (e) {
     console.error("[deplo] Traefik could not be kept on its pin:", e);
   }
+  try {
+    const { startPanelClaims } = await import("@/lib/data/servers/panel-claim");
+    startPanelClaims();
+  } catch (e) {
+    console.error("[deplo] servers could not be claimed when they link:", e);
+  }
   // Early, so servers relink while the jobs below make their first calls (ADR-0040).
   try {
     const { startAgentLinkListener } =

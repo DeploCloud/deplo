@@ -179,6 +179,8 @@ export const DOCS = {
   "servers.readiness":
     "operations/servers/add-a-server#check-it-before-you-trust-it",
   "servers.teams": "operations/servers/add-a-server#let-teams-use-it",
+  "servers.anotherDeplo":
+    "operations/servers/add-a-server#a-machine-that-ran-another-deplo",
   "servers.cleanup": "operations/servers/cleanup",
   "servers.cleanupScopes": "operations/servers/cleanup#what-gets-cleaned",
   "servers.cleanupSettings": "operations/servers/cleanup#settings",

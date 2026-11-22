@@ -184,7 +184,10 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   (`lib/agent/cert-renewal.ts`), and a retired key or a second live link is a copy
   (`lib/data/servers/agent-identity.ts`). Nothing is unique by address, the host running Deplo is
   `servers.deplo_host` (`isDeploHostServer`), and `isThisMachineAddress` only judges an address
-  someone handed Deplo, never which server is which. **A cluster member's key rotates only once
+  someone handed Deplo, never which server is which.
+  **A server agent belongs to one Deplo**: it stamps its CA's key and sets aside what another Deplo
+  left (`ClaimServer`, `lib/data/servers/panel-claim.ts`), and every proxy orders from the authority
+  Deplo names (`lib/deploy/acme-authority.ts`), Pebble only in `DEPLO_TEST_ACME_DIRECTORY` test mode. **A cluster member's key rotates only once
   every server, relay and leader of its clusters holds the next one** (`lib/data/clusters/rotations.ts`,
   `SetClusterRotations`): a table naming the old certificate accepts the new, never the reverse.
 - **A backup destination is a bucket OR a server's disk** (ADR-0019). Which agent handles one

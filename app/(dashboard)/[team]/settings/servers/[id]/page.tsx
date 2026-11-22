@@ -26,6 +26,8 @@ import { CheckStatusButton } from "../check-status-button";
 import { ServerDetailTabs } from "./server-detail-tabs";
 import { ServerDetailHeader } from "./server-detail-header";
 import { ServerClusterState } from "./server-cluster-state";
+import { LeftByAnotherDeploNote } from "./left-by-another-deplo";
+import { leftByAnotherDeplo } from "@/lib/data/servers/panel-claim";
 
 export async function generateMetadata(
   props: PageProps<"/[team]/settings/servers/[id]">,
@@ -46,6 +48,7 @@ export default async function ServerDetailPage(
   if (server.importOnly) notFound();
 
   const memberOf = await clusterOfServer(id);
+  const leftByAnother = leftByAnotherDeplo(id);
   const expectedAgentVersion = AGENT_VERSION;
   const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
     await Promise.all([
@@ -114,6 +117,7 @@ export default async function ServerDetailPage(
           ip={hydrated.ip}
           connectedFrom={isDeploHost ? null : (server.connectedFrom ?? null)}
         />
+        {leftByAnother && <LeftByAnotherDeploNote state={leftByAnother} />}
         {memberOf && (
           <ServerClusterState
             serverId={server.id}

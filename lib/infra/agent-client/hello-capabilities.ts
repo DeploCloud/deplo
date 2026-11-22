@@ -89,6 +89,8 @@ export const REROUTE_PULL_CAPABILITY = "reroute.pull";
 export const REROUTE_SERVICES_CAPABILITY = "reroute.services";
 // Without it Deplo cannot prove an address reaches the server, so the addresses it was added at stay in use.
 export const ADDRESS_PROVE_CAPABILITY = "address.prove";
+// ClaimServer: the agent sets aside what another Deplo left on its machine (ADR-0050).
+export const PANEL_CLAIM_CAPABILITY = "panel.claim";
 
 // The deploy's restart rule: the agent restarts an app that stops answering.
 export const RESTART_CAPABILITY = "health.restart";

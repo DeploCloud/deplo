@@ -109,6 +109,11 @@ async function clusterHosts(): Promise<Host[]> {
   return hosts;
 }
 
+/** Whether Deplo runs a cluster leader or relay on this server. */
+export async function runsClusterBinary(serverId: string): Promise<boolean> {
+  return (await clusterHosts()).some((h) => h.server.id === serverId);
+}
+
 /** The cluster, among those the leader leads, with a server that stopped answering and whose work may still be moving. */
 async function movingCluster(host: Host): Promise<string | null> {
   if (host.leads.length === 0) return null;
