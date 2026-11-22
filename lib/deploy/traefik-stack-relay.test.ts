@@ -134,6 +134,7 @@ test("the relay's route outranks any plain route for the panel's own name", () =
   });
   const relay = panelFileOf(on).http.routers["deplo-panel-relay"];
   assert.ok(
-    relay.priority > "Host(`a-very-long-panel-name.example.com`)".length * 100,
+    Number(relay.priority) >
+      "Host(`a-very-long-panel-name.example.com`)".length * 100,
   );
 });

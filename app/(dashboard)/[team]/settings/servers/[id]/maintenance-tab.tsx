@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DeploMark } from "@/components/logo";
 import { gqlAction } from "@/lib/graphql-client";
+import { TraefikRestartWords } from "@/components/servers/traefik-restart-words";
 import type { ServerSummary } from "./server-detail-tabs";
 import { DocsLink } from "@/components/ui/docs-link";
 
@@ -204,9 +205,7 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Restart Traefik on {server.name}?</DialogTitle>
             <DialogDescription>
-              <strong>Every site on this server is unreachable</strong> for the
-              few seconds Traefik takes to come back. The containers keep
-              running.
+              <TraefikRestartWords cluster={server.clusterName ?? null} />
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

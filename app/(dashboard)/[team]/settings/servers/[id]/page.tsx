@@ -150,6 +150,7 @@ export default async function ServerDetailPage(
               ? agentReach(hydrated)
               : "usable",
             agentUpdate,
+            clusterName: memberOf?.name ?? null,
           }}
           teams={teams}
           accessTeamIds={teamIds}
