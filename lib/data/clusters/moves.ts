@@ -88,7 +88,8 @@ export async function moveLanded(
   });
   const all = [...addrs.v6, ...addrs.v4];
   let ok = names.length === 0 || all.length === 0;
-  while (!ok && Date.now() < end) {
+  // A newer move, or one that ended, stops this wait.
+  while (!ok && Date.now() < end && moves().get(appId)?.to === to) {
     ok = (
       await Promise.all(
         names.map(async (n) => {

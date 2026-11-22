@@ -1,4 +1,4 @@
-import { test, before, after, afterEach } from "node:test";
+import { test, before, after, afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
@@ -32,10 +32,10 @@ before(async () => {
     ip: "203.0.113.2",
     host: "203.0.113.2",
   });
-  await seedApp(db, { id: "prj_web", slug: "web", serverId: "srv_2" });
+  await seedApp(db, { id: "prj_moves", slug: "moves", serverId: "srv_2" });
   await db.insert(domainsTable).values({
     id: "d1",
-    appId: "prj_web",
+    appId: "prj_moves",
     name: "web.example.com",
     status: "valid",
     isPrimary: true,
@@ -48,13 +48,14 @@ after(async () => {
   __resetTestDb();
   await pg.close();
 });
+beforeEach(() => __forgetMoves());
 afterEach(() => {
   __forgetMoves();
   __setMoveProbeForTest(null);
 });
 
 const app = {
-  id: "prj_web",
+  id: "prj_moves",
   serverId: "srv_1",
   clusterId: null,
   volumes: [],
@@ -63,26 +64,40 @@ const app = {
 };
 
 test("an App reads Moving to its new server from the leader's decision until it answers there with a valid certificate", async () => {
-  moveStarted("prj_web", "srv_2");
+  moveStarted("prj_moves", "srv_2");
   const state = await appMoveState(app, true);
   assert.equal(state.move?.to, "eu-2");
-  let asked = 0;
+  const asked: string[] = [];
   __setMoveProbeForTest(async (address, name) => {
-    assert.equal(address, "203.0.113.2");
-    assert.equal(name, "web.example.com");
-    return ++asked >= 3;
+    asked.push(`${address} ${name}`);
+    return asked.length >= 3;
   });
-  assert.equal(await moveLanded("prj_web", "srv_2", { every: 1 }), true);
-  assert.equal(asked, 3);
+  assert.equal(await moveLanded("prj_moves", "srv_2", { every: 1 }), true);
+  assert.deepEqual(asked, Array(3).fill("203.0.113.2 web.example.com"));
   assert.equal((await appMoveState(app, false)).move, null);
 });
 
 test("a move whose new server never answers with a valid certificate stops reading Moving after the wait", async () => {
-  moveStarted("prj_web", "srv_2");
+  moveStarted("prj_moves", "srv_2");
   __setMoveProbeForTest(async () => false);
   assert.equal(
-    await moveLanded("prj_web", "srv_2", { every: 1, within: 20 }),
+    await moveLanded("prj_moves", "srv_2", { every: 1, within: 20 }),
     false,
   );
   assert.equal((await appMoveState(app, true)).move, null);
+});
+
+test("a newer move, or one that ended, stops the wait for an older one", async () => {
+  moveStarted("prj_moves", "srv_2");
+  let asked = 0;
+  __setMoveProbeForTest(async () => {
+    asked++;
+    __forgetMoves();
+    return false;
+  });
+  assert.equal(
+    await moveLanded("prj_moves", "srv_2", { every: 1, within: 5_000 }),
+    false,
+  );
+  assert.equal(asked, 1);
 });
