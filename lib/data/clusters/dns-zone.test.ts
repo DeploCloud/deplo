@@ -55,6 +55,7 @@ import {
   __setAgentAddressesForTest,
 } from "../servers/addresses";
 import { USER_1 } from "../identity-test-helpers";
+import { recordPlacement } from "./placement";
 
 // ADR-0049 phase 1: a cluster answers for its own DNS zone; Deplo hands every member the zone and picks name servers.
 dissolveHarness();
@@ -157,6 +158,14 @@ test("every member is handed the zone under its own certificate; the name server
       {
         name: "go.example.com",
         names: ["shop-example-com.go.example.com", "shop.go.example.com"],
+        // Its App runs on one server: its names are answered with it first.
+        homes: [
+          {
+            name: "shop-example-com.go.example.com",
+            fingerprint: FP[MEMBERS[0]],
+          },
+          { name: "shop.go.example.com", fingerprint: FP[MEMBERS[0]] },
+        ],
       },
     ]);
     assert.deepEqual(
@@ -457,4 +466,39 @@ test("a domain answered by the zone is valid when it resolves to the cluster's s
     null,
     "nothing left to judge",
   );
+});
+
+test("a one-server App's name is answered with its server first, follows a placement change, and not once load-balanced", async () => {
+  const eu = await clusterOf("eu", MEMBERS);
+  await answeringDomain(eu.id, "dom_in", "shop.go.example.com");
+  await asAdmin(() => addClusterDnsZone(eu.id, "go.example.com"));
+  await syncClusterZone(eu.id);
+  const home = () =>
+    lastTable(MEMBERS[1])!
+      .zones[0].homes.map((h) => `${h.name} ${h.fingerprint}`)
+      .join();
+  assert.equal(home(), `shop.go.example.com ${FP[MEMBERS[0]]}`);
+  const until = async (want: string) => {
+    for (let i = 0; i < 100 && home() !== want; i++)
+      await new Promise((r) => setTimeout(r, 20));
+    assert.equal(home(), want);
+  };
+  // A failover moves it: Deplo pushes the new home without being asked.
+  await recordPlacement({
+    clusterId: eu.id,
+    kind: "app",
+    workloadId: "prj_web",
+    members: [MEMBERS[2]],
+    epoch: 2,
+  });
+  await until(`shop.go.example.com ${FP[MEMBERS[2]]}`);
+  // Load balancing runs it on every server: nearest first, no home.
+  await recordPlacement({
+    clusterId: eu.id,
+    kind: "app",
+    workloadId: "prj_web",
+    members: MEMBERS,
+    epoch: 3,
+  });
+  await until("");
 });

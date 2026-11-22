@@ -53,6 +53,7 @@ import {
   setServerPlace,
   type ServerPlace,
 } from "./server-place";
+import { listWorkloadPlacements } from "./placement";
 import { fingerprintOf } from "./relay";
 import { getClusterById, requireClusterAdmin } from "./roster";
 
@@ -318,6 +319,7 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           }
         : null;
     const fpOf = new Map(members.map((m) => [m.serverId, m.fingerprint]));
+    const homes = await appHomes([...byZone.values()].flat());
     const heard = new Map(
       (await statesOf(clusterId)).map((s) => [s.serverId, s.state]),
     );
@@ -373,6 +375,10 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
           zones: zones.map((z) => ({
             name: z.name,
             names: byZone.get(z.id)!.map((d) => d.target),
+            homes: byZone.get(z.id)!.flatMap((d) => {
+              const fp = fpOf.get(homes.get(d.appId) ?? "");
+              return fp ? [{ name: d.target, fingerprint: fp }] : [];
+            }),
           })),
           servers,
           nameServers,
@@ -440,6 +446,23 @@ export async function syncClusterZone(clusterId: string): Promise<void> {
   });
   // Outside the lock: routing an App again may itself ask for the zone to be synced.
   if (routes) await (routes as () => Promise<void>)();
+}
+
+/** The server each App runs on when it runs on one at a time: its names are answered with it first. */
+async function appHomes(
+  domains: { appId: string; serverId: string | null }[],
+): Promise<Map<string, string>> {
+  const placed = await listWorkloadPlacements("app", [
+    ...new Set(domains.map((d) => d.appId)),
+  ]);
+  const out = new Map<string, string>();
+  for (const d of domains) {
+    const on = new Set(
+      (placed.get(d.appId) ?? []).map((p) => p.serverId).filter(Boolean),
+    );
+    if (on.size < 2 && d.serverId) out.set(d.appId, d.serverId);
+  }
+  return out;
 }
 
 /** Fire-and-forget for a change that moves what the zone answers. */

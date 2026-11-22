@@ -3380,6 +3380,18 @@ export interface ClusterZone {
   name: string;
   /** The names answered with the cluster's healthy servers; the zone itself may be one. */
   names: string[];
+  /**
+   * A name whose App runs on one server at a time is answered with that server first, then the other healthy
+   * servers nearest first (Hello "dns.home"). Health still wins: a home not healthy is answered as if not named.
+   */
+  homes: ClusterZoneHome[];
+}
+
+export interface ClusterZoneHome {
+  /** One of the zone's names. */
+  name: string;
+  /** The member that runs its App, by certificate. */
+  fingerprint: string;
 }
 
 export interface ClusterZoneServer {
@@ -26532,7 +26544,7 @@ export const ClusterZoneCertificate: MessageFns<ClusterZoneCertificate> = {
 };
 
 function createBaseClusterZone(): ClusterZone {
-  return { name: "", names: [] };
+  return { name: "", names: [], homes: [] };
 }
 
 export const ClusterZone: MessageFns<ClusterZone> = {
@@ -26542,6 +26554,9 @@ export const ClusterZone: MessageFns<ClusterZone> = {
     }
     for (const v of message.names) {
       writer.uint32(18).string(v!);
+    }
+    for (const v of message.homes) {
+      ClusterZoneHome.encode(v!, writer.uint32(26).fork()).join();
     }
     return writer;
   },
@@ -26575,6 +26590,14 @@ export const ClusterZone: MessageFns<ClusterZone> = {
             message.names.push(reader.string());
             continue;
           }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.homes.push(ClusterZoneHome.decode(reader, reader.uint32()));
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -26591,6 +26614,7 @@ export const ClusterZone: MessageFns<ClusterZone> = {
     return {
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       names: globalThis.Array.isArray(object?.names) ? object.names.map((e: any) => globalThis.String(e)) : [],
+      homes: globalThis.Array.isArray(object?.homes) ? object.homes.map((e: any) => ClusterZoneHome.fromJSON(e)) : [],
     };
   },
 
@@ -26602,6 +26626,9 @@ export const ClusterZone: MessageFns<ClusterZone> = {
     if (message.names?.length) {
       obj.names = message.names;
     }
+    if (message.homes?.length) {
+      obj.homes = message.homes.map((e) => ClusterZoneHome.toJSON(e));
+    }
     return obj;
   },
 
@@ -26612,6 +26639,92 @@ export const ClusterZone: MessageFns<ClusterZone> = {
     const message = createBaseClusterZone();
     message.name = object.name ?? "";
     message.names = object.names?.map((e) => e) || [];
+    message.homes = object.homes?.map((e) => ClusterZoneHome.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseClusterZoneHome(): ClusterZoneHome {
+  return { name: "", fingerprint: "" };
+}
+
+export const ClusterZoneHome: MessageFns<ClusterZoneHome> = {
+  encode(message: ClusterZoneHome, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(10).string(message.name);
+    }
+    if (message.fingerprint !== "") {
+      writer.uint32(18).string(message.fingerprint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterZoneHome {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterZoneHome();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.fingerprint = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterZoneHome {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      fingerprint: isSet(object.fingerprint) ? globalThis.String(object.fingerprint) : "",
+    };
+  },
+
+  toJSON(message: ClusterZoneHome): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.fingerprint !== "") {
+      obj.fingerprint = message.fingerprint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterZoneHome>, I>>(base?: I): ClusterZoneHome {
+    return ClusterZoneHome.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterZoneHome>, I>>(object: I): ClusterZoneHome {
+    const message = createBaseClusterZoneHome();
+    message.name = object.name ?? "";
+    message.fingerprint = object.fingerprint ?? "";
     return message;
   },
 };

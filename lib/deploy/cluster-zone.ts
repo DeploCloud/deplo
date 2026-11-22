@@ -109,7 +109,12 @@ export type ClusterZoneInput = {
   clusterId: string;
   /** The certificate of the server the request is for. */
   self: string;
-  zones: { name: string; names: string[] }[];
+  /** `homes`: the member that runs a name's App when it runs on one server at a time, answered first. */
+  zones: {
+    name: string;
+    names: string[];
+    homes?: { name: string; fingerprint: string }[];
+  }[];
   servers: ZoneServer[];
   /** ns1, ns2, ... by certificate. */
   nameServers: string[];
@@ -129,7 +134,17 @@ export function renderClusterZone(
     selfFingerprint: input.self,
     zones: [...input.zones]
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((z) => ({ name: z.name, names: [...new Set(z.names)].sort() })),
+      .map((z) => ({
+        name: z.name,
+        names: [...new Set(z.names)].sort(),
+        homes: [
+          ...new Map(
+            (z.homes ?? [])
+              .filter((h) => z.names.includes(h.name))
+              .map((h) => [h.name, h]),
+          ).values(),
+        ].sort((a, b) => a.name.localeCompare(b.name)),
+      })),
     servers: input.servers.map((s) => ({
       fingerprint: s.fingerprint,
       addresses: [...s.v4, ...s.v6].slice(0, 8),
