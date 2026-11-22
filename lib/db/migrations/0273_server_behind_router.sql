@@ -1,0 +1,1 @@
+ALTER TABLE "servers" ADD COLUMN "behind_router" boolean DEFAULT false NOT NULL;

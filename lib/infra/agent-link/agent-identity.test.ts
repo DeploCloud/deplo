@@ -20,7 +20,11 @@ import {
   USER_1,
 } from "../../data/identity-test-helpers";
 import { completeBootstrap } from "../../data/servers/agent-handshake";
-import { __setCopyAlertForTest } from "../../data/servers/agent-identity";
+import {
+  __setCopyAlertForTest,
+  recordLinkOrigin,
+} from "../../data/servers/agent-identity";
+import { connectsFromElsewhere } from "../../data/servers/addresses";
 import { addServer } from "../../data/servers/enrollment";
 import { getServerById } from "../../data/servers/roster";
 import { runWithIdentity } from "../../auth/request-context";
@@ -275,6 +279,35 @@ test("a server added without an address takes the public address its agent repor
   await agent.link(door);
   await again;
   assert.equal((await getServerById("srv_new"))?.ip, "10.1.2.3");
+});
+
+test("behind a router is decided with the agent's own addresses, so a dual-stack server on its IPv6 is not", async () => {
+  await seedServerRow(db, {
+    id: "srv_dual",
+    ip: "203.0.113.9",
+    host: "203.0.113.9",
+  });
+  await recordLinkOrigin("srv_dual", "2001:db8::5", [
+    "203.0.113.9",
+    "2001:db8::5",
+  ]);
+  let row = (await getServerById("srv_dual"))!;
+  assert.equal(row.connectedFrom, "2001:db8::5");
+  assert.equal(connectsFromElsewhere(row), null);
+
+  // A virtual machine with only a private address, reached through its router's.
+  await recordLinkOrigin("srv_dual", "198.51.100.20", []);
+  row = (await getServerById("srv_dual"))!;
+  assert.equal(connectsFromElsewhere(row), "198.51.100.20");
+
+  await seedServerRow(db, { id: "srv_lan", ip: "", host: "" });
+  await recordLinkOrigin("srv_lan", "198.51.100.20", []);
+  assert.equal(
+    connectsFromElsewhere((await getServerById("srv_lan"))!),
+    "198.51.100.20",
+  );
+  await recordLinkOrigin("srv_lan", "127.0.0.1", []);
+  assert.equal(connectsFromElsewhere((await getServerById("srv_lan"))!), null);
 });
 
 // A certificate whose key is a rotation old or more: linking with it rotates the key at once.

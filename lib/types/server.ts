@@ -63,4 +63,6 @@ export interface Server {
   deploHost?: boolean;
   /** Where its agent link last came from; information only, never an identity. */
   connectedFrom?: string;
+  /** That address was none of its own: it sits behind a router. */
+  behindRouter?: boolean;
 }

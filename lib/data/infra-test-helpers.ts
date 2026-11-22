@@ -54,6 +54,7 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     leftBehindAt: opts.leftBehindAt,
     deploHost: opts.deploHost,
     connectedFrom: opts.connectedFrom,
+    behindRouter: opts.behindRouter,
   };
 }
 
