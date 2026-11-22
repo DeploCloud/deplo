@@ -129,22 +129,30 @@ async function pointProxyAtAuthority(
   dropRelay: boolean,
 ): Promise<void> {
   const authority = acmeAuthority();
+  let changed = false;
   const res = await withTraefikStackLock(serverId, async () => {
     // Empty: Deplo did not install this server's Traefik, so it is not Deplo's to change.
     let yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
     if (!yaml) return null;
     const relay = dropRelay && relayRouteHost(yaml) !== null;
     if (relay) yaml = withRelayRoute(yaml, null);
-    const next = withAcmeAuthority(yaml, authority) ?? (relay ? yaml : null);
-    return next ? applyTraefikConfig(serverId, { composeYaml: next }) : null;
+    const next = withAcmeAuthority(yaml, authority);
+    changed = next !== null;
+    const out = next ?? (relay ? yaml : null);
+    return out ? applyTraefikConfig(serverId, { composeYaml: out }) : null;
   });
   if (!res) return;
   const who = authority.directory ?? "Let's Encrypt";
+  const what = changed
+    ? `point the proxy on ${name} at ${who}`
+    : `take the relay another Deplo left out of the proxy on ${name}`;
   await recordActivity(
     "server",
     res.ok
-      ? `The proxy on ${name} now gets its certificates from ${who}`
-      : `Could not point the proxy on ${name} at ${who}: ${res.error || "it did not restart"}. Deplo retries when the server reconnects.`,
+      ? changed
+        ? `The proxy on ${name} now gets its certificates from ${who}`
+        : `Took the relay another Deplo left out of the proxy on ${name}`
+      : `Could not ${what}: ${res.error || "it did not restart"}. Deplo retries when the server reconnects.`,
     "Deplo",
   );
 }
