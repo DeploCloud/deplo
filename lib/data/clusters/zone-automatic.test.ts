@@ -29,7 +29,7 @@ import {
   dissolveHarness,
   hosts,
 } from "../cluster-dissolve-test-helpers";
-import { addDomain, removeDomain } from "../domains/crud";
+import { addDomain, removeDomain, updateDomain } from "../domains/crud";
 import { moveDomainToCluster } from "../domains/cluster-answer";
 import {
   __resetDnsResolve4ForTest,
@@ -42,6 +42,7 @@ import {
   __setAgentAddressesForTest,
 } from "../servers/addresses";
 import { syncClusterAnswerDns } from "./answer-dns";
+import { deleteCluster } from "./dissolve";
 import { __setDelegationDepsForTest } from "./dns-delegation";
 import { clusterDnsView, reconcileClusterZones } from "./dns-zone";
 import {
@@ -240,6 +241,11 @@ test("an admin's first domain makes the cluster's zone, writes NS, glue and both
     true,
   );
 
+  // Renaming it would leave its records behind: refused, with the way to do it.
+  await assert.rejects(
+    asAdmin(() => updateDomain(d.id, { name: "www.example.com" })),
+    /Add www\.example\.com as a domain of its own/,
+  );
   // A second domain reuses the zone.
   await asAdmin(() => addDomain("prj_web", "shop.example.com"));
   assert.equal((await zones()).length, 1);
@@ -465,4 +471,18 @@ test("by hand: the screens list every record to type, and the checks pass once t
   ]);
   await reconcileClusterZones();
   assert.ok((await domainRow("shop.example.org")).acmeCnameSeenAt);
+});
+
+test("deleting the cluster points its domains back at their server and takes the zone's records out of Cloudflare", async () => {
+  const eu = await connected();
+  await asAdmin(() => addDomain("prj_web", "app.example.com"));
+  await asAdmin(() => deleteCluster(eu.id));
+  assert.deepEqual(records("cluster.example.com"), []);
+  assert.deepEqual(records("ns1.cluster.example.com"), []);
+  assert.deepEqual(records("_acme-challenge.app.example.com"), []);
+  assert.equal(records("app.example.com").length, 1);
+  assert.match(records("app.example.com")[0], /^A /);
+  const row = await domainRow("app.example.com");
+  assert.equal(row.answersEverywhere, false);
+  assert.equal(row.dnsZoneId, null);
 });

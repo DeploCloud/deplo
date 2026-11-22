@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq, ne, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
+import { domainDnsRecords } from "../../db/schema/control-plane/dns-providers";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   domains as domainsTable,
@@ -404,6 +405,20 @@ async function updateDomainUnlocked(
     if (!DOMAIN_RE.test(nextName)) throw new Error("Enter a valid domain name");
   }
   const renamed = nextName !== current.name;
+  if (renamed && current.answersEverywhere) {
+    const [kept] = await getDb()
+      .select({ zoneId: domainsTable.dnsZoneId })
+      .from(domainsTable)
+      .innerJoin(
+        domainDnsRecords,
+        eq(domainDnsRecords.domainId, domainsTable.id),
+      )
+      .where(eq(domainsTable.id, id));
+    if (kept?.zoneId)
+      throw new Error(
+        `Deplo keeps ${current.name}'s records in Cloudflare pointed at the cluster. Add ${nextName} as a domain of its own, then remove this one.`,
+      );
+  }
   const nextPath =
     patch.pathPrefix !== undefined
       ? normalizePath(patch.pathPrefix)
