@@ -52,8 +52,8 @@ beforeEach(async () => {
 const asOwner = <T>(fn: () => Promise<T>) =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-const addFor = (clusterId: string, host = "203.0.113.40") =>
-  asOwner(() => addServer({ name: "new-one", host, clusterId }));
+const addFor = (clusterId: string) =>
+  asOwner(() => addServer({ name: "new-one", clusterId }));
 
 test("a server added from inside a cluster waits to join it", async () => {
   const { server } = await addFor("clu_eu");
@@ -72,8 +72,7 @@ test("with the experiment off, nothing is added, not even half a server", async 
     /Server clusters are not turned on/,
   );
   assert.equal(
-    (await db.select().from(servers).where(eq(servers.host, "203.0.113.40")))
-      .length,
+    (await db.select().from(servers).where(eq(servers.name, "new-one"))).length,
     0,
   );
 });
