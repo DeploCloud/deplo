@@ -15,6 +15,9 @@ const APP_RUNTIME_QUERY = /* GraphQL */ `
       missing
       unreachable
       unreachableServers
+      moveTo
+      moveSince
+      offlineWhy
       containers {
         name
         service

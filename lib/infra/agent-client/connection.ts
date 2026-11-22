@@ -75,6 +75,8 @@ export interface ClusterReplicaReport {
 export interface ClusterNetworkTable {
   clusterId: string;
   address: string;
+  /** This server's network key, replaced before it answers: a caught copy holds it (Hello network.rekey). */
+  retirePublicKey?: string;
   peers: {
     fingerprint: string;
     publicKey: string;

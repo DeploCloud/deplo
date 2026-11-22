@@ -158,7 +158,7 @@ export function clusterRpc(
     async setClusterNetwork(table) {
       const r = await unary(
         client.setClusterNetwork.bind(client),
-        table,
+        { ...table, retirePublicKey: table.retirePublicKey ?? "" },
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return {

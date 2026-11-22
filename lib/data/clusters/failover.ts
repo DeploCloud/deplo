@@ -315,6 +315,8 @@ export async function applyFailedOver(
     null,
     { serverChange: true },
   );
+  // "Moving to ..." until the new server answers with a valid certificate.
+  void import("./moves").then((m) => m.moveLanded(app.id, d.to as string));
   try {
     await rehostClusterApp(app.id);
   } catch (e) {
@@ -335,6 +337,7 @@ export async function applyMoveFailed(
   d: Record<string, unknown>,
 ): Promise<void> {
   if (d.kind !== "app" || typeof d.workloadId !== "string") return;
+  (await import("./moves")).moveEnded(d.workloadId);
   const app = await ownApp(cluster.id, d.workloadId);
   if (!app) return;
   await recordActivity(

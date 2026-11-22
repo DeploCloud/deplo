@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayStatus, type RuntimeSnapshot } from "./display-status";
+import {
+  displayStatus,
+  moveLabel,
+  type RuntimeSnapshot,
+} from "./display-status";
 
 const runtime = (over: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
   total: 1,
@@ -119,4 +123,30 @@ test("restarts paused on a running app is Not answering, but a down one stays do
     "down",
   );
   assert.equal(displayStatus("idle", runtime(), false, true), "idle");
+});
+
+test("a cluster moving the App reads Moving to its new server with the time, then why it cannot move", () => {
+  const snap = {
+    total: 0,
+    running: 0,
+    restarting: 0,
+    unhealthy: 0,
+    missing: [],
+    unreachable: true,
+  };
+  const since = new Date(Date.parse("2026-11-22T21:00:00Z")).toISOString();
+  const moving = { ...snap, moveTo: "eu-2", moveSince: since };
+  assert.equal(displayStatus("active", moving), "moving");
+  assert.equal(
+    moveLabel(moving, Date.parse("2026-11-22T21:00:34Z")),
+    "Moving to eu-2 · 34 s",
+  );
+  assert.equal(
+    moveLabel(moving, Date.parse("2026-11-22T21:01:05Z")),
+    "Moving to eu-2 · 1 min 5 s",
+  );
+  const stuck = { ...snap, offlineWhy: "Offline: no up-to-date copy" };
+  assert.equal(displayStatus("active", stuck), "unreachable");
+  assert.equal(moveLabel(stuck), "Offline: no up-to-date copy");
+  assert.equal(moveLabel({ ...stuck, unreachable: false }), null);
 });

@@ -7,13 +7,18 @@ import {
   useRestartsPaused,
 } from "@/components/apps/app-live-status";
 import { useAppRuntime } from "@/components/apps/use-app-runtime";
-import { displayStatus, type DisplayStatus } from "@/lib/apps/display-status";
+import {
+  displayStatus,
+  moveLabel,
+  type DisplayStatus,
+} from "@/lib/apps/display-status";
 import type { AppStatus } from "@/lib/types/app";
 import { detailFor, StatusIndicator } from "./app-status-dot/status-renderer";
 
 function useDisplayStatus(fallback: AppStatus): {
   status: DisplayStatus;
   detail: string | null;
+  label?: string | null;
 } {
   const live = useLiveApp();
   const status = useLiveStatus(fallback);
@@ -32,6 +37,7 @@ function useDisplayStatus(fallback: AppStatus): {
   return {
     status: displayStatus(status, runtime, neverDeployed, restartsPaused),
     detail: detailFor(runtime),
+    label: moveLabel(runtime),
   };
 }
 
@@ -41,6 +47,6 @@ export function AppStatusDot({ status }: { status: AppStatus }) {
 }
 
 export function AppStatusBadge({ status }: { status: AppStatus }) {
-  const { status: shown, detail } = useDisplayStatus(status);
-  return <StatusIndicator status={shown} detail={detail} badge />;
+  const { status: shown, detail, label } = useDisplayStatus(status);
+  return <StatusIndicator status={shown} detail={detail} badge label={label} />;
 }

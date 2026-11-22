@@ -10,6 +10,12 @@ import type { OverviewRuntimeView } from "../apps-grid/overview-state";
 type StatusRuntime = AppRuntimeView | OverviewRuntimeView;
 
 export function detailFor(runtime: StatusRuntime | null): string | null {
+  if (runtime?.moveTo)
+    return `Its server stopped answering, so its cluster is starting it on ${runtime.moveTo}. It reads Running again once ${runtime.moveTo} answers with a valid certificate.`;
+  if (runtime?.unreachable && runtime.offlineWhy)
+    return runtime.offlineWhy === "Offline: no up-to-date copy"
+      ? "Its server is not answering, and no other server holds an up-to-date copy of its data yet, so it waits for its server."
+      : "Its server is not answering, and too few servers of its cluster answer each other to move anything safely. It moves once enough of them are back.";
   if (runtime?.unreachable)
     return "The server this app runs on is not answering Deplo, so the app counts as offline. The Servers page shows why.";
   if (!runtime) return null;
@@ -48,13 +54,20 @@ export function StatusIndicator({
   status,
   detail,
   badge,
+  label,
 }: {
   status: DisplayStatus;
   detail: string | null;
   badge: boolean;
+  /** Replaces the status's own word: "Moving to eu-2 · 34 s", "Offline: no up-to-date copy". */
+  label?: string | null;
 }) {
   const indicator = badge ? (
-    <StatusBadge status={status} tinted labels={{ active: "Online" }} />
+    <StatusBadge
+      status={status}
+      tinted
+      labels={{ active: "Online", ...(label ? { [status]: label } : {}) }}
+    />
   ) : (
     <StatusDot status={status} />
   );
