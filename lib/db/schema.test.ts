@@ -64,6 +64,7 @@ const CONTROL_PLANE = [
   "servers",
   "server_teams",
   "server_agent_capabilities",
+  "server_addresses",
   "server_retired_certs",
   "server_agent_updates",
   "clusters",
