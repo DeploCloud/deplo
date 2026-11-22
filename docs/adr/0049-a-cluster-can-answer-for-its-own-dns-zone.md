@@ -215,6 +215,18 @@ Released agent v0.5.3-canary.24 and .25, leader v0.1.0-canary.8, panel v0.8.2-ca
 - **Found and fixed (b, on .59)**: two to five probes to lab-3 failed in the 3.5 s after the zone named it again (Traefik's default certificate, a 502, a refused connection). Agent v0.5.3-canary.25 names a server started or back after the removal time; on .60, none failed.
 - **Seen, not a fault**: for the removal time after the cut the zone still names the stopped server (three probes to lab-3 refused each run), as decided above: a browser moves on to the next address.
 
+## What cluster eu showed (22 Nov 2026, panel v0.8.2-canary.69, agent v0.5.3-canary.32)
+
+The owner's cluster `eu`: eu-1, eu-2 and eu-3 on Proxmox LXC behind one home router, IPv6 only, zone `cluster.pixelfederico.com` delegated from Cloudflare, answer TTL 30 s, removal time 10 s. A prober on Deplo's machine asked each name server every second and fetched fise over IPv6, through the resolver and on each server directly. A power cut is a freeze of every process of the container (Proxmox's own suspend fails on these containers); a clean stop is a shutdown.
+
+- **The release's rollout**: the agents updated one at a time, 3 s apart, never two name servers silent at once; no proxy restarted, since none had anything to change. Each name server answered SERVFAIL once, for about a second, between its start and its first table: fixed in agent DeploCloud/deplo-agent#87 (not released yet).
+- **A proxy restart on every member at once** (**Restart Traefik** on the three at 20:55:33): eu-2, then eu-3, then eu-1, each out of every answer 30 s before its proxy restarted (3 s down) and back about 10 s later; never two proxies down, no SERVFAIL. fise, on eu-1 alone, failed for the 3 s of eu-1's own restart only.
+- **One server off, each of the three, frozen and stopped** (six runs): it left the others' answers 10 to 12 s after, and was named again 10 to 14 s after its name server answered again; the zone never answered SERVFAIL but from the server coming back, as above, and, thawed, that one also named only itself for the removal time (fixed in the same agent change: a server that missed 5 s of its own pushes starts as one just started). The panel showed the server offline 8 to 10 s after, the others hearing 2 of 3, and all of it back by itself. fise moved in about a minute when its server froze (58 s without an answer, then a valid certificate).
+- **Two servers off** (eu-1 and eu-3 frozen): eu-2 answered SERVFAIL from 10 s after, as decided, and the zone answered again 2 s after eu-1 came back.
+- **Load balancing without Cloudflare** (`lab-whoami`, `traefik/whoami`, the first name inside the zone): the zone's wildcard was ordered from Let's Encrypt over DNS-01 through the zone in about a minute and served by all three; after its redeploy the App ran a copy on every server, each serving its visitors from its own. eu-2 frozen for 90 s: two clients over IPv6, one using the first address it resolves and one trying each in turn, saw no error and no answer slower than 1.5 s in 511 requests each.
+- **Found and fixed** (panel #300, not released yet): the new name's row said "delegate the zone" until a server stopped or came back, since it was checked once before the zone answered it; and after a key rotation the other name servers left the server out of their answers until the zone's next pass, 45 s (ADR-0050).
+- **Found, not fixed** (with the failover work): a failover to a server that does not hold a name's own certificate serves the proxy's default certificate. fise, moved from eu-2 to eu-3 at 21:41:51, answered with it until it was moved back to eu-2 at 21:48:13: eu-3 and eu-1 held fise's certificate neither in the proxy's store nor in its routes file, and the failover bundle leaves a name the zone checks out.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
@@ -230,10 +242,14 @@ Released agent v0.5.3-canary.24 and .25, leader v0.1.0-canary.8, panel v0.8.2-ca
 
 ## Before a stable release
 
-What the lab cannot prove, because it owns no public domain, and a stable release must:
+**Now proven on cluster eu** (22 Nov 2026): a real Cloudflare zone, the delegation from it and its glue (fise); a wildcard from Let's Encrypt checked over DNS through the zone; one server off and two off, as decided above; load balancing with no Cloudflare in front; proxy restarts one member at a time.
 
-- **The delegation check against a real registrar**: the parent's `NS` records, the glue and a stray `DS`, which CI checks only against fake parent servers (`dns-delegation.test.ts`).
-- **Nearest first through a real public resolver** that sends EDNS Client Subnet, which the lab stands in for with unbound and fake subnets.
+**Still not proven**:
+
+- **The delegation check against a registrar other than Cloudflare**: records typed by hand, glue and a stray `DS`, which CI checks only against fake parent servers (`dns-delegation.test.ts`).
+- **Nearest first through a real public resolver** that sends EDNS Client Subnet, and a visitor placed by its resolver's address: eu-1..3 sit in one place.
+- **A server back while Deplo is down**, a real power cut (a freeze stands in for it), servers in different places or networks, more than three servers, and IPv4: eu-1..3 are reached over IPv6 only.
+- **The two fixes above**, agent#87 and panel #300, which wait for the next release.
 
 ## Considered options
 

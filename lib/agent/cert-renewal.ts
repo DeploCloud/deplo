@@ -138,8 +138,14 @@ async function renewNow(serverId: string, now: boolean): Promise<Renewal> {
     // The rotation ran over this machine's own link: it stays open, so no call on it is cut; the next link proves the new key.
     if (row.fingerprint)
       repinAgentLink(serverId, row.fingerprint, signed.fingerprint);
-    // The old certificate is cut off at every cluster relay at once.
+    // The old certificate is cut off at every cluster relay at once, and every name server names the new one now:
+    // it hears the server under it at once, and would leave it out of the answers until the zone's next pass.
     await pushRostersForServer(serverId);
+    const { syncClusterZone } = await import("../data/clusters/dns-zone");
+    for (const id of await clustersOfServer(serverId))
+      await syncClusterZone(id).catch((e) =>
+        console.warn(`[cert-renewal] ${serverId}: zone ${id}: ${e}`),
+      );
     return {
       renewed: true,
       reason: `renewed until ${notAfterOf(signed.certPem)}`,
