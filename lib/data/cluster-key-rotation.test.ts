@@ -24,7 +24,11 @@ import {
 import {
   CLUSTER_NETWORK_CAPABILITY,
   CLUSTER_ROTATION_CAPABILITY,
+  CLUSTER_ZONE_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
+import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
+import { syncClusterZone } from "./clusters/dns-zone";
+import { addClusterDnsZone } from "./clusters/zone-settings";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { claimedIdentity } from "./servers/agent-identity";
@@ -278,4 +282,23 @@ test("a caught copy rotates the original at once, even while another server of i
   assert.equal(next, null);
   // The copy holds the retired key: the door refuses it for good.
   assert.equal((await claimedIdentity(fp(2)))?.kind, "retired");
+});
+
+test("right after a rotation every name server is handed the member's new certificate", async () => {
+  for (const h of Object.values(hosts))
+    h.capabilities.push(CLUSTER_ZONE_CAPABILITY);
+  const [eu] = await db.select({ id: clustersTable.id }).from(clustersTable);
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    addClusterDnsZone(eu.id, "go.example.com"),
+  );
+  await syncClusterZone(eu.id);
+  const r = await renewAgentCertIfDue("srv_2");
+  assert.equal(r.renewed, true, r.reason);
+  const { current } = await stored("srv_2");
+  // Not a minute later at the zone's next pass: the others hear srv_2 under it at once.
+  const named = hosts.srv_3.zoneTables
+    .at(-1)
+    ?.servers.map((x) => x.fingerprint);
+  assert.ok(named?.includes(current!), `${named}`);
+  assert.ok(!named?.includes(fp(2)));
 });
