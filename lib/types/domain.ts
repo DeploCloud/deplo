@@ -37,6 +37,8 @@ export interface Domain {
   certChallenge?: "zone" | "shared" | "dns";
   /** Why it went on the App's tunnel instead of the cluster's own zone (ADR-0049). */
   clusterFallback?: string | null;
+  /** When Deplo last rewrote its DNS record: resolvers may serve the old one for up to 5 minutes after. */
+  recordSwitchedAt?: string | null;
   /** It answers everywhere, but its certificate has not reached the App's failover bundle yet. */
   failoverWaitsForCertificate?: boolean;
   createdAt: string;

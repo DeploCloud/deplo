@@ -287,6 +287,18 @@ test("a failed order is said in plain words", () => {
     /too many/,
   );
   assert.match(zoneCertErrorWords("something else"), /refused/);
+  assert.match(
+    zoneCertErrorWords(
+      "acme: error: 400 :: POST :: https://pebble:14000/order-plz :: urn:ietf:params:acme:error:accountDoesNotExist",
+    ),
+    /asked pebble, not Let's Encrypt/,
+  );
+  assert.match(
+    zoneCertErrorWords(
+      "acme: error: 429 :: POST :: https://acme-v02.api.letsencrypt.org/acme/new-order :: rateLimited",
+    ),
+    /too many/,
+  );
 });
 
 test("a shared name's check is its renewer's, and only an agent that holds such certificates is told of it", () => {

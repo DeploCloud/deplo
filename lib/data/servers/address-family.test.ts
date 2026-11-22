@@ -9,7 +9,10 @@ import { __setTestDb, __resetTestDb } from "../../db/client";
 import { runWithIdentity } from "../../auth/request-context";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
-import { servers as serversTable } from "../../db/schema/control-plane/servers";
+import {
+  serverAddresses,
+  servers as serversTable,
+} from "../../db/schema/control-plane/servers";
 import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
 import {
   seedApp,
@@ -23,7 +26,7 @@ import {
   __setAgentAddressesForTest,
 } from "./addresses";
 import { setServerAddressFamily } from "./address-family";
-import { updateServerAddress } from "./agent-maintenance";
+import { followAddresses } from "./address-checks";
 import { getServerById } from "./roster";
 
 const MEMBER = "usr_member";
@@ -50,7 +53,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table activities, membership_capabilities, memberships, users, teams restart identity cascade;`);
+    truncate table server_addresses, activities, membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -150,9 +153,19 @@ test("only an instance admin may switch it", async () => {
   assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
 });
 
-test("a new address moves every generated name on the server with it, and nothing else", async () => {
+const proven = (address: string) => ({
+  serverId: SERVER_1,
+  address,
+  origin: "machine",
+  seenAt: "2026-11-22T13:00:00.000Z",
+  checkedAt: "2026-11-22T13:00:00.000Z",
+  provenAt: "2026-11-22T13:00:00.000Z",
+});
+
+test("a new proven address moves every generated name on the server with it, and nothing else", async () => {
   const MOVED = "198.51.100.7";
-  await asOwner(() => updateServerAddress({ id: SERVER_1, address: MOVED }));
+  await db.insert(serverAddresses).values(proven(MOVED));
+  await asOwner(() => followAddresses(SERVER_1, V4));
   const auto = `web-calm-fox-${ipToHex(MOVED)}.deplo.site`;
   assert.deepEqual(await names(), [auto, "web.example.com"]);
   const [app] = await db
@@ -162,7 +175,11 @@ test("a new address moves every generated name on the server with it, and nothin
   assert.equal(app.url, `http://${auto}`);
 });
 
-test("a new address of the other kind leaves names on the kind they carry", async () => {
-  await asOwner(() => updateServerAddress({ id: SERVER_1, address: V6 }));
+test("under Automatic a proven IPv4 carries the names; with none proven, the IPv6 does", async () => {
+  await db.insert(serverAddresses).values([proven(V4), proven(V6)]);
+  await asOwner(() => followAddresses(SERVER_1, V4));
   assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
+  await db.delete(serverAddresses).where(eq(serverAddresses.address, V4));
+  await asOwner(() => followAddresses(SERVER_1, V4));
+  assert.deepEqual(await names(), [AUTO_V6, "web.example.com"]);
 });

@@ -1,9 +1,6 @@
 import { builder } from "../../builder";
 import { AgentUpdateRef, ServerRef } from "./server-ref";
-import {
-  retryServerAgentUpdate,
-  updateServerAddress,
-} from "@/lib/data/servers/agent-maintenance";
+import { retryServerAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import { addServer, reissueBootstrap } from "@/lib/data/servers/enrollment";
 import {
   removeServer,
@@ -86,7 +83,7 @@ const AddServerInputType = builder.inputType("AddServerInput", {
     host: t.string({
       required: false,
       description:
-        "Only a migration source needs it: the other platform's machine. An ordinary server is known by its agent's key, and Deplo reads its address from the agent; one given here is where its Apps answer, as if set under Advanced.",
+        "Only a migration source takes it: the other platform's machine. Deplo finds every other server's addresses itself, and refuses one given here.",
     }),
     allTeams: t.boolean({ required: false }),
     teamIds: t.stringList({ required: false }),
@@ -133,39 +130,6 @@ builder.mutationFields((t) => ({
       "Mint a fresh install command for a server still provisioning (the original token expired or was lost).",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => reissueBootstrap(id),
-  }),
-  updateServerAddress: t.string({
-    nullable: true,
-    authScopes: { instanceAdmin: true },
-    description:
-      "Change a server's address: where its apps are reached, and the migration verb for a host whose IP changed. Its agent links in, so the change is saved without Deplo contacting the server. Returns null.",
-    args: {
-      id: t.arg.string({ required: true }),
-      address: t.arg.string({ required: true }),
-      agentPort: t.arg.int({
-        required: false,
-        deprecationReason:
-          "Ignored: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.",
-      }),
-      force: t.arg.boolean({
-        required: false,
-        deprecationReason:
-          "Ignored: Deplo no longer contacts the server to save its address, so there is nothing to force.",
-      }),
-      keepHost: t.arg.boolean({
-        required: false,
-        description:
-          "Write only the address in use, keeping the one the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.",
-      }),
-    },
-    resolve: async (_r, args) => {
-      await updateServerAddress({
-        id: args.id,
-        address: args.address,
-        keepHost: args.keepHost ?? false,
-      });
-      return null;
-    },
   }),
   removeServer: t.field({
     type: ServerRemovalRef,

@@ -28,17 +28,21 @@ import { assertNotMigrationSource, requireAdminServer } from "./roster";
 import { unlinkedServerMessage } from "./panel-address";
 import { HOST_ADDRESS_ERROR, parseHostAddress } from "../../host-address";
 
+export const ADDRESSES_ARE_FOUND =
+  "Deplo finds a server's addresses itself and uses one once it reaches the server. Only a migration source takes one.";
+
 export interface UpdateServerAddressInput {
   id: string;
   address: string;
   keepHost?: boolean;
 }
 
-/** Where the server's apps are reached; its agent links in, so Deplo never contacts it to save one (ADR-0040). */
+/** A migration source's address: the other platform's machine. Deplo finds every other server's itself (ADR-0050). */
 export async function updateServerAddress(
   input: UpdateServerAddressInput,
 ): Promise<void> {
   const { teamId, user, server } = await requireAdminServer(input.id);
+  if (!server.importOnly) throw new Error(ADDRESSES_ARE_FOUND);
 
   if (!input.address.trim()) throw new Error("Address is required");
   const parsed = parseHostAddress(input.address);

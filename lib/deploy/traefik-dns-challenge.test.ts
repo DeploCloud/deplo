@@ -36,6 +36,7 @@ test("the resolver copies the proxy's account, asks its agent on its own loopbac
     "HTTPREQ_USERNAME=deplo",
     "HTTPREQ_PASSWORD_FILE=/deplo-dns-challenge.secret",
     "LEGO_DISABLE_CNAME_SUPPORT=true",
+    "LEGO_CA_SYSTEM_CERT_POOL=true",
   ]);
   assert.ok(
     p.volumes?.includes(
@@ -63,9 +64,47 @@ test("an environment written as keys keeps its form and the keys around it", () 
     HTTPREQ_USERNAME: "deplo",
     HTTPREQ_PASSWORD_FILE: "/deplo-dns-challenge.secret",
     LEGO_DISABLE_CNAME_SUPPORT: "true",
+    LEGO_CA_SYSTEM_CERT_POOL: "true",
   });
+  assert.equal(hasDnsChallenge(withDnsChallenge(keyed, true)), true);
   assert.deepEqual(
     parse(withDnsChallenge(withDnsChallenge(keyed, true), false)),
     parse(keyed),
   );
+});
+
+// eu-1..3 (22 Nov 2026) came from the lab with their resolver pointed at its test authority: the zone's resolver
+// never copies one, and a proxy that has the old shape is written again.
+test("the zone's resolver orders from Let's Encrypt whatever authority the proxy's own resolver uses", () => {
+  const lab = INSTALLED_WITH_PANEL.replace(
+    "      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json\n",
+    "      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json\n" +
+      "      - --certificatesresolvers.letsencrypt.acme.caserver=https://pebble:14000/dir\n" +
+      "      - --certificatesresolvers.letsencrypt.acme.certificatesduration=1\n",
+  );
+  assert.notEqual(lab, INSTALLED_WITH_PANEL);
+  const on = withDnsChallenge(lab, true);
+  const dns = proxyOf(on).command.filter((c) =>
+    c.startsWith("--certificatesresolvers.deplo-dns."),
+  );
+  assert.ok(
+    !dns.some((c) => /caserver|certificatesduration/.test(c)),
+    dns.join("\n"),
+  );
+  assert.ok(
+    proxyOf(on).command.includes(
+      "--certificatesresolvers.letsencrypt.acme.caserver=https://pebble:14000/dir",
+    ),
+  );
+  assert.equal(hasDnsChallenge(on), true);
+  const old = on
+    .replace(
+      "      - --certificatesresolvers.deplo-dns.acme.storage=/acme/acme.json\n",
+      "      - --certificatesresolvers.deplo-dns.acme.storage=/acme/acme.json\n" +
+        "      - --certificatesresolvers.deplo-dns.acme.caserver=https://pebble:14000/dir\n",
+    )
+    .replace("      - LEGO_CA_SYSTEM_CERT_POOL=true\n", "");
+  assert.notEqual(old, on);
+  assert.equal(hasDnsChallenge(old), false);
+  assert.deepEqual(parse(withDnsChallenge(old, true)), parse(on));
 });

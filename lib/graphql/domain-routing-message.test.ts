@@ -58,7 +58,10 @@ test("a removal that cannot reach the server says removed, not saved", async () 
     {},
     ctx,
   );
-  assert.match(r.error ?? "", /^The domain was removed, but the routing/);
+  assert.match(
+    r.error ?? "",
+    /^The domain was removed, but its route did not apply/,
+  );
   const left = await db
     .select()
     .from(domainsTable)

@@ -48,6 +48,8 @@ export const domains = pgTable(
     certChallenge: text("cert_challenge"),
     // Why it went on the App's tunnel instead of the cluster's own zone, in the person's words.
     clusterFallback: text("cluster_fallback"),
+    // When Deplo last rewrote its DNS record (a switch from the tunnel): resolvers forget the old one within 5 minutes.
+    recordSwitchedAt: isoTimestamptz("record_switched_at"),
     securityHeaders: boolean("security_headers").notNull().default(true),
     importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),

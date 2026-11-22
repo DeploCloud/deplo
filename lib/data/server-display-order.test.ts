@@ -55,10 +55,7 @@ const asMember = <T>(fn: () => Promise<T>) =>
 async function threeServers() {
   const ids: string[] = [];
   for (const [i, name] of ["a", "b", "c"].entries())
-    ids.push(
-      (await asOwner(() => addServer({ name, host: `203.0.113.${50 + i}` })))
-        .server.id,
-    );
+    ids.push((await asOwner(() => addServer({ name }))).server.id);
   return ids;
 }
 

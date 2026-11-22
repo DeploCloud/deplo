@@ -12,6 +12,8 @@ export type ClusterZoneServerState = {
   checkedAt: string;
   /** It holds the release's location table and every server has a place: visitors get the nearest servers. */
   nearest: boolean;
+  /** When Deplo last heard it, while it is offline: the others drop it from their answers dropAfter later. */
+  offlineSince: string | null;
 };
 
 /** Where a server is (ADR-0049 phase 2). */

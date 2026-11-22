@@ -20,7 +20,10 @@ import { EmptyState } from "@/components/shared/empty-state";
 
 import { AddDomain } from "@/components/domains/add-domain";
 import { AppAddressNotice } from "@/components/domains/app-domain-notices";
-import { DomainNotices } from "@/components/domains/domain-notices";
+import {
+  DomainNotices,
+  zoneTargetsOf,
+} from "@/components/domains/domain-notices";
 import { DomainGraphic } from "@/components/domains/domain-graphic";
 import { DomainTable, DomainsIntro } from "@/components/domains/domain-table";
 import {
@@ -114,6 +117,7 @@ export default async function AppDomainsPage(
           domains={domains}
           serverIp={serverIp}
           serverIpv6={hints.serverIpv6}
+          zoneTargets={zoneTargetsOf(native)}
         />
 
         <PendingList

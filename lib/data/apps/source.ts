@@ -1,6 +1,8 @@
 import { authorizeComposeTraefik } from "./traefik-labels";
 import "server-only";
 
+import { answerArrivingDomains } from "../domains/cluster-answer";
+
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -472,8 +474,13 @@ async function applyAppSource(
     await dropFailoverBundle(id, current.clusterId).catch(() => {});
   // Joining gives the App its own tunnel before the deploy that starts its connector; leaving points DNS back.
   const moved = { id, teamId: membership.teamId };
-  if (after.moved && move?.cluster && !current?.clusterId)
+  if (after.moved && move?.cluster && !current?.clusterId) {
+    // Add domain's rule: the cluster's zone answers what it can, the tunnel the rest, with the reason on the row.
+    await answerArrivingDomains(id).catch((e) =>
+      tunnelWarn(moved, "answer from the cluster", e),
+    );
     await joinAppTunnel(id, user).catch((e) => tunnelWarn(moved, "set up", e));
+  }
   if (after.moved && current?.clusterId && !move?.cluster) {
     await leaveAppTunnel(id, user).catch((e) =>
       tunnelWarn(moved, "switch back from", e),

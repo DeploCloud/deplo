@@ -1,5 +1,7 @@
 import "server-only";
 
+import { ADDRESSES_ARE_FOUND } from "./agent-maintenance";
+
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { migrationRuns as runsTable } from "../../db/schema/control-plane/migration";
@@ -61,7 +63,8 @@ export async function addServer(
   const user = (await getCurrentUser())!;
   const importOnly = input.importOnly ?? false;
   let host = "";
-  if (importOnly || input.host?.trim()) {
+  if (!importOnly && input.host?.trim()) throw new Error(ADDRESSES_ARE_FOUND);
+  if (importOnly) {
     const parsed = parseHostAddress(input.host);
     if (!parsed) throw new Error(HOST_ADDRESS_ERROR);
     host = parsed.host;

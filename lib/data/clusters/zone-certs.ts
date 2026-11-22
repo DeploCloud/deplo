@@ -18,6 +18,7 @@ import {
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { zoneCertNames, type CertChallenge } from "../../deploy/dns-challenge";
 import {
+  dnsChallengePresent,
   hasDnsChallenge,
   withDnsChallenge,
 } from "../../deploy/traefik-cluster";
@@ -83,7 +84,7 @@ export async function syncDnsChallengeProxy(
     await import("../../infra/agent-client/host-ops");
   return withTraefikStackLock(serverId, async () => {
     const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
-    if (!yaml || hasDnsChallenge(yaml) === on) {
+    if (!yaml || (on ? hasDnsChallenge(yaml) : !dnsChallengePresent(yaml))) {
       proxies().set(serverId, { on: Boolean(yaml) && on, at: Date.now() });
       return false;
     }

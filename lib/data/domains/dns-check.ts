@@ -24,7 +24,7 @@ import {
   recordCertificateSwitch,
 } from "./cloudflare-mode";
 import { certProviderForDnsWithinQuota } from "./letsencrypt-quota";
-import { resolveHostIpv4, resolveHostIpv6 } from "./dns-resolve";
+import { resolveAtSource } from "./dns-resolve";
 
 export {
   __resetDnsResolve4ForTest,
@@ -46,14 +46,14 @@ export interface DomainDnsCheck {
   stray: StrayRecord | null;
 }
 
+/** What the domain's own name servers say of it; null when they could not be asked, which is no verdict. */
 export async function inspectDomainDns(
   name: string,
   targets: DnsTargets,
-): Promise<DomainDnsCheck> {
-  const [a, aaaa] = await Promise.all([
-    resolveHostIpv4(name),
-    resolveHostIpv6(name),
-  ]);
+): Promise<DomainDnsCheck | null> {
+  const found = await resolveAtSource(name);
+  if (!found) return null;
+  const { a, aaaa } = found;
   if (a.length === 0 && aaaa.length === 0)
     return { status: "pending", stray: null };
   return classifyDnsRecords({ a, aaaa }, targets);
@@ -63,7 +63,7 @@ export async function checkDomainDns(
   name: string,
   targets: DnsTargets,
 ): Promise<"pending" | DomainDnsClass> {
-  return (await inspectDomainDns(name, targets)).status;
+  return (await inspectDomainDns(name, targets))?.status ?? "pending";
 }
 
 export interface DomainDnsHints {
@@ -88,7 +88,7 @@ export async function domainDnsHints(
     open
       .filter((d) => d.status === "misconfigured")
       .map(async (d) => {
-        const { stray } = await inspectDomainDns(d.name, targets);
+        const stray = (await inspectDomainDns(d.name, targets))?.stray;
         if (stray) strays[d.id] = stray;
       }),
   );
@@ -174,11 +174,12 @@ export async function sweepDomainDns(): Promise<void> {
     try {
       if (!targets.has(row.appId))
         targets.set(row.appId, appServerAddresses(row.appId));
-      const { status, stray } = await inspectDomainDns(
+      const seen = await inspectDomainDns(
         row.name,
         await targets.get(row.appId)!,
       );
-      if (status === "valid") continue;
+      if (!seen || seen.status === "valid") continue;
+      const { status, stray } = seen;
       // The warning only: a domain that served keeps its route (ADR-0049, "a verdict never removes a route").
       await db
         .update(domainsTable)

@@ -4,6 +4,10 @@ import { serverRole } from "@/lib/data/servers/roster";
 import { getServerTeams } from "@/lib/data/servers/team-access";
 import { isBuildFallbackServer, isDeploHostServer } from "@/lib/deploy/domains";
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
+import {
+  listServerAddresses,
+  type AddressView,
+} from "@/lib/data/servers/address-checks";
 import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
@@ -16,6 +20,33 @@ export const ServerStatusEnum = builder.enumType("ServerStatus", {
 export const AddressFamilyEnum = builder.enumType("AddressFamily", {
   values: ["ipv4", "ipv6"] as const,
 });
+
+const AddressStateEnum = builder.enumType("ServerAddressState", {
+  values: ["inUse", "leaving", "checking", "notChecked", "notUsed"] as const,
+});
+
+const ServerAddressRef = builder
+  .objectRef<AddressView>("ServerAddress")
+  .implement({
+    description:
+      "One address Deplo found for a server, and whether it proved it reaches it (ADR-0050). Nobody types one.",
+    fields: (t) => ({
+      address: t.exposeString("address"),
+      family: t.field({ type: AddressFamilyEnum, resolve: (a) => a.family }),
+      state: t.field({
+        type: AddressStateEnum,
+        description:
+          "inUse: proven, Deplo names it. leaving: proven before, failing now; it leaves at leavesAt unless it reaches the server again. checking: not checked yet. notChecked: Deplo cannot check its family from where it runs. notUsed: it does not reach the server.",
+        resolve: (a) => a.state,
+      }),
+      problem: t.exposeString("problem", {
+        description:
+          "One short line: why it is not used or leaving. Empty otherwise.",
+      }),
+      leavesAt: t.string({ nullable: true, resolve: (a) => a.leavesAt }),
+      checkedAt: t.string({ nullable: true, resolve: (a) => a.checkedAt }),
+    }),
+  });
 
 const GeneratedAddressesRef = builder
   .objectRef<{
@@ -126,8 +157,15 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       type: AddressFamilyEnum,
       nullable: true,
       description:
-        "Which kind of address the generated (.deplo.site) names of apps on this server carry. Null is automatic: IPv4 when the host has one, IPv6 otherwise - and on the Deplo host, whichever the installer chose. setServerAddressFamily changes it.",
+        "Which addresses Deplo uses for this server: null is Automatic (every proven address; generated names on IPv4 when one is proven, IPv6 otherwise - and on the Deplo host, whichever the installer chose), ipv4 or ipv6 only. The generated names, the cluster zone's records and the domain hints follow it. setServerAddressFamily changes it.",
       resolve: (s) => s.generatedAddressFamily,
+    }),
+    addresses: t.field({
+      type: [ServerAddressRef],
+      authScopes: { instanceAdmin: true },
+      description:
+        "Every address Deplo found for this server, on its own interfaces and where its traffic leaves from, and whether each reaches it. Checked every 2 minutes. Requires instanceAdmin.",
+      resolve: (s) => listServerAddresses(s.id),
     }),
     generatedAddresses: t.field({
       type: GeneratedAddressesRef,

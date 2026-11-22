@@ -30,7 +30,10 @@ import {
   hosts,
 } from "../cluster-dissolve-test-helpers";
 import { addDomain, removeDomain, updateDomain } from "../domains/crud";
-import { moveDomainToCluster } from "../domains/cluster-answer";
+import {
+  answerArrivingDomains,
+  moveDomainToCluster,
+} from "../domains/cluster-answer";
 import {
   __resetDnsResolve4ForTest,
   __setDnsResolve4ForTest,
@@ -485,4 +488,36 @@ test("deleting the cluster points its domains back at their server and takes the
   const row = await domainRow("app.example.com");
   assert.equal(row.answersEverywhere, false);
   assert.equal(row.dnsZoneId, null);
+});
+
+// Decision F of 22 Nov 2026: an App moved onto a cluster follows Add domain's rule for its Cloudflare domains.
+async function arriving(eu: { id: string }) {
+  await seedApp(db(), { id: "prj_api", slug: "api", serverId: MEMBERS[0] });
+  await asAdmin(() => addDomain("prj_api", "api.example.com"));
+  await db()
+    .update(appsTable)
+    .set({ clusterId: eu.id })
+    .where(eq(appsTable.id, "prj_api"));
+  await asAdmin(() => answerArrivingDomains("prj_api"));
+  return domainRow("api.example.com");
+}
+
+test("an App moved onto a cluster whose zone answers gets the cluster for its Cloudflare domains", async () => {
+  const eu = await connected();
+  await asAdmin(() => addDomain("prj_web", "app.example.com"));
+  const row = await arriving(eu);
+  assert.equal(row.answersEverywhere, true);
+  assert.equal(row.clusterFallback, null);
+  assert.ok(row.recordSwitchedAt, "the row counts the caches down");
+  assert.deepEqual(records("api.example.com"), [
+    "CNAME api-example-com.cluster.example.com",
+  ]);
+});
+
+test("an App moved onto a cluster with no zone keeps the tunnel, with the reason on the row", async () => {
+  const eu = await connected();
+  const row = await arriving(eu);
+  assert.equal(row.answersEverywhere, false);
+  assert.match(row.clusterFallback ?? "", /no DNS zone yet/);
+  assert.equal((await zones()).length, 0, "no zone is made for it");
 });

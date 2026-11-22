@@ -22,7 +22,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "../server-detail-tabs";
 import { DocsLink } from "@/components/ui/docs-link";
 import { ConsequenceNote } from "@/components/shared/confirm-action";
-import { ChangeAddress } from "./change-address";
 import {
   RemovalBlockerList,
   isClear,
@@ -68,8 +67,7 @@ export function DangerZone({ server }: { server: ServerSummary }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <ChangeAddress server={server} />
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-medium">Remove this server</div>
               <p className="mt-1 text-sm text-muted-foreground">

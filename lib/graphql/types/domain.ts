@@ -128,6 +128,13 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
         "plain words; null when it was not a fallback. `moveDomainToCluster` moves it once that is fixed.",
       resolve: (d) => d.clusterFallback ?? null,
     }),
+    recordSwitchedAt: t.string({
+      nullable: true,
+      description:
+        "When Deplo last rewrote this domain's DNS record (a switch from the tunnel to the cluster). Resolvers may " +
+        "serve the old record for up to 5 minutes after: the domain row counts that wait down.",
+      resolve: (d) => d.recordSwitchedAt ?? null,
+    }),
     autoDns: t.boolean({
       description:
         "Deplo created this domain's DNS record through a connected DNS " +
@@ -421,9 +428,9 @@ async function applyRouting(
     await rerouteApp(appId);
   } catch (e) {
     throw new Error(
-      `The domain was ${done}, but the routing could not be applied on the server: ${
+      `The domain was ${done}, but its route did not apply: ${
         e instanceof Error ? e.message : String(e)
-      }. Deploy the app to apply it.`,
+      }.`,
     );
   }
 }

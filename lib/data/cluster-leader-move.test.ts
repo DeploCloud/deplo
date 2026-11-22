@@ -6,7 +6,10 @@ import { eq } from "drizzle-orm";
 import type { TestDb } from "../db/test-harness";
 import { TEAM_B, USER_1 } from "./identity-test-helpers";
 import { SERVER_1 } from "./app-graph-test-helpers";
-import { servers as serversTable } from "../db/schema/control-plane/servers";
+import {
+  serverAddresses,
+  servers as serversTable,
+} from "../db/schema/control-plane/servers";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { createCluster } from "./clusters/manage";
 import { ensureClusterLeader, getClusterLeader } from "./clusters/leader";
@@ -16,7 +19,8 @@ import {
   reconcileRetiredLeaders,
 } from "./clusters/leader-move";
 import { getClusterById } from "./clusters/roster";
-import { updateServerAddress } from "./servers/agent-maintenance";
+import { followAddresses } from "./servers/address-checks";
+import { nowIso } from "../ids";
 import { keyFingerprint } from "./clusters/bundles";
 import {
   leaderLab,
@@ -125,9 +129,16 @@ test("a new address for the leader's server moves the relay's door, and every me
   hosts.srv_4.proxy.yaml = TRAEFIK;
   await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
 
-  await asAdmin(() =>
-    updateServerAddress({ id: "srv_4", address: "10.0.0.44" }),
-  );
+  // Deplo found and proved the server's new address: its row, and the relay's door, follow.
+  await db.insert(serverAddresses).values({
+    serverId: "srv_4",
+    address: "10.0.0.44",
+    origin: "machine",
+    seenAt: nowIso(),
+    checkedAt: nowIso(),
+    provenAt: nowIso(),
+  });
+  await asAdmin(() => followAddresses("srv_4", "10.0.0.4"));
 
   assert.match(
     hosts.srv_4.proxy.yaml,

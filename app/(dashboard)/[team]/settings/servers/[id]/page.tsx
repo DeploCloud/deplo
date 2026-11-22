@@ -15,8 +15,6 @@ import { serverLabel } from "@/lib/utils";
 import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
 import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import { offlineAdvice } from "@/lib/data/server-health";
-import { connectsFromElsewhere } from "@/lib/data/servers/addresses";
-import { DocsLink } from "@/components/ui/docs-link";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -27,6 +25,7 @@ import { ServerHealthChip } from "../server-health-chip";
 import { CheckStatusButton } from "../check-status-button";
 import { ServerDetailTabs } from "./server-detail-tabs";
 import { ServerDetailHeader } from "./server-detail-header";
+import { ServerClusterState } from "./server-cluster-state";
 
 export async function generateMetadata(
   props: PageProps<"/[team]/settings/servers/[id]">,
@@ -48,25 +47,16 @@ export default async function ServerDetailPage(
 
   const memberOf = await clusterOfServer(id);
   const expectedAgentVersion = AGENT_VERSION;
-  const [
-    teamIds,
-    teamsRaw,
-    policy,
-    runs,
-    workloads,
-    agentUpdate,
-    advice,
-    elsewhere,
-  ] = await Promise.all([
-    getServerTeamIds(id),
-    listAllTeamsForAdmin(),
-    getCleanupPolicy(),
-    listCleanupRuns({ serverId: id }),
-    listServerWorkloads(id),
-    serverAgentUpdate(id),
-    offlineAdvice(server),
-    connectsFromElsewhere(server),
-  ]);
+  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
+    await Promise.all([
+      getServerTeamIds(id),
+      listAllTeamsForAdmin(),
+      getCleanupPolicy(),
+      listCleanupRuns({ serverId: id }),
+      listServerWorkloads(id),
+      serverAgentUpdate(id),
+      offlineAdvice(server),
+    ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
   const isDeploHost = isDeploHostServer(server);
@@ -124,13 +114,11 @@ export default async function ServerDetailPage(
           ip={hydrated.ip}
           connectedFrom={isDeploHost ? null : (server.connectedFrom ?? null)}
         />
-        {elsewhere && (
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            This server connects to Deplo from {elsewhere}, which is not one of
-            its own addresses, so it is behind a router. Its Apps answer on{" "}
-            {elsewhere} only if the router forwards ports 80 and 443 to it.{" "}
-            <DocsLink topic="servers.connectedFrom" />
-          </p>
+        {memberOf && (
+          <ServerClusterState
+            serverId={server.id}
+            dropAfterMs={memberOf.dnsDropAfter * 1000}
+          />
         )}
 
         <ServerDetailTabs

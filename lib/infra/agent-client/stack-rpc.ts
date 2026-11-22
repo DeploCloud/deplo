@@ -133,6 +133,7 @@ export function stackRpc(
       network: string;
       composeUpArgs?: string[];
       pullImages?: boolean;
+      services?: string[];
     }) {
       return assertNetworkCapable(req.network).then(
         () =>
@@ -146,6 +147,7 @@ export function stackRpc(
                 network: req.network,
                 composeUpArgs: req.composeUpArgs ?? [],
                 pullImages: req.pullImages ?? false,
+                services: req.services ?? [],
                 filesBindSources: filesBindSources(
                   req.composeYaml,
                   stackFilesDir(req.slug),

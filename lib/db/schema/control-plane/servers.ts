@@ -151,3 +151,22 @@ export const serverAgentCapabilities = pgTable(
   },
   (t) => [primaryKey({ columns: [t.serverId, t.capability] })],
 );
+
+// Each address Deplo found for a server and whether it reaches it (ADR-0050): https://deplo.build/docs/operations/servers/addresses
+export const serverAddresses = pgTable(
+  "server_addresses",
+  {
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    address: text("address").notNull(),
+    // machine: on its own interfaces; traffic: where its traffic leaves from (a router); typed: added by hand before.
+    origin: text("origin").notNull(),
+    seenAt: isoTimestamptz("seen_at").notNull(),
+    checkedAt: isoTimestamptz("checked_at"),
+    provenAt: isoTimestamptz("proven_at"),
+    failingSince: isoTimestamptz("failing_since"),
+    problem: text("problem").notNull().default(""),
+  },
+  (t) => [primaryKey({ columns: [t.serverId, t.address] })],
+);
