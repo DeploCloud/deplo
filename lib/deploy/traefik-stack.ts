@@ -213,7 +213,8 @@ const linkRouterOf = (router: string) => `${router}-link`;
 
 // The cluster relay rides the same names as the link, one path over (ADR-0044).
 const RELAY_SERVICE = "deplo-relay";
-const RELAY_PRIORITY = 3;
+// Above any rule's default priority (its length): a hand-written Host() route for the panel took this path.
+const RELAY_PRIORITY = 100_000;
 const relayRouterOf = (router: string) => `${router}-relay`;
 
 const REDIRECT_PRIORITY = 1;
