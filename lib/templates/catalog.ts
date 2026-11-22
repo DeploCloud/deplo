@@ -71,6 +71,13 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
   };
 }
 
+export async function listFeaturedTemplates(
+  limit: number,
+): Promise<CatalogTemplate[]> {
+  const page = await getTemplates({ featured: true, limit });
+  return page.data.map(withAssetUrls);
+}
+
 export async function listCatalog(): Promise<CatalogTemplate[]> {
   const first = await getTemplates({ page: 1, limit: 100 });
   const rest = await Promise.all(

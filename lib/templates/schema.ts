@@ -13,6 +13,7 @@ export const templateListQuerySchema = z
     search: z.string().trim().max(200).default(""),
     order: z.enum(["asc", "desc"]).default("asc"),
     category: slugSchema.optional(),
+    featured: z.literal(true).optional(),
     sort: z.enum(["name"]).default("name"),
   })
   .strict();

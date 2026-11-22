@@ -5,7 +5,10 @@ import { ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Bone, Skeleton, TextLine } from "@/components/ui/skeleton";
 import { titleClass } from "@/components/shared/page-header";
-import { COLLECTIONS, FEATURED } from "@/components/templates/collections";
+import {
+  COLLECTIONS,
+  FEATURED_LIMIT,
+} from "@/components/templates/collections";
 import { cn } from "@/lib/utils";
 
 const delay = (ms: number) =>
@@ -37,8 +40,8 @@ export function StoreRailsSkeleton() {
         <div className="grid gap-3 xl:grid-cols-3">
           <HeroCardSkeleton />
           <div className="grid gap-3 sm:grid-cols-2 xl:col-span-2">
-            {FEATURED.slice(1).map((slug, i) => (
-              <SidekickSkeleton key={slug} style={delay((i + 1) * 60)} />
+            {Array.from({ length: FEATURED_LIMIT - 1 }, (_, i) => (
+              <SidekickSkeleton key={i} style={delay((i + 1) * 60)} />
             ))}
           </div>
         </div>
