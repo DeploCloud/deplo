@@ -249,6 +249,22 @@ export async function runReplicationPass(): Promise<void> {
   }
 }
 
+const now = new Map<string, Promise<void>>();
+
+/** An App's first copy starts the moment it runs on the cluster, not on the watch's next pass; once per cluster at a time. */
+export function replicateNow(clusterId: string): Promise<void> {
+  const running = now.get(clusterId);
+  if (running) return running;
+  const p = replicateCluster(clusterId)
+    .catch(quietly(clusterId))
+    .finally(() => now.delete(clusterId));
+  now.set(clusterId, p);
+  return p;
+}
+
+/** Test seam: what replicateNow still has under way. */
+export const __replicationsUnderWay = () => Promise.all(now.values());
+
 /** Replication turned on or off: every member hears at once, in the background. */
 export function replicateClusterSoon(clusterId: string): void {
   void replicateCluster(clusterId, true).catch(quietly(clusterId));
