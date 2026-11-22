@@ -96,7 +96,13 @@ async function memberLeaseChanged(
   // A preview never fails over: it reads offline until it is deployed again (#212).
   if (state === "fenced") await markPreviewsOffline(serverId);
   const name = (await getServerById(serverId))?.name ?? "A server";
-  const text = await leaseChangeSentence(clusterId, clusterName, name, state);
+  const text = await leaseChangeSentence(
+    clusterId,
+    clusterName,
+    name,
+    state,
+    serverId,
+  );
   await recordClusterActivity(clusterId, text);
   // A server that stopped or is back changes which addresses a domain on every server lists.
   syncClusterAnswerDnsSoon(clusterId);
