@@ -138,9 +138,10 @@ test("a certificate past its date links with no reinstall, and gets a new key at
   const link = await agent.link(door);
   assert.equal(link.status, 101);
   await up;
-  // The key it proved was rotated over that link: the agent relinks with the new one.
-  assert.equal(await link.closed, LINK_CLOSE.revoked);
+  // The key it proved was rotated over that link, which stays open.
   await eventually(() => agent.fingerprint !== old, 5_000);
+  assert.equal(await helloOver("srv_off"), AGENT_VERSION);
+  link.drop();
   const [row] = await db
     .select()
     .from(servers)
@@ -150,6 +151,7 @@ test("a certificate past its date links with no reinstall, and gets a new key at
     new Date(new x509.X509Certificate(row.agentCertPem!).notAfter) > new Date(),
   );
 
+  await eventually(() => !currentLink("srv_off"));
   const again = linkUp("srv_off");
   assert.equal((await agent.link(door)).status, 101);
   await again;
@@ -288,8 +290,9 @@ function aged(daysOld: number, daysLeft: number) {
 async function rotated(id: string, agent: FakeAgent): Promise<string> {
   const old = agent.fingerprint;
   const link = await agent.link(door);
-  assert.equal(await link.closed, LINK_CLOSE.revoked);
   await eventually(() => agent.fingerprint !== old, 5_000);
+  link.drop();
+  await eventually(() => !currentLink(id));
   const up = linkUp(id);
   await agent.link(door);
   await up;

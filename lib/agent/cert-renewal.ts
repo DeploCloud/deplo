@@ -7,7 +7,7 @@ import { eq, isNotNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { connectAgent } from "../infra/agent-client/connect";
-import { dropAgentChannel } from "../infra/agent-client/channel-pool";
+import { repinAgentLink } from "../infra/agent-link/registry";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
 import {
@@ -67,6 +67,7 @@ async function renewNow(serverId: string): Promise<Renewal> {
       ip: serversTable.ip,
       host: serversTable.host,
       certPem: serversTable.agentCertPem,
+      fingerprint: serversTable.agentCertFingerprint,
     })
     .from(serversTable)
     .where(eq(serversTable.id, serverId))
@@ -101,8 +102,9 @@ async function renewNow(serverId: string): Promise<Renewal> {
     }
     if (!(await promoteNextCert(serverId, signed.fingerprint)))
       return { renewed: false, reason: "its link promoted the new key first" };
-    // The link proved the key just retired: it proves the new one by linking again.
-    dropAgentChannel(serverId);
+    // The rotation ran over this machine's own link: it stays open, so no call on it is cut; the next link proves the new key.
+    if (row.fingerprint)
+      repinAgentLink(serverId, row.fingerprint, signed.fingerprint);
     // The old certificate is cut off at every cluster relay at once.
     await pushRostersForServer(serverId);
     return {

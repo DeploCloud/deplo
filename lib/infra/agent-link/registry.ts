@@ -7,8 +7,8 @@ import { LINK_CLOSE, LINK_SETTLE_MS, LINK_SILENT_MS } from "./protocol";
 export interface AgentLink {
   readonly id: number;
   readonly serverId: string;
-  /** The fingerprint the inner handshake verified. */
-  readonly pinnedFingerprint: string;
+  /** The fingerprint the inner handshake verified, moved on by a key rotation over this same link. */
+  pinnedFingerprint: string;
   /** The link's one HTTP/2 connection; never redialed, it ends with the link. */
   readonly client: AgentClient;
   readonly hello: HelloResponse;
@@ -124,6 +124,16 @@ export function onAgentLink(listener: (e: AgentLinkEvent) => void): () => void {
 export function revokeAgentLink(serverId: string): void {
   registry.generations.set(serverId, linkGeneration(serverId) + 1);
   registry.links.get(serverId)?.close(LINK_CLOSE.revoked, "trust revoked");
+}
+
+/** A key rotated over the open link: the session stays, and calls on it keep going (ADR-0050). */
+export function repinAgentLink(
+  serverId: string,
+  from: string,
+  to: string,
+): void {
+  const link = registry.links.get(serverId);
+  if (link?.pinnedFingerprint === from) link.pinnedFingerprint = to;
 }
 
 export function linkGeneration(serverId: string): number {
