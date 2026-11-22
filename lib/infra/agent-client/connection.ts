@@ -446,6 +446,12 @@ export interface AgentConnection {
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */
   stopListening(): Promise<void>;
+  /** Needs `address.prove` (ADR-0050): what tells this server apart, so Deplo can prove an address reaches it. */
+  proveAddresses(echoUrl: string): Promise<{
+    proxyCertificateSha256: string;
+    trafficAddresses: string[];
+    dnsIdent: string;
+  }>;
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
   // Needs `image-inventory` (ADR-0038).
   listWorkloadImages(): Promise<ListWorkloadImagesResponse>;

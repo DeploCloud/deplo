@@ -84,7 +84,7 @@ input AddServerInput {
   clusterId: String
 
   """
-  Only a migration source needs it: the other platform's machine. An ordinary server is known by its agent's key, and Deplo reads its address from the agent; one given here is where its Apps answer, as if set under Advanced.
+  Only a migration source takes it: the other platform's machine. Deplo finds every other server's addresses itself, and refuses one given here.
   """
   host: String
   importOnly: Boolean
@@ -6116,21 +6116,6 @@ type Mutation {
   Rename and/or re-scope a role. Every member holding it gets the new capability set immediately. Returns true.
   """
   updateRole(input: UpdateRoleInput!): Boolean
-
-  """
-  Change a server's address: where its apps are reached, and the migration verb for a host whose IP changed. Its agent links in, so the change is saved without Deplo contacting the server. Returns null.
-  """
-  updateServerAddress(
-    address: String!
-    agentPort: Int @deprecated(reason: "Ignored: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.")
-    force: Boolean @deprecated(reason: "Ignored: Deplo no longer contacts the server to save its address, so there is nothing to force.")
-    id: String!
-
-    """
-    Write only the address in use, keeping the one the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.
-    """
-    keepHost: Boolean
-  ): String
   updateTeam(input: UpdateTeamInput!): Team
 
   """
@@ -7699,6 +7684,11 @@ type SecurityUpdatesStatus {
 
 """A connected host running deployments (reached via its agent)."""
 type Server {
+  """
+  Every address Deplo found for this server, on its own interfaces and where its traffic leaves from, and whether each reaches it. Checked every 2 minutes. Requires instanceAdmin.
+  """
+  addresses: [ServerAddress!]
+
   """Always null: Deplo connects to no server's agent."""
   agentPort: Int @deprecated(reason: "Always null: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.")
 
@@ -7747,7 +7737,7 @@ type Server {
   expectedAgentVersion: String
 
   """
-  Which kind of address the generated (.deplo.site) names of apps on this server carry. Null is automatic: IPv4 when the host has one, IPv6 otherwise - and on the Deplo host, whichever the installer chose. setServerAddressFamily changes it.
+  Which addresses Deplo uses for this server: null is Automatic (every proven address; generated names on IPv4 when one is proven, IPv6 otherwise - and on the Deplo host, whichever the installer chose), ipv4 or ipv6 only. The generated names, the cluster zone's records and the domain hints follow it. setServerAddressFamily changes it.
   """
   generatedAddressFamily: AddressFamily
 
@@ -7809,6 +7799,32 @@ type Server {
   Deplo is still trying to take its agent off this migration source, and will try again on its own. Nothing is asked of anyone while this is true. False for every other server.
   """
   uninstallPending: Boolean
+}
+
+"""
+One address Deplo found for a server, and whether it proved it reaches it (ADR-0050). Nobody types one.
+"""
+type ServerAddress {
+  address: String
+  checkedAt: String
+  family: AddressFamily
+  leavesAt: String
+
+  """One short line: why it is not used or leaving. Empty otherwise."""
+  problem: String
+
+  """
+  inUse: proven, Deplo names it. leaving: proven before, failing now; it leaves at leavesAt unless it reaches the server again. checking: not checked yet. notChecked: Deplo cannot check its family from where it runs. notUsed: it does not reach the server.
+  """
+  state: ServerAddressState
+}
+
+enum ServerAddressState {
+  checking
+  inUse
+  leaving
+  notChecked
+  notUsed
 }
 
 """

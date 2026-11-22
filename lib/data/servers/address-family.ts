@@ -84,11 +84,13 @@ export async function setServerAddressFamily(
       ? await rehostServerDomains(id, fromIp, toIp)
       : 0;
 
+  // The zone's records and glue, and the domain hints, follow the family too.
+  await (await import("./address-checks")).followAddresses(id, toIp);
   await recordActivity(
     "server",
     family
-      ? `Set the generated addresses on ${server.name} to ${LABEL[family]}`
-      : `Left ${server.name} to pick the kind of its generated addresses automatically`,
+      ? `Set ${server.name} to use ${LABEL[family]} only`
+      : `Set ${server.name} to use its addresses automatically`,
     user.name,
     null,
     teamId,

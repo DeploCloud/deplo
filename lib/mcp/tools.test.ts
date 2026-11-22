@@ -253,7 +253,6 @@ test("every branch of a merged tool coerces its variables", async () => {
     ["metrics_history", { kind: "server", id: "srv_1" }],
     ["set_preview_env_var", { appId: "prj_1", key: "K", value: "v" }],
     ["set_preview_env_var", { appId: "prj_1", key: "K" }],
-    ["update_server", { serverId: "srv_1", address: "1.2.3.4" }],
     ["update_server", { serverId: "srv_1", role: "worker" }],
     ["update_server", { serverId: "srv_1", allTeams: true }],
     ["update_server", { serverId: "srv_1", deployConcurrency: 2 }],

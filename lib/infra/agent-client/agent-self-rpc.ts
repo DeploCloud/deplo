@@ -21,6 +21,7 @@ export function agentSelfRpc(
   | "selfUninstall"
   | "setLinkAddresses"
   | "stopListening"
+  | "proveAddresses"
 > {
   const { client } = channel;
   return {
@@ -29,6 +30,14 @@ export function agentSelfRpc(
         client.setLinkAddresses.bind(client),
         pair,
         HELLO_TIMEOUT_MS,
+      );
+    },
+    // Needs `address.prove`; it dials Deplo over each family, so it gets a stack's deadline.
+    proveAddresses(echoUrl: string) {
+      return unary(
+        client.proveAddresses.bind(client),
+        { echoUrl },
+        STACK_DEADLINE_MS,
       );
     },
     async stopListening() {

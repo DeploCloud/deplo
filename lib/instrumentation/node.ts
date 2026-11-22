@@ -261,6 +261,21 @@ export async function register(): Promise<void> {
       setTimeout(tick, 60_000).unref?.();
     }
   }
+  // Every server's addresses, found and proven again (ADR-0050): what Deplo names follows what reaches the server.
+  {
+    const g = globalThis as { __deploAddressChecks?: boolean };
+    if (!g.__deploAddressChecks) {
+      g.__deploAddressChecks = true;
+      const { checkServerAddresses, ADDRESS_CHECK_EVERY_MS } =
+        await import("@/lib/data/servers/address-checks");
+      const tick = () =>
+        void checkServerAddresses().catch((e) =>
+          console.error("[addresses] check failed:", e),
+        );
+      setInterval(tick, ADDRESS_CHECK_EVERY_MS).unref?.();
+      setTimeout(tick, 90_000).unref?.();
+    }
+  }
   {
     const g = globalThis as { __deploCertSweep?: boolean };
     if (!g.__deploCertSweep) {

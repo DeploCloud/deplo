@@ -55,6 +55,8 @@ beforeEach(async () => {
   await seedServerRow(db, {
     id: PROVISIONED,
     name: "provisioned",
+    // Only a migration source takes an address; Deplo finds every other server's (ADR-0050).
+    importOnly: true,
     ip: DEAD_LOCAL,
     host: DEAD_LOCAL,
     agent: {
@@ -66,6 +68,7 @@ beforeEach(async () => {
   await seedServerRow(db, {
     id: BARE,
     name: "bare",
+    importOnly: true,
     ip: "192.0.2.10",
     host: "192.0.2.10",
     status: "provisioning",
@@ -161,13 +164,6 @@ test("an older API client's agent port is read as none, and ignored when it send
   assert.deepEqual(read.errors, []);
   assert.equal((read.data?.server as { agentPort: unknown }).agentPort, null);
 
-  const saved = await asClient(
-    USER_1,
-    `mutation { updateServerAddress(id: "${BARE}", address: "192.0.2.21", agentPort: 9443) }`,
-  );
-  assert.deepEqual(saved.errors, []);
-  assert.equal((await asAdmin(() => getServerById(BARE)))?.ip, "192.0.2.21");
-
   for (const [type, name] of [
     ["Server", "agentPort"],
     ["DeploMovePreviewServer", "port"],
@@ -177,11 +173,39 @@ test("an older API client's agent port is read as none, and ignored when it send
         ?.deprecationReason,
       `${type}.${name} is deprecated`,
     );
-  const arg = schema
-    .getMutationType()!
-    .getFields()
-    .updateServerAddress.args.find((a) => a.name === "agentPort");
-  assert.ok(arg?.deprecationReason, "the agentPort argument is deprecated");
+});
+
+// Nobody types a server's address any more: Deplo finds them and uses one once it reaches the server.
+test("no API takes a typed address for an ordinary server", async () => {
+  assert.equal(
+    schema.getMutationType()!.getFields().updateServerAddress,
+    undefined,
+  );
+  await seedServerRow(db, {
+    id: "srv_plain",
+    name: "plain",
+    ip: "192.0.2.30",
+    host: "192.0.2.30",
+  });
+  await assert.rejects(
+    () =>
+      asAdmin(() =>
+        updateServerAddress({ id: "srv_plain", address: "192.0.2.31" }),
+      ),
+    /Deplo finds a server's addresses itself/,
+  );
+  await assert.rejects(
+    () => asAdmin(() => addServer({ name: "typed", host: "192.0.2.32" })),
+    /Deplo finds a server's addresses itself/,
+  );
+  const added = await asClient(
+    USER_1,
+    `mutation { addServer(input: { name: "typed", host: "192.0.2.33" }) { server { id } } }`,
+  );
+  assert.match(
+    added.errors[0] ?? "",
+    /Deplo finds a server's addresses itself/,
+  );
 });
 
 test("an older API client's update stop lists are empty, and leaving a server behind is refused in plain words", async () => {
@@ -224,7 +248,7 @@ test("an unchanged address is a no-op", async () => {
 
 test("every spelling of an IPv6 address is stored one way, on add and on change", async () => {
   const { server } = await asAdmin(() =>
-    addServer({ name: "v6", host: "[2001:0db8:0:0::1]" }),
+    addServer({ name: "v6", host: "[2001:0db8:0:0::1]", importOnly: true }),
   );
   assert.equal(server.host, "2001:db8::1");
   assert.equal(server.ip, "2001:db8::1");
@@ -237,7 +261,7 @@ test("every spelling of an IPv6 address is stored one way, on add and on change"
 test("an address that is no IP and no host name is refused, on add and on change", async () => {
   for (const host of ["not an address!", "2001:db8::1::2"]) {
     await assert.rejects(
-      () => asAdmin(() => addServer({ name: "x", host })),
+      () => asAdmin(() => addServer({ name: "x", host, importOnly: true })),
       /Enter an IP address or a host name/,
       host,
     );
@@ -250,13 +274,13 @@ test("an address that is no IP and no host name is refused, on add and on change
 });
 
 test("two servers may share one address: several machines behind one router (ADR-0050)", async () => {
-  const first = await asAdmin(() =>
-    addServer({ name: "first", host: "2001:db8::1" }),
-  );
-  const again = await asAdmin(() =>
-    addServer({ name: "again", host: "[2001:db8:0::1]" }),
-  );
+  // Neither is added at an address: each is known by its agent's key, and Deplo finds where it answers.
+  const first = await asAdmin(() => addServer({ name: "first" }));
+  const again = await asAdmin(() => addServer({ name: "again" }));
   assert.notEqual(first.server.id, again.server.id);
   await asAdmin(() => updateServerAddress({ id: BARE, address: DEAD_LOCAL }));
+  await asAdmin(() =>
+    updateServerAddress({ id: PROVISIONED, address: DEAD_LOCAL }),
+  );
   assert.equal((await getServerById(BARE))?.ip, DEAD_LOCAL);
 });

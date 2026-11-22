@@ -9,6 +9,7 @@ import {
 } from "../../deploy/domains";
 import { parseHostAddress } from "../../host-address";
 import { resolveHostIpv4, resolveHostIpv6 } from "../domains/dns-resolve";
+import { publishedServerAddresses } from "./address-checks";
 import type { AddressFamily, Server } from "../../types/server";
 
 // v6Known: the agent listed every IPv6 the host has, so an AAAA outside `v6` points somewhere else.
@@ -86,6 +87,10 @@ export async function serverWildcardIp(
 ): Promise<string | null> {
   const family = server?.generatedAddressFamily ?? null;
   const deploHost = onDeploHost(server);
+  // Once Deplo checked its addresses, only one it proved reaches it is ever named (ADR-0050).
+  const proven =
+    server && !deploHost ? await publishedServerAddresses(server.id) : null;
+  if (proven) return pickAddress({ ...proven, v6Known: true }, family);
   // Automatic on the Deplo host is the kind the installer chose. Its address is the row's once
   // Settings moved it: DEPLO_SERVER_IP stays where the installer saw the machine.
   const kind =
@@ -120,7 +125,7 @@ export async function serverAddressChoices(server: AddressedServer): Promise<{
   ipv6: string | null;
   inUse: string | null;
 }> {
-  const live = await serverAddresses(server);
+  const live = await serverAddresses(server, { anyFamily: true });
   return {
     ipv4: live.v4[0] ?? null,
     ipv6: live.v6.find(isWildcardIp) ?? null,
@@ -131,8 +136,20 @@ export async function serverAddressChoices(server: AddressedServer): Promise<{
 // Read live, never stored: the address it was added at, its name's A/AAAA records, and its agent's own list.
 export async function serverAddresses(
   server: AddressedServer | null | undefined,
-  opts: { askAgent?: boolean } = {},
+  opts: { askAgent?: boolean; anyFamily?: boolean } = {},
 ): Promise<ServerAddresses> {
+  // Once Deplo checked them: what it proved reaches the server, of the family the server's setting names.
+  const proven = server ? await publishedServerAddresses(server.id) : null;
+  if (proven) {
+    const family = opts.anyFamily
+      ? null
+      : (server?.generatedAddressFamily ?? null);
+    return {
+      v4: family === "ipv6" ? [] : proven.v4,
+      v6: family === "ipv4" ? [] : proven.v6,
+      v6Known: true,
+    };
+  }
   const v4 = new Set<string>();
   const v6 = new Set<string>();
   // 192.0.0.0/24 is deplo-clat's IPv4 on an IPv6-only host: nobody reaches the server there.

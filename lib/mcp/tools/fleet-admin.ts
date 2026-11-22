@@ -22,17 +22,11 @@ export const FLEET: McpToolDef[] = [
     name: "add_server",
     title: "Register a new server",
     description:
-      "Add a machine to the fleet. Returns the one-line install command that has to be run on it once; it carries an enrolment token, so hand it to the person who owns the machine. No address is needed.",
+      "Add a machine to the fleet. Returns the one-line install command to run on it once; it carries an enrolment token. No address is taken: Deplo finds the server's addresses itself.",
     group: "Servers",
     requires: "instanceAdmin",
     input: z.object({
       name: z.string(),
-      host: z
-        .string()
-        .optional()
-        .describe(
-          "Leave it out: Deplo reads the address from the agent. Only where its Apps answer, as if set under Advanced.",
-        ),
       allTeams: z.boolean().optional().describe("Usable by every team."),
       teamIds: z.array(z.string()).optional(),
       buildOnly: z.boolean().optional(),
@@ -68,15 +62,14 @@ export const FLEET: McpToolDef[] = [
   }),
   tool({
     name: "update_server",
-    title: "Change a server's address, role, teams or limits",
+    title: "Change a server's role, teams or limits",
     description:
-      "Any of: the server's address, its role, which teams may use it, build fallback, IPv4 or IPv6 for generated names, deploy concurrency, timezone. Canary releases follow set_canary_releases, never one server.",
+      "Any of: role, teams, build fallback, which addresses it uses (automatic, IPv4 or IPv6 only), deploy concurrency, timezone. Deplo finds its addresses; none is set here.",
     group: "Servers",
     requires: "instanceAdmin",
     idempotent: true,
     input: z.object({
       serverId,
-      address: z.string().optional(),
       role: z.string().optional(),
       allTeams: z.boolean().optional(),
       teamIds: z.array(z.string()).optional(),
@@ -85,14 +78,13 @@ export const FLEET: McpToolDef[] = [
         .enum(["ipv4", "ipv6", "automatic"])
         .optional()
         .describe(
-          "Generated names on IPv4, IPv6, or automatic (IPv4 when the host has one).",
+          "The addresses Deplo uses for it: automatic (every proven one; generated names on IPv4 when proven), IPv4 only, or IPv6 only.",
         ),
       deployConcurrency: z.number().int().optional(),
       timezone: z.string().optional().describe("IANA zone."),
     }),
     variables: (a) => ({
       id: a.serverId,
-      address: a.address ?? "",
       role: a.role ?? "",
       teams: {
         serverId: a.serverId,
@@ -103,7 +95,6 @@ export const FLEET: McpToolDef[] = [
       family: a.addressFamily === "automatic" ? null : a.addressFamily,
       concurrency: a.deployConcurrency ?? 1,
       timezone: a.timezone ?? "",
-      setAddress: a.address !== undefined,
       setRole: a.role !== undefined,
       setTeams: a.allTeams !== undefined || a.teamIds !== undefined,
       setFallback: a.buildFallback !== undefined,
@@ -114,14 +105,12 @@ export const FLEET: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpUpdateServer(
         $id: String!
-        $address: String!
         $role: String!
         $teams: SetServerTeamsInput!
         $buildFallback: Boolean
         $family: AddressFamily
         $concurrency: Int!
         $timezone: String!
-        $setAddress: Boolean!
         $setRole: Boolean!
         $setTeams: Boolean!
         $setFallback: Boolean!
@@ -129,8 +118,6 @@ export const FLEET: McpToolDef[] = [
         $setConcurrency: Boolean!
         $setTimezone: Boolean!
       ) {
-        updateServerAddress(id: $id, address: $address)
-          @include(if: $setAddress)
         setServerRole(id: $id, role: $role) @include(if: $setRole) {
           id
           role
