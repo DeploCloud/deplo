@@ -23,21 +23,17 @@ const httpsUrlSchema = z
   .max(2048)
   .refine((url) => url.startsWith("https://"));
 
-const apiLinkSchema = z
-  .object({
-    label: z.string().min(2).max(80),
-    url: httpsUrlSchema,
-  })
-  .strict();
+const apiLinkSchema = z.object({
+  label: z.string().min(2).max(80),
+  url: httpsUrlSchema,
+});
 
-const apiCategorySchema = z
-  .object({
-    name: z.string().min(2).max(48),
-    icon: z.string().min(3).max(64),
-    description: z.string().min(20).max(400),
-    slug: slugSchema,
-  })
-  .strict();
+const apiCategorySchema = z.object({
+  name: z.string().min(2).max(48),
+  icon: z.string().min(3).max(64),
+  description: z.string().min(20).max(400),
+  slug: slugSchema,
+});
 
 const apiTemplateLinksSchema = z
   .object({
@@ -45,61 +41,54 @@ const apiTemplateLinksSchema = z
     website: httpsUrlSchema.optional(),
     docs: z.array(httpsUrlSchema).optional(),
   })
-  .strict()
   .refine((links) => Object.values(links).some(Boolean));
 
-const apiTemplateAlertSchema = z
-  .object({
-    type: z.enum(["info", "warning", "destructive"]),
-    message: z.string().trim().min(1).max(2_000),
-    link: httpsUrlSchema.optional(),
-  })
-  .strict();
+const apiTemplateAlertSchema = z.object({
+  type: z.enum(["info", "warning", "destructive"]),
+  message: z.string().trim().min(1).max(2_000),
+  link: httpsUrlSchema.optional(),
+});
 
-const apiTemplateVariantFilesSchema = z
-  .object({
-    config: z
-      .string()
-      .regex(
-        /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/template\.toml$/,
-      ),
-    compose: z
-      .string()
-      .regex(
-        /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/docker-compose\.yml$/,
-      ),
-  })
-  .strict();
-
-export const apiTemplateVariantSchema = z
-  .object({
-    name: z.string().min(2).max(80),
-    shortDescription: z.string().min(20).max(240),
-    category: apiCategorySchema,
-    developedBy: apiLinkSchema,
-    submittedBy: apiLinkSchema,
-    links: apiTemplateLinksSchema,
-    alerts: z.array(apiTemplateAlertSchema).default([]),
-    lastUpdate: z.iso.datetime(),
-    createdAt: z.iso.datetime(),
-    description: z.string().min(20).max(20_000),
-    slug: slugSchema,
-    logo: z
-      .string()
-      .regex(
-        /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/,
-      )
-      .nullable(),
-    images: z.array(
-      z
-        .string()
-        .regex(
-          /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*\.webp$/,
-        ),
+const apiTemplateVariantFilesSchema = z.object({
+  config: z
+    .string()
+    .regex(
+      /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/template\.toml$/,
     ),
-    files: apiTemplateVariantFilesSchema,
-  })
-  .strict();
+  compose: z
+    .string()
+    .regex(
+      /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/docker-compose\.yml$/,
+    ),
+});
+
+export const apiTemplateVariantSchema = z.object({
+  name: z.string().min(2).max(80),
+  shortDescription: z.string().min(20).max(240),
+  category: apiCategorySchema,
+  developedBy: apiLinkSchema,
+  submittedBy: apiLinkSchema,
+  links: apiTemplateLinksSchema,
+  alerts: z.array(apiTemplateAlertSchema).default([]),
+  lastUpdate: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  description: z.string().min(20).max(20_000),
+  slug: slugSchema,
+  logo: z
+    .string()
+    .regex(
+      /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/,
+    )
+    .nullable(),
+  images: z.array(
+    z
+      .string()
+      .regex(
+        /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*\.webp$/,
+      ),
+  ),
+  files: apiTemplateVariantFilesSchema,
+});
 
 export const apiTemplateSchema = z
   .object({
@@ -111,27 +100,22 @@ export const apiTemplateSchema = z
       .nullable(),
     variants: z.array(apiTemplateVariantSchema).min(1),
   })
-  .strict()
   .refine(
     ({ variants }) => variants.some(({ slug }) => slug === "default"),
     "A default variant is required.",
   );
 
-const paginationSchema = z
-  .object({
-    page: z.number().int().positive(),
-    limit: z.number().int().positive().max(100),
-    total: z.number().int().nonnegative(),
-    totalPages: z.number().int().nonnegative(),
-  })
-  .strict();
+const paginationSchema = z.object({
+  page: z.number().int().positive(),
+  limit: z.number().int().positive().max(100),
+  total: z.number().int().nonnegative(),
+  totalPages: z.number().int().nonnegative(),
+});
 
-export const templatesResponseSchema = z
-  .object({
-    data: z.array(apiTemplateSchema),
-    pagination: paginationSchema,
-  })
-  .strict();
+export const templatesResponseSchema = z.object({
+  data: z.array(apiTemplateSchema),
+  pagination: paginationSchema,
+});
 
 export const templateAssetPathSchema = z.union([
   z
