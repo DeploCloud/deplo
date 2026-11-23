@@ -83,12 +83,23 @@ export async function completeBootstrap(
 /** Its first verified link, kept for good; a Deplo move never inserts servers, so the freeze does not apply. */
 export async function recordFirstLink(serverId: string): Promise<void> {
   try {
-    await getDb()
+    const linked = await getDb()
       .update(serversTable)
       .set({ firstLinkedAt: nowIso() })
       .where(
         and(eq(serversTable.id, serverId), isNull(serversTable.firstLinkedAt)),
-      );
+      )
+      .returning({ id: serversTable.id });
+    // Trigger an immediate background address scan once a server links for the first time.
+    if (linked.length > 0 && !process.env.NODE_TEST_CONTEXT) {
+      setTimeout(() => {
+        void import("./address-checks")
+          .then(({ checkServerAddresses }) => checkServerAddresses())
+          .catch((e) =>
+            console.error("[addresses] first-link check failed:", e),
+          );
+      }, 2_000).unref?.();
+    }
   } catch (e) {
     // The next link it opens records it.
     console.error(`[deplo] could not record ${serverId}'s first link:`, e);

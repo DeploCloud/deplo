@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { DeploMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { getServerById, serverRole } from "@/lib/data/servers/roster";
+import { serverAddressViews } from "@/lib/data/servers/address-checks";
+import { serverWildcardIp } from "@/lib/data/servers/addresses";
 import { getServerTeamIds } from "@/lib/data/servers/team-access";
 import { listServerWorkloads } from "@/lib/data/servers/workloads";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
@@ -59,16 +61,27 @@ export default async function ServerDetailPage(
     : undefined;
   const leftByAnother = leftByAnotherDeplo(id);
   const expectedAgentVersion = AGENT_VERSION;
-  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
-    await Promise.all([
-      getServerTeamIds(id),
-      listAllTeamsForAdmin(),
-      getCleanupPolicy(),
-      listCleanupRuns({ serverId: id }),
-      listServerWorkloads(id),
-      serverAgentUpdate(id),
-      offlineAdvice(server),
-    ]);
+  const [
+    teamIds,
+    teamsRaw,
+    policy,
+    runs,
+    workloads,
+    agentUpdate,
+    advice,
+    initialAddresses,
+    initialPrimaryAddress,
+  ] = await Promise.all([
+    getServerTeamIds(id),
+    listAllTeamsForAdmin(),
+    getCleanupPolicy(),
+    listCleanupRuns({ serverId: id }),
+    listServerWorkloads(id),
+    serverAgentUpdate(id),
+    offlineAdvice(server),
+    serverAddressViews(id),
+    serverWildcardIp(server).catch(() => null),
+  ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
   const isDeploHost = isDeploHostServer(server);
@@ -174,6 +187,9 @@ export default async function ServerDetailPage(
             role: serverRole(hydrated) as "everything" | "build" | "storage",
             buildFallback: isBuildFallbackServer(hydrated),
             generatedAddressFamily: hydrated.generatedAddressFamily,
+            preferredAddress: hydrated.preferredAddress ?? null,
+            initialAddresses,
+            initialPrimaryAddress,
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
             agentVersion,

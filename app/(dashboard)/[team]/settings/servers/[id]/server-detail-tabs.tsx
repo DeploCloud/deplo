@@ -58,6 +58,15 @@ import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { AGENT_VERSION, type AgentReach } from "@/lib/version";
 
+export type ServerAddressSummary = {
+  address: string;
+  family: "ipv4" | "ipv6";
+  isPrivate: boolean;
+  state: "inUse" | "leaving" | "checking" | "notChecked" | "notUsed";
+  problem: string;
+  leavesAt: string | null;
+};
+
 export type ServerSummary = {
   id: string;
   name: string;
@@ -73,6 +82,9 @@ export type ServerSummary = {
   role: "everything" | "build" | "storage";
   buildFallback: boolean;
   generatedAddressFamily: "ipv4" | "ipv6" | null;
+  preferredAddress?: string | null;
+  initialAddresses?: ServerAddressSummary[];
+  initialPrimaryAddress?: string | null;
   isDeploHost: boolean;
   provisioning: boolean;
   agentVersion: string | null;

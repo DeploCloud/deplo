@@ -9,7 +9,7 @@ import {
 } from "../../deploy/domains";
 import { parseHostAddress } from "../../host-address";
 import { resolveHostIpv4, resolveHostIpv6 } from "../domains/dns-resolve";
-import { publishedServerAddresses } from "./address-checks";
+import { isPrivateAddress, publishedServerAddresses } from "./address-checks";
 import type { AddressFamily, Server } from "../../types/server";
 
 // v6Known: the agent listed every IPv6 the host has, so an AAAA outside `v6` points somewhere else.
@@ -20,7 +20,9 @@ export interface ServerAddresses {
 }
 
 type AddressedServer = Pick<Server, "id" | "ip" | "host" | "agent"> &
-  Partial<Pick<Server, "generatedAddressFamily" | "deploHost">>;
+  Partial<
+    Pick<Server, "generatedAddressFamily" | "preferredAddress" | "deploHost">
+  >;
 
 // null when the agent cannot say: unreachable, or too old to report its addresses.
 async function askAgent(serverId: string): Promise<string[] | null> {
@@ -81,16 +83,54 @@ function pickAddress(
   return ofFamily(a, first)[0] ?? ofFamily(a, other)[0] ?? null;
 }
 
+/** Any public IP, OR a private/VPN IPv4 or IPv6 ULA that an admin explicitly picks as preferred. */
+export function isPreferredIp(raw: string): boolean {
+  const parsed = parseHostAddress(raw);
+  if (!parsed || parsed.kind === "hostname" || isLoopbackIp(parsed.host))
+    return false;
+  if (isWildcardIp(parsed.host)) return true;
+  return parsed.kind === "ipv6" && isPrivateAddress(parsed.host);
+}
+
+function preferredServerIp(
+  server: AddressedServer | null | undefined,
+): string | null {
+  const raw = server?.preferredAddress?.trim();
+  if (!raw) return null;
+  const parsed = parseHostAddress(raw);
+  if (!parsed || !isPreferredIp(parsed.host)) return null;
+  return parsed.host;
+}
+
+function preferFirst(list: string[], preferred: string | null): string[] {
+  if (!preferred || !list.includes(preferred)) return list;
+  return [preferred, ...list.filter((a) => a !== preferred)];
+}
+
 // The address a generated name embeds. Null when the server's is unknown: never another machine's address.
 export async function serverWildcardIp(
   server: AddressedServer | null | undefined,
 ): Promise<string | null> {
   const family = server?.generatedAddressFamily ?? null;
+  const preferred = preferredServerIp(server);
   const deploHost = onDeploHost(server);
   // Once Deplo checked its addresses, only one it proved reaches it is ever named (ADR-0050).
-  const proven =
-    server && !deploHost ? await publishedServerAddresses(server.id) : null;
+  // Applies to the Deplo host too: if IPv4 does not answer (e.g. behind CGNAT), Automatic falls back to IPv6.
+  // Automatic only considers public addresses; an explicit preferredAddress may also pick an active private/VPN IP.
+  const proven = server ? await publishedServerAddresses(server.id) : null;
   if (proven) {
+    if (preferred) {
+      const provenAll = isPrivateAddress(preferred)
+        ? await publishedServerAddresses(server!.id, Date.now(), {
+            includePrivate: true,
+          })
+        : proven;
+      if (
+        provenAll &&
+        (provenAll.v4.includes(preferred) || provenAll.v6.includes(preferred))
+      )
+        return preferred;
+    }
     // The one it carries now stays while it is still used: another address appearing renames nothing.
     const kind = family ?? (proven.v4.length > 0 ? "ipv4" : "ipv6");
     const current = server?.ip ?? "";
@@ -98,6 +138,7 @@ export async function serverWildcardIp(
       return current;
     return pickAddress({ ...proven, v6Known: true }, family);
   }
+  if (preferred) return preferred;
   // Automatic on the Deplo host is the kind the installer chose. Its address is the row's once
   // Settings moved it: DEPLO_SERVER_IP stays where the installer saw the machine.
   const kind =
@@ -143,17 +184,38 @@ export async function serverAddressChoices(server: AddressedServer): Promise<{
 // Read live, never stored: the address it was added at, its name's A/AAAA records, and its agent's own list.
 export async function serverAddresses(
   server: AddressedServer | null | undefined,
-  opts: { askAgent?: boolean; anyFamily?: boolean } = {},
+  opts: {
+    askAgent?: boolean;
+    anyFamily?: boolean;
+    includePrivate?: boolean;
+  } = {},
 ): Promise<ServerAddresses> {
   // Once Deplo checked them: what it proved reaches the server, of the family the server's setting names.
-  const proven = server ? await publishedServerAddresses(server.id) : null;
+  const preferred = preferredServerIp(server);
+  const proven = server
+    ? await publishedServerAddresses(server.id, Date.now(), {
+        includePrivate: opts.includePrivate,
+      })
+    : null;
   if (proven) {
     const family = opts.anyFamily
       ? null
       : (server?.generatedAddressFamily ?? null);
+    let v4 = family === "ipv6" ? [] : [...proven.v4];
+    let v6 = family === "ipv4" ? [] : [...proven.v6];
+    // If an admin explicitly picked an active private/VPN IP as primary, include it for DNS checks and hints.
+    if (preferred && !opts.includePrivate && isPrivateAddress(preferred)) {
+      const provenAll = await publishedServerAddresses(server!.id, Date.now(), {
+        includePrivate: true,
+      });
+      if (provenAll?.v4.includes(preferred) && family !== "ipv6")
+        v4 = [preferred, ...v4];
+      if (provenAll?.v6.includes(preferred) && family !== "ipv4")
+        v6 = [preferred, ...v6];
+    }
     return {
-      v4: family === "ipv6" ? [] : proven.v4,
-      v6: family === "ipv4" ? [] : proven.v6,
+      v4: preferFirst(v4, preferred),
+      v6: preferFirst(v6, preferred),
       v6Known: true,
     };
   }
@@ -206,7 +268,11 @@ export async function serverAddresses(
   }
   // A loopback address can only mean the machine Deplo itself runs on.
   if (loopback || isDeploHostServer(server)) addInstance();
-  return { v4: [...v4], v6: [...v6], v6Known };
+  return {
+    v4: preferFirst([...v4], preferred),
+    v6: preferFirst([...v6], preferred),
+    v6Known,
+  };
 }
 
 /** Where its link comes from when that is none of its own addresses: it is behind a router (ADR-0050). */

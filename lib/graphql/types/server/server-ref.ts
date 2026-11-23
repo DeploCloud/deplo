@@ -3,7 +3,10 @@ import { TeamRef } from "../team";
 import { serverRole } from "@/lib/data/servers/roster";
 import { getServerTeams } from "@/lib/data/servers/team-access";
 import { isBuildFallbackServer, isDeploHostServer } from "@/lib/deploy/domains";
-import { serverAddressChoices } from "@/lib/data/servers/addresses";
+import {
+  serverAddressChoices,
+  serverWildcardIp,
+} from "@/lib/data/servers/addresses";
 import {
   listServerAddresses,
   type AddressView,
@@ -33,6 +36,10 @@ const ServerAddressRef = builder
     fields: (t) => ({
       address: t.exposeString("address"),
       family: t.field({ type: AddressFamilyEnum, resolve: (a) => a.family }),
+      isPrivate: t.exposeBoolean("isPrivate", {
+        description:
+          "True when this address belongs to a private LAN or VPN range (RFC1918, CGNAT/VPN 100.64.0.0/10, or IPv6 ULA fc00::/7). Visible for manual selection, never chosen automatically.",
+      }),
       state: t.field({
         type: AddressStateEnum,
         description:
@@ -159,6 +166,19 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       description:
         "Which addresses Deplo uses for this server: null is Automatic (every proven address; generated names on IPv4 when one is proven, IPv6 otherwise - and on the Deplo host, whichever the installer chose), ipv4 or ipv6 only. The generated names, the cluster zone's records and the domain hints follow it. setServerAddressFamily changes it.",
       resolve: (s) => s.generatedAddressFamily,
+    }),
+    preferredAddress: t.string({
+      nullable: true,
+      description:
+        "The specific detected address chosen as primary for this server's generated .deplo.site names, or null when Deplo chooses automatically (reachable IPv4 first, else reachable IPv6). setServerPreferredAddress changes it.",
+      resolve: (s) => s.preferredAddress ?? null,
+    }),
+    primaryAddress: t.string({
+      nullable: true,
+      authScopes: { instanceAdmin: true },
+      description:
+        "The address Deplo currently embeds in generated .deplo.site names for this server (preferredAddress when set and active, otherwise chosen automatically). Requires instanceAdmin.",
+      resolve: (s) => serverWildcardIp(s),
     }),
     addresses: t.field({
       type: [ServerAddressRef],

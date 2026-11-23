@@ -25,8 +25,19 @@ import {
   __resetAgentAddressesForTest,
   __setAgentAddressesForTest,
 } from "./addresses";
-import { setServerAddressFamily } from "./address-family";
-import { followAddresses } from "./address-checks";
+import {
+  setServerAddressFamily,
+  setServerPreferredAddress,
+} from "./address-family";
+import {
+  serverAddresses as getServerAddresses,
+  serverWildcardIp,
+} from "./addresses";
+import {
+  followAddresses,
+  isPrivateAddress,
+  serverAddressViews,
+} from "./address-checks";
 import { getServerById } from "./roster";
 
 const MEMBER = "usr_member";
@@ -182,4 +193,144 @@ test("under Automatic a proven IPv4 carries the names; with none proven, the IPv
   await db.delete(serverAddresses).where(eq(serverAddresses.address, V4));
   await asOwner(() => followAddresses(SERVER_1, V4));
   assert.deepEqual(await names(), [AUTO_V6, "web.example.com"]);
+});
+
+test("automatic on the Deplo host falls back to a proven IPv6 when IPv4 does not answer", async () => {
+  await db
+    .update(serversTable)
+    .set({ deploHost: true, ip: V4, host: V4 })
+    .where(eq(serversTable.id, SERVER_1));
+  await db.insert(serverAddresses).values([
+    {
+      serverId: SERVER_1,
+      address: V4,
+      origin: "machine",
+      seenAt: "2026-11-22T13:00:00.000Z",
+      checkedAt: "2026-11-22T13:00:00.000Z",
+      provenAt: null,
+      failingSince: "2026-11-22T12:00:00.000Z",
+      problem: `${V4} does not reach main: nothing answers on port 443`,
+    },
+    proven(V6),
+  ]);
+  const s = (await getServerById(SERVER_1))!;
+  assert.equal(await serverWildcardIp(s), V6);
+});
+
+test("selecting a specific IPv6 overrides alphabetical order and respects moveExisting", async () => {
+  const V6_A = "2a02:908:d16:a3e0::5249";
+  const V6_B = "2a02:908:d16:a3e0:db52:2afc:bd15:e6ae";
+  await db.insert(serverAddresses).values([proven(V6_A), proven(V6_B)]);
+
+  // Automatic picks V6_A (alphabetically first among proven IPv6).
+  assert.equal(await serverWildcardIp((await getServerById(SERVER_1))!), V6_A);
+
+  // Pick V6_B without moving existing domains.
+  await asOwner(async () => {
+    const { server, appsMoved } = await setServerPreferredAddress(
+      SERVER_1,
+      V6_B,
+      { moveExisting: false },
+    );
+    assert.equal(server.preferredAddress, V6_B);
+    assert.equal(server.generatedAddressFamily, null);
+    assert.equal(appsMoved, 0);
+  });
+  assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
+  const afterPick = (await getServerById(SERVER_1))!;
+  assert.equal(await serverWildcardIp(afterPick), V6_B);
+  assert.equal((await getServerAddresses(afterPick)).v6[0], V6_B);
+
+  // Switch to V6_A with moveExisting: true (after seeding an auto domain on V6_B).
+  const autoB =
+    "web-calm-fox-v6-2a02-908-d16-a3e0-db52-2afc-bd15-e6ae.deplo.site";
+  const autoA = "web-calm-fox-v6-2a02-908-d16-a3e0--5249.deplo.site";
+  await db
+    .update(domainsTable)
+    .set({ name: autoB })
+    .where(eq(domainsTable.id, "dom_auto"));
+  await asOwner(async () => {
+    const { server, appsMoved } = await setServerPreferredAddress(
+      SERVER_1,
+      V6_A,
+      { moveExisting: true },
+    );
+    assert.equal(server.preferredAddress, V6_A);
+    assert.equal(appsMoved, 1);
+  });
+  assert.deepEqual(await names(), [autoA, "web.example.com"]);
+});
+
+test("setServerPreferredAddress refuses an unreachable or unknown IP and non-admins", async () => {
+  await db.insert(serverAddresses).values([
+    {
+      serverId: SERVER_1,
+      address: V4,
+      origin: "machine",
+      seenAt: "2026-11-22T13:00:00.000Z",
+      checkedAt: "2026-11-22T13:00:00.000Z",
+      provenAt: null,
+      failingSince: "2026-11-22T12:00:00.000Z",
+      problem: "nothing answers on port 443",
+    },
+    proven(V6),
+  ]);
+  await asOwner(async () => {
+    await assert.rejects(
+      () => setServerPreferredAddress(SERVER_1, V4),
+      /not an active address/,
+    );
+    await assert.rejects(
+      () => setServerPreferredAddress(SERVER_1, "not-an-ip"),
+      /not an IPv4 or IPv6 address/,
+    );
+  });
+  await runWithIdentity({ userId: MEMBER, teamId: TEAM_A }, async () => {
+    await assert.rejects(() => setServerPreferredAddress(SERVER_1, V6));
+  });
+});
+
+test("preferredAddress falls back to automatic if it stops being published", async () => {
+  const V6_A = "2a02:908:d16:a3e0::5249";
+  const V6_B = "2a02:908:d16:a3e0:db52:2afc:bd15:e6ae";
+  await db.insert(serverAddresses).values([proven(V6_A), proven(V6_B)]);
+  await asOwner(() =>
+    setServerPreferredAddress(SERVER_1, V6_B, { moveExisting: false }),
+  );
+  assert.equal(await serverWildcardIp((await getServerById(SERVER_1))!), V6_B);
+
+  // V6_B leaves; Automatic falls back to V6_A.
+  await db.delete(serverAddresses).where(eq(serverAddresses.address, V6_B));
+  assert.equal(await serverWildcardIp((await getServerById(SERVER_1))!), V6_A);
+});
+
+test("private/VPN addresses stay visible and flagged isPrivate, never chosen automatically, but selectable manually", async () => {
+  const VPN_V4 = "100.102.110.62";
+  const VPN_V6 = "fd0a:79bd:c887:ba3f::1";
+  assert.equal(isPrivateAddress(VPN_V4), true);
+  assert.equal(isPrivateAddress(VPN_V6), true);
+  assert.equal(isPrivateAddress(V6), false);
+
+  await db
+    .insert(serverAddresses)
+    .values([proven(VPN_V4), proven(VPN_V6), proven(V6)]);
+
+  const views = await serverAddressViews(SERVER_1);
+  assert.equal(views.find((v) => v.address === VPN_V4)!.isPrivate, true);
+  assert.equal(views.find((v) => v.address === VPN_V6)!.isPrivate, true);
+  assert.equal(views.find((v) => v.address === V6)!.isPrivate, false);
+
+  // Automatic NEVER picks private/VPN IPv4 even though IPv4 beats IPv6 for public addresses.
+  assert.equal(await serverWildcardIp((await getServerById(SERVER_1))!), V6);
+
+  // Admin can explicitly select the VPN IPv4 as primary.
+  await asOwner(async () => {
+    const { server } = await setServerPreferredAddress(SERVER_1, VPN_V4, {
+      moveExisting: false,
+    });
+    assert.equal(server.preferredAddress, VPN_V4);
+  });
+  const after = (await getServerById(SERVER_1))!;
+  assert.equal(await serverWildcardIp(after), VPN_V4);
+  assert.equal((await getServerAddresses(after)).v4[0], VPN_V4);
 });

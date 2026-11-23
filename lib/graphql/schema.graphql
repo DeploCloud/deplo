@@ -5899,6 +5899,11 @@ type Mutation {
   setServerPlace(label: String, latitude: Float, longitude: Float, serverId: String!): Boolean
 
   """
+  Choose one specific detected address on this server as primary for generated .deplo.site names, or omit address to go back to automatic (reachable IPv4 first, else reachable IPv6). When moveExisting is true (default), existing generated names on the server move to the new address and the count of moved apps is returned; when false, existing names stay as they are.
+  """
+  setServerPreferredAddress(address: String, id: String!, moveExisting: Boolean): Int
+
+  """
   Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host. "import" is not settable and a migration source is not convertible: the install command is the way in and the way out.
   """
   setServerRole(id: String!, role: String!): Server
@@ -7830,6 +7835,16 @@ type Server {
   memoryMb: Int
   name: String
 
+  """
+  The specific detected address chosen as primary for this server's generated .deplo.site names, or null when Deplo chooses automatically (reachable IPv4 first, else reachable IPv6). setServerPreferredAddress changes it.
+  """
+  preferredAddress: String
+
+  """
+  The address Deplo currently embeds in generated .deplo.site names for this server (preferredAddress when set and active, otherwise chosen automatically). Requires instanceAdmin.
+  """
+  primaryAddress: String
+
   """True once the server's agent has called home and been trusted."""
   provisioned: Boolean
 
@@ -7874,6 +7889,11 @@ type ServerAddress {
   address: String
   checkedAt: String
   family: AddressFamily
+
+  """
+  True when this address belongs to a private LAN or VPN range (RFC1918, CGNAT/VPN 100.64.0.0/10, or IPv6 ULA fc00::/7). Visible for manual selection, never chosen automatically.
+  """
+  isPrivate: Boolean
   leavesAt: String
 
   """One short line: why it is not used or leaving. Empty otherwise."""

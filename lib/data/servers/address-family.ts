@@ -7,11 +7,17 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { rehostWildcard, wildcardEmbeddedIp } from "../../deploy/domains";
+import { parseHostAddress } from "../../host-address";
 import { recordActivity } from "../activity";
 import { syncProductionUrl } from "../domains/primary-domain";
 import { repointRedirects } from "../domains/www-pairing";
 import { getServerById, requireAdminServer } from "./roster";
-import { serverAddressChoices, serverWildcardIp } from "./addresses";
+import {
+  isPreferredIp,
+  serverAddressChoices,
+  serverAddresses,
+  serverWildcardIp,
+} from "./addresses";
 import type { AddressFamily, Server } from "../../types/server";
 
 export const ADDRESS_FAMILIES: readonly AddressFamily[] = ["ipv4", "ipv6"];
@@ -60,9 +66,17 @@ export async function setServerAddressFamily(
   const { teamId, user, server } = await requireAdminServer(id);
   if (family !== null && !ADDRESS_FAMILIES.includes(family))
     throw new Error(`Unknown address kind "${family}". Pick "ipv4" or "ipv6".`);
-  if (family === server.generatedAddressFamily) return { server, appsMoved: 0 };
+  if (
+    family === server.generatedAddressFamily &&
+    (server.preferredAddress ?? null) === null
+  )
+    return { server, appsMoved: 0 };
 
-  const next = { ...server, generatedAddressFamily: family };
+  const next = {
+    ...server,
+    generatedAddressFamily: family,
+    preferredAddress: null,
+  };
   if (family) {
     const choices = await serverAddressChoices(next);
     if (!choices[family])
@@ -77,7 +91,7 @@ export async function setServerAddressFamily(
 
   await getDb()
     .update(serversTable)
-    .set({ generatedAddressFamily: family })
+    .set({ generatedAddressFamily: family, preferredAddress: null })
     .where(eq(serversTable.id, id));
   const appsMoved =
     fromIp && toIp && fromIp !== toIp
@@ -90,6 +104,81 @@ export async function setServerAddressFamily(
     "server",
     family
       ? `Set ${server.name} to use ${LABEL[family]} only`
+      : `Set ${server.name} to use its addresses automatically`,
+    user.name,
+    null,
+    teamId,
+  );
+  return { server: (await getServerById(id))!, appsMoved };
+}
+
+/** Pick one specific detected address as primary for generated names, or null for automatic (reachable IPv4 first, else IPv6). */
+export async function setServerPreferredAddress(
+  id: string,
+  address: string | null,
+  opts: { moveExisting?: boolean } = {},
+): Promise<{ server: Server; appsMoved: number }> {
+  const { teamId, user, server } = await requireAdminServer(id);
+  const moveExisting = opts.moveExisting ?? true;
+  const trimmed = address?.trim() || null;
+
+  let nextPreferred: string | null = null;
+  if (trimmed !== null) {
+    const parsed = parseHostAddress(trimmed);
+    if (!parsed || !isPreferredIp(parsed.host)) {
+      throw new Error(
+        `"${trimmed}" is not an IPv4 or IPv6 address Deplo can use.`,
+      );
+    }
+    nextPreferred = parsed.host;
+    const usable = await serverAddresses(server, {
+      anyFamily: true,
+      includePrivate: true,
+    });
+    if (
+      !usable.v4.includes(nextPreferred) &&
+      !usable.v6.includes(nextPreferred)
+    ) {
+      throw new Error(
+        `${nextPreferred} is not an active address on ${server.name}.`,
+      );
+    }
+  }
+
+  if (
+    nextPreferred === (server.preferredAddress ?? null) &&
+    server.generatedAddressFamily === null
+  ) {
+    return { server, appsMoved: 0 };
+  }
+
+  const next: Server = {
+    ...server,
+    preferredAddress: nextPreferred,
+    generatedAddressFamily: null,
+  };
+  const [fromIp, toIp] = await Promise.all([
+    serverWildcardIp(server),
+    serverWildcardIp(next),
+  ]);
+
+  await getDb()
+    .update(serversTable)
+    .set({ preferredAddress: nextPreferred, generatedAddressFamily: null })
+    .where(eq(serversTable.id, id));
+
+  const appsMoved =
+    moveExisting && fromIp && toIp && fromIp !== toIp
+      ? await rehostServerDomains(id, fromIp, toIp)
+      : 0;
+
+  // Pass `from = toIp` so followAddresses syncs server.ip and cluster DNS without rehosting
+  // when the admin chose to keep existing generated names as they are.
+  await (await import("./address-checks")).followAddresses(id, toIp);
+  await recordActivity(
+    "server",
+    nextPreferred
+      ? `Set ${server.name} to use ${nextPreferred}`
       : `Set ${server.name} to use its addresses automatically`,
     user.name,
     null,

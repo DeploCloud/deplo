@@ -279,7 +279,7 @@ export async function register(): Promise<void> {
           console.error("[addresses] check failed:", e),
         );
       setInterval(tick, ADDRESS_CHECK_EVERY_MS).unref?.();
-      setTimeout(tick, 90_000).unref?.();
+      setTimeout(tick, 10_000).unref?.();
     }
   }
   {
