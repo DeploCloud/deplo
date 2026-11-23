@@ -264,6 +264,19 @@ Three things cluster eu left unexplained on 23 Nov: an App that two lost members
 3. **A returning name server names only what it hears now** (agent DeploCloud/deplo-agent#91). Just started, or thawed past 5 s of its own pushes, it used to answer its last agreed set from disk, servers it no longer hears included, for about 8 s. It now answers nothing for its zone (no reply, so a resolver asks another name server, never `SERVFAIL`) until it hears every server of its cluster, or until the removal time is over, and then decides on what it hears; `_deplo-server` keeps answering. The panel still reads the state as `warming` ("Starting").
 4. **A new name's first check waits for its setup**: a domain answered by the cluster's zone that resolves to nothing within a minute of being added reads pending, writes nothing to Activity, and is checked once more when the minute is over, so only a real failure says "does not reach the cluster yet".
 
+## What cluster eu showed (23 Nov 2026, panel v0.8.2-canary.71, agent v0.5.3-canary.34, leader v0.1.0-canary.11)
+
+A power cut is Proxmox's `stop`. The prober on Deplo's machine asked each name server every second and fetched fise and memos over IPv6.
+
+- **The rollout**: the four agents updated within 9 s of each other, no SERVFAIL, fise and memos answered throughout. The name servers were silent 1 s (eu-1), 3 s (eu-2) and 6 s (eu-3) each, as decided above, and eu-2 and eu-3 in the same second. Fixed, not released: after a name server's update the rollout waits the removal time and 5 s (panel #311).
+- **The panel's route** was written again by the sweep 2 minutes after the update (relay at priority 100000, `:80` sent to `:443`), with one proxy restart; apps.idra.app's `deplo.yml` was then removed by name. From then on members reached the relay on the main address, with no relay timeout. Found and fixed, not released: each member's two relay links closed each other every 20 to 30 s (deplo-cluster#13).
+- **Every volume is data**: fise's first deploy on .71 kept `/var/lib/postgresql/data` of fise-db as the Volume `deplo-fise-fise-db-data`, carried the old volume's content into it (the same dump checksum before and after) and started replicating; memos, whose compose names its volume, stayed as it was. The upgrade test App (Postgres with no volume in its compose, 1000 rows written on .70) kept its rows through the redeploy, and its page listed the Volume "Declared by the image". Found and fixed, not released: a copy that began before the new Volume was in the App's bundle kept its first roots and refused the sender ("other data") until its agent restarted (agent DeploCloud/deplo-agent#92).
+- **Power cuts**: the upgrade test App moved from eu-1 to eu-3 in 26 s with all 1001 rows, one written 8 s before the cut; a new App from `postgres:17` as one image had its Volume and both copies 24 s after its first deploy, and moved to eu-2 in 25 s with its 501 rows; fise moved from eu-3 to eu-1 with the same data, visitors without an answer for 40 s and then a valid certificate.
+- **Deplo's machine cut off for an hour** (its provider's outage, 01:35 to 02:32; the leader runs there): every member's lease ran out, and fise, memos and the test App stopped within 2 s; all three ran again at 02:32:14, the second their members linked again.
+- **Two members off at once** (eu-2 and eu-3): eu-1 stopped the test App, which names no restart policy, and fise 8 s later and answered SERVFAIL as decided; with eu-2 back and eu-3 still off, both ran again 13 s after eu-2's power-on.
+- **A member back**: eu-2, back while eu-3 was off, refused and then stayed silent until 19 s after its start, and only ever named eu-1 and eu-2; eu-1 and eu-3, each back after a cut, answered nothing until they heard the others, then only the current set.
+- **Found, not fixed**: during a cut, the resolver on Deplo's machine answered "try again" for fise three times in 40 s while one name server was silent; eu-2, itself back a minute earlier, named eu-3 8 s after eu-3's power-on, while eu-1 waited 18 s; eu-1 logged "memos stays down until it is started or deployed again" every second while it held memos' old copy.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
@@ -279,15 +292,15 @@ Three things cluster eu left unexplained on 23 Nov: an App that two lost members
 
 ## Before a stable release
 
-**Now proven on cluster eu** (22 and 23 Nov 2026): a real Cloudflare zone, the delegation from it and its glue (fise); a wildcard from Let's Encrypt checked over DNS through the zone; one server off and two off, as decided above; load balancing with no Cloudflare in front; proxy restarts one member at a time; a real power cut; certificates on every server and a move whose first answer has its certificate; servers lost one after another; a caught clone's network key replaced.
+**Now proven on cluster eu** (22 and 23 Nov 2026): a real Cloudflare zone, the delegation from it and its glue (fise); a wildcard from Let's Encrypt checked over DNS through the zone; one server off and two off, as decided above; load balancing with no Cloudflare in front; proxy restarts one member at a time; a real power cut; certificates on every server and a move whose first answer has its certificate; servers lost one after another; a caught clone's network key replaced; an App whose data an image volume holds, replicated, fenced and moved with it (fise); what fencing stopped coming back by itself; a returning name server naming only what it hears; the cluster without its leader for an hour.
 
 **Still not proven**:
 
 - **The delegation check against a registrar other than Cloudflare**: records typed by hand, glue and a stray `DS`, which CI checks only against fake parent servers (`dns-delegation.test.ts`).
 - **Nearest first through a real public resolver** that sends EDNS Client Subnet, and a visitor placed by its resolver's address: eu-1..3 sit in one place.
 - **A server back while Deplo is down**, a real power cut (a freeze stands in for it), servers in different places or networks, more than three servers, and IPv4: eu-1..3 are reached over IPv6 only.
-- **The two fixes found on 23 Nov**, deplo-cluster#12 and panel #302, which wait for the next release.
-- **An App whose own data an image volume holds** (fise): Deplo neither sees nor carries it.
+- **The three fixes found in .71's live tests**, panel #311, agent DeploCloud/deplo-agent#92 and deplo-cluster#13, which wait for the next release.
+- **A volume of an image Deplo builds**, or of a private image Deplo cannot read: it stays unnamed.
 
 ## Considered options
 
