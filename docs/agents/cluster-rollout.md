@@ -252,7 +252,7 @@ The lease is a second contract of the same shape: the order each renewal carries
 `deplo-agent`). The 5 s fence travels in every renewal (`fenceSeconds`) and the member answers when its
 stop is done (`stoppedWithin`): either side without the field keeps the 60 s fence and the 81 s wait, so
 a mixed fleet is never two writers. Also part of it is the leader's watch (`/watch`, the `ClusterWatch` RPC, `lib/data/clusters/watch.ts`).
-The probe and the stacks a member still has (§5) are part of it: an agent that renewed on a probe
+So is what a renewal tells the next leader (`Order.Heard`, the gone set) and what an heir's agent hands the leader beside it (`SucceedAsk.Gone`, `SucceedAsk.Heard`): either side without them hands nothing on, as before. The probe and the stacks a member still has (§5) are part of it: an agent that renewed on a probe
 would keep a replaced leader's members alive, so the agent ships first, as always. The beat is a
 third: `leader.beat`, 5 s apart, trusted for 20 s by the leader and waited out for 25 s by the panel.
 A member refuses an older epoch and keeps the one it holds across restarts, so never lower the epoch a
