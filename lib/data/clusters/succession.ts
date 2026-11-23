@@ -107,37 +107,73 @@ export interface LeadingHeir {
   head: number;
 }
 
+interface HeirView {
+  epoch: number;
+  leads: boolean;
+  succeed: boolean;
+  head: number;
+}
+
+// What the leader on an heir's server says of the cluster; undefined when it does not answer, null when it holds none.
+async function heirView(
+  serverId: string,
+  clusterId: string,
+): Promise<HeirView | null | undefined> {
+  try {
+    const raw = await callClusterLeader(
+      serverId,
+      "leader.snapshot",
+      new TextEncoder().encode("{}"),
+    );
+    const snap = JSON.parse(new TextDecoder().decode(raw)) as {
+      head?: number;
+      clusters?: Record<
+        string,
+        { epoch: number; leads: boolean; succeed?: boolean; since?: number }
+      >;
+    };
+    const v = snap.clusters?.[clusterId];
+    if (!v) return null;
+    // Its moves while Deplo was away are replayed from where its epoch began.
+    return {
+      epoch: v.epoch,
+      leads: v.leads,
+      succeed: v.succeed === true,
+      head: v.since ? v.since - 1 : Number(snap.head) || 0,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /** An heir that leads the cluster at a newer epoch than Deplo stored: it took over on its own. Never throws. */
 export async function leadingHeir(
   cluster: Cluster,
 ): Promise<LeadingHeir | null> {
   for (const serverId of await clusterHeirs(cluster).catch(() => [])) {
-    try {
-      const raw = await callClusterLeader(
-        serverId,
-        "leader.snapshot",
-        new TextEncoder().encode("{}"),
-      );
-      const snap = JSON.parse(new TextDecoder().decode(raw)) as {
-        head?: number;
-        clusters?: Record<
-          string,
-          { epoch: number; leads: boolean; since?: number }
-        >;
-      };
-      const v = snap.clusters?.[cluster.id];
-      // Its moves while Deplo was away are replayed from where its epoch began.
-      if (v?.leads && v.epoch > cluster.leaderEpoch)
-        return {
-          serverId,
-          epoch: v.epoch,
-          head: v.since ? v.since - 1 : Number(snap.head) || 0,
-        };
-    } catch {
-      // not answering: not the one that leads
-    }
+    const v = await heirView(serverId, cluster.id);
+    if (v?.leads && v.epoch > cluster.leaderEpoch)
+      return { serverId, epoch: v.epoch, head: v.head };
   }
   return null;
+}
+
+/**
+ * The line as Deplo reaches it: whether any heir answers, and the first one that tries to lead at a newer epoch, the
+ * one Deplo's word goes to when exactly half of the servers are left. Never throws.
+ */
+export async function lineReach(
+  cluster: Cluster,
+): Promise<{ answers: boolean; trying: LeadingHeir | null }> {
+  let answers = false;
+  for (const serverId of await clusterHeirs(cluster).catch(() => [])) {
+    const v = await heirView(serverId, cluster.id);
+    if (v === undefined) continue;
+    answers = true;
+    if (v && v.succeed && !v.leads && v.epoch > cluster.leaderEpoch)
+      return { answers, trying: { serverId, epoch: v.epoch, head: v.head } };
+  }
+  return { answers, trying: null };
 }
 
 /** Stores an heir that leads as the cluster's leader, at the epoch it took: Deplo adopts it, it names no new one. */

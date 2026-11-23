@@ -18,7 +18,10 @@ import { reconcileClusterBundles } from "./bundles";
 import { leaderHostOf } from "./host";
 import {
   __setLeaderBeatClockForTest,
+  forgetHeir,
   leaderNamedRecently,
+  nameHeir,
+  namedHeir,
   tellLeaderReplaced,
 } from "./leader-beat";
 import {
@@ -30,6 +33,7 @@ import {
   adoptHeir,
   clusterPreVotes,
   leadingHeir,
+  lineReach,
   type LeadingHeir,
 } from "./succession";
 import { leadFrom, resumeSeqOf } from "./leader-move";
@@ -118,13 +122,36 @@ export async function superviseClusterLeader(
   }
   if (answers) {
     misses.delete(clusterId);
+    // Heard again before the heir led: the heir's word runs out before the leader gets it back.
+    if (namedHeir(clusterId)) forgetHeir(clusterId);
     return null;
   }
   const missed = (misses.get(clusterId) ?? 0) + 1;
   misses.set(clusterId, missed);
   if (missed < TAKEOVER_AFTER_MISSES) return null;
+  const named = namedHeir(clusterId);
   // It may still lead its half of a split on Deplo's last word: two leaders never hold one half each.
-  if (leaderNamedRecently(clusterId)) return null;
+  if (!named && leaderNamedRecently(clusterId)) return null;
+  // Deplo's word goes to the next in line that tries to lead; its own machine stands in only when nobody in the line answers.
+  const line = await lineReach(cluster);
+  if (line.trying) {
+    if (named && named.serverId !== line.trying.serverId) {
+      forgetHeir(clusterId);
+      return null;
+    }
+    nameHeir(clusterId, line.trying.serverId, line.trying.epoch);
+    if (!named) {
+      const heirName =
+        (await getServerById(line.trying.serverId))?.name ?? "A server";
+      await say(
+        cluster,
+        `${name} stopped answering, so Deplo gives its word to ${heirName}, next in line, to lead cluster ${cluster.name}`,
+      );
+    }
+    return null;
+  }
+  if (named && !line.answers) forgetHeir(clusterId);
+  if (line.answers || namedHeir(clusterId)) return null;
   const own = await leaderHostOf(null);
   if (!own) return null;
   if (!(await clusterLeaderAnswers(own.id)))
@@ -164,6 +191,8 @@ async function adopt(
 ): Promise<void> {
   if (!(await adoptHeir(cluster, heir))) return;
   misses.delete(cluster.id);
+  const named = namedHeir(cluster.id);
+  if (named) forgetHeir(cluster.id, named.serverId === heir.serverId);
   forgetLeaderRoster(cluster.id);
   const led = (await getClusterById(cluster.id))!;
   await pushLeaderRoster(led).catch(() => false);
