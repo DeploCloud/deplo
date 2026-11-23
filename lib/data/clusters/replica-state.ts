@@ -15,6 +15,7 @@ import { nowIso } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
 import { loadAppGraph } from "../app-graph-load";
 import type { FailoverRestore } from "./bundles";
+import { clusterOutOfReach } from "./reach";
 
 // How replication stands, as the server agents last said (ADR-0046), and the restore a failover runs from a copy.
 
@@ -157,9 +158,12 @@ export async function listClusterReplication(
     .select({ id: clusterMembers.serverId })
     .from(clusterMembers)
     .where(eq(clusterMembers.clusterId, clusterId));
+  // Out of reach, the copies read as they stood when Deplo last heard the cluster: a silence is no copy falling behind.
+  const since = await clusterOutOfReach(clusterId);
   return replicationStates(
     apps,
     new Map([[clusterId, members.map((m) => m.id)]]),
     await replicaRows(apps.map((a) => a.id)),
+    since ? Date.parse(since) : Date.now(),
   ).sort((a, b) => a.appName.localeCompare(b.appName));
 }

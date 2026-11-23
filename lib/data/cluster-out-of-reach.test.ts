@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import { and, eq } from "drizzle-orm";
 
 import { activities } from "../db/schema/control-plane/activity";
+import { appVolumes } from "../db/schema/control-plane/apps";
 import {
   clusterAppReplicas,
   clusterMembers,
   clusterWarnings,
+  clusters as clustersTable,
 } from "../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { doorClosed, doorOpened } from "../infra/agent-link/registry";
@@ -17,11 +19,18 @@ import { sayCannotFailOver } from "./clusters/bundles";
 import { appMoveState } from "./clusters/moves";
 import { clusterOutOfReach, sinceClock } from "./clusters/reach";
 import { replicateCluster } from "./clusters/replication";
+import { listClusterReplication } from "./clusters/replica-state";
 import { refreshClusterWarnings } from "./clusters/warnings";
 import { applyLeaderEvent } from "./clusters/watch";
 import { getClusterById } from "./clusters/roster";
 import { TEAM_A } from "./identity-test-helpers";
-import { db, emptyLab, eu, runningApp } from "./cluster-empty-test-helpers";
+import {
+  asAdmin,
+  db,
+  emptyLab,
+  eu,
+  runningApp,
+} from "./cluster-empty-test-helpers";
 
 emptyLab();
 after(() => doorClosed());
@@ -117,6 +126,32 @@ test("while no server of a cluster answers, Deplo says since when and keeps what
       checkedAt: since,
     });
     await replicateCluster(cluster.id);
+    // Nor does the cluster's banner call a copy behind because Deplo stopped hearing it.
+    await db.insert(appVolumes).values({
+      appId: "web",
+      position: 0,
+      volumeId: "vol_web_data",
+      type: "volume",
+      name: "data",
+      mountPath: "/data",
+      readOnly: false,
+    });
+    await db
+      .update(clustersTable)
+      .set({ replicationEnabled: true })
+      .where(eq(clustersTable.id, cluster.id));
+    await db
+      .update(clusterAppReplicas)
+      .set({ appliedAt: new Date(Date.parse(since) - 2_000).toISOString() });
+    assert.deepEqual(
+      (await asAdmin(() => listClusterReplication(cluster.id))).map((r) => [
+        r.appName,
+        r.following,
+        r.total,
+      ]),
+      [["web", 1, 1]],
+    );
+    await db.update(clusterAppReplicas).set({ appliedAt: since });
     assert.deepEqual(
       (await db.select().from(clusterAppReplicas)).map((r) => [
         r.serverId,
