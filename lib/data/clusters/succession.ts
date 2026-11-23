@@ -153,8 +153,12 @@ async function heirView(
 export async function leadingHeir(
   cluster: Cluster,
 ): Promise<LeadingHeir | null> {
+  // While Deplo's machine stands in, an heir that leads at the epoch it took took it from the servers it never reached.
+  const newer = (epoch: number) =>
+    epoch > cluster.leaderEpoch ||
+    (!!cluster.leaderTakeoverAt && epoch === cluster.leaderEpoch);
   for (const [serverId, v] of await lineViews(cluster))
-    if (v?.leads && v.epoch > cluster.leaderEpoch)
+    if (v?.leads && newer(v.epoch))
       return { serverId, epoch: v.epoch, head: v.head };
   return null;
 }
