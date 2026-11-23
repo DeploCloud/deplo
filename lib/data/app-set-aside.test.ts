@@ -10,6 +10,7 @@ import {
   removeAppSetAsideCopy,
   SET_ASIDE_CAPABILITY,
 } from "./apps/set-aside";
+import { deleteApp } from "./apps/delete";
 import { leaderLab } from "./cluster-leader-test-helpers";
 
 const lab = leaderLab();
@@ -102,6 +103,17 @@ test("one copy is removed from there, by name, and Activity says so; another nam
         m,
       ),
     ),
+    said.join("\n"),
+  );
+});
+
+test("deleting the App removes its set-aside copies on every server, and Activity says how many and where", async () => {
+  const { app, removed } = await withCopy();
+  await asAdmin(() => deleteApp(app.id));
+  assert.deepEqual(removed, [`deplo-${app.slug}_data-aside-20261123T040506Z`]);
+  const said = (await lab.db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    said.includes("Removed 1 set-aside copy of web's data: 1 on srv_3."),
     said.join("\n"),
   );
 });

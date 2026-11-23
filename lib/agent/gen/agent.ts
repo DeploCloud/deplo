@@ -1383,6 +1383,17 @@ export interface RemoveSetAsideRequest {
   volumeName: string;
 }
 
+export interface SetAsideRequest {
+  /** The stack whose volumes they are; it is locked while they are copied. */
+  slug: string;
+  volumeNames: string[];
+}
+
+export interface SetAsideResponse {
+  /** One per volume copied aside, with set_aside_of and set_aside_at_ms set. */
+  copies: VolumeUsage[];
+}
+
 export interface VolumeUsageResponse {
   /**
    * One entry per volume that EXISTS; an absent name is simply omitted, never
@@ -1420,6 +1431,11 @@ export interface VolumeChunk_Header {
    * initialised).
    */
   wipeFirst: boolean;
+  /**
+   * Set: the stream is a set-aside copy of this volume, written into volume_name, a new dated copy
+   * (`<aside_of>-aside-<UTC time>`) made with its labels. Hello capability `volumes.newest-wins`.
+   */
+  asideOf: string;
 }
 
 export interface ExportFilesRequest {
@@ -1544,6 +1560,12 @@ export interface ReadStackResponse {
   exists: boolean;
   /** The rendered stack YAML (empty when exists=false). */
   yaml: string;
+  /**
+   * When a container of the stack last ran, as Unix ms: now while one runs (running), else the latest exit.
+   * 0 when the stack has no container. Hello capability `volumes.newest-wins`.
+   */
+  lastRanMs: number;
+  running: boolean;
 }
 
 export interface InspectRequest {
@@ -8752,6 +8774,164 @@ export const RemoveSetAsideRequest: MessageFns<RemoveSetAsideRequest> = {
   },
 };
 
+function createBaseSetAsideRequest(): SetAsideRequest {
+  return { slug: "", volumeNames: [] };
+}
+
+export const SetAsideRequest: MessageFns<SetAsideRequest> = {
+  encode(message: SetAsideRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    for (const v of message.volumeNames) {
+      writer.uint32(18).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetAsideRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetAsideRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.slug = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.volumeNames.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetAsideRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      volumeNames: globalThis.Array.isArray(object?.volumeNames)
+        ? object.volumeNames.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.volume_names)
+        ? object.volume_names.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: SetAsideRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.volumeNames?.length) {
+      obj.volumeNames = message.volumeNames;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetAsideRequest>, I>>(base?: I): SetAsideRequest {
+    return SetAsideRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetAsideRequest>, I>>(object: I): SetAsideRequest {
+    const message = createBaseSetAsideRequest();
+    message.slug = object.slug ?? "";
+    message.volumeNames = object.volumeNames?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseSetAsideResponse(): SetAsideResponse {
+  return { copies: [] };
+}
+
+export const SetAsideResponse: MessageFns<SetAsideResponse> = {
+  encode(message: SetAsideResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.copies) {
+      VolumeUsage.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetAsideResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetAsideResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.copies.push(VolumeUsage.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetAsideResponse {
+    return {
+      copies: globalThis.Array.isArray(object?.copies) ? object.copies.map((e: any) => VolumeUsage.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: SetAsideResponse): unknown {
+    const obj: any = {};
+    if (message.copies?.length) {
+      obj.copies = message.copies.map((e) => VolumeUsage.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetAsideResponse>, I>>(base?: I): SetAsideResponse {
+    return SetAsideResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetAsideResponse>, I>>(object: I): SetAsideResponse {
+    const message = createBaseSetAsideResponse();
+    message.copies = object.copies?.map((e) => VolumeUsage.fromPartial(e)) || [];
+    return message;
+  },
+};
+
 function createBaseVolumeUsageResponse(): VolumeUsageResponse {
   return { volumes: [] };
 }
@@ -8909,7 +9089,7 @@ export const VolumeChunk: MessageFns<VolumeChunk> = {
 };
 
 function createBaseVolumeChunk_Header(): VolumeChunk_Header {
-  return { volumeName: "", wipeFirst: false };
+  return { volumeName: "", wipeFirst: false, asideOf: "" };
 }
 
 export const VolumeChunk_Header: MessageFns<VolumeChunk_Header> = {
@@ -8919,6 +9099,9 @@ export const VolumeChunk_Header: MessageFns<VolumeChunk_Header> = {
     }
     if (message.wipeFirst !== false) {
       writer.uint32(16).bool(message.wipeFirst);
+    }
+    if (message.asideOf !== "") {
+      writer.uint32(26).string(message.asideOf);
     }
     return writer;
   },
@@ -8952,6 +9135,14 @@ export const VolumeChunk_Header: MessageFns<VolumeChunk_Header> = {
             message.wipeFirst = reader.bool();
             continue;
           }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.asideOf = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -8976,6 +9167,11 @@ export const VolumeChunk_Header: MessageFns<VolumeChunk_Header> = {
         : isSet(object.wipe_first)
         ? globalThis.Boolean(object.wipe_first)
         : false,
+      asideOf: isSet(object.asideOf)
+        ? globalThis.String(object.asideOf)
+        : isSet(object.aside_of)
+        ? globalThis.String(object.aside_of)
+        : "",
     };
   },
 
@@ -8987,6 +9183,9 @@ export const VolumeChunk_Header: MessageFns<VolumeChunk_Header> = {
     if (message.wipeFirst !== false) {
       obj.wipeFirst = message.wipeFirst;
     }
+    if (message.asideOf !== "") {
+      obj.asideOf = message.asideOf;
+    }
     return obj;
   },
 
@@ -8997,6 +9196,7 @@ export const VolumeChunk_Header: MessageFns<VolumeChunk_Header> = {
     const message = createBaseVolumeChunk_Header();
     message.volumeName = object.volumeName ?? "";
     message.wipeFirst = object.wipeFirst ?? false;
+    message.asideOf = object.asideOf ?? "";
     return message;
   },
 };
@@ -9838,7 +10038,7 @@ export const RerouteRequest_EnvEntry: MessageFns<RerouteRequest_EnvEntry> = {
 };
 
 function createBaseReadStackResponse(): ReadStackResponse {
-  return { exists: false, yaml: "" };
+  return { exists: false, yaml: "", lastRanMs: 0, running: false };
 }
 
 export const ReadStackResponse: MessageFns<ReadStackResponse> = {
@@ -9848,6 +10048,12 @@ export const ReadStackResponse: MessageFns<ReadStackResponse> = {
     }
     if (message.yaml !== "") {
       writer.uint32(18).string(message.yaml);
+    }
+    if (message.lastRanMs !== 0) {
+      writer.uint32(24).int64(message.lastRanMs);
+    }
+    if (message.running !== false) {
+      writer.uint32(32).bool(message.running);
     }
     return writer;
   },
@@ -9881,6 +10087,22 @@ export const ReadStackResponse: MessageFns<ReadStackResponse> = {
             message.yaml = reader.string();
             continue;
           }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.lastRanMs = longToNumber(reader.int64());
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.running = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -9897,6 +10119,12 @@ export const ReadStackResponse: MessageFns<ReadStackResponse> = {
     return {
       exists: isSet(object.exists) ? globalThis.Boolean(object.exists) : false,
       yaml: isSet(object.yaml) ? globalThis.String(object.yaml) : "",
+      lastRanMs: isSet(object.lastRanMs)
+        ? globalThis.Number(object.lastRanMs)
+        : isSet(object.last_ran_ms)
+        ? globalThis.Number(object.last_ran_ms)
+        : 0,
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
     };
   },
 
@@ -9908,6 +10136,12 @@ export const ReadStackResponse: MessageFns<ReadStackResponse> = {
     if (message.yaml !== "") {
       obj.yaml = message.yaml;
     }
+    if (message.lastRanMs !== 0) {
+      obj.lastRanMs = Math.round(message.lastRanMs);
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
     return obj;
   },
 
@@ -9918,6 +10152,8 @@ export const ReadStackResponse: MessageFns<ReadStackResponse> = {
     const message = createBaseReadStackResponse();
     message.exists = object.exists ?? false;
     message.yaml = object.yaml ?? "";
+    message.lastRanMs = object.lastRanMs ?? 0;
+    message.running = object.running ?? false;
     return message;
   },
 };
@@ -29201,6 +29437,19 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
   /**
+   * Copies each named volume of a stack aside under a dated name, as a returning member does, before a copy that
+   * arrives writes over it or its stack goes. An absent volume is skipped. Hello capability `volumes.newest-wins`.
+   */
+  setAside: {
+    path: "/deplo.agent.v1.Agent/SetAside" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetAsideRequest): Buffer => Buffer.from(SetAsideRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetAsideRequest => SetAsideRequest.decode(value),
+    responseSerialize: (value: SetAsideResponse): Buffer => Buffer.from(SetAsideResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetAsideResponse => SetAsideResponse.decode(value),
+  },
+  /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
    * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
@@ -30279,6 +30528,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   removeSetAside: handleUnaryCall<RemoveSetAsideRequest, StackResult>;
   /**
+   * Copies each named volume of a stack aside under a dated name, as a returning member does, before a copy that
+   * arrives writes over it or its stack goes. An absent volume is skipped. Hello capability `volumes.newest-wins`.
+   */
+  setAside: handleUnaryCall<SetAsideRequest, SetAsideResponse>;
+  /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
    * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
@@ -30849,6 +31103,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Copies each named volume of a stack aside under a dated name, as a returning member does, before a copy that
+   * arrives writes over it or its stack goes. An absent volume is skipped. Hello capability `volumes.newest-wins`.
+   */
+  setAside(
+    request: SetAsideRequest,
+    callback: (error: ServiceError | null, response: SetAsideResponse) => void,
+  ): ClientUnaryCall;
+  setAside(
+    request: SetAsideRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetAsideResponse) => void,
+  ): ClientUnaryCall;
+  setAside(
+    request: SetAsideRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetAsideResponse) => void,
   ): ClientUnaryCall;
   /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a

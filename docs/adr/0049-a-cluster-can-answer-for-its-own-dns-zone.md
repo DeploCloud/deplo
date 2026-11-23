@@ -380,3 +380,9 @@ A power cut is Proxmox's `stop`; a cut is a named nftables table on the member, 
 - [User documentation](https://deplo.build/docs) - the manual, in `DeploCloud/docs`
 - [`AGENTS.md`](../../AGENTS.md) - the architecture rules these decisions produced
 - [`CONTEXT.md`](../../CONTEXT.md) - the glossary
+
+## A new member, and what Deplo says of a lost one (23 Nov 2026)
+
+1. **A new member never answers with only itself.** eu-4, just installed, first heard every other server only as just back, so it held them all out and named only itself for about 10 s (07:21:15 to 07:21:25). A name server that hears the others only as held answers nothing, as at its start (agent `DecideHolding`), like any returning one.
+2. **"Too few servers answer" only when the leader does not lead**: the sentence, and the card's, also ask the leader that leads now; one that says it leads has a majority, whatever states Deplo stored.
+3. **Deplo's machine standing in says what it hears**: "Deplo's machine, standing in as the leader of cluster eu, hears eu-3: eu-1 is off, or cut off from it", never that the others do not answer; the stored leader's events replayed at a hand-back keep their own words.

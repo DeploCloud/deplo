@@ -23,10 +23,16 @@ const enc = (v: unknown): Uint8Array =>
 const named = new Map<string, number>();
 const inFlight = new Set<string>();
 const clock = { now: () => Date.now(), startedAt: Date.now() };
+// The member next in line Deplo gives its word to while the stored leader is silent, at the epoch it asks to lead.
+const heirs = new Map<string, { serverId: string; epoch: number }>();
+// Clusters whose word an heir held and lost: nobody is named until that word is over.
+const held = new Set<string>();
 
 /** Test seam: forget every beat. With a clock, Deplo started at its present; without, it has been up forever. */
 export function __setLeaderBeatClockForTest(now: (() => number) | null): void {
   named.clear();
+  heirs.clear();
+  held.clear();
   clock.now = now ?? (() => Date.now());
   clock.startedAt = now ? now() : Number.NEGATIVE_INFINITY;
 }
@@ -35,6 +41,27 @@ export function __setLeaderBeatClockForTest(now: (() => number) | null): void {
 export function leaderNamedRecently(clusterId: string): boolean {
   const at = named.get(clusterId) ?? clock.startedAt;
   return clock.now() - at < TAKEOVER_AFTER_MS;
+}
+
+/** Deplo's word goes to this heir, at the epoch it tries, instead of the stored leader (ADR-0043, 23 Nov 2026). */
+export function nameHeir(
+  clusterId: string,
+  serverId: string,
+  epoch: number,
+): void {
+  heirs.set(clusterId, { serverId, epoch });
+  held.delete(clusterId);
+}
+
+export function namedHeir(
+  clusterId: string,
+): { serverId: string; epoch: number } | null {
+  return heirs.get(clusterId) ?? null;
+}
+
+/** Takes the word back from an heir; unless it now leads as the stored leader, nobody is named until it is over. */
+export function forgetHeir(clusterId: string, led = false): void {
+  if (heirs.delete(clusterId) && !led) held.add(clusterId);
 }
 
 async function beat(
@@ -63,11 +90,18 @@ export async function beatClusterLeaders(): Promise<void> {
     .from(clustersTable);
   const byHost = new Map<string, Record<string, number>>();
   for (const { id } of rows) {
+    const heir = heirs.get(id);
+    if (!heir && held.has(id)) {
+      if (leaderNamedRecently(id)) continue;
+      held.delete(id);
+    }
     const cluster = await getClusterById(id);
-    const host = cluster && (await leaderHost(cluster));
-    if (!host) continue;
+    const host = heir
+      ? { id: heir.serverId }
+      : cluster && (await leaderHost(cluster));
+    if (!cluster || !host) continue;
     const epochs = byHost.get(host.id) ?? {};
-    epochs[id] = Math.max(cluster.leaderEpoch, 1);
+    epochs[id] = heir ? heir.epoch : Math.max(cluster.leaderEpoch, 1);
     byHost.set(host.id, epochs);
   }
   await Promise.all(

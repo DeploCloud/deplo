@@ -20,6 +20,15 @@ export function tooFewSentence(answering: number, total: number): string {
   return `${heard} this leader, so nothing moves. Failover works again once ${n} ${n === 1 ? "does" : "do"}.`;
 }
 
+/** Deplo's machine standing in hears only some servers: the others are off or cut off from it, which it cannot tell apart. */
+export function standInWhy(
+  name: string,
+  cluster: string,
+  hears: string[],
+): string {
+  return `Deplo's machine, standing in as the leader of cluster ${cluster}, hears ${hears.length > 0 ? list(hears) : "none of its servers"}: ${name} is off, or cut off from it`;
+}
+
 /** The Activity entry for a server's lease change; `tooFew` is the leader no longer hearing enough servers to move anything. */
 export function leaseSentence(
   name: string,
@@ -37,7 +46,7 @@ export function leaseSentence(
     : `${name} stopped responding in cluster ${cluster}, so it stopped the databases and Apps with files that must never run twice.`;
 }
 
-const list = (names: string[]) =>
+export const list = (names: string[]) =>
   names.length < 2
     ? (names[0] ?? "")
     : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
@@ -52,10 +61,10 @@ export function stoppedSentence(
   tooFew: boolean,
   writers: string[],
   stopped: boolean | null,
-): string {
-  const why = tooFew
+  why = tooFew
     ? `Too few servers answer in cluster ${cluster}`
-    : `${name} stopped responding in cluster ${cluster}`;
+    : `${name} stopped responding in cluster ${cluster}`,
+): string {
   if (writers.length === 0)
     return `${why}. ${name} runs no database or App that must never run twice, so nothing on it had to stop.`;
   const what = list(writers);

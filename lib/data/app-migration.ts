@@ -27,6 +27,17 @@ import {
   assertSafeVolumeNames,
 } from "./project-backup-descriptor";
 import { getServerById } from "./servers/roster";
+import {
+  type Ran,
+  ranLater,
+  readRan,
+  setAsideOn,
+  setAsideOnto,
+} from "./clusters/copy-aside";
+import type { SetAsideCopy } from "../infra/agent-client/connection";
+import { formatBytes } from "../utils";
+import { placeAtLeaderFirst } from "./clusters/leader-sync";
+import { getClusterById } from "./clusters/roster";
 import { dropTeardown, teardownOrQueue } from "./teardown-queue";
 import {
   destroyStackOn,
@@ -38,7 +49,8 @@ import {
 
 type Emit = (level: "info" | "warn" | "error", text: string) => void;
 
-export type MoveOutcome = "done" | "nothing" | "rolled-back" | "held";
+/** `kept`: in a cluster the new server's copy ran last, so it stays and the old one is set aside. */
+export type MoveOutcome = "done" | "nothing" | "rolled-back" | "held" | "kept";
 
 export async function completePendingAppMigration(
   appId: string,
@@ -48,6 +60,27 @@ export async function completePendingAppMigration(
   return withKeyedLock(`app-lifecycle:${appId}`, () =>
     runMigration(appId, deployedOn, emit),
   );
+}
+
+/**
+ * A cluster App's data comes before its stack starts on the member it moves to, so it never serves an empty copy
+ * there (fise, 23 Nov 2026). The caller holds the App's lifecycle lock; anything but a pending move is "nothing".
+ */
+export async function moveClusterDataBeforeStart(
+  appId: string,
+  serverId: string,
+  deployKey: string,
+  emit: Emit,
+): Promise<MoveOutcome> {
+  const app = await loadAppGraph(appId);
+  if (
+    !app?.clusterId ||
+    !app.migrateFromServerId ||
+    app.serverId !== serverId ||
+    app.slug !== deployKey
+  )
+    return "nothing";
+  return runMigration(appId, serverId, emit, { beforeStart: true });
 }
 
 const errMsg = (e: unknown): string =>
@@ -80,6 +113,7 @@ async function runMigration(
   appId: string,
   deployedOn: string,
   emit: Emit,
+  opts: { beforeStart?: boolean } = {},
 ): Promise<MoveOutcome> {
   const app = await loadAppGraph(appId);
   const from = app?.migrateFromServerId;
@@ -111,14 +145,26 @@ async function runMigration(
   ]);
   emit("info", `Copying ${app.name}'s data from ${fromName}…`);
 
+  // In a cluster the copy that ran last wins, whichever member is leaving (ADR-0046): read the new one first.
+  let there: Ran | null = null;
+  if (app.clusterId)
+    there = await connectAgent(to)
+      .then((c) => readRan(c, slug).finally(() => c.close()))
+      .catch(() => null);
   let names: string[];
   let hasStack: boolean;
   let includeFiles = appHasFilesDir(app);
   let leftBehind: string[];
+  let here: Ran = { exists: false, lastRanMs: 0, running: false };
   try {
     const old = await connectAgent(from);
     try {
       const stack = await old.readStack(slug);
+      here = {
+        exists: stack.exists,
+        lastRanMs: stack.lastRanMs ?? 0,
+        running: stack.running ?? false,
+      };
       hasStack = stack.exists;
       const yaml = stack.exists ? stack.yaml : "";
       names = appMoveVolumeNames(app, yaml);
@@ -133,6 +179,14 @@ async function runMigration(
       old.close();
     }
   } catch (e) {
+    // The member it moved to serves it under its lease, so the silent one is fenced: it stays, and its copy waits.
+    if (isUnreachable(e) && there?.running) {
+      emit(
+        "warn",
+        `${app.name}'s data stays on ${toName}, which runs it. ${fromName} does not answer, so its older copy is set aside the next time it does.`,
+      );
+      return "kept";
+    }
     return isUnreachable(e)
       ? hold(app, { fromName, toName, error: e, newStopped: false }, emit)
       : rollback(
@@ -141,6 +195,8 @@ async function runMigration(
           emit,
         );
   }
+  if (there && ranLater(there, here) && (names.length > 0 || includeFiles))
+    return keepNewer(app, { fromName, toName, names, hasStack }, emit);
   for (const item of leftBehind)
     emit(
       "warn",
@@ -162,7 +218,8 @@ async function runMigration(
   let newStopped = false;
   let oldStopped = false;
   try {
-    await stopStackOn(to, slug);
+    // Before its first start a member may hold no stack of it yet.
+    if (there?.exists !== false) await stopStackOn(to, slug);
     newStopped = true;
   } catch (e) {
     return rollback(
@@ -186,6 +243,29 @@ async function runMigration(
     }
   }
 
+  // What the new member held of it is set aside before the copy writes over it, never lost.
+  let asideNote = "";
+  if (app.clusterId)
+    try {
+      const copies = await setAsideOn(to, slug, names);
+      if (copies.length > 0)
+        asideNote = ` What ${toName} held of it was set aside first (${formatBytes(sum(copies))}).`;
+    } catch (e) {
+      return rollback(
+        app,
+        {
+          fromName,
+          toName,
+          error: new Error(
+            `what ${toName} held of it could not be set aside first: ${errMsg(e)}`,
+          ),
+          oldStopped,
+          newStopped,
+        },
+        emit,
+      );
+    }
+
   let moved: { missing: string[] };
   try {
     moved = await migrateWorkloadData(from, to, {
@@ -208,7 +288,8 @@ async function runMigration(
 
   let newUp = true;
   try {
-    await startStackOn(to, slug);
+    // Before its first start the deploy that asked for the copy starts it.
+    if (!opts.beforeStart) await startStackOn(to, slug);
   } catch (e) {
     newUp = false;
     emit(
@@ -234,15 +315,58 @@ async function runMigration(
   await clearDataCopyError({ kind: "app", id: appId });
   emit(
     teardownNote || !newUp ? "warn" : "info",
-    `${app.name}'s data is on ${toName}.` + teardownNote,
+    `${app.name}'s data is on ${toName}.` + asideNote + teardownNote,
   );
   await recordActivity(
     "app",
-    `Moved ${app.name}'s data from ${fromName} to ${toName}`,
+    `Moved ${app.name}'s data from ${fromName} to ${toName}` +
+      (asideNote ? `.${asideNote}` : ""),
     "system",
     appId,
   );
   return "done";
+}
+
+const sum = (copies: SetAsideCopy[]) => copies.reduce((n, c) => n + c.bytes, 0);
+
+/** The new member ran it last: its copy stays, and the old member's is set aside on it before the old one goes. */
+async function keepNewer(
+  app: App,
+  ctx: { fromName: string; toName: string; names: string[]; hasStack: boolean },
+  emit: Emit,
+): Promise<MoveOutcome> {
+  const from = app.migrateFromServerId!;
+  let copies: SetAsideCopy[];
+  try {
+    if (ctx.hasStack) await stopStackOn(from, app.slug);
+    copies = await setAsideOnto(from, app.serverId, ctx.names);
+  } catch (e) {
+    emit(
+      "warn",
+      `${app.name}'s data stays on ${ctx.toName}, which ran it after ${ctx.fromName} did. ${ctx.fromName}'s older copy could not be set aside yet (${errMsg(e)}): it stays there, and the next deploy tries again.`,
+    );
+    return "kept";
+  }
+  await teardownOrQueue(strayEntry(app, from, ctx.names)).catch(() => {});
+  await clearMarker(app.id);
+  await clearDataCopyError({ kind: "app", id: app.id });
+  const kept =
+    copies.length > 0
+      ? ` ${ctx.fromName}'s older copy was set aside on ${ctx.toName} (${formatBytes(sum(copies))}), never copied over it.`
+      : "";
+  emit(
+    "info",
+    `${app.name}'s data stays on ${ctx.toName}: it ran there after ${ctx.fromName} last did.` +
+      kept,
+  );
+  await recordActivity(
+    "app",
+    `Kept ${app.name}'s data on ${ctx.toName}, which ran it after ${ctx.fromName} did.` +
+      kept,
+    "system",
+    app.id,
+  );
+  return "kept";
 }
 
 function strayEntry(app: App, serverId: string, reclaim?: string[]) {
@@ -276,6 +400,12 @@ async function rollback(
       () => false,
     );
   await relocate(app, from, oldUp ? "active" : "error");
+  // Placed back at the leader first, or the old member's lease stops it again as placed elsewhere.
+  const cluster = app.clusterId ? await getClusterById(app.clusterId) : null;
+  if (cluster)
+    await placeAtLeaderFirst(cluster, "app", app.id, from, {
+      within: 5_000,
+    }).catch(() => false);
   await teardownOrQueue(strayEntry(app, to)).catch(() => {});
   publishAppChanged(app.id);
   emit(

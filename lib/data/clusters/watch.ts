@@ -97,6 +97,7 @@ async function memberLeaseChanged(
   clusterName: string,
   serverId: string,
   state: ClusterLeaseState,
+  standIn = false,
 ): Promise<void> {
   // Deplo cannot reach the cluster: what a leader standing in sees of its servers is a guess, so the last state stays.
   if (await clusterOutOfReach(clusterId)) return;
@@ -110,6 +111,7 @@ async function memberLeaseChanged(
     name,
     state,
     serverId,
+    standIn,
   );
   await recordClusterActivity(clusterId, text);
   // A server that stopped or is back changes which addresses a domain on every server lists.
@@ -141,8 +143,10 @@ export async function applyLeaderEvent(
 async function applyOne(
   cluster: Cluster,
   e: LeaderEvent,
-  opts: { advance?: boolean },
+  opts: { advance?: boolean; after?: number },
 ): Promise<EventResult> {
+  // Read live while Deplo's machine stands in, an event is its leader's; a replay is the stored leader's own.
+  const standIn = !!cluster.leaderTakeoverAt && opts.after === undefined;
   const clusterId = cluster.id;
   const advance = async (extra: { leaderEpoch?: number } = {}) => {
     if (opts.advance === false) return;
@@ -173,6 +177,7 @@ async function applyOne(
           cluster.name,
           d.member,
           state as ClusterLeaseState,
+          standIn,
         );
       await advance();
       return "applied";
@@ -293,6 +298,7 @@ export async function reconcileCluster(
           cluster.name,
           m.id,
           m.state as ClusterLeaseState,
+          !!cluster.leaderTakeoverAt,
         );
     if (view.epoch > cluster.leaderEpoch)
       await getDb()

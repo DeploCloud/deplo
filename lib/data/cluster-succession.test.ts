@@ -16,6 +16,11 @@ import { SERVER_1 } from "./app-graph-test-helpers";
 import { HelloResponse } from "../agent/gen/agent";
 import { keepLeadersHome, placeClusterLeaders } from "./clusters/leader-move";
 import { superviseClusterLeader } from "./clusters/leader-standby";
+import {
+  __setLeaderBeatClockForTest,
+  beatClusterLeaders,
+  TAKEOVER_AFTER_MS,
+} from "./clusters/leader-beat";
 import { forgetLeaderRoster, pushLeaderRoster } from "./clusters/leader-sync";
 import { listClusterMembers } from "./clusters/members";
 import { getClusterById } from "./clusters/roster";
@@ -207,6 +212,109 @@ test("an heir that took the cluster over without Deplo is adopted at its own epo
   // Deplo's machine never stood in.
   assert.equal(await superviseClusterLeader(cluster.id), null);
   assert.equal((await stored(cluster.id)).takenOver, false);
+});
+
+/** The leader on a server answers its snapshot as one trying to lead the cluster at `epoch`, no quorum yet. */
+function trying(h: FakeClusterHost, clusterId: string, epoch: number) {
+  const calls = h.leader;
+  h.leader = (method, payload) =>
+    method === "leader.snapshot"
+      ? new TextEncoder().encode(
+          JSON.stringify({
+            head: 9,
+            clusters: { [clusterId]: { epoch, leads: false, succeed: true } },
+          }),
+        )
+      : calls(method, payload);
+}
+
+const runs = {
+  installed: true,
+  running: true,
+  version: "0.2.0",
+  relay: false,
+  member: true,
+  relayLinks: 0,
+};
+
+/** Every epoch the leader on a host was named, in order. */
+const beatsTo = (h: FakeClusterHost) =>
+  h.calls
+    .filter((c) => c.method === "leader.beat")
+    .map(
+      (c) => (JSON.parse(dec.decode(c.payload)) as { epochs: object }).epochs,
+    );
+
+test("with half of the servers left, Deplo gives its word to the next in line, and its machine does not stand in", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  let now = 1_000_000;
+  __setLeaderBeatClockForTest(() => now);
+  try {
+    // The leader's server and the first heir's are off: the second heir asks to lead at the epoch its line gives it.
+    hosts[led.leaderServerId!].unreachable = true;
+    hosts[first].unreachable = true;
+    hosts[second].status = runs;
+    const epoch = led.leaderEpoch + 2;
+    trying(hosts[second], cluster.id, epoch);
+    now += TAKEOVER_AFTER_MS;
+    for (let i = 0; i < 3; i++)
+      assert.equal(await superviseClusterLeader(cluster.id), null);
+    assert.equal((await stored(cluster.id)).takenOver, false, "no stand-in");
+    assert.match(
+      (await messages()).join("\n"),
+      new RegExp(
+        `${led.leaderServerId} stopped answering, so Deplo gives its word to ${second}, next in line, to lead cluster eu`,
+      ),
+    );
+    hosts[SERVER_1].calls.length = 0;
+    await beatClusterLeaders();
+    assert.deepEqual(beatsTo(hosts[second]), [{ [cluster.id]: epoch }]);
+    assert.deepEqual(
+      beatsTo(hosts[SERVER_1]),
+      [],
+      "Deplo's machine is named nothing",
+    );
+
+    // On that word a quorum took its epoch: Deplo adopts it, and goes on naming it there.
+    leading(hosts[second], cluster.id, epoch);
+    assert.equal(await superviseClusterLeader(cluster.id), "succeeded");
+    assert.deepEqual(await stored(cluster.id), {
+      server: second,
+      takenOver: false,
+      epoch,
+    });
+    hosts[second].calls.length = 0;
+    await beatClusterLeaders();
+    assert.deepEqual(beatsTo(hosts[second]), [{ [cluster.id]: epoch }]);
+  } finally {
+    __setLeaderBeatClockForTest(null);
+  }
+});
+
+test("Deplo's machine stands in only when nobody in the line answers it", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const heirs = await clusterHeirs(led);
+  let now = 1_000_000;
+  __setLeaderBeatClockForTest(() => now);
+  try {
+    hosts[led.leaderServerId!].unreachable = true;
+    // The heirs answer Deplo but do not ask to lead: their leader may still renew them.
+    for (const h of heirs) hosts[h].status = runs;
+    now += TAKEOVER_AFTER_MS;
+    for (let i = 0; i < 3; i++)
+      assert.equal(await superviseClusterLeader(cluster.id), null);
+    assert.equal((await stored(cluster.id)).takenOver, false);
+
+    for (const h of heirs) hosts[h].unreachable = true;
+    assert.equal(await superviseClusterLeader(cluster.id), "taken_over");
+  } finally {
+    __setLeaderBeatClockForTest(null);
+  }
 });
 
 test("a relayed server gets the warning on itself, and a cluster with no direct majority is not OK for production", async () => {
