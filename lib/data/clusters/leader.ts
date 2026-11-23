@@ -24,6 +24,7 @@ import { versionAtLeast } from "../../version";
 import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
+import { leaderSaysItLeads } from "./lease-activity";
 import {
   clusterRelayNeedsToken,
   clusterRelayProblem,
@@ -122,7 +123,12 @@ export async function readClusterLeader(
   const takenOverAt = cluster.leaderServerId ? cluster.leaderTakeoverAt : null;
   return {
     ...leader,
-    ...failoverNow(leader, leases, takenOverAt !== null),
+    ...failoverNow(
+      leader,
+      leases,
+      takenOverAt !== null,
+      await leaderSaysItLeads(cluster.id),
+    ),
     takenOverAt,
     updateMessage: await updateMessage(host),
     relayMessage: clusterRelayProblem() ?? "",
@@ -140,13 +146,14 @@ function failoverNow(
   leader: ClusterLeader,
   leases: string[],
   stoodIn: boolean,
+  leads: boolean,
 ): Pick<ClusterLeader, "failoverReady" | "message"> {
   const { message } = leader;
   if (leases.length < FAILOVER_MIN_MEMBERS || stoodIn)
     return { failoverReady: null, message };
   if (leader.state !== "running") return { failoverReady: false, message };
   const answering = leases.filter((s) => s === "ok").length;
-  return leaderHearsEnough(answering, leases.length)
+  return leads || leaderHearsEnough(answering, leases.length)
     ? { failoverReady: true, message }
     : {
         failoverReady: false,

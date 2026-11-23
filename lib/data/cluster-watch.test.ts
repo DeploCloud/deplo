@@ -282,6 +282,50 @@ test("a leader that hears too few servers is never read as each server going sil
   ]);
 });
 
+test("a leader that says it leads is never written as hearing too few, whatever the stored states say", async () => {
+  const cluster = await eu();
+  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
+  snapshot = { head: 0, clusters: { [cluster.id]: { epoch: 1, leads: true } } };
+  leader.watch.push("member_state", cluster.id, {
+    member: "srv_2",
+    state: "not_responding",
+  });
+  leader.watch.push("member_state", cluster.id, {
+    member: "srv_3",
+    state: "not_responding",
+  });
+  await watchUntil(cluster.id, 2);
+  assert.deepEqual(await activityTexts(), [
+    "srv_2 is not responding in cluster eu.",
+    "srv_3 is not responding in cluster eu.",
+  ]);
+});
+
+test("Deplo's machine standing in says which servers it hears, and that the others are off or cut off", async () => {
+  const cluster = await eu();
+  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
+  await db
+    .update(clustersTable)
+    .set({
+      leaderServerId: "srv_2",
+      leaderTakeoverAt: new Date().toISOString(),
+    })
+    .where(eq(clustersTable.id, cluster.id));
+  leader.watch.push("member_state", cluster.id, {
+    member: "srv_2",
+    state: "not_responding",
+  });
+  await watchUntil(cluster.id, 1);
+  const said = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    said.includes(
+      `Deplo's machine, standing in as the leader of cluster eu, hears ${[SERVER_1, "srv_3"].sort().join(" and ")}: srv_2 is off, or cut off from it.`,
+    ),
+    said.join("\n"),
+  );
+  assert.ok(!said.some((m) => /not responding|Too few/.test(m)));
+});
+
 test("a second watch starts from the stored sequence and applies nothing twice", async () => {
   const cluster = await eu();
   leader.watch.push("member_state", cluster.id, {
