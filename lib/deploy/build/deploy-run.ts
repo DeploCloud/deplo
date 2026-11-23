@@ -30,7 +30,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
-import { usesPastedCompose } from "../../utils";
+import { messageOf, usesPastedCompose } from "../../utils";
 import { deployImageRef, isOwnImage, stackName } from "../deploy-key";
 import { deploImageClaim, deploImageMessage } from "../deplo-image";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "../source";
@@ -56,6 +56,7 @@ import {
   tryAgent,
 } from "./build-attempt";
 import { renderDeployStack } from "./compose-render";
+import { keepUnnamedVolumes } from "../../data/apps/unnamed-volumes";
 import {
   deployComposeStackViaAgent,
   deploySourceComposeStack,
@@ -156,6 +157,19 @@ async function runDeployment(depId: string): Promise<void> {
   }
 
   try {
+    if (!preview) {
+      const kept = await keepUnnamedVolumes(project.id, runServerId, (m) =>
+        log(depId, "info", m),
+      ).catch((e) => {
+        log(
+          depId,
+          "warn",
+          `Could not read the image's volumes: ${messageOf(e)}`,
+        );
+        return [];
+      });
+      if (kept.length) project.volumes = [...(project.volumes ?? []), ...kept];
+    }
     // Nothing host-local happens here: every build method runs on the agent (ADR-0006).
     const { noCache, reason: noCacheReason } = noCacheForDeploy(project.build);
     const forceRecreate = dep.forceRecreate;

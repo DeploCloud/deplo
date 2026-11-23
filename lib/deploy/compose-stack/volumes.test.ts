@@ -307,3 +307,34 @@ test("a Volume or a Bind attached in Settings to a service with replicas is refu
   });
   assert.equal(volsOf(withFile.services.web).length, 1);
 });
+
+test("a Volume takes the place of a compose entry that names nothing there", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    volumes:
+      - /data
+      - keep:/keep
+volumes:
+  keep: {}
+`,
+    {
+      volumes: [
+        vol({
+          name: "web-data",
+          service: "web",
+          mountPath: "/data",
+          origin: "compose",
+        }),
+      ],
+    },
+  );
+  const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
+  assert.deepEqual(vols, ["keep:/keep", "web-data:/data"]);
+  assert.equal(
+    (topVolumes(doc) as Record<string, { name?: string }>)["web-data"]?.name,
+    "deplo-demo-web-data",
+  );
+});

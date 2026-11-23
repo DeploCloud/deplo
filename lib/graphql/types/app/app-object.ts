@@ -51,6 +51,12 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
     service: t.string({ nullable: true, resolve: (v) => v.service ?? null }),
     mountPath: t.exposeString("mountPath"),
     readOnly: t.exposeBoolean("readOnly"),
+    origin: t.string({
+      nullable: true,
+      description:
+        "Why Deplo made this Volume itself: `image` when the image declares the path, `compose` when the compose file mounts it with no name. Null for one a person added.",
+      resolve: (v) => v.origin ?? null,
+    }),
     propagation: t.field({
       type: MountPropagationEnum,
       nullable: true,

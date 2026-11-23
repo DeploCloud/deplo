@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { MountPropagation } from "../../types/container";
+import { isUnnamedEntry } from "../../apps/unnamed-volumes";
 import { mountOptions } from "../../apps/volume-model";
 import { hostVolumeName } from "../../utils";
 import { isReservedSharedName } from "../compose-lint/networks";
@@ -34,13 +35,23 @@ function mergeVolumes(svc: App, mounts: StackMount[]): void {
     ? [...svc.volumes]
     : [];
   const declared = new Set(
-    existing.map(containerPathOf).filter((p): p is string => p !== null),
+    existing
+      .filter((e) => !isUnnamedEntry(e))
+      .map(containerPathOf)
+      .filter((p): p is string => p !== null),
   );
-  const added = mounts
-    .filter((m) => !declared.has(m.target.replace(/\/+$/, "")))
-    .map((m) => `${m.source}:${m.target}${mountOptions(m)}`);
+  const added = mounts.filter(
+    (m) => !declared.has(m.target.replace(/\/+$/, "")),
+  );
   if (added.length === 0) return;
-  svc.volumes = [...existing, ...added];
+  // A Volume takes the place of an entry that named nothing there.
+  const taken = new Set(added.map((m) => m.target.replace(/\/+$/, "")));
+  svc.volumes = [
+    ...existing.filter(
+      (e) => !(isUnnamedEntry(e) && taken.has(containerPathOf(e) ?? "")),
+    ),
+    ...added.map((m) => `${m.source}:${m.target}${mountOptions(m)}`),
+  ];
 }
 
 function rewriteMountSource(source: string, filesDir: string): string {
@@ -101,6 +112,7 @@ export function injectAppVolumes(
       const vols = services[name].volumes;
       paths = new Set(
         (Array.isArray(vols) ? vols : [])
+          .filter((e) => !isUnnamedEntry(e))
           .map(containerPathOf)
           .filter((p): p is string => p !== null),
       );

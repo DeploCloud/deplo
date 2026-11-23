@@ -196,6 +196,9 @@ function volumeRowToMount(v: AppVolumeRow): VolumeMount {
     ...service,
     mountPath: v.mountPath,
     readOnly: v.readOnly,
+    ...(v.origin === "image" || v.origin === "compose"
+      ? { origin: v.origin }
+      : {}),
   };
 }
 
@@ -267,6 +270,7 @@ export function volumesToRows(
     mountPath: v.mountPath,
     readOnly: Boolean(v.readOnly),
     propagation: v.type === "host" ? (v.propagation ?? null) : null,
+    origin: v.type === "host" || v.type === "app" ? null : (v.origin ?? null),
   }));
 }
 

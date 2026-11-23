@@ -1018,11 +1018,25 @@ export interface DeployRequest {
    * deploy that is not ready never starts them. Advertised as `deploy.start-after-ready`.
    */
   startAfterReady: string[];
+  /**
+   * Volumes Deplo now names where the image or the compose file left one unnamed: before compose up,
+   * an old unnamed volume at the same place is copied into the named one, which must not exist yet.
+   * Advertised as `volumes.adopt`.
+   */
+  adoptVolumes: VolumeAdoption[];
 }
 
 export interface DeployRequest_EnvEntry {
   key: string;
   value: string;
+}
+
+export interface VolumeAdoption {
+  /** The compose service, and the container path the unnamed volume is mounted at. */
+  service: string;
+  target: string;
+  /** The named volume's host name. */
+  volume: string;
 }
 
 /** How the agent decides an app has stopped answering, and when it restarts it. */
@@ -5623,6 +5637,7 @@ function createBaseDeployRequest(): DeployRequest {
     standInComposeYaml: "",
     restartRule: undefined,
     startAfterReady: [],
+    adoptVolumes: [],
   };
 }
 
@@ -5717,6 +5732,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     for (const v of message.startAfterReady) {
       writer.uint32(242).string(v!);
+    }
+    for (const v of message.adoptVolumes) {
+      VolumeAdoption.encode(v!, writer.uint32(250).fork()).join();
     }
     return writer;
   },
@@ -5977,6 +5995,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.startAfterReady.push(reader.string());
             continue;
           }
+          case 31: {
+            if (tag !== 250) {
+              break;
+            }
+
+            message.adoptVolumes.push(VolumeAdoption.decode(reader, reader.uint32()));
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -6128,6 +6154,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : globalThis.Array.isArray(object?.start_after_ready)
         ? object.start_after_ready.map((e: any) => globalThis.String(e))
         : [],
+      adoptVolumes: globalThis.Array.isArray(object?.adoptVolumes)
+        ? object.adoptVolumes.map((e: any) => VolumeAdoption.fromJSON(e))
+        : globalThis.Array.isArray(object?.adopt_volumes)
+        ? object.adopt_volumes.map((e: any) => VolumeAdoption.fromJSON(e))
+        : [],
     };
   },
 
@@ -6229,6 +6260,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.startAfterReady?.length) {
       obj.startAfterReady = message.startAfterReady;
     }
+    if (message.adoptVolumes?.length) {
+      obj.adoptVolumes = message.adoptVolumes.map((e) => VolumeAdoption.toJSON(e));
+    }
     return obj;
   },
 
@@ -6285,6 +6319,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
       ? RestartRule.fromPartial(object.restartRule)
       : undefined;
     message.startAfterReady = object.startAfterReady?.map((e) => e) || [];
+    message.adoptVolumes = object.adoptVolumes?.map((e) => VolumeAdoption.fromPartial(e)) || [];
     return message;
   },
 };
@@ -6370,6 +6405,107 @@ export const DeployRequest_EnvEntry: MessageFns<DeployRequest_EnvEntry> = {
     const message = createBaseDeployRequest_EnvEntry();
     message.key = object.key ?? "";
     message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseVolumeAdoption(): VolumeAdoption {
+  return { service: "", target: "", volume: "" };
+}
+
+export const VolumeAdoption: MessageFns<VolumeAdoption> = {
+  encode(message: VolumeAdoption, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.service !== "") {
+      writer.uint32(10).string(message.service);
+    }
+    if (message.target !== "") {
+      writer.uint32(18).string(message.target);
+    }
+    if (message.volume !== "") {
+      writer.uint32(26).string(message.volume);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): VolumeAdoption {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseVolumeAdoption();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.service = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.target = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.volume = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): VolumeAdoption {
+    return {
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
+      target: isSet(object.target) ? globalThis.String(object.target) : "",
+      volume: isSet(object.volume) ? globalThis.String(object.volume) : "",
+    };
+  },
+
+  toJSON(message: VolumeAdoption): unknown {
+    const obj: any = {};
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
+    if (message.target !== "") {
+      obj.target = message.target;
+    }
+    if (message.volume !== "") {
+      obj.volume = message.volume;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<VolumeAdoption>, I>>(base?: I): VolumeAdoption {
+    return VolumeAdoption.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<VolumeAdoption>, I>>(object: I): VolumeAdoption {
+    const message = createBaseVolumeAdoption();
+    message.service = object.service ?? "";
+    message.target = object.target ?? "";
+    message.volume = object.volume ?? "";
     return message;
   },
 };

@@ -13,6 +13,8 @@ export interface VolumeMount {
   mountPath: string;
   readOnly: boolean;
   propagation?: MountPropagation;
+  /** A Volume Deplo made where the image (or the compose file) left the place unnamed. */
+  origin?: "image" | "compose";
 }
 
 export const MAX_PUBLISHED_PORTS = 20;

@@ -360,7 +360,10 @@ interface ManifestDoc {
 interface ConfigBlob {
   os?: string;
   architecture?: string;
-  config?: { ExposedPorts?: Record<string, unknown> };
+  config?: {
+    ExposedPorts?: Record<string, unknown>;
+    Volumes?: Record<string, unknown>;
+  };
 }
 
 const archList = (archs: unknown[]): string[] =>
@@ -410,6 +413,19 @@ export async function imageArchitectures(imageRef: string): Promise<string[]> {
 export async function imageExposedPort(
   imageRef: string,
 ): Promise<number | null> {
+  return singleExposedPort((await imageConfig(imageRef))?.ExposedPorts);
+}
+
+/** The paths a public image declares as volumes; null when its registry does not say. */
+export async function imageVolumes(imageRef: string): Promise<string[] | null> {
+  const config = await imageConfig(imageRef).catch(() => null);
+  if (!config) return null;
+  return Object.keys(config.Volumes ?? {}).filter((p) => p.startsWith("/"));
+}
+
+async function imageConfig(
+  imageRef: string,
+): Promise<ConfigBlob["config"] | null> {
   const parsed = parseImageRef(imageRef);
   if (!parsed) return null;
   const registryHost =
@@ -441,7 +457,7 @@ export async function imageExposedPort(
     `https://${registryHost}/v2/${repo}/blobs/${encodeURIComponent(configDigest)}`,
     ociAuthHeaders(token),
   );
-  return singleExposedPort(blob?.config?.ExposedPorts);
+  return blob ? (blob.config ?? {}) : null;
 }
 
 const CONFIG_BLOB_MAX = 256 * 1024;
