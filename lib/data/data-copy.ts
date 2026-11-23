@@ -14,6 +14,7 @@ import { loadAppGraph } from "./app-graph-load";
 import { requireAppCapability } from "./node-access";
 import { appOwnVolumeNames } from "./project-backup-descriptor";
 import { teardownOrQueue } from "./teardown-queue";
+import { setAsideHeldCopy } from "./app-migration";
 
 export function assertDataCopyIntact(
   name: string,
@@ -114,7 +115,8 @@ export async function acceptDataCopyLoss(
       )
       .returning({ name: appsTable.name });
     if (!row) throw new Error("App not found");
-    if (app && heldMove)
+    const asideHeld = !!(app && heldMove && app.clusterId);
+    if (app && heldMove && !asideHeld)
       await teardownOrQueue({
         serverId: heldMove,
         deployKey: app.slug,
@@ -125,12 +127,19 @@ export async function acceptDataCopyLoss(
       }).catch(() => {});
     await recordActivity(
       "app",
-      heldMove
-        ? `Deployed ${row.name} without the data its previous server still holds`
-        : `Deployed ${row.name} without the data a migration could not copy`,
+      asideHeld
+        ? `Deployed ${row.name} without the data its previous server still holds: Deplo sets that copy aside, never deletes it`
+        : heldMove
+          ? `Deployed ${row.name} without the data its previous server still holds`
+          : `Deployed ${row.name} without the data a migration could not copy`,
       user.name,
       target.id,
     );
+    // In a cluster the old copy is set aside, never deleted (ADR-0046); it can take a while, so Activity says when.
+    if (app && heldMove && asideHeld)
+      void setAsideHeldCopy({ ...app, migrateFromServerId: heldMove })
+        .then((note) => recordActivity("app", note, user.name, target.id))
+        .catch(() => {});
     return;
   }
   const { teamId } = await requireCapability("control_databases");

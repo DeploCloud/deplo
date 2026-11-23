@@ -166,3 +166,6 @@ export const PROBE_CAPABILITY = "deploy.probe";
 
 // ReadStack says when a stack last ran, and SetAside copies volumes aside on ask: a newer copy is never written over.
 export const NEWEST_WINS_CAPABILITY = "volumes.newest-wins";
+
+// SetAside and a returning member set the stack's Files folder aside with its volumes (`filesAsideOf`).
+export const SET_ASIDE_FILES_CAPABILITY = "volumes.set-aside-files";

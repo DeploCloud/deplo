@@ -33,6 +33,7 @@ export function DataCopyNotice({
   error,
   canAccept,
   move = false,
+  setAside = false,
 }: {
   kind: "app" | "database";
   id: string;
@@ -40,6 +41,8 @@ export function DataCopyNotice({
   error: string;
   canAccept: boolean;
   move?: boolean;
+  /** Its previous server's copy is set aside, never deleted: a cluster App's. */
+  setAside?: boolean;
 }) {
   const router = useRouter();
   const [recopyOpen, setRecopyOpen] = React.useState(false);
@@ -97,9 +100,11 @@ export function DataCopyNotice({
               )
             }
             consequence={
-              kind === "app"
-                ? "Anything it kept in those volumes is not coming back."
-                : "The data that was meant to be there is not coming back."
+              setAside
+                ? "What its previous server holds is set aside, never deleted: its Storage page lists that copy."
+                : kind === "app"
+                  ? "Anything it kept in those volumes is not coming back."
+                  : "The data that was meant to be there is not coming back."
             }
             confirmLabel={`${verb} anyway`}
             successMessage={`${name} can be ${kind === "app" ? "deployed" : "started"} again`}

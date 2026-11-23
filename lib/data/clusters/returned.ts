@@ -301,11 +301,18 @@ export async function applyMemberReturned(
         `${server} tries again on its own, and Activity says when it is saved.`,
       );
     // Writes its copy may not have sent before the cut are never deleted (ADR-0046).
-    for (const { w, r } of own(aside, teamId).sort((a, b) =>
-      a.w.name.localeCompare(b.w.name),
+    // One sentence per App, its volumes and Files folder together.
+    const asideByApp = new Map<string, { name: string; bytes: number }>();
+    for (const { w, r } of own(aside, teamId)) {
+      const k = asideByApp.get(w.id) ?? { name: w.name, bytes: 0 };
+      k.bytes += Number(r.sizeBytes) || 0;
+      asideByApp.set(w.id, k);
+    }
+    for (const { name, bytes } of [...asideByApp.values()].sort((a, b) =>
+      a.name.localeCompare(b.name),
     ))
       parts.push(
-        `${server} kept a dated copy of what it held of ${w.name} (${formatBytes(Number(r.sizeBytes) || 0)}), with any writes its copy had not sent yet: it is listed on ${w.name}'s page until an admin removes it.`,
+        `${server} kept a dated copy of what it held of ${name} (${formatBytes(bytes)}), with any writes its copy had not sent yet: it is listed on ${name}'s page until an admin removes it.`,
       );
     const body = parts.join(" ");
     const only = mine.length === 1 ? mine[0]!.app : null;

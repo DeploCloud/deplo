@@ -5,8 +5,15 @@ import { eq } from "drizzle-orm";
 
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { __setRunnerForTest } from "../deploy/deploy-queue";
-import { NEWEST_WINS_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { pendingTeardowns } from "../db/schema/control-plane/deployments";
+import type { AgentConnection } from "../infra/agent-client/connection";
+import {
+  NEWEST_WINS_CAPABILITY,
+  SET_ASIDE_FILES_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
 import { moveClusterDataBeforeStart } from "./app-migration";
+import { acceptDataCopyLoss } from "./data-copy";
 import { moveAppToCluster } from "./apps/source";
 import { removeClusterMember } from "./clusters/dissolve";
 import { runEmptyingPass } from "./clusters/empty";
@@ -152,4 +159,92 @@ test("a move copies the data before the new member starts it, and sets aside wha
     "nothing",
   );
   __setRunnerForTest(async () => {});
+});
+
+const FILES = tarWith("files/upload.png", "an upload only srv_2 holds");
+const FILES_ASIDE = "deplo-fise.files-aside-20261123T080000Z";
+
+/** fise moved to srv_3 while srv_2, which holds its data and Files, did not answer: the move is held. */
+async function heldMove() {
+  await fise("srv_2");
+  const old = disks.get("srv_2")!;
+  old.volumes.set(VOL, OLD);
+  const host = hosts.get("srv_2")!;
+  host.capabilities.push(SET_ASIDE_FILES_CAPABILITY);
+  const ops = host.extra as Partial<AgentConnection>;
+  const plain = ops.setAside!;
+  // Its agent sets the Files folder aside with whatever volumes it is asked for.
+  ops.setAside = async (slug, names) => {
+    const out = await plain(slug, names);
+    old.calls.push(`aside-files:${slug}`);
+    old.volumes.set(FILES_ASIDE, FILES);
+    return [
+      ...out,
+      { volumeName: FILES_ASIDE, of: "deplo-fise.files", atMs: 1, bytes: 9 },
+    ];
+  };
+  ops.removeSetAside = async (name) => {
+    old.calls.push(`remove-aside:${name}`);
+    old.volumes.delete(name);
+    return { ok: true, error: "" };
+  };
+  const cluster = await eu();
+  await db
+    .update(appsTable)
+    .set({
+      clusterId: cluster.id,
+      serverId: "srv_3",
+      migrateFromServerId: "srv_2",
+      dataCopyError: "srv_2 could not be reached to copy it",
+    })
+    .where(eq(appsTable.id, "fise"));
+  return old;
+}
+
+async function said(re: RegExp): Promise<string> {
+  for (let i = 0; i < 200; i++) {
+    const line = (await activity()).find((l) => re.test(l));
+    if (line) return line;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.fail(`never said ${re}: ${(await activity()).join("\n")}`);
+}
+
+test('"Deploy anyway" on a held move sets the old copy and its Files aside where the App runs, never deletes them', async () => {
+  const old = await heldMove();
+  await asAdmin(() => acceptDataCopyLoss({ kind: "app", id: "fise" }));
+  await said(/What srv_2 held of fise was set aside on srv_3/);
+
+  const eu1 = disks.get("srv_3")!;
+  assert.deepEqual(eu1.volumes.get(`${VOL}-aside-${aside(eu1)}`), OLD);
+  assert.deepEqual(eu1.volumes.get(FILES_ASIDE), FILES, "its Files too");
+  assert.ok(eu1.calls.includes(`import-aside:${FILES_ASIDE}`));
+  assert.ok(
+    old.calls.indexOf(`export:${VOL}`) < old.calls.indexOf("destroy:fise") &&
+      old.calls.indexOf(`remove-aside:${FILES_ASIDE}`) <
+        old.calls.indexOf("destroy:fise"),
+    `srv_2's copy went only once it was set aside: ${old.calls.join(" ")}`,
+  );
+  const row = await appRow("fise");
+  assert.equal(row.migrateFromServerId, null);
+  assert.equal(row.dataCopyError, "");
+});
+
+test('"Deploy anyway" while the old member is silent deletes nothing there: it sets its copy aside once back', async () => {
+  const old = await heldMove();
+  hosts.get("srv_2")!.unreachable = true;
+  await asAdmin(() => acceptDataCopyLoss({ kind: "app", id: "fise" }));
+  await said(
+    /srv_2 holds of fise could not be set aside|srv_2 does not answer/,
+  );
+  assert.ok(!old.calls.includes("destroy:fise"));
+  assert.deepEqual(old.volumes.get(VOL), OLD);
+  assert.deepEqual(await db.select().from(pendingTeardowns), []);
+  assert.ok(
+    (await activity()).some((l) =>
+      /Deployed fise without the data its previous server still holds: Deplo sets that copy aside, never deletes it/.test(
+        l,
+      ),
+    ),
+  );
 });
