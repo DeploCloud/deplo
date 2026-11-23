@@ -23,6 +23,7 @@ import { recordActivity } from "../activity";
 import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { mapLimit } from "../../utils";
 import { errMsg } from "./lifecycle";
+import { removeSetAsideCopiesOfDeleted } from "./set-aside";
 import type { App } from "../../types/app";
 import { deleteReleasedDns, takeAppDns } from "../dns-providers/provision";
 
@@ -51,6 +52,7 @@ async function beginAppDelete(
 
 async function destroyApp(project: App, actor: string): Promise<void> {
   const id = project.id;
+  let asides: string | null = null;
 
   const tornDown = await withKeyedLock(`app-lifecycle:${id}`, async () => {
     // Previews FIRST: the DELETE below cascades their rows away, and with them the only record those containers exist.
@@ -86,6 +88,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
         reclaimVolumes: appOwnVolumeNames(project),
       }).catch(() => {});
     await removeUploads(id).catch(() => {});
+    asides = await removeSetAsideCopiesOfDeleted(project).catch(() => null);
 
     await retireAppTunnel(id).catch(() => null);
     const heldDns = await takeAppDns([id]).catch(() => []);
@@ -113,6 +116,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
     null,
     project.teamId,
   );
+  if (asides) await recordActivity("app", asides, actor, null, project.teamId);
 }
 
 export async function deleteApp(id: string): Promise<void> {
@@ -170,6 +174,7 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
     (await listAllServers()).map((s) => [s.id, s] as const),
   );
   const unreachable: string[] = [];
+  const asideLines: string[] = [];
   await mapLimit(apps, 4, async (project) => {
     const tornDown = await withKeyedLock(
       `app-lifecycle:${project.id}`,
@@ -184,6 +189,10 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
           reclaimVolumes: appOwnVolumeNames(project),
         }).catch(() => false);
         await removeUploads(project.id).catch(() => {});
+        const asides = await removeSetAsideCopiesOfDeleted(project).catch(
+          () => null,
+        );
+        if (asides) asideLines.push(asides);
         const heldDns = await takeAppDns([project.id]).catch(() => []);
         await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
         await deleteReleasedDns(heldDns).catch(() => null);
@@ -203,6 +212,8 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
     null,
     apps[0]!.teamId,
   );
+  for (const line of asideLines)
+    await recordActivity("app", line, actor, null, apps[0]!.teamId);
   if (unreachable.length) {
     await recordActivity(
       "app",

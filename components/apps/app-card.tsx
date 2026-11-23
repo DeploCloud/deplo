@@ -505,7 +505,7 @@ export function AppCard({
             Deleting <strong>{project.name}</strong> removes it for good.
           </>
         }
-        consequence="Its data, deployments, domains, variables and every backup it has stored go with it."
+        consequence="Its data, every copy a server set aside of it, deployments, domains, variables and every backup it has stored go with it."
         confirmLabel="Delete app"
         successMessage="App deleted"
         deleteMutation={() =>

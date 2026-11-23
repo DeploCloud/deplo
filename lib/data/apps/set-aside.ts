@@ -9,6 +9,7 @@ import { getServerById } from "../servers/roster";
 import { clusterMemberServerIds } from "../clusters/roster";
 import { getAppById } from "./listing";
 import { formatBytes } from "../../utils";
+import type { App } from "../../types/app";
 
 // What a cluster server that came back held of an App and its copy may not have sent: set aside, never deleted.
 // https://deplo.build/docs/operations/clusters/failover#set-aside-copies
@@ -66,6 +67,46 @@ export async function listAppSetAsideCopies(
     await Promise.all(servers.map((s) => copiesOn(s, names)))
   ).flat();
   return all.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/**
+ * Deleting an App removes every copy its servers set aside of its data, under the delete's own gate, and says how many
+ * went from where; a server that does not answer keeps its copies, and the line says so.
+ */
+export async function removeSetAsideCopiesOfDeleted(
+  app: App,
+): Promise<string | null> {
+  const names = appOwnVolumeNames(app);
+  if (names.length === 0 || !app.clusterId) return null;
+  const gone = new Map<string, number>();
+  const silent: string[] = [];
+  for (const serverId of await clusterMemberServerIds(app.clusterId)) {
+    const name = (await getServerById(serverId))?.name ?? serverId;
+    try {
+      const conn = await connectAgent(serverId);
+      try {
+        if (!(await conn.hello()).capabilities?.includes(SET_ASIDE_CAPABILITY))
+          continue;
+        for (const c of await conn.setAsideCopies(names))
+          if ((await conn.removeSetAside(c.volumeName)).ok)
+            gone.set(name, (gone.get(name) ?? 0) + 1);
+          else silent.push(name);
+      } finally {
+        conn.close();
+      }
+    } catch {
+      silent.push(name);
+    }
+  }
+  const left = [...new Set(silent)];
+  const note =
+    left.length > 0
+      ? ` ${left.join(" and ")} did not answer, so what ${left.length === 1 ? "it holds" : "they hold"} of it stays there.`
+      : "";
+  if (gone.size === 0) return note ? note.trim() : null;
+  const n = [...gone.values()].reduce((a, b) => a + b, 0);
+  const where = [...gone].map(([s, k]) => `${k} on ${s}`).join(", ");
+  return `Removed ${n} set-aside ${n === 1 ? "copy" : "copies"} of ${app.name}'s data: ${where}.${note}`;
 }
 
 /** Removes one set-aside copy of the App's data, for good. */
