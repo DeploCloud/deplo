@@ -250,8 +250,15 @@ export async function zoneCertPass(input: {
     eligible,
     shared,
   });
+  // Hearing no server tells nothing of how they check: each name keeps its way, so no App is routed again.
+  const heardAny = input.members.some((m) => m.reachable);
   const modes = new Map(
-    [...all].map(([id, m]) => [id, managed.has(id) ? m : "http"] as const),
+    input.domains.map((d) => {
+      const m = heardAny
+        ? all.get(d.domainId)!
+        : ((d.certChallenge as CertChallenge | null) ?? "http");
+      return [d.domainId, managed.has(d.domainId) ? m : "http"] as const;
+    }),
   );
   const zones: ZonePlanZone[] = [];
   for (const z of input.zones) {
