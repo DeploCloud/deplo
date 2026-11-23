@@ -35,6 +35,7 @@ import { resolveTarget, targetLabel } from "./target-descriptor";
 import { MAX_RUNS_PER_TARGET, pruneRetention } from "./retention";
 import { formatBytes } from "./format-bytes";
 import { scheduleDatabaseBundle } from "../clusters/database-bundles";
+import { outOfReachFailure } from "../clusters/reach";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
 export const backupRunsInFlight = new Map<string, AbortController>();
@@ -194,8 +195,14 @@ export async function executeBackup(
     }
   } catch (e) {
     // A server that dropped away mid-run is offline: say so, never the transport's words.
+    const offline = unreachableMessage(e);
     failure =
-      unreachableMessage(e) ?? (mapBackupUnsupported(e) as Error).message;
+      (offline &&
+        (await outOfReachFailure(targetServerId, "take this backup").catch(
+          () => null,
+        ))) ??
+      offline ??
+      (mapBackupUnsupported(e) as Error).message;
   } finally {
     backupRunsInFlight.delete(runId);
   }

@@ -17,7 +17,11 @@ import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
 import { OUT_OF_REACH } from "../apps/display-status";
 import { sayCannotFailOver } from "./clusters/bundles";
 import { appMoveState } from "./clusters/moves";
-import { clusterOutOfReach, sinceClock } from "./clusters/reach";
+import {
+  clusterOutOfReach,
+  outOfReachFailure,
+  sinceClock,
+} from "./clusters/reach";
 import { replicateCluster } from "./clusters/replication";
 import { listClusterReplication } from "./clusters/replica-state";
 import { refreshClusterWarnings } from "./clusters/warnings";
@@ -248,4 +252,23 @@ test("the time reads as a clock today and with its date before", () => {
     sinceClock("2026-11-22T23:59:00.000Z", now),
     "2026-11-22 at 23:59 UTC",
   );
+});
+
+test("a backup Deplo could not take while it reaches no server of the cluster says so, not that a server is off", async () => {
+  await runningApp("web", "srv_2");
+  const cluster = (await getClusterById((await eu()).id))!;
+  const since = new Date(Date.now() - 4 * 60_000).toISOString();
+  await lastSeen("srv_2", since);
+  await lastSeen("srv_3", since);
+  doorOpened(Date.now() - LINK_SETTLE_MS - 1000);
+  try {
+    assert.equal(
+      await outOfReachFailure("srv_2", "take this backup"),
+      `Deplo cannot reach cluster ${cluster.name} since ${sinceClock(since)}, so it could not take this backup: its servers keep running without Deplo`,
+    );
+    // A server of no cluster is simply offline.
+    assert.equal(await outOfReachFailure("srv_4", "take this backup"), null);
+  } finally {
+    doorClosed();
+  }
 });
