@@ -23,3 +23,5 @@ The leader makes an age key pair at install and only its public key leaves its m
 ## The line holds the bundles too (23 Nov 2026)
 
 With a line of succession (ADR-0043), each heir runs a leader that may take the cluster over without Deplo, so **every bundle is also sealed to each heir's key** and sent to it (`refreshLeaderKeys`): only the leader, the line and Deplo's machine can open one. **The cost**: every cluster App's variables, registry logins, tunnel token and, for a database, its engine password and destination credentials now sit, sealed, on up to two more members, and a compromised heir exposes them as a compromised leader would. Their data is on every member already (ADR-0046).
+
+**A copied server's leader (23 Nov 2026).** A machine copied from a member and installed as a new server kept the original's leader key, sealed bundles and event history; once it led, Deplo applied that history as its own. The installer now clears the leader's state with the old certificates, so the copy's leader makes a new key and gets every bundle again, as a reinstalled leader does.
