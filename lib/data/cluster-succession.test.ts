@@ -7,7 +7,10 @@ import type { TestDb } from "../db/test-harness";
 import {
   clusterNetworkLinks,
   clusterWarnings,
+  clusters as clustersTable,
 } from "../db/schema/control-plane/clusters";
+import { doorClosed, doorOpened } from "../infra/agent-link/registry";
+import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { nowIso } from "../ids";
 import { __forgetMemberProbes } from "../infra/agent-client/cluster-host";
@@ -281,6 +284,76 @@ const beatsTo = (h: FakeClusterHost) =>
     .map(
       (c) => (JSON.parse(dec.decode(c.payload)) as { epochs: object }).epochs,
     );
+
+test("Deplo's machine does not stand in while it reaches none of the cluster's servers", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  let now = 1_000_000;
+  __setLeaderBeatClockForTest(() => now);
+  // Deplo cut off from every server: the door has long been open, and none links.
+  for (const id of ["srv_2", "srv_3", "srv_4"]) hosts[id].unreachable = true;
+  await db.update(serversTable).set({ lastSeenAt: nowIso() });
+  doorOpened(Date.now() - LINK_SETTLE_MS - 1000);
+  try {
+    now += TAKEOVER_AFTER_MS;
+    for (let i = 0; i < 3; i++)
+      assert.equal(await superviseClusterLeader(cluster.id), null);
+    assert.equal((await stored(cluster.id)).takenOver, false);
+  } finally {
+    doorClosed();
+    __setLeaderBeatClockForTest(null);
+  }
+});
+
+test("an heir that led at the epoch Deplo's machine took while standing in is adopted", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [heir] = await clusterHeirs(led);
+  // Deplo's machine stood in at the next epoch, reaching nobody; the heir took that epoch from the servers (eu, 23 Nov).
+  await db
+    .update(clustersTable)
+    .set({ leaderTakeoverAt: nowIso(), leaderEpoch: led.leaderEpoch + 1 })
+    .where(eq(clustersTable.id, cluster.id));
+  hosts[heir].status = runs;
+  leading(hosts[heir], cluster.id, led.leaderEpoch + 1);
+  assert.equal(await superviseClusterLeader(cluster.id), "succeeded");
+  assert.deepEqual(await stored(cluster.id), {
+    server: heir,
+    takenOver: false,
+    epoch: led.leaderEpoch + 1,
+  });
+});
+
+test("the paths of the servers that stopped never take the line away from Deplo", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  const old = led.leaderServerId!;
+  let now = 1_000_000;
+  __setLeaderBeatClockForTest(() => now);
+  try {
+    hosts[old].unreachable = true;
+    hosts[first].unreachable = true;
+    // What the one left reports once the others stopped: no direct pair is left (eu, 23 Nov 2026).
+    await paths(cluster.id, [old, first, second], (a, b) =>
+      [a, b].includes(old) || [a, b].includes(first) ? "relay" : "direct",
+    );
+    hosts[second].status = runs;
+    trying(hosts[second], cluster.id, led.leaderEpoch + 2);
+    now += TAKEOVER_AFTER_MS;
+    for (let i = 0; i < 3; i++)
+      assert.equal(await superviseClusterLeader(cluster.id), null);
+    assert.equal((await stored(cluster.id)).takenOver, false, "no stand-in");
+    assert.match(
+      (await messages()).join("\n"),
+      new RegExp(`Deplo gives its word to ${second}, next in line`),
+    );
+  } finally {
+    __setLeaderBeatClockForTest(null);
+  }
+});
 
 test("with half of the servers left, Deplo gives its word to the next in line, and its machine does not stand in", async () => {
   const cluster = await three();

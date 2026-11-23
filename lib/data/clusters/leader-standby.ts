@@ -38,6 +38,7 @@ import {
 } from "./succession";
 import { leadFrom, resumeSeqOf } from "./leader-move";
 import { replayBeforeHandBack } from "./watch";
+import { clusterOutOfReach } from "./reach";
 import { ensureClusterRelay, pushClusterRoster } from "./relay";
 import { recordClusterActivity } from "./cluster-activity";
 import { getClusterById } from "./roster";
@@ -156,6 +157,8 @@ export async function superviseClusterLeader(
   }
   if (named && !line.answers) forgetHeir(clusterId);
   if (line.answers || namedHeir(clusterId)) return null;
+  // Reaching none of its servers, Deplo's machine would only take an epoch an heir may lead at without it.
+  if (await clusterOutOfReach(clusterId)) return null;
   const own = await leaderHostOf(null);
   if (!own) return null;
   if (!(await clusterLeaderAnswers(own.id)))

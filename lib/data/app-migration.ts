@@ -38,7 +38,11 @@ import type { SetAsideCopy } from "../infra/agent-client/connection";
 import { formatBytes } from "../utils";
 import { placeAtLeaderFirst } from "./clusters/leader-sync";
 import { getClusterById } from "./clusters/roster";
-import { dropTeardown, teardownOrQueue } from "./teardown-queue";
+import {
+  dropTeardown,
+  enqueueTeardowns,
+  teardownOrQueue,
+} from "./teardown-queue";
 import {
   destroyStackOn,
   filesDirHasContent,
@@ -369,42 +373,76 @@ async function keepNewer(
   return "kept";
 }
 
+/** Sets what `from` still holds of a cluster App aside where the App runs, Files included. Throws when it cannot. */
+async function setAsideOldCopy(
+  app: App,
+  from: string,
+): Promise<{ copies: SetAsideCopy[]; names: string[] }> {
+  let names: string[];
+  let hasStack: boolean;
+  const old = await connectAgent(from);
+  try {
+    const stack = await old.readStack(app.slug);
+    hasStack = stack.exists;
+    names = await presentVolumes(
+      old,
+      appMoveVolumeNames(app, stack.exists ? stack.yaml : ""),
+    );
+    assertSafeVolumeNames(app.slug, names);
+  } finally {
+    old.close();
+  }
+  if (hasStack) await stopStackOn(from, app.slug);
+  return {
+    copies: await setAsideOnto(from, app.serverId, names, app.slug),
+    names,
+  };
+}
+
+const asideSentence = async (app: App, from: string, copies: SetAsideCopy[]) =>
+  copies.length > 0
+    ? `What ${await serverName(from)} held of ${app.name} was set aside on ${await serverName(app.serverId)} (${formatBytes(sum(copies))}).`
+    : `${await serverName(from)} held none of ${app.name}'s data.`;
+
 /**
  * "Deploy anyway" on a cluster App whose move is held: the old member's copy is set aside where the App runs, never
- * deleted; one that does not answer sets it aside itself once it is back. Returns the sentence that says which.
+ * deleted. One that does not answer has its removal queued, and the queue sets the copy aside first. Says which.
  */
 export async function setAsideHeldCopy(app: App): Promise<string> {
   const from = app.migrateFromServerId!;
-  const [fromName, toName] = await Promise.all([
-    serverName(from),
-    serverName(app.serverId),
-  ]);
   try {
-    let names: string[];
-    let hasStack: boolean;
-    const old = await connectAgent(from);
-    try {
-      const stack = await old.readStack(app.slug);
-      hasStack = stack.exists;
-      names = await presentVolumes(
-        old,
-        appMoveVolumeNames(app, stack.exists ? stack.yaml : ""),
-      );
-      assertSafeVolumeNames(app.slug, names);
-    } finally {
-      old.close();
-    }
-    if (hasStack) await stopStackOn(from, app.slug);
-    const copies = await setAsideOnto(from, app.serverId, names, app.slug);
+    const { copies, names } = await setAsideOldCopy(app, from);
     await teardownOrQueue(strayEntry(app, from, names)).catch(() => {});
-    return copies.length > 0
-      ? `What ${fromName} held of ${app.name} was set aside on ${toName} (${formatBytes(sum(copies))}).`
-      : `${fromName} held none of ${app.name}'s data.`;
+    return await asideSentence(app, from, copies);
   } catch (e) {
-    return isUnreachable(e)
-      ? `${fromName} does not answer: it sets what it holds of ${app.name} aside itself once it is back.`
-      : `What ${fromName} holds of ${app.name} could not be set aside (${errMsg(e)}), so it stays there.`;
+    const fromName = await serverName(from);
+    if (!isUnreachable(e))
+      return `What ${fromName} holds of ${app.name} could not be set aside (${errMsg(e)}), so it stays there.`;
+    await enqueueTeardowns([strayEntry(app, from)]);
+    return `${fromName} does not answer: what it holds of ${app.name} is set aside on ${await serverName(app.serverId)} once it answers again, then removed there.`;
   }
+}
+
+/**
+ * Before a queued teardown of a cluster App's copy on a server it left: that copy is set aside where the App runs.
+ * Null when there is nothing to set aside; throws when it cannot be, and the teardown waits.
+ */
+export async function setAsideBeforeTeardown(entry: {
+  serverId: string;
+  deployKey: string;
+  projectLabel: string;
+}): Promise<string | null> {
+  const app = await loadAppGraph(entry.projectLabel);
+  if (
+    !app?.clusterId ||
+    app.slug !== entry.deployKey ||
+    app.serverId === entry.serverId
+  )
+    return null;
+  const { copies } = await setAsideOldCopy(app, entry.serverId);
+  return copies.length > 0
+    ? await asideSentence(app, entry.serverId, copies)
+    : null;
 }
 
 function strayEntry(app: App, serverId: string, reclaim?: string[]) {

@@ -304,6 +304,20 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
       teamId: row.teamId,
     };
     try {
+      // A cluster App's copy on a server it left is set aside where the App runs first, never deleted (ADR-0046).
+      const { setAsideBeforeTeardown } = await import("./app-migration");
+      let aside: string | null;
+      try {
+        aside = await setAsideBeforeTeardown(entry);
+      } catch (e) {
+        await recordFailure(
+          entry,
+          `its copy could not be set aside first: ${errMsg(e)}`,
+          row.serverName,
+          now,
+        );
+        return;
+      }
       const { gone, error } = await attemptTeardown(entry, {
         verifyFirst: true,
       });
@@ -314,7 +328,8 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
       await dropTeardown(entry.serverId, entry.deployKey);
       await announce(
         entry,
-        `Finished the teardown of ${entry.label} on ${row.serverName}`,
+        (aside ? `${aside} ` : "") +
+          `Finished the teardown of ${entry.label} on ${row.serverName}`,
         null,
       );
     } catch (e) {
