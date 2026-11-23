@@ -82,7 +82,11 @@ const child = spawn(
     ...flags,
     ...shards,
   ],
-  { cwd: root, stdio: "inherit" },
+  {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, DEPLO_TEST_CACHE_DIR: runDir },
+  },
 );
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => child.kill(sig));
 child.on("exit", (code, signal) => {

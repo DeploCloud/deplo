@@ -10,6 +10,7 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   clusterNameCerts,
   clusterZoneCerts,
+  clusterZoneStates,
 } from "../../db/schema/control-plane/clusters";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { hasDnsChallenge } from "../../deploy/traefik-cluster";
@@ -564,4 +565,24 @@ test("a server that lost a name's certificate is handed it again on the next pas
   await syncClusterZone(eu.id);
   assert.equal(nameCert(other)?.sha256, pair.sha256);
   assert.equal(nameCert(other)?.keyPem, pair.keyPem);
+});
+
+// Back from a cut, the pass starts from states that say no server answered: that is no reason to change how any
+// name is checked, so no App is routed again, and a running one is never recreated (c30: fise paused 23 s).
+test("a pass that heard no server keeps every name's check, and routes no App again", async () => {
+  const { eu } = await zoneCluster(["d1", "shop.go.example.com"]);
+  await syncClusterZone(eu.id);
+  const mode = await modeOf("d1");
+  assert.notEqual(mode, null);
+  await db()
+    .update(clusterZoneStates)
+    .set({ state: "unreachable" })
+    .where(eq(clusterZoneStates.clusterId, eu.id));
+  const before = MEMBERS.map((id) => hosts[id].stack.length);
+  await syncClusterZone(eu.id);
+  assert.equal(await modeOf("d1"), mode);
+  assert.deepEqual(
+    MEMBERS.map((id) => hosts[id].stack.slice(before[MEMBERS.indexOf(id)])),
+    MEMBERS.map(() => []),
+  );
 });
