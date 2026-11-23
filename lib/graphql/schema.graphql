@@ -9004,6 +9004,11 @@ type Volume {
   id: ID
   mountPath: String
   name: String
+
+  """
+  Why Deplo made this Volume itself: `image` when the image declares the path, `compose` when the compose file mounts it with no name. Null for one a person added.
+  """
+  origin: String
   projectPath: String
   propagation: MountPropagation
   readOnly: Boolean

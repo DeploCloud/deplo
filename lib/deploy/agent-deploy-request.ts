@@ -165,6 +165,7 @@ export async function buildDeployRequest(opts: {
     standInComposeYaml: "",
     restartRule: undefined,
     startAfterReady: [],
+    adoptVolumes: [],
   };
 
   if (opts.plan.kind === "compose") {

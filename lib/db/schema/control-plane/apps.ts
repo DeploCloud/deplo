@@ -246,6 +246,8 @@ export const appVolumes = pgTable(
     mountPath: text("mount_path").notNull(),
     readOnly: boolean("read_only").notNull(),
     propagation: text("propagation"),
+    // Set when Deplo named a volume the image or the compose file left unnamed: "image" | "compose".
+    origin: text("origin"),
   },
   (t) => [primaryKey({ columns: [t.appId, t.position] })],
 );

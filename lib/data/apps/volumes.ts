@@ -195,6 +195,23 @@ async function assertVolumeNamesFree(
     );
 }
 
+// A Volume Deplo made for an unnamed place stays marked as such while its place is the same.
+export function keepOrigins(
+  next: VolumeMount[] | null,
+  had: readonly VolumeMount[] | null | undefined,
+): VolumeMount[] | null {
+  if (!next) return next;
+  return next.map((v) => {
+    const was = (had ?? []).find((h) => h.id === v.id);
+    return was?.origin &&
+      kindOf(v) === "named" &&
+      was.mountPath === v.mountPath &&
+      (was.service ?? "") === (v.service ?? "")
+      ? { ...v, origin: was.origin }
+      : v;
+  });
+}
+
 export async function setAppVolumes(
   id: string,
   volumes: VolumeMount[],
@@ -215,7 +232,10 @@ export async function setAppVolumes(
     const composeServices = usesComposeStack(p)
       ? composeServiceNames(p.compose)
       : null;
-    const validated = validateVolumes(volumes, p.mounts, composeServices, opts);
+    const validated = keepOrigins(
+      validateVolumes(volumes, p.mounts, composeServices, opts),
+      p.volumes,
+    );
     await assertVolumeNamesFree(p, validated ?? [], tx);
     await tx.delete(appVolumesTable).where(eq(appVolumesTable.appId, id));
     const rows = volumesToRows(id, validated);

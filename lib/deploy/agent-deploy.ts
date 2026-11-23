@@ -42,6 +42,10 @@ import { deployOverlap, type OverlapStacks } from "./overlap";
 import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "./replicas";
 import { getServerById } from "../data/servers/roster";
 import { offerFailoverBundle } from "./failover-offer";
+import {
+  ADOPT_VOLUMES_CAPABILITY,
+  adoptionsFor,
+} from "../data/apps/unnamed-volumes";
 import type { LogLevel } from "../types/deployment";
 
 export interface AgentDeploySink {
@@ -226,6 +230,12 @@ export async function runAgentDeploy(opts: {
       : await loadRegistryAuthsForApp(opts.appId),
   });
   applyAgentFeatures(req, opts, hello.capabilities, opts.sink);
+  if (hello.capabilities.includes(ADOPT_VOLUMES_CAPABILITY))
+    req.adoptVolumes = await adoptionsFor(
+      opts.appId,
+      opts.slug,
+      req.composeYaml,
+    );
   if (!opts.buildOnly && hello.capabilities.includes(RESTART_CAPABILITY))
     req.restartRule =
       (await restartRuleForApp(opts.appId, opts.ready)) ?? undefined;

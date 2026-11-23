@@ -18,3 +18,11 @@ The agent walks every path by handle, never by name, so a symlink an App plants 
 - Replication is asynchronous: what had not reached a copy when the App's server stopped is lost, usually under a second.
 - It needs `cluster.replicas` on the members: a member whose agent lacks it keeps no copy and the cluster's page says why.
 - Only what changed in a file travels. Both sides cut every file into content-defined chunks (FastCDC, about 64 KiB), the receiver says which it holds, and a changed file arrives as ranges to copy from what the copy already holds plus the chunks it lacks, wherever in the file the change is. The rebuilt file goes in place only when its size and SHA-256 are the sender's; one that is not makes the copy read itself again.
+
+## Every volume is data (23 Nov 2026)
+
+On cluster eu, fise's Postgres kept its data where no rule looked: its compose binds `./data/db` at `/var/lib/postgresql`, while `postgres:17` declares `/var/lib/postgresql/data` as a volume, so Docker gave it an unnamed volume that every new container replaced. fise was neither replicated nor fenced, and each move started an empty database. Decided by the owner:
+
+1. **A place Docker would leave unnamed becomes a Volume at deploy**: a path the image declares (read from its registry, `Config.Volumes`) that the service does not mount itself, and a compose volume with no name (`- /data`, or `type: volume` with no source). Each becomes a Volume row of the App (`app_volumes.origin` = `image` or `compose`), so it is replicated, fenced, survives a new container, moves with the App and is listed under Storage ("Declared by the image"). A Volume replaces the compose entry that named nothing at its path.
+2. **An existing App keeps what its unnamed volume holds**: on the first deploy that names it, the agent copies the newest container's unnamed volume at that path into the new one before `compose up`, once, and leaves the old volume as it was (`DeployRequest.adopt_volumes`, Hello `volumes.adopt`). A failed copy removes only the new volume, starts the container again and fails the deploy. A server whose agent cannot copy gets nothing named.
+3. **Out of scope**: an image Deplo builds itself (its `VOLUME` is not read until the image is published) and a private image whose registry Deplo cannot read anonymously; both keep the old behaviour.

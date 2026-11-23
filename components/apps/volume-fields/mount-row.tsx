@@ -157,6 +157,13 @@ export function MountRow({
           </Badge>
           <IdentityLine mount={mount} containerWorkdir={containerWorkdir} />
           <span className="ml-auto flex shrink-0 items-center gap-2">
+            {mount.origin && (
+              <Badge variant="muted">
+                {mount.origin === "image"
+                  ? "Declared by the image"
+                  : "Unnamed in the compose file"}
+              </Badge>
+            )}
             {mount.readOnly && <Badge variant="muted">Read-only</Badge>}
             {blockedBind && <Badge variant="warning">Needs permission</Badge>}
             <ChevronDown
