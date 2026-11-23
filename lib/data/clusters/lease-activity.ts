@@ -43,9 +43,8 @@ async function allStopped(
 export async function leaderSaysItLeads(clusterId: string): Promise<boolean> {
   const cluster = await getClusterById(clusterId);
   if (!cluster) return false;
-  const v = (await readLeaderSnapshot(cluster).catch(() => null))?.clusters[
-    clusterId
-  ] as { leads?: boolean } | undefined;
+  const snap = await readLeaderSnapshot(cluster).catch(() => null);
+  const v = snap?.clusters?.[clusterId] as { leads?: boolean } | undefined;
   return v?.leads === true;
 }
 
