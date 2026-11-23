@@ -27,8 +27,11 @@ import { TEAM_A } from "./identity-test-helpers";
 import {
   asAdmin,
   db,
+  diskOps,
+  disks,
   emptyLab,
   eu,
+  fleet,
   runningApp,
 } from "./cluster-empty-test-helpers";
 
@@ -194,6 +197,38 @@ test("while no server of a cluster answers, Deplo says since when and keeps what
     (await said()).at(-1)?.message,
     "Deplo reaches cluster eu again",
   );
+});
+
+test("a copies pass that began before the silence records nothing once it falls", async () => {
+  await runningApp("web", "srv_2");
+  const cluster = await eu();
+  await db.insert(clusterAppReplicas).values({
+    appId: "web",
+    serverId: "srv_3",
+    role: "receiving",
+    connected: true,
+    synced: true,
+    appliedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(),
+  });
+  for (const id of ["srv_2", "srv_3"])
+    await lastSeen(id, new Date(Date.now() - 60_000).toISOString());
+  // Every server stops answering while the pass is asking the first one.
+  fleet.host("srv_2", {
+    extra: {
+      ...diskOps(disks.get("srv_2")!),
+      hello: async () => {
+        doorOpened(Date.now() - LINK_SETTLE_MS - 1000);
+        throw new Error("the server is offline");
+      },
+    },
+  });
+  try {
+    await replicateCluster(cluster.id);
+  } finally {
+    doorClosed();
+  }
+  assert.equal((await db.select().from(clusterAppReplicas)).length, 1);
 });
 
 test("a Deplo whose door just opened cannot tell yet, so no cluster is out of reach", async () => {
