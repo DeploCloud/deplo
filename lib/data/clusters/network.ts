@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray, ne, notInArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
@@ -149,6 +149,23 @@ const RETIRE = Symbol.for("deplo.cluster.network.retire");
 const gr = globalThis as unknown as { [RETIRE]?: Set<string> };
 const retiring = () => (gr[RETIRE] ??= new Set());
 
+async function keyHeldByAnother(
+  serverId: string,
+  publicKey: string,
+): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: clusterNetworkPeers.serverId })
+    .from(clusterNetworkPeers)
+    .where(
+      and(
+        eq(clusterNetworkPeers.publicKey, publicKey),
+        ne(clusterNetworkPeers.serverId, serverId),
+      ),
+    )
+    .limit(1);
+  return row != null;
+}
+
 /** A copy of this server was caught: its network key goes with its identity, and the others learn the new one. */
 export async function retireNetworkKey(serverId: string): Promise<void> {
   retiring().add(serverId);
@@ -193,11 +210,30 @@ export async function syncClusterNetwork(clusterId: string): Promise<void> {
         const retire = retiring().has(serverId)
           ? (keys.get(serverId)?.publicKey ?? undefined)
           : undefined;
-        const r = await setClusterNetwork(serverId, {
+        let r = await setClusterNetwork(serverId, {
           clusterId,
           ...table,
           ...(retire ? { retirePublicKey: retire } : {}),
         });
+        // A copy of another server answers with that server's key: it gets one of its own before anyone learns it.
+        if (
+          r.publicKey &&
+          keys.get(serverId)?.publicKey !== r.publicKey &&
+          (await keyHeldByAnother(serverId, r.publicKey))
+        ) {
+          console.warn(
+            `[cluster-network] ${serverId}: answered with another server's network key, replacing it`,
+          );
+          r = await setClusterNetwork(serverId, {
+            clusterId,
+            ...table,
+            retirePublicKey: r.publicKey,
+          });
+          if (r.publicKey && (await keyHeldByAnother(serverId, r.publicKey)))
+            throw new Error(
+              `${serverId} still answers with another server's network key`,
+            );
+        }
         if (retire && r.publicKey && r.publicKey !== retire) {
           retiring().delete(serverId);
           console.log(

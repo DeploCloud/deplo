@@ -274,3 +274,34 @@ test("a caught copy's network key is replaced once and the others are handed the
   await syncClusterNetwork(c.id);
   assert.equal(hosts.srv_2.networkKey, "key-srv_2+");
 });
+
+// A copy installed as a new server can answer with the key of the server it was copied from: it is given its own
+// in the same call, the original keeps its key, and nobody is handed the copied one.
+test("a new server that answers with another server's network key gets one of its own before anyone learns it", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  hosts.srv_3.networkKey = hosts.srv_2.networkKey;
+  await db
+    .delete(clusterNetworkPeers)
+    .where(eq(clusterNetworkPeers.serverId, "srv_3"));
+  await syncClusterNetwork(c.id);
+  assert.equal(hosts.srv_2.networkKey, "key-srv_2", "the original keeps it");
+  assert.equal(hosts.srv_3.networkKey, "key-srv_2+");
+  const stored = await db
+    .select({
+      id: clusterNetworkPeers.serverId,
+      key: clusterNetworkPeers.publicKey,
+    })
+    .from(clusterNetworkPeers)
+    .where(eq(clusterNetworkPeers.clusterId, c.id));
+  assert.deepEqual(
+    Object.fromEntries(stored.map((r) => [r.id, r.key])).srv_3,
+    "key-srv_2+",
+  );
+  for (const id of ["srv_1", "srv_2"])
+    assert.deepEqual(
+      last(hosts[id]).peers.find((p) => p.fingerprint === fp(3))?.publicKey,
+      "key-srv_2+",
+      id,
+    );
+});
