@@ -222,7 +222,7 @@ test("a database renders restart policy no on such a cluster, its standby copy t
   assert.equal(db(false)["db-pg"].restart, "unless-stopped");
 });
 
-test("a compose stack keeps each service's own policy in the label, and leaves one that never restarts alone", () => {
+test("a compose stack keeps each service's own policy in the label, a written no alone, and one with none up", () => {
   const doc = services(
     buildComposeStack({
       network: "deplo-team-t",
@@ -250,11 +250,9 @@ test("a compose stack keeps each service's own policy in the label, and leaves o
   assert.ok(doc.web.labels?.includes(`${RESTART_LABEL}=always`));
   assert.equal(doc.worker.restart, "no");
   assert.ok(doc.worker.labels?.includes(`${RESTART_LABEL}=on-failure`));
-  for (const name of ["seed", "once"]) {
-    assert.ok(
-      !doc[name].labels?.some((l) => l.startsWith(RESTART_LABEL)),
-      name,
-    );
-  }
-  assert.equal(doc.once.restart, undefined);
+  assert.ok(!doc.seed.labels?.some((l) => l.startsWith(RESTART_LABEL)));
+  assert.equal(doc.seed.restart, "no");
+  // No policy written: kept up under the lease, so a fence or a power cut does not leave it down.
+  assert.equal(doc.once.restart, "no");
+  assert.ok(doc.once.labels?.includes(`${RESTART_LABEL}=unless-stopped`));
 });
