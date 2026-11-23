@@ -19,7 +19,19 @@ import { leaderHostOf } from "./host";
 import {
   __setLeaderBeatClockForTest,
   leaderNamedRecently,
+  tellLeaderReplaced,
 } from "./leader-beat";
+import {
+  forgetLeaderRoster,
+  pushLeaderRoster,
+  readLeaderSnapshot,
+} from "./leader-sync";
+import {
+  adoptHeir,
+  clusterPreVotes,
+  leadingHeir,
+  type LeadingHeir,
+} from "./succession";
 import { leadFrom } from "./leader-move";
 import { ensureClusterRelay, pushClusterRoster } from "./relay";
 import { recordClusterActivity } from "./cluster-activity";
@@ -40,7 +52,7 @@ export function __resetLeaderChecksForTest(): void {
   __setLeaderBeatClockForTest(null);
 }
 
-export type LeaderHandover = "taken_over" | "handed_back" | null;
+export type LeaderHandover = "taken_over" | "handed_back" | "succeeded" | null;
 
 // The team of the admin who moved the leader reads what Deplo does about it.
 async function say(cluster: Cluster, message: string): Promise<void> {
@@ -74,6 +86,14 @@ export async function superviseClusterLeader(
   const name =
     (await getServerById(cluster.leaderServerId))?.name ??
     "The leader's server";
+  // A member next in line may lead on its own already: Deplo adopts it, rather than standing in or handing back.
+  if (!answers || cluster.leaderTakeoverAt || !(await stillLeads(cluster))) {
+    const heir = await leadingHeir(cluster);
+    if (heir && heir.serverId !== cluster.leaderServerId) {
+      await adopt(cluster, heir, name);
+      return "succeeded";
+    }
+  }
   if (cluster.leaderTakeoverAt) {
     if (!answers) return null;
     await leadFrom(cluster, {
@@ -110,10 +130,47 @@ export async function superviseClusterLeader(
     cluster,
     reach === "outdated"
       ? `The leader on ${name} is older than this Deplo accepts, so Deplo's machine leads cluster ${cluster.name} until it is updated`
-      : `${name} stopped answering, so Deplo's machine leads cluster ${cluster.name} until it answers again`,
+      : (await clusterPreVotes(cluster.id).catch(() => false))
+        ? `${name} stopped answering Deplo, so Deplo's machine leads cluster ${cluster.name} once its servers stop hearing ${name} too, until it answers again`
+        : `${name} stopped answering, so Deplo's machine leads cluster ${cluster.name} until it answers again`,
   );
   await reconcileClusterBundles(clusterId).catch(() => {});
   return "taken_over";
+}
+
+// Whether the leader Deplo stored leads by its own word; one that does not answer the question is taken to.
+async function stillLeads(cluster: Cluster): Promise<boolean> {
+  try {
+    const snap = await readLeaderSnapshot(cluster);
+    const v = snap?.clusters[cluster.id];
+    return !v || (!v.superseded && v.epoch >= cluster.leaderEpoch);
+  } catch {
+    return true;
+  }
+}
+
+async function adopt(
+  cluster: Cluster,
+  heir: LeadingHeir,
+  name: string,
+): Promise<void> {
+  if (!(await adoptHeir(cluster, heir))) return;
+  misses.delete(cluster.id);
+  forgetLeaderRoster(cluster.id);
+  const led = (await getClusterById(cluster.id))!;
+  await pushLeaderRoster(led).catch(() => false);
+  await pushClusterRoster(cluster.id).catch(() => null);
+  // The leader it replaced, and Deplo's machine if it stood in, stop at once when they hear the newer epoch.
+  const own = await leaderHostOf(null);
+  for (const id of new Set([cluster.leaderServerId, own?.id]))
+    if (id && id !== heir.serverId)
+      await tellLeaderReplaced(id, cluster.id, heir.epoch).catch(() => {});
+  const heirName = (await getServerById(heir.serverId))?.name ?? "A server";
+  await say(
+    cluster,
+    `${name} stopped answering its servers, so ${heirName}, next in line, leads cluster ${cluster.name}`,
+  );
+  await reconcileClusterBundles(cluster.id).catch(() => {});
 }
 
 /**

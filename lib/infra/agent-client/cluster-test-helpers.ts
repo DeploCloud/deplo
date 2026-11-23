@@ -290,6 +290,7 @@ export function fakeClusterHosts(): {
             observedPort: 0,
             builtWith: "",
             listeningPorts: [],
+            imageVolumes: [],
           },
         };
       },

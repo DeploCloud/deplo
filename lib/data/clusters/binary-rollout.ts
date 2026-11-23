@@ -89,6 +89,15 @@ async function clusterHosts(): Promise<Host[]> {
   const hosts: Host[] = [];
   const own = await leaderHostOf(null);
   const remotes = [...new Set(rows.flatMap((c) => c.leaderServerId ?? []))];
+  // First, the members next in line: their leaders lead nothing yet, and one is skipped unless it is installed.
+  const members = await getDb()
+    .selectDistinct({ id: clusterMembers.serverId })
+    .from(clusterMembers);
+  for (const { id } of members.sort((a, b) => a.id.localeCompare(b.id))) {
+    const server = remotes.includes(id) ? null : await getServerById(id);
+    if (server && server.id !== own?.id)
+      hosts.push({ server, leads: [], teamId: null });
+  }
   for (const id of remotes.sort()) {
     const server = await getServerById(id);
     const mine = rows.filter((c) => c.leaderServerId === id);
@@ -138,7 +147,7 @@ async function movingCluster(host: Host): Promise<string | null> {
 }
 
 // The agent installs, stops and starts the binary, so a server behind its own agent pin gets that update first.
-async function agentBehind(serverId: string): Promise<boolean> {
+export async function agentBehind(serverId: string): Promise<boolean> {
   const conn = await connectAgent(serverId);
   try {
     return isNewer(AGENT_VERSION, (await conn.hello()).agentVersion);

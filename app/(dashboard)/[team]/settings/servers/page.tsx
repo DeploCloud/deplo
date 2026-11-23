@@ -15,6 +15,7 @@ import {
 import { ClusterNotices } from "@/components/servers/cluster-panel";
 import {
   loadClusterWarnings,
+  NOT_FOR_PRODUCTION_KEY,
   storedClusterWarnings,
 } from "@/lib/data/clusters/warnings";
 import { serverUse } from "@/components/servers/server-role-badge";
@@ -282,6 +283,10 @@ export default async function ServersPage(
             members: card.members,
             totals: card.totals,
             apps: card.apps,
+            notForProduction:
+              stored
+                .get(open.cluster.id)
+                ?.find((w) => w.key === NOT_FOR_PRODUCTION_KEY) ?? null,
           }}
           servers={openServers}
           teams={teams}

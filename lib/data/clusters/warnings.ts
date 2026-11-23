@@ -1,6 +1,6 @@
 import "server-only";
 
-import { asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
@@ -21,7 +21,10 @@ import { listClusterImageProgress } from "./images";
 import { readClusterLeader } from "./leader";
 import { listClusterWaiting } from "./placement";
 import { listClusterReplication } from "./replica-state";
-import { getClusterById } from "./roster";
+import { clusterMemberServerIds, getClusterById } from "./roster";
+import { clusterNetworkLinksOf } from "./network";
+import { recordClusterActivity } from "./cluster-activity";
+import { NOT_FOR_PRODUCTION, relayLevel } from "../../clusters/direct-core";
 import { sharedClusterAddresses } from "./dns-zone";
 import { sharedAddressWarnings } from "../../clusters/shared-addresses";
 
@@ -53,6 +56,18 @@ export async function refreshClusterWarnings(cluster: Cluster): Promise<void> {
         ),
       )
     : [];
+  const notForProduction = n >= 2 && (await relayLevelOf(cluster.id)) === 2;
+  if (notForProduction)
+    found.unshift({ key: NOT_FOR_PRODUCTION_KEY, ...NOT_FOR_PRODUCTION });
+  const had = await getDb()
+    .select({ key: clusterWarningsTable.key })
+    .from(clusterWarningsTable)
+    .where(
+      and(
+        eq(clusterWarningsTable.clusterId, cluster.id),
+        eq(clusterWarningsTable.key, NOT_FOR_PRODUCTION_KEY),
+      ),
+    );
   const at = nowIso();
   await getDb().transaction(async (tx) => {
     await tx
@@ -72,6 +87,31 @@ export async function refreshClusterWarnings(cluster: Cluster): Promise<void> {
         })),
       );
   });
+  if (notForProduction !== had.length > 0)
+    await recordClusterActivity(
+      cluster.id,
+      notForProduction
+        ? `Cluster ${cluster.name} is not OK for production: fewer than half of its servers reach each other directly, so if Deplo's machine stops, every App and database of it stops`
+        : `Cluster ${cluster.name} is OK for production again: more than half of its servers reach each other directly`,
+    );
+}
+
+export const NOT_FOR_PRODUCTION_KEY = "not_for_production";
+
+/** How much of the cluster stops with Deplo's machine, from the paths its servers last reported. */
+export async function relayLevelOf(clusterId: string): Promise<0 | 1 | 2> {
+  const ids = await clusterMemberServerIds(clusterId);
+  const links = await clusterNetworkLinksOf(clusterId, ids);
+  return relayLevel(
+    ids,
+    [...links].flatMap(([serverId, list]) =>
+      list.map((l) => ({
+        serverId,
+        peerServerId: l.peerServerId,
+        path: l.path,
+      })),
+    ),
+  ).level;
 }
 
 /** One pass over every cluster, from the Deplo that watches them. */

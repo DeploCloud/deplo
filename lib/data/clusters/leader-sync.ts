@@ -21,6 +21,7 @@ import { nowIso } from "../../ids";
 import {
   callClusterLeader,
   memberRestores,
+  memberSucceeds,
   memberTakesOver,
 } from "../../infra/agent-client/cluster-host";
 import {
@@ -31,9 +32,10 @@ import type { Cluster, ClusterLeaseState } from "../../types/cluster";
 import { recordClusterActivity } from "./cluster-activity";
 import { clusterMemberFacts } from "./facts";
 import { listStandbys } from "./placement";
-import { leaderHost } from "./host";
+import { leaderHost, leaderHostOf } from "./host";
+import { clusterHeirs, clusterPreVotes } from "./succession";
 import { fingerprintOf } from "./relay";
-import { clusterMemberServerIds } from "./roster";
+import { clusterMemberServerIds, getClusterById } from "./roster";
 import { clusterRotations } from "./rotations";
 import { getServerById } from "../servers/roster";
 import {
@@ -284,6 +286,8 @@ export async function pushLeaderRoster(
       ...(agent && versionAtLeast(agent, AGENT_SHORT_FENCE_VERSION)
         ? { shortFence: true }
         : {}),
+      // Only an agent that answers a pre-vote is asked one: an older one would take the epoch.
+      ...((await memberSucceeds(id)) ? { succession: true } : {}),
     });
   }
   const placement = await placementEntries(cluster.id);
@@ -299,11 +303,21 @@ export async function pushLeaderRoster(
   }));
   // A member named by its old certificate answers with its new one (ADR-0050); an older leader ignores them.
   const rotations = await clusterRotations(cluster.id);
+  // The line: who leads after this leader, and Deplo's machine at its end. Standing in, it asks before it leads.
+  const heirs = await clusterHeirs(cluster).catch(() => []);
+  const deplo = (await leaderHostOf(null))?.id ?? "";
+  const asks =
+    !!cluster.leaderTakeoverAt &&
+    (await clusterPreVotes(cluster.id).catch(() => false));
   const roster = {
     members,
     placement,
     ...(standbys.length > 0 ? { standbys } : {}),
     ...(rotations.length > 0 ? { rotations } : {}),
+    self: host.id,
+    deplo,
+    heirs,
+    ...(asks ? { succeed: true } : {}),
   };
   const body = (epoch: number) =>
     callClusterLeader(
@@ -337,6 +351,27 @@ export async function pushLeaderRoster(
   if (opts.requireRotations && !keptRotations(reply))
     throw new Error(
       `The cluster leader on ${host.name} is too old to keep a key rotation. Deplo updates it on its own.`,
+    );
+  // Each heir's leader keeps the roster to take the cluster over from, with Deplo down.
+  const epochNow = Math.max(
+    (await getClusterById(cluster.id))?.leaderEpoch ?? epoch,
+    1,
+  );
+  for (const heir of heirs)
+    await callClusterLeader(
+      heir,
+      "leader.standby",
+      enc({
+        cluster: cluster.id,
+        epoch: epochNow,
+        ...roster,
+        self: heir,
+        succeed: false,
+      }),
+    ).catch((e) =>
+      console.warn(
+        `[cluster-leader] ${cluster.id}: standby on ${heir}: ${e instanceof Error ? e.message : e}`,
+      ),
     );
   return true;
 }

@@ -335,6 +335,9 @@ export interface AgentConnection {
   }): Promise<{ ok: boolean; error: string }>;
   exportVolume(volumeName: string): AsyncGenerator<Buffer, void, unknown>;
   volumeUsage(volumeNames: string[]): Promise<Map<string, number>>;
+  /** The dated copies a returning cluster member set aside of these volumes (Hello `volumes.set-aside`). */
+  setAsideCopies(of: string[]): Promise<SetAsideCopy[]>;
+  removeSetAside(volumeName: string): Promise<{ ok: boolean; error: string }>;
   importVolume(
     volumeName: string,
     wipeFirst: boolean,
@@ -565,4 +568,12 @@ export interface AgentConnection {
   deleteFile(slug: string, path: string): Promise<void>;
 
   close(): void;
+}
+
+/** One dated copy of a volume, kept on the server it was set aside on. */
+export interface SetAsideCopy {
+  volumeName: string;
+  of: string;
+  atMs: number;
+  bytes: number;
 }

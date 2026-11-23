@@ -139,9 +139,19 @@ function parseBearerChallenge(
   return { realm, service };
 }
 
+/** A registry login Deplo holds for a private image. */
+export interface RegistryLogin {
+  username: string;
+  password: string;
+}
+
+const basicOf = (login: RegistryLogin) =>
+  `Basic ${Buffer.from(`${login.username}:${login.password}`).toString("base64")}`;
+
 async function ociToken(
   registry: string,
   repository: string,
+  login?: RegistryLogin,
 ): Promise<string | null | "none"> {
   const probeUrl = `https://${registry}/v2/`;
   if (!(await isPublicHttpsUrl(probeUrl))) return null;
@@ -163,18 +173,22 @@ async function ociToken(
   } finally {
     clearTimeout(t);
   }
-  if (!challenge) return null;
+  // A registry that asks for the login itself, rather than a token for it.
+  if (!challenge) return login ? `basic:${basicOf(login)}` : null;
   if (!(await isPublicHttpsUrl(challenge.realm))) return null;
   const params = new URLSearchParams();
   if (challenge.service) params.set("service", challenge.service);
   params.set("scope", `repository:${repository}:pull`);
+  if (login) params.set("account", login.username);
   const { body } = await fetchJson<{ token?: string; access_token?: string }>(
     `${challenge.realm}?${params.toString()}`,
+    login ? { headers: { Authorization: basicOf(login) } } : undefined,
   );
   return body?.token ?? body?.access_token ?? null;
 }
 
 function ociAuthHeaders(token: string | null | "none"): Record<string, string> {
+  if (token?.startsWith("basic:")) return { Authorization: token.slice(6) };
   return token && token !== "none" ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -416,15 +430,19 @@ export async function imageExposedPort(
   return singleExposedPort((await imageConfig(imageRef))?.ExposedPorts);
 }
 
-/** The paths a public image declares as volumes; null when its registry does not say. */
-export async function imageVolumes(imageRef: string): Promise<string[] | null> {
-  const config = await imageConfig(imageRef).catch(() => null);
+/** The paths an image declares as volumes, read with the login Deplo holds for a private one; null when unsaid. */
+export async function imageVolumes(
+  imageRef: string,
+  login?: RegistryLogin,
+): Promise<string[] | null> {
+  const config = await imageConfig(imageRef, login).catch(() => null);
   if (!config) return null;
   return Object.keys(config.Volumes ?? {}).filter((p) => p.startsWith("/"));
 }
 
 async function imageConfig(
   imageRef: string,
+  login?: RegistryLogin,
 ): Promise<ConfigBlob["config"] | null> {
   const parsed = parseImageRef(imageRef);
   if (!parsed) return null;
@@ -433,7 +451,7 @@ async function imageConfig(
       ? "registry-1.docker.io"
       : parsed.registry;
   const repo = encodeRepoPath(parsed.repository);
-  const token = await ociToken(registryHost, parsed.repository);
+  const token = await ociToken(registryHost, parsed.repository, login);
   const headers = { Accept: MANIFEST_ACCEPT, ...ociAuthHeaders(token) };
   const at = (ref: string) =>
     `https://${registryHost}/v2/${repo}/manifests/${encodeURIComponent(ref)}`;

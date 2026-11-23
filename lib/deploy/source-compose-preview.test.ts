@@ -87,6 +87,7 @@ const result = (
   observedPort: 0,
   builtWith: "",
   listeningPorts: [],
+  imageVolumes: [],
   ...over,
 });
 

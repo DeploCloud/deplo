@@ -140,6 +140,10 @@ export interface ClusterMember {
   provisioning: boolean;
   /** How it reaches the cluster's other servers over the private network, when not directly (ADR-0047). */
   network: ClusterMemberNetwork;
+  /** It needs Deplo's relay to reach part of the cluster, so it stops like a power cut when Deplo's machine does; empty otherwise. */
+  relayWarning: string;
+  /** Where it stands in the line of succession: 1 leads next, 2 after it, 0 not in the line. */
+  nextInLine: number;
 }
 
 /** The servers a member reaches only through Deplo's relay, or not at all though both are up. Empty: all direct. */

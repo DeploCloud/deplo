@@ -131,11 +131,11 @@ test("the card warns exactly while Deplo's own server is a member and the leader
   await asAdmin(() => moveClusterLeader(cluster.id, SERVER_1));
   assert.equal(await warning(cluster.id), WARNING);
 
-  // The picker the warning's button opens offers the way out.
+  // The picker the warning's button opens offers the way out: the cluster's other servers.
   const choices = await asAdmin(() => listClusterLeaderChoices(cluster.id));
   assert.deepEqual(
     choices.filter((c) => !c.current && !c.blocked).map((c) => c.serverId),
-    ["srv_2", "srv_3", "srv_4"],
+    ["srv_2", "srv_3"],
   );
   await asAdmin(() => moveClusterLeader(cluster.id, "srv_2"));
   assert.equal(await warning(cluster.id), "");

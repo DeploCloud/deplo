@@ -14,6 +14,7 @@ import {
   Plus,
   Server as ServerIcon,
   SlidersHorizontal,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 
@@ -53,6 +54,7 @@ import {
 } from "@/components/servers/cluster-bar";
 import { HealthBadge } from "@/components/servers/cluster-card";
 import {
+  lineWords,
   serversHref,
   type ClusterJoinOption,
 } from "@/components/servers/cluster-join";
@@ -77,6 +79,8 @@ export type ClusterViewData = ClusterBarData & {
   members: { name: string; online: boolean }[];
   totals: ServerUsage;
   apps: number;
+  /** No direct majority: the cluster's own warning, shown again in Add server before anything is added. */
+  notForProduction?: { title: string; body: string } | null;
 };
 
 const percent = (used: number, total: number) =>
@@ -231,6 +235,7 @@ export function ClusterView({
           <div className="flex items-center gap-2">
             <AddServerMenu
               clusterName={cluster.name}
+              warning={cluster.notForProduction ?? null}
               options={joinOptions.filter(
                 (o) => !servers.some((m) => m.id === o.serverId),
               )}
@@ -239,6 +244,7 @@ export function ClusterView({
             />
             <AddServer
               joinCluster={cluster}
+              joinWarning={cluster.notForProduction ?? null}
               teams={teams}
               open={installOpen}
               onOpenChange={setInstallOpen}
@@ -315,6 +321,22 @@ export function ClusterView({
                           {s.leader && (
                             <SimpleTooltip content="The cluster's leader runs here: it decides where each App runs.">
                               <Crown className="size-3.5 text-[var(--warning)]" />
+                            </SimpleTooltip>
+                          )}
+                          {!s.leader &&
+                            lineWords(s.member?.nextInLine ?? 0) && (
+                              <SimpleTooltip
+                                content={lineWords(s.member!.nextInLine)}
+                              >
+                                <Crown className="size-3.5 text-muted-foreground" />
+                              </SimpleTooltip>
+                            )}
+                          {s.member?.relayWarning && (
+                            <SimpleTooltip content={s.member.relayWarning}>
+                              <TriangleAlert
+                                className="size-3.5 text-[var(--warning)]"
+                                aria-label={s.member.relayWarning}
+                              />
                             </SimpleTooltip>
                           )}
                         </Link>
@@ -507,11 +529,13 @@ export function ClusterView({
 /** Add server, inside a cluster: one of the servers outside every cluster moves in. */
 function AddServerMenu({
   clusterName,
+  warning,
   options,
   onPick,
   onInstall,
 }: {
   clusterName: string;
+  warning: { title: string; body: string } | null;
   options: ClusterJoinOption[];
   onPick: (option: ClusterJoinOption) => void;
   onInstall: () => void;
@@ -528,6 +552,20 @@ function AddServerMenu({
         align="end"
         className="max-h-80 w-64 overflow-y-auto"
       >
+        {warning && (
+          <>
+            <DropdownMenuLabel className="space-y-1 text-xs font-normal">
+              <span className="flex items-center gap-1.5 font-medium text-[var(--warning)]">
+                <TriangleAlert className="size-3.5 shrink-0" />
+                {warning.title}
+              </span>
+              <span className="block text-muted-foreground">
+                {warning.body}
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onSelect={onInstall}>
           <Plus className="size-4" />
           Install a new server

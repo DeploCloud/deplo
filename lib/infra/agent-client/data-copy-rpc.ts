@@ -13,7 +13,11 @@ import type {
   StoreResult,
   VolumeChunk,
 } from "../../agent/gen/agent";
-import type { AgentConnection, DroppedEntries } from "./connection";
+import type {
+  AgentConnection,
+  DroppedEntries,
+  SetAsideCopy,
+} from "./connection";
 import { VOLUME_COPY_DEADLINE_MS, VOLUME_USAGE_TIMEOUT_MS } from "./deadlines";
 import { toAgentError } from "./errors";
 import { bytesFrom, type AgentChannel } from "./mtls-channel";
@@ -33,6 +37,8 @@ export function dataCopyRpc(
   AgentConnection,
   | "exportVolume"
   | "volumeUsage"
+  | "setAsideCopies"
+  | "removeSetAside"
   | "importVolume"
   | "exportHostPath"
   | "importHostPath"
@@ -56,7 +62,7 @@ export function dataCopyRpc(
     volumeUsage(volumeNames: string[]) {
       return new Promise<Map<string, number>>((resolve, reject) => {
         client.volumeUsage(
-          { volumeNames },
+          { volumeNames, setAsideOf: [] },
           new Metadata(),
           { deadline: new Date(Date.now() + VOLUME_USAGE_TIMEOUT_MS) },
           (err, resp) =>
@@ -67,6 +73,41 @@ export function dataCopyRpc(
                     resp.volumes.map((v) => [v.volumeName, Number(v.bytes)]),
                   ),
                 ),
+        );
+      });
+    },
+    setAsideCopies(of: string[]) {
+      return new Promise<SetAsideCopy[]>((resolve, reject) => {
+        client.volumeUsage(
+          { volumeNames: of, setAsideOf: of },
+          new Metadata(),
+          { deadline: new Date(Date.now() + VOLUME_USAGE_TIMEOUT_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve(
+                  resp.volumes
+                    .filter((v) => v.setAsideOf)
+                    .map((v) => ({
+                      volumeName: v.volumeName,
+                      of: v.setAsideOf,
+                      atMs: Number(v.setAsideAtMs),
+                      bytes: Number(v.bytes),
+                    })),
+                ),
+        );
+      });
+    },
+    removeSetAside(volumeName: string) {
+      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+        client.removeSetAside(
+          { volumeName },
+          new Metadata(),
+          { deadline: new Date(Date.now() + VOLUME_USAGE_TIMEOUT_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },

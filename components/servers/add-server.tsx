@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Loader2, Network, Plus, ServerCog } from "lucide-react";
+import { Loader2, Network, Plus, ServerCog, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +36,7 @@ export function AddServer({
   teams = [],
   clusters = false,
   joinCluster,
+  joinWarning = null,
   open: controlledOpen,
   onOpenChange,
   trigger = true,
@@ -46,6 +47,8 @@ export function AddServer({
   clusters?: boolean;
   /** Added from inside this cluster: the server joins it once installed. */
   joinCluster?: { id: string; name: string };
+  /** The cluster's own warning when it is not OK for production, shown before anything is added. */
+  joinWarning?: { title: string; body: string } | null;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   trigger?: boolean;
@@ -206,6 +209,16 @@ export function AddServer({
             )}
           </DialogDescription>
         </DialogHeader>
+
+        {joinCluster && joinWarning && !command && (
+          <div className="space-y-1 rounded-md border p-3 text-sm">
+            <p className="flex items-center gap-1.5 font-medium text-[var(--warning)]">
+              <TriangleAlert className="size-4 shrink-0" />
+              {joinWarning.title}
+            </p>
+            <p className="text-muted-foreground">{joinWarning.body}</p>
+          </div>
+        )}
 
         <form className="grid gap-8" onSubmit={onSubmit}>
           <AnimatedHeight className="grid gap-4" scroll={false}>

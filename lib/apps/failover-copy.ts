@@ -131,3 +131,17 @@ export function copiesLine(serverName: string, rows: CopyRow[]): string {
     return `Not copied yet: this App cannot move if ${serverName} goes off`;
   return `Copies: ${up} of ${rows.length} up to date`;
 }
+
+/** What Activity says when the App's copies start or stop letting it move: never "0 up to date" and "it can move" alone. */
+export function copiesActivity(
+  appName: string,
+  serverName: string,
+  rows: CopyRow[],
+  canMove: boolean,
+): string {
+  const line = copiesLine(serverName, rows);
+  if (!canMove) return `${appName}: ${line}`;
+  if (rows.some((r) => r.state === "Up to date"))
+    return `${appName}: ${line}. It can move if ${serverName} goes off.`;
+  return `${appName}: no copy is up to date yet. It can still move if ${serverName} goes off, without the writes no copy has received.`;
+}

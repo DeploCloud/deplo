@@ -116,6 +116,10 @@ export const CLUSTER_REGISTRY_IMAGES_CAPABILITY = "cluster.images.registry";
 // The agent starts a workload its cluster's leader moves to it; without it the leader's order is renewed and ignored.
 export const CLUSTER_FAILOVER_CAPABILITY = "cluster.failover";
 
+// A line of succession (ADR-0043): the agent pre-votes, gives each epoch to one leader, and asks the leader beside it
+// to lead when it is next in line and its leader is silent.
+export const CLUSTER_SUCCESSION_CAPABILITY = "cluster.succession";
+
 // The agent restores the bundle's backup into a moved workload before it counts as started (#202).
 export const CLUSTER_FAILOVER_RESTORE_CAPABILITY = "cluster.failover.restore";
 

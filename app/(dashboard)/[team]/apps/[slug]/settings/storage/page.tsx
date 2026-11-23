@@ -13,6 +13,8 @@ import {
   detectDefaultApp,
 } from "@/lib/deploy/compose-stack/compose-read";
 import { usesComposeStack } from "@/lib/utils";
+import { listAppSetAsideCopies } from "@/lib/data/apps/set-aside";
+import { SetAsideCopies } from "@/components/apps/settings/set-aside-copies";
 
 export const metadata = { title: "Storage" };
 
@@ -34,6 +36,10 @@ export default async function AppStorageSettingsPage(
     : [];
   const mayBind = await canMountHostVolumes();
   const mayEditFiles = await hasAppCapability(project.id, "configure_apps");
+  const [aside, mayRemove] = await Promise.all([
+    listAppSetAsideCopies(project.id).catch(() => []),
+    hasAppCapability(project.id, "delete_backups"),
+  ]);
 
   return (
     <section className="space-y-4">
@@ -60,6 +66,7 @@ export default async function AppStorageSettingsPage(
           )}
         />
       </CapabilityFieldset>
+      <SetAsideCopies appId={project.id} copies={aside} canRemove={mayRemove} />
     </section>
   );
 }

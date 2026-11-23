@@ -13,6 +13,8 @@ import { servicesOf } from "../../deploy/compose-lint/document";
 import { serverSupports } from "../../infra/agent-client/preflight";
 import { newId } from "../../ids";
 import { imageVolumes } from "../../registry/client";
+import { parseImageRef } from "../../registry/image-ref";
+import { dockerConfigKey, loadRegistryAuthsForApp } from "../registries";
 import type { VolumeMount } from "../../types/container";
 import { hostVolumeName, usesComposeStack } from "../../utils";
 import { recordActivity } from "../activity";
@@ -33,11 +35,14 @@ export async function keepUnnamedVolumes(
   appId: string,
   serverId: string,
   log: (message: string) => void,
-  lookup: (image: string) => Promise<string[] | null> = imageVolumes,
+  lookup?: (image: string) => Promise<string[] | null>,
+  built?: string[],
 ): Promise<VolumeMount[]> {
   if (!(await serverSupports(serverId, ADOPT_VOLUMES_CAPABILITY))) return [];
   const app = await loadAppGraph(appId);
   if (!app) return [];
+  // A private image is read with the registry login its deploy pulls it with.
+  lookup ??= await privateAware(appId);
   const composeStack = usesComposeStack(app);
   const images = new Map<string, string>();
   if (composeStack) {
@@ -48,8 +53,9 @@ export async function keepUnnamedVolumes(
   } else if (app.source === "docker-image" && app.dockerImage) {
     images.set("", app.dockerImage);
   }
-  // ponytail: an image Deplo builds is not read; its VOLUME stays unnamed until the image is published.
   const declared = new Map<string, string[]>();
+  // What the image Deplo built declares, read on the server that built it.
+  if (!composeStack && built?.length) declared.set("", built);
   await Promise.all(
     [...images].map(async ([service, image]) => {
       const paths = await lookup(image).catch(() => null);
@@ -96,6 +102,19 @@ export async function keepUnnamedVolumes(
     app.teamId,
   );
   return added;
+}
+
+/** Reads an image's volumes with the team's login for its registry, when it has one. */
+async function privateAware(
+  appId: string,
+): Promise<(image: string) => Promise<string[] | null>> {
+  const logins = await loadRegistryAuthsForApp(appId).catch(() => []);
+  return (image) => {
+    const ref = parseImageRef(image);
+    const key = ref ? dockerConfigKey(ref.registry) : "";
+    const login = logins.find((l) => l.host === key);
+    return imageVolumes(image, login);
+  };
 }
 
 /** The Volumes Deplo named for this App, as the agent carries them over at a deploy of `deployKey`. */

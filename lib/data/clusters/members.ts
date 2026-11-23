@@ -42,6 +42,8 @@ import {
 } from "../../types/cluster";
 import { isDeploHostServer } from "../../deploy/domains";
 import { clusterNetworkLinksOf } from "./network";
+import { relayLevel, relayedServerWarning } from "../../clusters/direct-core";
+import { clusterHeirs } from "./succession";
 import type { ServerStatus } from "../../types/server";
 import { TWO_SERVERS_JOINED } from "../../clusters/failover-reach";
 import { archivesChangeLog } from "../../databases/change-log";
@@ -287,6 +289,10 @@ async function toMember(
   r: MemberRow,
   viewer: Viewer,
   network: ClusterMemberNetwork = { relayed: [], unreachable: [] },
+  extra: Pick<ClusterMember, "relayWarning" | "nextInLine"> = {
+    relayWarning: "",
+    nextInLine: 0,
+  },
 ): Promise<ClusterMember> {
   const held = await listMemberWorkloads(r.serverId);
   return {
@@ -300,6 +306,7 @@ async function toMember(
     leaseState: toLeaseState(r.leaseState),
     provisioning: !r.readyAt,
     network,
+    ...extra,
   };
 }
 
@@ -368,8 +375,29 @@ async function readMembers(
     .where(eq(membersTable.clusterId, clusterId))
     .orderBy(asc(membersTable.joinedAt), asc(membersTable.serverId));
   const network = await membersNetwork(clusterId, rows);
+  const ids = rows.map((r) => r.serverId);
+  const links = await clusterNetworkLinksOf(clusterId, ids);
+  const level = relayLevel(
+    ids,
+    [...links].flatMap(([serverId, list]) =>
+      list.map((l) => ({
+        serverId,
+        peerServerId: l.peerServerId,
+        path: l.path,
+      })),
+    ),
+  );
+  const cluster = await getClusterById(clusterId);
+  const heirs = cluster ? await clusterHeirs(cluster).catch(() => []) : [];
   return Promise.all(
-    rows.map((r) => toMember(r, viewer, network.get(r.serverId))),
+    rows.map((r) =>
+      toMember(r, viewer, network.get(r.serverId), {
+        relayWarning: level.relayed.includes(r.serverId)
+          ? relayedServerWarning(r.serverName)
+          : "",
+        nextInLine: heirs.indexOf(r.serverId) + 1,
+      }),
+    ),
   );
 }
 

@@ -30,6 +30,8 @@ const member = (over: Partial<ClusterMember> = {}): ClusterMember => ({
   leaseState: "ok",
   provisioning: false,
   network: { relayed: [], unreachable: [] },
+  relayWarning: "",
+  nextInLine: 0,
   ...over,
 });
 

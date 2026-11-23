@@ -18,6 +18,10 @@ export type ServerMemberState = {
   network: string;
   /** It cannot reach one of them at all, which is worth a warning rather than a note. */
   networkDown: boolean;
+  /** It stops like a power cut when Deplo's machine does: a warning icon on its row and its page; empty otherwise. */
+  relayWarning: string;
+  /** 1 leads the cluster next, 2 after it, 0 not in the line. */
+  nextInLine: number;
 };
 
 /** "eu-2" and "deplo and eu-2": the servers one reaches a certain way, for a card's line. */
@@ -51,7 +55,18 @@ export function memberState(m: ClusterMember): ServerMemberState {
     held: m.held,
     network: networkLine(m.network),
     networkDown: m.network.unreachable.length > 0,
+    relayWarning: m.relayWarning,
+    nextInLine: m.nextInLine,
   };
+}
+
+/** What a server's place in the line of succession says, in its tooltip; empty when it is not in the line. */
+export function lineWords(n: number): string {
+  if (n === 1)
+    return "Next in line: if the leader's server stops, this server leads the cluster, with or without Deplo.";
+  if (n === 2)
+    return "Second in line: it leads the cluster if the leader's server and the one next in line both stop.";
+  return "";
 }
 
 /** What a cluster knows about a server before it joins. */

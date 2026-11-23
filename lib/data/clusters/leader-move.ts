@@ -26,7 +26,14 @@ import {
   readLeaderSnapshot,
 } from "./leader-sync";
 import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
-import { getClusterById, requireClusterAdmin } from "./roster";
+import {
+  clusterMemberServerIds,
+  getClusterById,
+  requireClusterAdmin,
+} from "./roster";
+import { clusterHeirs, keepHeirsReady, leadersToMove } from "./succession";
+import { recordClusterActivity } from "./cluster-activity";
+import type { Server } from "../../types/server";
 import { messageOf } from "../../utils";
 import { syncClusterNetworkSoon } from "./network";
 
@@ -102,7 +109,10 @@ export async function listClusterLeaderChoices(
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const own = await leaderHostOf(null);
-  const servers = (await listAllServers()).filter((s) => !s.importOnly);
+  const members = await clusterMemberServerIds(clusterId);
+  const servers = (await listAllServers()).filter(
+    (s) => !s.importOnly && members.includes(s.id),
+  );
   return [
     ...servers.filter((s) => s.id === own?.id),
     ...servers.filter((s) => s.id !== own?.id),
@@ -133,6 +143,9 @@ export async function retireLeader(
 ): Promise<void> {
   const server = await getServerById(serverId);
   if (!server) return;
+  // A member next in line keeps its leader: it may lead the cluster without Deplo.
+  const cluster = clusterId ? await getClusterById(clusterId) : null;
+  if (cluster && (await clusterHeirs(cluster)).includes(serverId)) return;
   const still = await getDb()
     .select({ id: clustersTable.id })
     .from(clustersTable)
@@ -204,9 +217,65 @@ export async function moveClusterLeader(
   const target = serverId ? await getServerById(serverId) : own;
   if (!target || target.importOnly)
     throw new Error(serverId ? "Server not found" : NO_HOST);
+  await leadOn(cluster, target, teamId);
+  await recordActivity(
+    "server",
+    `Moved the leader of cluster ${cluster.name} to ${target.name}`,
+    user.name,
+    null,
+    teamId,
+  );
+  return (await getClusterById(clusterId))!;
+}
+
+/**
+ * Deplo's own pass: a cluster whose leader runs outside it, on Deplo's machine or a server that left, gets it on the
+ * member that reaches the others directly and has the most room. Never throws.
+ */
+export async function placeClusterLeaders(): Promise<void> {
+  for (const { cluster, to, toName } of await leadersToMove()) {
+    try {
+      const target = await getServerById(to);
+      if (!target) continue;
+      await leadOn(cluster, target, undefined);
+      await recordClusterActivity(
+        cluster.id,
+        `The leader of cluster ${cluster.name} now runs on ${toName}, one of its own servers, so the cluster keeps leading itself while Deplo's machine is down`,
+      );
+    } catch (e) {
+      warn(cluster.id, e);
+    }
+  }
+}
+
+/** The minute's pass: leaders move onto their own clusters, and each member next in line runs a leader. Never throws. */
+export async function keepLeadersHome(ids: string[]): Promise<void> {
+  await placeClusterLeaders();
+  for (const id of ids) {
+    const cluster = await getClusterById(id);
+    if (!cluster || !(await keepHeirsReady(cluster))) continue;
+    // A new line: the members take its orders, its leaders hold the bundles, and the leader names it.
+    forgetLeaderRoster(id);
+    const push = await pushClusterRoster(id).catch((e) => {
+      warn(id, e);
+      return null;
+    });
+    for (const f of push?.failed ?? []) warn(id, f.message);
+    await reconcileClusterBundles(id).catch((e) => warn(id, e));
+  }
+}
+
+/** Installs the leader on the target and has it lead from the next epoch; the server it left is retired. */
+async function leadOn(
+  cluster: Cluster,
+  target: Server,
+  teamId: string | undefined,
+): Promise<void> {
+  const clusterId = cluster.id;
+  const own = await leaderHostOf(null);
   // Deplo's own machine is stored as null, however it was picked.
   const next = target.id === own?.id ? null : target.id;
-  if (next === cluster.leaderServerId) return cluster;
+  if (next === cluster.leaderServerId) return;
 
   const probe = await probeClusterHost(target.id);
   if (probe === "offline")
@@ -219,6 +288,11 @@ export async function moveClusterLeader(
   if (next !== null && relay)
     await syncLeaderRelayRoute(target, true).catch((e) => warn(clusterId, e));
   await installClusterLeader(target.id, { relay });
+  // The members take the new leader's orders before it gives any: the old one stops the moment it is told.
+  if (next !== null)
+    await pushClusterRoster(clusterId, undefined, [target.id]).catch((e) =>
+      warn(clusterId, e),
+    );
 
   if (next === null && cluster.leaderTakeoverAt)
     // Deplo's own machine already leads in its place: no hands change, so the epoch stays.
@@ -230,7 +304,7 @@ export async function moveClusterLeader(
     await leadFrom(cluster, {
       leaderServerId: next,
       leaderTakeoverAt: null,
-      leaderTeamId: teamId,
+      ...(teamId ? { leaderTeamId: teamId } : {}),
     });
   const push = await pushClusterRoster(clusterId);
   for (const f of push.failed) warn(clusterId, f.message);
@@ -238,12 +312,4 @@ export async function moveClusterLeader(
   await reconcileClusterBundles(clusterId).catch((e) => warn(clusterId, e));
   if (cluster.leaderServerId)
     await retireLeaderOrQueue(clusterId, cluster.leaderServerId);
-  await recordActivity(
-    "server",
-    `Moved the leader of cluster ${cluster.name} to ${target.name}`,
-    user.name,
-    null,
-    teamId,
-  );
-  return (await getClusterById(clusterId))!;
 }

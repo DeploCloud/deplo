@@ -21,3 +21,11 @@ Every byte between two servers of a cluster took two internet legs through a rel
 - The tunnel to a peer is either direct or relayed, and the cluster's servers page says when it is relayed or down (`ClusterMember.network`). The database page's relay note follows the pair's path.
 - A first handshake two servers start at once undoes itself in WireGuard and waits 5 s; the agent's transport lets the lower key's go on, so the network is up within milliseconds.
 - `deplo-cluster` keeps its relay and dials members through the agent beside it (`DEPLO_CLUSTER_MESH_SOCKET`), and through the relays when that agent is away. Ship the agent first.
+
+## Servers that need the relay: never refused, two levels (23 Nov 2026)
+
+A relayed pair stops with Deplo's machine, the relay's home. Decided by the owner: such a server is never refused, and Deplo says what it costs (`relayLevel` in `lib/clusters/direct-core.ts`, from the paths each agent reports):
+
+- **Level 1**: with every relayed pair gone, more than half of the servers still reach each other directly, every pair among them (the direct core). Each server outside it gets a warning icon on its row and its page: it reaches some servers only through Deplo's relay and stops like a power cut if Deplo's machine stops. Nothing on the cluster.
+- **Level 2**: no such majority. The cluster itself says "Not OK for production": if Deplo's machine stops, every App and database of this cluster stops, and the fix is a direct path or a second relay on another network (not built). Add server shows it before anything is added, and Activity says when it starts and when it ends.
+- The leader and its heirs are always members of the direct core when there is one (ADR-0043).
