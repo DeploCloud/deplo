@@ -17,6 +17,8 @@ import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { seedApp } from "./app-graph-test-helpers";
 import {
   clusterAnswerRecordSet,
+  SETUP_GRACE_MS,
+  __cancelAnswerRechecksForTest,
   syncClusterAnswerDns,
 } from "./clusters/answer-dns";
 import {
@@ -55,6 +57,7 @@ beforeEach(() => {
   __setDnsResolve6ForTest(async () => []);
 });
 afterEach(() => {
+  __cancelAnswerRechecksForTest();
   __resetAgentAddressesForTest();
   __resetDnsResolve4ForTest();
 });
@@ -166,7 +169,10 @@ test("a zone's domain that serves keeps its route through every negative verdict
   await answeringApp(cluster.id);
   await db()
     .update(domainsTable)
-    .set({ name: "app.go.example.com" })
+    .set({
+      name: "app.go.example.com",
+      createdAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    })
     .where(eq(domainsTable.id, "dom_1"));
   await asAdmin(() => addClusterDnsZone(cluster.id, "go.example.com"));
   const row = async () =>
@@ -269,4 +275,38 @@ test("by hand, a served domain that no longer lists every server keeps its route
     ["app.example.com"],
   );
   assert.deepEqual(routed, []);
+});
+
+test("a name just added and not answered yet says nothing until its setup time is over", async () => {
+  const cluster = await clusterOf("eu", MEMBERS);
+  await answeringApp(cluster.id);
+  await db()
+    .update(domainsTable)
+    .set({ name: "app.go.example.com" })
+    .where(eq(domainsTable.id, "dom_1"));
+  await asAdmin(() => addClusterDnsZone(cluster.id, "go.example.com"));
+  const warned = async () =>
+    (await db().select().from(activities)).some((a) =>
+      a.message.startsWith("app.go.example.com does not reach the cluster"),
+    );
+  __setDnsResolve4ForTest(async () => {
+    throw Object.assign(new Error("queryA ENODATA"), { code: "ENODATA" });
+  });
+  await syncClusterAnswerDns(cluster.id, async () => {});
+  assert.equal(await warned(), false, "nothing while it is set up");
+  assert.deepEqual(
+    __cancelAnswerRechecksForTest(),
+    [cluster.id],
+    "checked again once the setup time is over",
+  );
+  // Past it, the same answer is a failure, and says so.
+  await db()
+    .update(domainsTable)
+    .set({
+      createdAt: new Date(Date.now() - SETUP_GRACE_MS - 1_000).toISOString(),
+    })
+    .where(eq(domainsTable.id, "dom_1"));
+  await syncClusterAnswerDns(cluster.id, async () => {});
+  assert.equal(await warned(), true);
+  assert.deepEqual(__cancelAnswerRechecksForTest(), []);
 });

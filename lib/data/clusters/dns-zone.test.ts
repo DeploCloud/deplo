@@ -1,4 +1,5 @@
 import { test, beforeEach, afterEach } from "node:test";
+import { __cancelAnswerRechecksForTest } from "./answer-dns";
 import assert from "node:assert/strict";
 
 import { and, eq, inArray } from "drizzle-orm";
@@ -76,6 +77,7 @@ beforeEach(() => {
     hosts[id].capabilities.push(CLUSTER_ZONE_CAPABILITY);
 });
 afterEach(() => {
+  __cancelAnswerRechecksForTest();
   __resetAgentAddressesForTest();
   __resetDnsResolve4ForTest();
   __setApexCheckForTest(null);
