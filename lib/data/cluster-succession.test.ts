@@ -13,6 +13,7 @@ import { __forgetMemberProbes } from "../infra/agent-client/cluster-host";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { CLUSTER_SUCCESSION_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { SERVER_1 } from "./app-graph-test-helpers";
+import { HelloResponse } from "../agent/gen/agent";
 import { keepLeadersHome, placeClusterLeaders } from "./clusters/leader-move";
 import { superviseClusterLeader } from "./clusters/leader-standby";
 import { forgetLeaderRoster, pushLeaderRoster } from "./clusters/leader-sync";
@@ -249,4 +250,19 @@ test("a relayed server gets the warning on itself, and a cluster with no direct 
     ),
     ["", "", ""],
   );
+});
+
+test("no leader moves onto a member whose agent is behind the pin", async () => {
+  const cluster = await three();
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    hosts[id].extra = {
+      hello: async () =>
+        HelloResponse.fromPartial({
+          agentVersion: "0.0.1",
+          capabilities: hosts[id].capabilities,
+          dockerAvailable: true,
+        }),
+    };
+  await placeClusterLeaders();
+  assert.equal((await stored(cluster.id)).server, null);
 });

@@ -15,6 +15,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import type { Cluster } from "../../types/cluster";
 import { messageOf } from "../../utils";
 import { getServerById } from "../servers/roster";
+import { agentBehind } from "./binary-rollout";
 import { clusterMemberFacts } from "./facts";
 import { leaderHostOf } from "./host";
 import { clusterNetworkLinksOf } from "./network";
@@ -209,7 +210,9 @@ export async function leadersToMove(): Promise<
       continue;
     const to = await leaderHome(id).catch(() => null);
     const server = to ? await getServerById(to) : null;
-    if (server) out.push({ cluster, to: server.id, toName: server.name });
+    // Its agent first: the one beside a leader starts and stops it, and an update would restart it again at once.
+    if (server && !(await agentBehind(server.id).catch(() => true)))
+      out.push({ cluster, to: server.id, toName: server.name });
   }
   return out;
 }

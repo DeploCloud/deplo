@@ -147,7 +147,7 @@ async function movingCluster(host: Host): Promise<string | null> {
 }
 
 // The agent installs, stops and starts the binary, so a server behind its own agent pin gets that update first.
-async function agentBehind(serverId: string): Promise<boolean> {
+export async function agentBehind(serverId: string): Promise<boolean> {
   const conn = await connectAgent(serverId);
   try {
     return isNewer(AGENT_VERSION, (await conn.hello()).agentVersion);
