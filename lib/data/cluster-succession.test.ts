@@ -5,6 +5,7 @@ import { eq, like } from "drizzle-orm";
 import { activities } from "../db/schema/control-plane/activity";
 import type { TestDb } from "../db/test-harness";
 import {
+  clusterLeaderKeys,
   clusterNetworkLinks,
   clusterWarnings,
   clusters as clustersTable,
@@ -669,4 +670,32 @@ test("every member takes the orders of every member's leader, also one that was 
       `${id}'s leader is not one the members take orders from`,
     );
   }
+});
+
+// eu, 23 Nov 2026: eu-3 was off when Deplo last refreshed the leaders' keys, so its key was dropped and later bundles
+// never reached it; it led with a stale one that held no restore, and memos never moved. A member off keeps its key.
+test("a member's leader that is off keeps its key, so the bundles still reach it", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first] = await clusterHeirs(led);
+  // The heirs run a leader of their own, which gives its key.
+  await keepLeadersHome([cluster.id]);
+  const { refreshLeaderKeys } = await import("./clusters/bundles");
+  await refreshLeaderKeys(led);
+  const owners = async () =>
+    (
+      await db
+        .select({ serverId: clusterLeaderKeys.serverId })
+        .from(clusterLeaderKeys)
+        .where(eq(clusterLeaderKeys.clusterId, cluster.id))
+    ).map((k) => k.serverId);
+  assert.ok((await owners()).includes(first), "the heir holds no key");
+  hosts[first].unreachable = true;
+  __forgetMemberProbes();
+  await refreshLeaderKeys(led);
+  assert.ok(
+    (await owners()).includes(first),
+    "an heir that is off lost its key",
+  );
 });

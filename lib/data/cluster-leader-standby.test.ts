@@ -362,7 +362,7 @@ test("after a Deplo move the new machine's leader is started, leads from a newer
     relayRosters(hosts[SERVER_1])
       .at(-1)!
       .parties.map((p) => p.role),
-    ["leader", "member", "member", "member"],
+    ["leader", "leader", "leader", "member", "member", "member"],
   );
 });
 
