@@ -322,7 +322,11 @@ export function withPanelRoute(
     PANEL_CONFIG,
     PANEL_FILE,
     "the panel's own route",
-    panelFile(currentContent, { ...route, domain, fallbackDomain, target }),
+    panelFile(
+      currentContent,
+      { ...route, domain, fallbackDomain, target },
+      route.https && !redirectsToHttps(listOf(service.get("command", true))),
+    ),
   );
   setHostGateway(
     doc,
@@ -406,7 +410,34 @@ function setHostGateway(doc: Stack, service: YAMLMap, on: boolean): void {
   else service.set("extra_hosts", doc.createNode(rest));
 }
 
-function panelFile(current: unknown, route: PanelRoute): string {
+/** The panel's own route file as a proxy's compose carries it; null when it carries none. */
+export function panelRouteFile(currentYaml: string): string | null {
+  try {
+    const content = parseCompose(currentYaml).getIn([
+      "configs",
+      PANEL_CONFIG,
+      "content",
+    ]);
+    return typeof content === "string" ? content : null;
+  } catch {
+    return null;
+  }
+}
+
+const redirectsToHttps = (command: string[]) =>
+  command.some((c) =>
+    /^--entrypoints\.[^.]+\.http\.redirections\.entrypoint\.to=/.test(c),
+  );
+
+const HTTPS_MIDDLEWARE = "deplo-panel-https";
+const httpRouterOf = (router: string) => `${router}-http`;
+
+// httpRedirect: the proxy does not send :80 to :443 itself, so the panel's own names are sent there here.
+function panelFile(
+  current: unknown,
+  route: PanelRoute,
+  httpRedirect = false,
+): string {
   const router = (host: string) => ({
     rule: `Host(\`${host}\`)`,
     entryPoints: [route.https ? "websecure" : "web"],
@@ -478,6 +509,31 @@ function panelFile(current: unknown, route: PanelRoute): string {
       ["http", "middlewares", OFFLINE_ROUTER],
       doc.createNode({ replacePath: { path: OFFLINE_PATH } }),
     );
+    const hosts: [string, string][] = [[PANEL_ROUTER, route.domain]];
+    if (route.fallbackDomain && route.fallbackDomain !== route.domain)
+      hosts.push([PANEL_FALLBACK_ROUTER, route.fallbackDomain]);
+    for (const n of [PANEL_ROUTER, PANEL_FALLBACK_ROUTER])
+      doc.deleteIn([...routers, httpRouterOf(n)]);
+    doc.deleteIn(["http", "middlewares", HTTPS_MIDDLEWARE]);
+    if (httpRedirect) {
+      for (const [n, host] of hosts)
+        doc.setIn(
+          [...routers, httpRouterOf(n)],
+          doc.createNode({
+            rule: `Host(\`${host}\`)`,
+            entryPoints: ["web"],
+            service: PANEL_ROUTER,
+            priority: PANEL_PRIORITY,
+            middlewares: [HTTPS_MIDDLEWARE],
+          }),
+        );
+      doc.setIn(
+        ["http", "middlewares", HTTPS_MIDDLEWARE],
+        doc.createNode({
+          redirectScheme: { scheme: "https", permanent: true },
+        }),
+      );
+    }
     doc.setIn(
       ["http", "services", PANEL_ROUTER],
       doc.createNode({

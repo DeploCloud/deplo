@@ -16,3 +16,7 @@ The relay is the cluster leader's binary in relay mode. Deplo's machine always r
 
 - Every byte between members takes two internet legs. Placement keeps an App next to its database when it can, and a database reached through the relay says so.
 - With Deplo's machine down, a cluster whose leader also runs there cannot fail over.
+
+## The panel's route follows the Deplo that renders it (23 Nov 2026)
+
+On apps.idra.app a hand-written `deplo.yml`, left from the server's first setup, routed the panel's name above the relay's path, and the fix that raised the relay's priority reached the server only when the panel's route was next written. Decided by the owner: **the sweep writes the panel's route file again whenever the running Deplo renders it differently** (`syncClusterRelayRoute`, comparing the file, not the whole proxy compose), so a route fix lands with the update that carries it, with one proxy restart. A proxy that does not send `:80` to `:443` itself gets the panel's names sent there by the panel's own file (`deplo-panel-http`), which was the last thing `deplo.yml` still did; the file itself was removed from that server by name.

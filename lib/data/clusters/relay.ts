@@ -19,6 +19,7 @@ import { isDeploHostServer } from "../../deploy/domains";
 import {
   panelRoute,
   relayRouteHost,
+  panelRouteFile,
   withPanelRoute,
   withRelayRoute,
 } from "../../deploy/traefik-stack";
@@ -280,7 +281,15 @@ export async function syncClusterRelayRoute(): Promise<RelayRouteChange> {
         throw new CloudflareRelayError(e, wanted, !!route.fallbackDomain);
       }
     };
-    if ((route.relay === true) === wanted && connectorOn === connectorWanted) {
+    // A Deplo that renders its route differently since the file was written writes it again: a fix never waits.
+    const rendered =
+      panelRouteFile(withPanelRoute(yaml, { ...route, relay: wanted })) ===
+      panelRouteFile(yaml);
+    if (
+      rendered &&
+      (route.relay === true) === wanted &&
+      connectorOn === connectorWanted
+    ) {
       // The proxy file says nothing about Cloudflare's side, which an older Deplo or an edit there may have lost.
       await cloudflareSide();
       noteRelayProblem(null);
