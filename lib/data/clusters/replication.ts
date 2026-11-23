@@ -208,9 +208,12 @@ export async function replicateCluster(
   force = false,
 ): Promise<void> {
   if (await instanceFrozen()) return;
-  // Nobody answers: how each copy stood when Deplo last heard is kept, never a guess.
+  // Nobody answers: how each copy stood when Deplo last heard is kept, never a guess. Asked again after the
+  // servers were, since a pass that began just before the silence spends its timeouts on it.
   if (await clusterOutOfReach(clusterId)) return;
-  await recordReports(clusterId, await pushReplicaTables(clusterId, force));
+  const reports = await pushReplicaTables(clusterId, force);
+  if (await clusterOutOfReach(clusterId)) return;
+  await recordReports(clusterId, reports);
   await standbyForCluster(clusterId);
 }
 
