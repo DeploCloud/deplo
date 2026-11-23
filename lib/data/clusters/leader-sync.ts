@@ -31,13 +31,14 @@ import {
 import type { Cluster, ClusterLeaseState } from "../../types/cluster";
 import { recordClusterActivity } from "./cluster-activity";
 import { clusterMemberFacts } from "./facts";
-import { listStandbys } from "./placement";
+import { listStandbys, recordPlacement } from "./placement";
 import { leaderHost, leaderHostOf } from "./host";
 import { clusterHeirs, clusterPreVotes } from "./succession";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import { clusterRotations } from "./rotations";
 import { getServerById } from "../servers/roster";
+import { messageOf } from "../../utils";
 import {
   AGENT_SHORT_FENCE_VERSION,
   reportedAgentVersion,
@@ -374,6 +375,49 @@ export async function pushLeaderRoster(
       ),
     );
   return true;
+}
+
+/**
+ * A move inside a cluster goes leader first (ADR-0043): the placement is handed to the leader, and the caller deploys
+ * once the leader holds it, so no renewal stops the new copy as placed elsewhere. False when the leader did not say so.
+ */
+export async function placeAtLeaderFirst(
+  cluster: Cluster,
+  kind: "app" | "database",
+  id: string,
+  member: string,
+  opts: { within?: number; every?: number } = {},
+): Promise<boolean> {
+  await recordPlacement({
+    clusterId: cluster.id,
+    kind,
+    workloadId: id,
+    members: [member],
+    epoch: cluster.leaderEpoch,
+  });
+  const end = Date.now() + (opts.within ?? 15_000);
+  let why = "it did not show the new placement in time";
+  try {
+    const now = (await getClusterById(cluster.id)) ?? cluster;
+    await pushLeaderRoster(now);
+    for (;;) {
+      const view = (await readLeaderSnapshot(now))?.clusters[cluster.id];
+      // A leader that does not serve the cluster renews nobody, so no lease can stop the new copy.
+      if (!view) return false;
+      const at = view.placement?.find(
+        (e) => e.kind === kind && e.id === id && e.replica === 0,
+      )?.member;
+      if (at === member) return true;
+      if (Date.now() >= end) break;
+      await new Promise((r) => setTimeout(r, opts.every ?? 500));
+    }
+  } catch (e) {
+    why = messageOf(e);
+  }
+  console.warn(
+    `[cluster-leader] ${cluster.id}: ${kind} ${id} goes to ${member} before its leader holds it: ${why}`,
+  );
+  return false;
 }
 
 /** A leader that keeps rotations says how many it took; an older one only says ok. */

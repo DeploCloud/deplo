@@ -25,6 +25,7 @@ import {
 import { assertMemberTakes } from "../clusters/member-choice";
 import { resolveTeamCluster } from "../clusters/roster";
 import { joinAppTunnel, leaveAppTunnel } from "../clusters/app-tunnel";
+import { placeAtLeaderFirst } from "../clusters/leader-sync";
 import { leaveClusterZone } from "../domains/cluster-answer";
 import {
   canHostWorkloads,
@@ -487,6 +488,10 @@ async function applyAppSource(
     );
     await leaveClusterZone(moved, user.name);
   }
+
+  // A move inside a cluster goes leader first: the new server's lease names the App before the deploy starts it.
+  if (after.moved && sameCluster && move?.cluster)
+    await placeAtLeaderFirst(move.cluster, "app", id, input.serverId!);
 
   if (after.moved && (move ? move.deploy : input.source !== "upload")) {
     try {
