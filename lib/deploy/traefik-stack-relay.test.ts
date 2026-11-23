@@ -156,7 +156,11 @@ test("a proxy that does not send :80 to :443 itself gets the panel's names sent 
     http.routers["deplo-panel-fallback-http"].rule,
     "Host(`deplo-cb007109.deplo.site`)",
   );
-  assert.ok(http.middlewares?.["deplo-panel-https"]);
+  assert.ok(
+    (http.middlewares as Record<string, unknown> | undefined)?.[
+      "deplo-panel-https"
+    ],
+  );
   // One that does already: nothing of it, and a route written before goes.
   const back = panelFileOf(
     withPanelRoute(
@@ -168,7 +172,12 @@ test("a proxy that does not send :80 to :443 itself gets the panel's names sent 
     ),
   ).http;
   assert.equal(back.routers["deplo-panel-http"], undefined);
-  assert.equal(back.middlewares?.["deplo-panel-https"], undefined);
+  assert.equal(
+    (back.middlewares as Record<string, unknown> | undefined)?.[
+      "deplo-panel-https"
+    ],
+    undefined,
+  );
 });
 
 test("rendering the panel's route twice writes the same file, so the sweep rewrites it only when Deplo changed", () => {
