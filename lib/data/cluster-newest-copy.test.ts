@@ -14,6 +14,8 @@ import {
 } from "../infra/agent-client/hello-capabilities";
 import { moveClusterDataBeforeStart } from "./app-migration";
 import { acceptDataCopyLoss } from "./data-copy";
+import { drainTeardowns } from "./teardown-queue";
+import { AgentOfflineError } from "../infra/agent-client/errors";
 import { moveAppToCluster } from "./apps/source";
 import { removeClusterMember } from "./clusters/dissolve";
 import { runEmptyingPass } from "./clusters/empty";
@@ -234,21 +236,39 @@ test('"Deploy anyway" on a held move sets the old copy and its Files aside where
   assert.equal(row.dataCopyError, "");
 });
 
-test('"Deploy anyway" while the old member is silent deletes nothing there: it sets its copy aside once back', async () => {
+test('"Deploy anyway" while the old member is silent deletes nothing there, and sets its copy aside once it answers', async () => {
   const old = await heldMove();
-  hosts.get("srv_2")!.unreachable = true;
+  const ops = hosts.get("srv_2")!.extra as Partial<AgentConnection>;
+  const readStack = ops.readStack!;
+  ops.readStack = async () => {
+    throw new AgentOfflineError("srv_2");
+  };
   await asAdmin(() => acceptDataCopyLoss({ kind: "app", id: "fise" }));
   await said(
-    /srv_2 holds of fise could not be set aside|srv_2 does not answer/,
+    /srv_2 does not answer: what it holds of fise is set aside on srv_3 once it answers again/,
   );
   assert.ok(!old.calls.includes("destroy:fise"));
   assert.deepEqual(old.volumes.get(VOL), OLD);
-  assert.deepEqual(await db.select().from(pendingTeardowns), []);
+  assert.equal((await db.select().from(pendingTeardowns)).length, 1);
   assert.ok(
     (await activity()).some((l) =>
       /Deployed fise without the data its previous server still holds: Deplo sets that copy aside, never deletes it/.test(
         l,
       ),
     ),
+  );
+
+  // Back, the queue sets the copy aside where fise runs before it removes it there.
+  ops.readStack = readStack;
+  ops.listInstances = (async () =>
+    old.stacks.has("fise") ? [{ name: "deplo-fise" }] : []) as never;
+  await drainTeardowns(new Date(Date.now() + 10 * 60_000));
+  const eu1 = disks.get("srv_3")!;
+  assert.deepEqual(eu1.volumes.get(`${VOL}-aside-${aside(eu1)}`), OLD);
+  assert.deepEqual(eu1.volumes.get(FILES_ASIDE), FILES);
+  assert.ok(old.calls.includes("destroy:fise"));
+  assert.deepEqual(await db.select().from(pendingTeardowns), []);
+  await said(
+    /What srv_2 held of fise was set aside on srv_3 .* Finished the teardown of fise on srv_2/,
   );
 });
