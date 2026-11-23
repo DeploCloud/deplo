@@ -647,3 +647,26 @@ test("a leader stepping down is not said while Deplo reaches none of the cluster
     doorClosed();
   }
 });
+
+// eu, 23 Nov 2026: eu-1 was off when Deplo last told the members whose orders to take, so it kept a list without
+// eu-3, and eu-3's left out eu-1. Cut off from Deplo, the two heirs could not reach each other and nobody led.
+test("every member takes the orders of every member's leader, also one that was off when the line was named", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  hosts[first].unreachable = true;
+  const { pushClusterRoster } = await import("./clusters/relay");
+  await pushClusterRoster(cluster.id);
+  const parties = relayRosters(hosts[SERVER_1]).at(-1)!.parties;
+  for (const id of [led.leaderServerId!, first, second]) {
+    const [row] = await db
+      .select({ fp: serversTable.agentCertFingerprint })
+      .from(serversTable)
+      .where(eq(serversTable.id, id));
+    assert.ok(
+      parties.some((p) => p.role === "leader" && p.fingerprint === row.fp),
+      `${id}'s leader is not one the members take orders from`,
+    );
+  }
+});
