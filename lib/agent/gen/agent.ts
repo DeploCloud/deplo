@@ -1361,12 +1361,21 @@ export interface ExportVolumeRequest {
 export interface VolumeUsageRequest {
   /** FULL Docker named volumes, validated like ExportVolumeRequest.volume_name. */
   volumeNames: string[];
+  /** Also every dated copy a returning cluster member set aside of these volumes. */
+  setAsideOf: string[];
 }
 
 export interface VolumeUsage {
   volumeName: string;
   /** On-disk bytes (allocated blocks, so a sparse file counts what it occupies). */
   bytes: number;
+  /** Set on a set-aside copy: the volume it is a copy of, and when it was made. */
+  setAsideOf: string;
+  setAsideAtMs: number;
+}
+
+export interface RemoveSetAsideRequest {
+  volumeName: string;
 }
 
 export interface VolumeUsageResponse {
@@ -8423,13 +8432,16 @@ export const ExportVolumeRequest: MessageFns<ExportVolumeRequest> = {
 };
 
 function createBaseVolumeUsageRequest(): VolumeUsageRequest {
-  return { volumeNames: [] };
+  return { volumeNames: [], setAsideOf: [] };
 }
 
 export const VolumeUsageRequest: MessageFns<VolumeUsageRequest> = {
   encode(message: VolumeUsageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     for (const v of message.volumeNames) {
       writer.uint32(10).string(v!);
+    }
+    for (const v of message.setAsideOf) {
+      writer.uint32(18).string(v!);
     }
     return writer;
   },
@@ -8455,6 +8467,14 @@ export const VolumeUsageRequest: MessageFns<VolumeUsageRequest> = {
             message.volumeNames.push(reader.string());
             continue;
           }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.setAsideOf.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -8474,6 +8494,11 @@ export const VolumeUsageRequest: MessageFns<VolumeUsageRequest> = {
         : globalThis.Array.isArray(object?.volume_names)
         ? object.volume_names.map((e: any) => globalThis.String(e))
         : [],
+      setAsideOf: globalThis.Array.isArray(object?.setAsideOf)
+        ? object.setAsideOf.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.set_aside_of)
+        ? object.set_aside_of.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -8481,6 +8506,9 @@ export const VolumeUsageRequest: MessageFns<VolumeUsageRequest> = {
     const obj: any = {};
     if (message.volumeNames?.length) {
       obj.volumeNames = message.volumeNames;
+    }
+    if (message.setAsideOf?.length) {
+      obj.setAsideOf = message.setAsideOf;
     }
     return obj;
   },
@@ -8491,12 +8519,13 @@ export const VolumeUsageRequest: MessageFns<VolumeUsageRequest> = {
   fromPartial<I extends Exact<DeepPartial<VolumeUsageRequest>, I>>(object: I): VolumeUsageRequest {
     const message = createBaseVolumeUsageRequest();
     message.volumeNames = object.volumeNames?.map((e) => e) || [];
+    message.setAsideOf = object.setAsideOf?.map((e) => e) || [];
     return message;
   },
 };
 
 function createBaseVolumeUsage(): VolumeUsage {
-  return { volumeName: "", bytes: 0 };
+  return { volumeName: "", bytes: 0, setAsideOf: "", setAsideAtMs: 0 };
 }
 
 export const VolumeUsage: MessageFns<VolumeUsage> = {
@@ -8506,6 +8535,12 @@ export const VolumeUsage: MessageFns<VolumeUsage> = {
     }
     if (message.bytes !== 0) {
       writer.uint32(16).int64(message.bytes);
+    }
+    if (message.setAsideOf !== "") {
+      writer.uint32(26).string(message.setAsideOf);
+    }
+    if (message.setAsideAtMs !== 0) {
+      writer.uint32(32).int64(message.setAsideAtMs);
     }
     return writer;
   },
@@ -8539,6 +8574,22 @@ export const VolumeUsage: MessageFns<VolumeUsage> = {
             message.bytes = longToNumber(reader.int64());
             continue;
           }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.setAsideOf = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.setAsideAtMs = longToNumber(reader.int64());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -8559,6 +8610,16 @@ export const VolumeUsage: MessageFns<VolumeUsage> = {
         ? globalThis.String(object.volume_name)
         : "",
       bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0,
+      setAsideOf: isSet(object.setAsideOf)
+        ? globalThis.String(object.setAsideOf)
+        : isSet(object.set_aside_of)
+        ? globalThis.String(object.set_aside_of)
+        : "",
+      setAsideAtMs: isSet(object.setAsideAtMs)
+        ? globalThis.Number(object.setAsideAtMs)
+        : isSet(object.set_aside_at_ms)
+        ? globalThis.Number(object.set_aside_at_ms)
+        : 0,
     };
   },
 
@@ -8570,6 +8631,12 @@ export const VolumeUsage: MessageFns<VolumeUsage> = {
     if (message.bytes !== 0) {
       obj.bytes = Math.round(message.bytes);
     }
+    if (message.setAsideOf !== "") {
+      obj.setAsideOf = message.setAsideOf;
+    }
+    if (message.setAsideAtMs !== 0) {
+      obj.setAsideAtMs = Math.round(message.setAsideAtMs);
+    }
     return obj;
   },
 
@@ -8580,6 +8647,81 @@ export const VolumeUsage: MessageFns<VolumeUsage> = {
     const message = createBaseVolumeUsage();
     message.volumeName = object.volumeName ?? "";
     message.bytes = object.bytes ?? 0;
+    message.setAsideOf = object.setAsideOf ?? "";
+    message.setAsideAtMs = object.setAsideAtMs ?? 0;
+    return message;
+  },
+};
+
+function createBaseRemoveSetAsideRequest(): RemoveSetAsideRequest {
+  return { volumeName: "" };
+}
+
+export const RemoveSetAsideRequest: MessageFns<RemoveSetAsideRequest> = {
+  encode(message: RemoveSetAsideRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.volumeName !== "") {
+      writer.uint32(10).string(message.volumeName);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveSetAsideRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRemoveSetAsideRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.volumeName = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RemoveSetAsideRequest {
+    return {
+      volumeName: isSet(object.volumeName)
+        ? globalThis.String(object.volumeName)
+        : isSet(object.volume_name)
+        ? globalThis.String(object.volume_name)
+        : "",
+    };
+  },
+
+  toJSON(message: RemoveSetAsideRequest): unknown {
+    const obj: any = {};
+    if (message.volumeName !== "") {
+      obj.volumeName = message.volumeName;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RemoveSetAsideRequest>, I>>(base?: I): RemoveSetAsideRequest {
+    return RemoveSetAsideRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RemoveSetAsideRequest>, I>>(object: I): RemoveSetAsideRequest {
+    const message = createBaseRemoveSetAsideRequest();
+    message.volumeName = object.volumeName ?? "";
     return message;
   },
 };
@@ -29019,6 +29161,20 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): VolumeUsageResponse => VolumeUsageResponse.decode(value),
   },
   /**
+   * Removes one dated copy a returning cluster member set aside (VolumeUsage set_aside_of lists them).
+   * Refuses any volume that is not such a copy. Hello capability `volumes.set-aside`.
+   */
+  removeSetAside: {
+    path: "/deplo.agent.v1.Agent/RemoveSetAside" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RemoveSetAsideRequest): Buffer =>
+      Buffer.from(RemoveSetAsideRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RemoveSetAsideRequest => RemoveSetAsideRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
    * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
@@ -30092,6 +30248,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   volumeUsage: handleUnaryCall<VolumeUsageRequest, VolumeUsageResponse>;
   /**
+   * Removes one dated copy a returning cluster member set aside (VolumeUsage set_aside_of lists them).
+   * Refuses any volume that is not such a copy. Hello capability `volumes.set-aside`.
+   */
+  removeSetAside: handleUnaryCall<RemoveSetAsideRequest, StackResult>;
+  /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
    * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
@@ -30643,6 +30804,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: VolumeUsageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Removes one dated copy a returning cluster member set aside (VolumeUsage set_aside_of lists them).
+   * Refuses any volume that is not such a copy. Hello capability `volumes.set-aside`.
+   */
+  removeSetAside(
+    request: RemoveSetAsideRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  removeSetAside(
+    request: RemoveSetAsideRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  removeSetAside(
+    request: RemoveSetAsideRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientUnaryCall;
   /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a

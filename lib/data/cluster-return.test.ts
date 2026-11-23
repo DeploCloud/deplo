@@ -549,3 +549,33 @@ test("a late save is listed only for the team that owns the workload, in its own
     },
   ]);
 });
+
+test("a return that set data aside says so, with its size and where to find it", async () => {
+  const cluster = await eu();
+  await web(cluster.id);
+  lab.seq = 0;
+  await applyLeaderEvent(
+    cluster.id,
+    event(cluster.id, "member_returned", {
+      member: "srv_2",
+      stopped: [{ kind: "app", workloadId: "prj_web" }],
+      aside: [
+        {
+          kind: "app",
+          workloadId: "prj_web",
+          volume: "deplo-web-data-aside-20261123T040506Z",
+          at: "2026-11-23T04:05:06Z",
+          sizeBytes: 2048,
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(await entries(TEAM_A), [
+    {
+      message:
+        "server-2 is back in cluster eu. Its copy of web was stopped: web runs on another server now. server-2 kept a dated copy of what it held of web (2 KiB), with any writes its copy had not sent yet: it is listed on web's page until an admin removes it.",
+      actor: "Deplo",
+      appId: "prj_web",
+    },
+  ]);
+});

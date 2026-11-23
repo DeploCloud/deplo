@@ -7,7 +7,7 @@ import { backupDestination as destTable } from "../../db/schema/control-plane/ba
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { dispatchAlert } from "../../notify/dispatch";
 import type { Cluster } from "../../types/cluster";
-import { joinNames } from "../../utils";
+import { formatBytes, joinNames } from "../../utils";
 import { recordActivity } from "../activity";
 import { recordLeftBehindRun } from "../backups/left-behind";
 import { getServerById } from "../servers/roster";
@@ -241,15 +241,17 @@ export async function applyMemberReturned(
 ): Promise<void> {
   if (typeof d.member !== "string") return;
   const member = d.member;
-  const [stopped, saved, kept] = [
+  const [stopped, saved, kept, aside] = [
     rows(d, "stopped"),
     rows(d, "saved"),
     rows(d, "kept"),
+    rows(d, "aside"),
   ];
   const known = await namedWorkloads(cluster.id, [
     ...stopped,
     ...saved,
     ...kept,
+    ...aside,
   ]);
   const own = (list: Row[], teamId: string) =>
     list.flatMap((r) => {
@@ -297,6 +299,13 @@ export async function applyMemberReturned(
     if (retried)
       parts.push(
         `${server} tries again on its own, and Activity says when it is saved.`,
+      );
+    // Writes its copy may not have sent before the cut are never deleted (ADR-0046).
+    for (const { w, r } of own(aside, teamId).sort((a, b) =>
+      a.w.name.localeCompare(b.w.name),
+    ))
+      parts.push(
+        `${server} kept a dated copy of what it held of ${w.name} (${formatBytes(Number(r.sizeBytes) || 0)}), with any writes its copy had not sent yet: it is listed on ${w.name}'s page until an admin removes it.`,
       );
     const body = parts.join(" ");
     const only = mine.length === 1 ? mine[0]!.app : null;

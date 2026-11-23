@@ -604,6 +604,21 @@ type AppRuntime {
 }
 
 """
+A dated copy of one of the App's volumes, kept on the cluster server that held it when the App moved away: any writes its copy had not sent yet are in it. It stays until removed.
+"""
+type AppSetAsideCopy {
+  """When its server came back and set it aside."""
+  at: String
+  bytes: Float
+
+  """The volume it is a copy of."""
+  of: String
+  serverId: ID
+  serverName: String
+  volumeName: String
+}
+
+"""
 A shared variable as seen from one app. `linked` is the explicit opt-in (the only thing that injects - ADR-0012); `inScope`/`scope` say whether an availability scope suggests it here.
 """
 type AppSharedVar {
@@ -5248,6 +5263,9 @@ type Mutation {
   """
   reloadApp(id: String!): String
 
+  """Remove one set-aside copy of the App's data, for good."""
+  removeAppSetAsideCopy(appId: String!, serverId: String!, volumeName: String!): Boolean
+
   """
   Remove a basic-auth user, so its login stops working within seconds. Removing the last one drops the login prompt entirely. Returns true.
   """
@@ -6510,6 +6528,11 @@ type Query {
   Live container state for an app, straight from the owning agent - the truth behind the stored status. Polled by the app's status badge.
   """
   appRuntime(appId: String!): AppRuntime
+
+  """
+  The dated copies cluster servers set aside of the App's volumes when they came back after it moved, newest first.
+  """
+  appSetAsideCopies(appId: String!): [AppSetAsideCopy!]
 
   """
   Read the file a File storage entry points at (Settings → Storage). A path that is not there yet answers state "new" with an empty body instead of failing, so the editor can offer it as a file to write.
