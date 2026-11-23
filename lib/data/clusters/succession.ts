@@ -15,6 +15,8 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import type { Cluster } from "../../types/cluster";
 import { messageOf } from "../../utils";
 import { getServerById } from "../servers/roster";
+import { clusterMembersReport } from "../servers/agent-capabilities";
+import { CLUSTER_SUCCESSION_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { agentBehind } from "./binary-rollout";
 import { clusterMemberFacts } from "./facts";
 import { leaderHostOf } from "./host";
@@ -41,24 +43,42 @@ async function pathReports(
 }
 
 /**
- * The members a leader may run on: in the largest group that reaches each other directly, not being emptied, with an
- * agent that runs a leader. In join order; none while two or more members have not reported a direct pair yet.
+ * The members a leader may run on: among those whose agent runs a leader now, the largest group that reaches each
+ * other directly, not being emptied. In join order; none while two or more have not reported a direct pair yet. A
+ * server that stopped is left out first: its paths read as gone exactly when the line is needed (eu, 23 Nov 2026).
  */
 export async function leaderCandidates(clusterId: string): Promise<string[]> {
   const ids = await clusterMemberServerIds(clusterId);
-  const core = directCore(ids, await pathReports(clusterId, ids));
-  if (ids.length > 1 && core.length < 2) return [];
   const facts = new Map(
     (await clusterMemberFacts(clusterId)).map((f) => [f.id, f]),
   );
   // At once: a silent member waits out its link, and one per member in turn added up to a minute.
   const ok = await Promise.all(
-    core.map(
-      async (id) =>
-        !facts.get(id)?.emptying && (await probeClusterHost(id)) === "ok",
-    ),
+    ids.map(async (id) => (await probeClusterHost(id)) === "ok"),
   );
-  return core.filter((_, i) => ok[i]);
+  const live = ids.filter((_, i) => ok[i]);
+  const core = directCore(live, await pathReports(clusterId, live));
+  if (live.length > 1 && core.length < 2) return [];
+  return core.filter((id) => !facts.get(id)?.emptying);
+}
+
+/**
+ * Whether every member's agent pre-votes, as each last reported or says now: a member that is off still counts by
+ * what it said. An older agent would take an heir's epoch unasked.
+ */
+async function everyMemberPreVotes(
+  clusterId: string,
+  ids: string[],
+): Promise<boolean> {
+  if (ids.length === 0) return false;
+  if (
+    await clusterMembersReport(clusterId, CLUSTER_SUCCESSION_CAPABILITY).catch(
+      () => false,
+    )
+  )
+    return true;
+  for (const id of ids) if (!(await memberSucceeds(id))) return false;
+  return true;
 }
 
 /** Where a cluster's leader should live: the candidate with the most free memory, the fewest workloads on a tie. */
@@ -80,7 +100,7 @@ export async function leaderHome(clusterId: string): Promise<string | null> {
  */
 export async function clusterHeirs(cluster: Cluster): Promise<string[]> {
   const ids = await clusterMemberServerIds(cluster.id);
-  for (const id of ids) if (!(await memberSucceeds(id))) return [];
+  if (!(await everyMemberPreVotes(cluster.id, ids))) return [];
   const leader = (await leaderHostOf(cluster.leaderServerId))?.id;
   return (await leaderCandidates(cluster.id))
     .filter((id) => id !== leader)
@@ -89,9 +109,10 @@ export async function clusterHeirs(cluster: Cluster): Promise<string[]> {
 
 /** Whether every member's agent pre-votes, so Deplo's machine standing in asks before it leads. */
 export async function clusterPreVotes(clusterId: string): Promise<boolean> {
-  const ids = await clusterMemberServerIds(clusterId);
-  for (const id of ids) if (!(await memberSucceeds(id))) return false;
-  return ids.length > 0;
+  return everyMemberPreVotes(
+    clusterId,
+    await clusterMemberServerIds(clusterId),
+  );
 }
 
 /**
@@ -108,6 +129,8 @@ export interface LeadingHeir {
   serverId: string;
   epoch: number;
   head: number;
+  /** When a quorum took its epoch, as its leader says; null from an older leader. */
+  ledAt?: string | null;
 }
 
 interface HeirView {
@@ -115,6 +138,7 @@ interface HeirView {
   leads: boolean;
   succeed: boolean;
   head: number;
+  ledAt: string | null;
 }
 
 // What the leader on an heir's server says of the cluster; undefined when it does not answer, null when it holds none.
@@ -132,7 +156,13 @@ async function heirView(
       head?: number;
       clusters?: Record<
         string,
-        { epoch: number; leads: boolean; succeed?: boolean; since?: number }
+        {
+          epoch: number;
+          leads: boolean;
+          succeed?: boolean;
+          since?: number;
+          ledAt?: string;
+        }
       >;
     };
     const v = snap.clusters?.[clusterId];
@@ -143,13 +173,17 @@ async function heirView(
       leads: v.leads,
       succeed: v.succeed === true,
       head: v.since ? v.since - 1 : Number(snap.head) || 0,
+      ledAt: typeof v.ledAt === "string" ? v.ledAt : null,
     };
   } catch {
     return undefined;
   }
 }
 
-/** An heir that leads the cluster at a newer epoch than Deplo stored: it took over on its own. Never throws. */
+/**
+ * The heir that leads the cluster at a newer epoch than Deplo stored, the highest when two say they lead: it took over
+ * on its own, and a quorum holds that epoch. Never throws.
+ */
 export async function leadingHeir(
   cluster: Cluster,
 ): Promise<LeadingHeir | null> {
@@ -157,10 +191,11 @@ export async function leadingHeir(
   const newer = (epoch: number) =>
     epoch > cluster.leaderEpoch ||
     (!!cluster.leaderTakeoverAt && epoch === cluster.leaderEpoch);
+  let best: LeadingHeir | null = null;
   for (const [serverId, v] of await lineViews(cluster))
-    if (v?.leads && newer(v.epoch))
-      return { serverId, epoch: v.epoch, head: v.head };
-  return null;
+    if (v?.leads && newer(v.epoch) && (!best || v.epoch > best.epoch))
+      best = { serverId, epoch: v.epoch, head: v.head, ledAt: v.ledAt };
+  return best;
 }
 
 /**
@@ -172,7 +207,7 @@ async function lineViews(
 ): Promise<[string, HeirView | null | undefined][]> {
   try {
     const ids = await clusterMemberServerIds(cluster.id);
-    for (const id of ids) if (!(await memberSucceeds(id))) return [];
+    if (!(await everyMemberPreVotes(cluster.id, ids))) return [];
     const leader = (await leaderHostOf(cluster.leaderServerId))?.id;
     const line = ids.filter((id) => id !== leader);
     const views = await Promise.all(line.map((id) => heirView(id, cluster.id)));
@@ -293,6 +328,8 @@ async function leaderRelayed(cluster: Cluster): Promise<boolean> {
   const id = cluster.leaderServerId;
   if (!id || !(await clusterMemberServerIds(cluster.id)).includes(id))
     return false;
+  // A leader that does not answer is the supervisor's: an heir may lead already, and a move would hand over its head.
+  if ((await probeClusterHost(id)) !== "ok") return false;
   const candidates = await leaderCandidates(cluster.id);
   return candidates.length >= 2 && !candidates.includes(id);
 }

@@ -260,10 +260,12 @@ async function applyOne(
       return "applied";
     }
     case "superseded": {
-      await recordClusterActivity(
-        clusterId,
-        `Cluster ${cluster.name}'s leader stepped down: a server in it follows a newer one.`,
-      );
+      // Cut off from every server, Deplo cannot know which leader that was, nor that it matters.
+      if (!(await clusterOutOfReach(clusterId)))
+        await recordClusterActivity(
+          clusterId,
+          `Cluster ${cluster.name}'s leader stepped down: a server in it follows a newer one.`,
+        );
       await advance();
       return "applied";
     }
@@ -292,7 +294,8 @@ export async function reconcileCluster(
     before ?? (await readLeaderSnapshot(cluster))?.clusters[clusterId];
   if (view) {
     for (const m of view.members)
-      if (LEASE_STATES.has(m.state))
+      // A leader that has not heard a member yet reports it "ok": it never answered (eu, 23 Nov 2026).
+      if (LEASE_STATES.has(m.state) && !(m.state === "ok" && m.heard === false))
         await memberLeaseChanged(
           clusterId,
           cluster.name,

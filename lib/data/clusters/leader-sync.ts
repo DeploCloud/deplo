@@ -197,7 +197,8 @@ export interface LeaderSnapshot {
     {
       epoch: number;
       superseded: boolean;
-      members: { id: string; state: string }[];
+      /** heard: false is a member the leader has not heard since it took the epoch; an older leader omits it. */
+      members: { id: string; state: string; heard?: boolean }[];
       placement?: LeaderEntry[];
       moves?: LeaderMove[];
     }
@@ -446,6 +447,10 @@ export async function setMemberLease(
         eq(membersTable.serverId, serverId),
         eq(membersTable.clusterId, clusterId),
         ne(membersTable.leaseState, state),
+        // A fenced server is "not responding" again only to a leader that never heard it: it did not answer since.
+        ...(state === "not_responding"
+          ? [ne(membersTable.leaseState, "fenced")]
+          : []),
       ),
     )
     .returning({ serverId: membersTable.serverId });
