@@ -1,4 +1,4 @@
-import { beforeEach, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 
@@ -34,6 +34,8 @@ import {
   movedOrRestored,
   open,
   TODAY_1415,
+  pinDay,
+  unpinDay,
 } from "./cluster-database-test-helpers";
 import {
   __forgetChangeLogWatchForTest,
@@ -51,6 +53,9 @@ import { rebuildDatabase } from "./databases/lifecycle";
 import { createDatabase } from "./databases/provision";
 import { moveDatabaseToCluster, updateDatabase } from "./databases/server-move";
 import { TEAM_A, TEAM_B } from "./identity-test-helpers";
+
+before(pinDay);
+after(unpinDay);
 
 // A Postgres database on a cluster archives its change log beside its backups (spec #176, ticket #203).
 

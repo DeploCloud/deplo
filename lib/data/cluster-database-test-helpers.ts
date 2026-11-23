@@ -308,8 +308,29 @@ export async function apply(clusterId: string, ...es: LeaderEvent[]) {
 export const puts = () =>
   leaderHost.calls.filter((c) => c.method === "leader.bundle.put").length;
 
-// Today at 14:15 UTC, so the entry reads as the spec writes it whatever day the suite runs.
-export const TODAY_1415 = `${new Date().toISOString().slice(0, 10)}T14:15:00.000Z`;
+// A backup of 14:15 on the day pinDay() keeps the clock on, so the entry reads as the spec writes it at any hour (#304).
+export const TODAY_1415 = "2026-03-01T14:15:00.000Z";
+
+const RealDate = Date;
+
+/** Moves the clock to 15:00 on TODAY_1415's day, still ticking; unpinDay() puts the real one back. */
+export function pinDay(): void {
+  const offset = RealDate.parse("2026-03-01T15:00:00.000Z") - RealDate.now();
+  class PinnedDate extends RealDate {
+    constructor(...args: ConstructorParameters<DateConstructor> | []) {
+      if (args.length === 0) super(RealDate.now() + offset);
+      else super(...(args as [string]));
+    }
+    static override now(): number {
+      return RealDate.now() + offset;
+    }
+  }
+  globalThis.Date = PinnedDate as DateConstructor;
+}
+
+export function unpinDay(): void {
+  globalThis.Date = RealDate;
+}
 
 export const failedOver = (clusterId: string, to = "srv_3") => [
   event(clusterId, "placement", {

@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { and, eq } from "drizzle-orm";
@@ -34,6 +34,8 @@ import { placementEntries } from "./clusters/leader-sync";
 import { addClusterMember } from "./clusters/members";
 import {
   TODAY_1415,
+  pinDay,
+  unpinDay,
   apply,
   asAdmin,
   cannot,
@@ -47,6 +49,9 @@ import {
   web,
 } from "./cluster-database-test-helpers";
 import { TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
+
+before(pinDay);
+after(unpinDay);
 
 databaseLab();
 
