@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,6 +88,10 @@ test("a reinstall clears the saved link state with the certificates, so it canno
     "cluster-mesh.json",
   ])
     await writeFile(join(dir, f), "old");
+  // The leader that ran there: its key opens that server's bundles, its events are that server's history.
+  await mkdir(join(dir, "cluster", "leader", "bundles"), { recursive: true });
+  for (const f of ["leader.key", "events.jsonl", "epochs.json"])
+    await writeFile(join(dir, "cluster", "leader", f), "old");
   await writeFile(join(dir, "build-cache.salt"), "kept");
   await bash(`set -euo pipefail
 exec 9>/dev/null
@@ -89,7 +100,7 @@ systemctl() { :; }; step() { :; }; ok() { :; }
 ${await shellFn("install-agent.sh", "clear_old_materials")}
 clear_old_materials
 `);
-  const left = await readdir(dir);
+  const left = await readdir(dir, { recursive: true });
   await rm(dir, { recursive: true, force: true });
-  assert.deepEqual(left, ["build-cache.salt"]);
+  assert.deepEqual(left.sort(), ["build-cache.salt", "cluster"]);
 });
