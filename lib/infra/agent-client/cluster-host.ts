@@ -52,6 +52,7 @@ import {
   CLUSTER_ZONE_CAPABILITY,
   CLUSTER_ZONE_GEO_CAPABILITY,
   CLUSTER_STANDBY_CAPABILITY,
+  CLUSTER_SUCCESSION_CAPABILITY,
 } from "./hello-capabilities";
 
 // Every leader call goes through connectAgent(serverId): the agent that supervises the leader is the only door (ADR-0043).
@@ -162,6 +163,7 @@ export type LeaderMethod =
   | "leader.key"
   | "leader.roster"
   | "leader.snapshot"
+  | "leader.standby"
   | "placement.place";
 
 /**
@@ -283,6 +285,7 @@ const FAILOVER_CAPABILITIES = [
   CLUSTER_FAILOVER_CAPABILITY,
   CLUSTER_FAILOVER_RESTORE_CAPABILITY,
   CLUSTER_STANDBY_CAPABILITY,
+  CLUSTER_SUCCESSION_CAPABILITY,
 ];
 // What each agent last said it can do; null is one that did not answer.
 const probes = new Map<string, { caps: string[] | null; until: number }>();
@@ -295,6 +298,7 @@ export function __forgetMemberProbes(): void {
 async function memberCan(
   serverId: string,
   capability: string,
+  unknown = true,
 ): Promise<boolean> {
   let seen = probes.get(serverId);
   if (!seen || seen.until <= Date.now()) {
@@ -314,8 +318,12 @@ async function memberCan(
     seen = { caps, until: all ? Infinity : Date.now() + 60_000 };
     probes.set(serverId, seen);
   }
-  return !seen.caps || seen.caps.includes(capability);
+  return seen.caps ? seen.caps.includes(capability) : unknown;
 }
+
+/** Whether its agent pre-votes and gives each epoch to one leader (Hello `cluster.succession`); no answer is no. */
+export const memberSucceeds = (serverId: string): Promise<boolean> =>
+  memberCan(serverId, CLUSTER_SUCCESSION_CAPABILITY, false);
 
 /**
  * Whether the member's agent can start a workload its leader moves to it (Hello `cluster.failover`).

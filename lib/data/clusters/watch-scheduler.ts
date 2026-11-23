@@ -19,6 +19,7 @@ import { runLoadBalancingPass } from "./load-balancing";
 import { runReplicationPass } from "./replication";
 import { leaderHost } from "./host";
 import { BEAT_EVERY_MS, beatClusterLeaders } from "./leader-beat";
+import { keepLeadersHome } from "./leader-move";
 import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
 import { settleProvisioningMembers } from "./member-ready";
@@ -34,6 +35,7 @@ export const CLUSTER_WATCH_LEASE = "cluster-watch";
 const TICK_MS = 15_000;
 const CHANGE_LOG_EVERY_MS = 60_000;
 const ROLLOUT_EVERY_MS = 60_000;
+const LEADER_HOME_EVERY_MS = 60_000;
 const IMAGES_EVERY_MS = 2 * 60_000;
 const NETWORK_EVERY_MS = 2 * 60_000;
 // A cluster's DNS zone (ADR-0049): each agent keeps answering on its own; this hands over what changed and reads back.
@@ -57,6 +59,7 @@ interface State {
   changeLogAt?: number;
   /** When the last rollout pass over the cluster binaries started. */
   rolledAt?: number;
+  homedAt?: number;
   /** When the clusters that pass domains on were last asked what they turned away. */
   answersAt?: number;
   /** When failed or missing image copies were last retried. */
@@ -214,6 +217,13 @@ export async function runClusterWatchTick(): Promise<void> {
         console.error("[cluster-forwarders] answering clusters failed:", e),
       );
     }
+    // A cluster's leader lives on one of its servers, and each member next in line runs a leader of its own.
+    if (Date.now() - (state.homedAt ?? 0) >= LEADER_HOME_EVERY_MS) {
+      state.homedAt = Date.now();
+      void keepLeadersHome(ids).catch((e) =>
+        console.error("[cluster-leader] placing leaders failed:", e),
+      );
+    }
     if (Date.now() - (state.rolledAt ?? 0) >= ROLLOUT_EVERY_MS) {
       state.rolledAt = Date.now();
       void runClusterRollout().catch((e) =>
@@ -264,6 +274,7 @@ export function __resetClusterWatchForTest(): void {
   state.started = false;
   state.changeLogAt = 0;
   state.rolledAt = 0;
+  state.homedAt = 0;
   state.imagesAt = 0;
   state.warningsAt = 0;
   state.warning = false;

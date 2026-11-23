@@ -287,6 +287,14 @@ const ClusterMemberRef = builder
         type: ClusterMemberNetworkRef,
         resolve: (m) => m.network,
       }),
+      relayWarning: t.exposeString("relayWarning", {
+        description:
+          "One plain sentence while the server reaches part of its cluster only through Deplo's relay, so it stops like a power cut when Deplo's machine does; empty otherwise.",
+      }),
+      nextInLine: t.exposeInt("nextInLine", {
+        description:
+          "Where it stands in the line of succession: 1 leads the cluster next if the leader's server stops, with or without Deplo; 2 after it; 0 not in the line. Deplo's machine always comes last.",
+      }),
     }),
   });
 

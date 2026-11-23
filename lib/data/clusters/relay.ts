@@ -34,6 +34,7 @@ import { loadPanelTunnel } from "../instance-settings/panel-tunnel-store";
 import type { Server } from "../../types/server";
 import { getServerById } from "../servers/roster";
 import { leaderHostOf } from "./host";
+import { clusterHeirs } from "./succession";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import { nextFingerprints } from "./rotations";
 import { messageOf } from "../../utils";
@@ -75,7 +76,7 @@ async function remoteRelayHost(clusterId: string): Promise<Server | null> {
   return server && relayAddress(server) ? server : null;
 }
 
-/** Who a cluster's relay lets through: its leaders (the one elsewhere and Deplo's own, since both may lead), then each member. */
+/** Who a cluster's relay lets through: its leaders (its own, the line after it and Deplo's), then each member. */
 export async function clusterRoster(
   clusterId: string,
   memberServerIds: string[] = [],
@@ -88,6 +89,9 @@ export async function clusterRoster(
       const host = await leaderHostOf(id);
       if (host) leaderIds.add(host.id);
     }
+    // The members next in line may lead too, so members take their orders.
+    for (const id of await clusterHeirs(cluster).catch(() => []))
+      leaderIds.add(id);
     // A key staged for a rotation is let in before it is installed (ADR-0050).
     const next = await nextFingerprints([...leaderIds, ...memberServerIds]);
     const prints = async (id: string) =>

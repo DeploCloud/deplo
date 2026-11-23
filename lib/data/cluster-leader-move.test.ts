@@ -333,31 +333,24 @@ test("starting a stopped leader again on its server keeps the relay beside it", 
   assert.equal(hosts.srv_4.installs.at(-1)!.relay, true);
 });
 
-test("the picker offers every server, Deplo's own machine first, and says which one cannot take the leader", async () => {
+test("the picker offers the cluster's own servers, and says which one cannot take the leader", async () => {
   const cluster = await eu();
   await asAdmin(() => moveClusterLeader(cluster.id, "srv_3"));
   await db
     .update(serversTable)
     .set({ status: "offline" })
-    .where(eq(serversTable.id, "srv_4"));
+    .where(eq(serversTable.id, "srv_2"));
 
   const choices = await asAdmin(() => listClusterLeaderChoices(cluster.id));
 
+  // A cluster's leader lives on one of its servers: Deplo's machine and srv_4 are not offered (ADR-0043).
   assert.deepEqual(choices, [
-    {
-      serverId: SERVER_1,
-      serverName: SERVER_1,
-      onDeploHost: true,
-      current: false,
-      blocked: "",
-      note: "",
-    },
     {
       serverId: "srv_2",
       serverName: "srv_2",
       onDeploHost: false,
       current: false,
-      blocked: "",
+      blocked: "srv_2 is offline. Bring it back online first.",
       note: "",
     },
     {
@@ -368,28 +361,18 @@ test("the picker offers every server, Deplo's own machine first, and says which 
       blocked: "",
       note: "",
     },
-    {
-      serverId: "srv_4",
-      serverName: "srv_4",
-      onDeploHost: false,
-      current: false,
-      blocked: "srv_4 is offline. Bring it back online first.",
-      note: "",
-    },
   ]);
 
   // A server with no proxy can lead, and the picker says what that leader depends on.
   await db
     .update(serversTable)
-    .set({ traefikEnabled: false })
+    .set({ traefikEnabled: false, status: "online" })
     .where(eq(serversTable.id, "srv_2"));
   const bare = await asAdmin(() => listClusterLeaderChoices(cluster.id));
   assert.deepEqual(
     bare.map((c) => c.note),
     [
-      "",
       "srv_2 has no proxy, so a leader there still needs Deplo's machine up to move anything.",
-      "",
       "",
     ],
   );

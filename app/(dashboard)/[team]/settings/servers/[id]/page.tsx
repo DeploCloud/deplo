@@ -20,7 +20,13 @@ import {
   ServerHealthProvider,
   type ServerHealthState,
 } from "../server-health-provider";
-import { clusterOfServer } from "@/lib/data/clusters/members";
+import {
+  clusterOfServer,
+  listClusterMembers,
+} from "@/lib/data/clusters/members";
+import { lineWords } from "@/components/servers/cluster-join";
+import { SimpleTooltip } from "@/components/ui/tooltip";
+import { Crown, TriangleAlert } from "lucide-react";
 import { ServerHealthChip } from "../server-health-chip";
 import { CheckStatusButton } from "../check-status-button";
 import { ServerDetailTabs } from "./server-detail-tabs";
@@ -48,6 +54,9 @@ export default async function ServerDetailPage(
   if (server.importOnly) notFound();
 
   const memberOf = await clusterOfServer(id);
+  const asMember = memberOf
+    ? (await listClusterMembers(memberOf.id)).find((m) => m.serverId === id)
+    : undefined;
   const leftByAnother = leftByAnotherDeplo(id);
   const expectedAgentVersion = AGENT_VERSION;
   const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
@@ -99,6 +108,30 @@ export default async function ServerDetailPage(
                 <Badge variant="muted" className="shrink-0 whitespace-nowrap">
                   Member of cluster {memberOf.name}
                 </Badge>
+              )}
+              {asMember && lineWords(asMember.nextInLine) && (
+                <SimpleTooltip content={lineWords(asMember.nextInLine)}>
+                  <Badge
+                    variant="muted"
+                    className="shrink-0 gap-1 whitespace-nowrap"
+                  >
+                    <Crown className="size-3" />
+                    {asMember.nextInLine === 1
+                      ? "Next in line"
+                      : "Second in line"}
+                  </Badge>
+                </SimpleTooltip>
+              )}
+              {asMember?.relayWarning && (
+                <SimpleTooltip content={asMember.relayWarning}>
+                  <Badge
+                    variant="warning"
+                    className="shrink-0 gap-1 whitespace-nowrap"
+                  >
+                    <TriangleAlert className="size-3" />
+                    Needs Deplo&apos;s relay
+                  </Badge>
+                </SimpleTooltip>
               )}
               {isDeploHost && (
                 <Badge className="shrink-0 gap-1 whitespace-nowrap">

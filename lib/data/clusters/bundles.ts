@@ -32,6 +32,7 @@ import {
   putLeaderBundle,
 } from "./bundle-calls";
 import { leaderHostOf } from "./host";
+import { clusterHeirs } from "./succession";
 import { isBuiltImage } from "./images";
 import { getClusterById } from "./roster";
 import { messageOf } from "../../utils";
@@ -176,11 +177,13 @@ async function refreshKeyOf(
 }
 
 /**
- * Keeps the key of each leader that may lead: the one on another server and Deplo's own. A leader that does not
+ * Keeps the key of each leader that may lead: its own, the line's and Deplo's machine's. A leader that does not
  * answer keeps the key it had; the key of a server the leader left is retired.
  */
 export async function refreshLeaderKeys(cluster: Cluster): Promise<void> {
-  const wanted = [...new Set([cluster.leaderServerId, null])];
+  // The line holds the bundles too: an heir that takes over fails over without Deplo (ADR-0045).
+  const heirs = await clusterHeirs(cluster).catch(() => []);
+  const wanted = [...new Set([cluster.leaderServerId, ...heirs, null])];
   for (const serverId of wanted)
     await refreshKeyOf(cluster, serverId).catch(() => {});
   for (const k of await keyRows(cluster.id))
