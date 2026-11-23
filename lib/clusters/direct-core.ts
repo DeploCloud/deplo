@@ -1,5 +1,5 @@
 // Which servers of a cluster reach each other without Deplo's relay (ADR-0047), and what a relayed pair costs.
-// https://deplo.build/docs/operations/clusters/network#servers-that-need-the-relay
+// https://deplo.build/docs/operations/clusters/private-network#servers-that-need-the-relay
 
 export type PairPath = "direct" | "relay" | "none";
 

@@ -34,7 +34,7 @@ export const CLUSTERS: McpToolDef[] = [
     name: "get_cluster",
     title: "Get a cluster",
     description:
-      "One cluster: who may use it, its servers with status, leaseState and network (who each reaches only via Deplo's relay, or not at all), joins and removals, failover, replication, load balancing, data copies, waiting Apps.",
+      "One cluster: who may use it, its servers with status, leaseState, network and relay warning, place in the line of succession, joins and removals, failover, replication, load balancing, data copies, waiting Apps.",
     group: "Servers",
     requires: "view",
     readOnly: true,
@@ -56,6 +56,8 @@ export const CLUSTERS: McpToolDef[] = [
             serverId serverName status leaseState provisioning joinedAt emptyingSince
             emptying { total left moving error }
             network { relayed unreachable }
+            relayWarning
+            nextInLine
           }
           teams { id name slug }
         }
