@@ -250,14 +250,12 @@ test("a name server is given its silent time before the next server updates", as
   await db
     .insert(clusterMembers)
     .values({ serverId: "srv_ns", clusterId: "clu_1", joinedAt: at });
-  await db
-    .insert(clusterDnsZones)
-    .values({
-      id: "czn_1",
-      clusterId: "clu_1",
-      name: "go.example.com",
-      createdAt: at,
-    });
+  await db.insert(clusterDnsZones).values({
+    id: "czn_1",
+    clusterId: "clu_1",
+    name: "go.example.com",
+    createdAt: at,
+  });
   await runAgentRollout();
   assert.equal(agents.get("srv_ns")!.version, AGENT_VERSION);
   assert.equal(agents.get("srv_alone")!.version, AGENT_VERSION);
