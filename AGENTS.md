@@ -244,7 +244,7 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 - **A leader leads only with a quorum, and Deplo's beat breaks a tie**
   (`docs/agents/cluster-rollout.md` §5). More than half of the cluster's servers answer it, or
   exactly half while Deplo named its epoch in the last 20 s (`beatClusterLeaders`, every 5 s, to
-  `leaderHost` only). A takeover waits `TAKEOVER_AFTER_MS`, longer than a leader trusts a beat
+  `leaderHost`, or to the first heir that tries to lead while it is silent). A takeover waits `TAKEOVER_AFTER_MS`, longer than a leader trusts a beat
   (`DeploFor` in `deplo-cluster`): change the two together, or two leaders each hold half a cluster.
 - **A cluster's servers share a private network** (ADR-0047, `lib/data/clusters/network.ts`): a
   WireGuard tunnel between every two of them, run by each server agent in userspace, so nothing on
