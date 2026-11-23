@@ -32,6 +32,7 @@ import {
   mergeBuildLabels,
   mergeEnvironment,
   mergeLabels,
+  servicesThatRunOnce,
   takeTraefikLabels,
 } from "./service-stamp";
 import { ignoredTraefikMessage } from "../compose-lint/traefik-labels";
@@ -104,6 +105,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   const startInterval = supportsHealthStartInterval(input.dockerVersion);
   const ownMiddlewares = new Map<string, string[]>();
   const customLabels = new Map<string, TraefikLabel[]>();
+  const runsOnce = servicesThatRunOnce(services);
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       assertNetworkModeIsNotANetwork(serviceName, (svc as App).network_mode);
@@ -139,7 +141,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       if (traefik.ignored.length > 0)
         input.onWarn?.(ignoredTraefikMessage(serviceName, traefik.ignored));
       mergeLabels(svc as App, containerLabels);
-      if (input.underLease) leaseRestart(svc as App);
+      if (input.underLease) leaseRestart(svc as App, runsOnce.has(serviceName));
       mergeBuildLabels(svc as App, serviceName, tracking);
       mergeEnvironment(svc as App, envKeys);
       mergeResourceLimits(svc as App, input.resources);

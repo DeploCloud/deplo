@@ -53,13 +53,35 @@ export function mergeLabels(svc: App, add: string[]): void {
   svc.labels = mergeLabelEntries(svc.labels, add);
 }
 
-/** Turns a service's restart policy off, kept in RESTART_LABEL for the agent; one that never restarts stays as it is. */
-export function leaseRestart(svc: App): void {
-  const policy =
+/**
+ * Turns a service's restart policy off, kept in RESTART_LABEL for the agent. One with no policy is kept up
+ * (`unless-stopped`), unless it is a step others wait to finish; a written "no" stays as it is.
+ */
+export function leaseRestart(svc: App, runsOnce = false): void {
+  const written =
     typeof svc.restart === "string" ? svc.restart.split(":")[0].trim() : "";
+  const policy = written || (runsOnce ? "" : "unless-stopped");
   if (!policy || policy === "no") return;
   svc.restart = "no";
   mergeLabels(svc, [`${RESTART_LABEL}=${policy}`]);
+}
+
+/** The services another one waits to see finish (`service_completed_successfully`): steps that run once. */
+export function servicesThatRunOnce(
+  services: Record<string, App>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const svc of Object.values(services)) {
+    const deps = (svc as { depends_on?: unknown } | null)?.depends_on;
+    if (!deps || typeof deps !== "object" || Array.isArray(deps)) continue;
+    for (const [name, d] of Object.entries(deps as Record<string, unknown>))
+      if (
+        (d as { condition?: unknown } | null)?.condition ===
+        "service_completed_successfully"
+      )
+        out.add(name);
+  }
+  return out;
 }
 
 export function mergeBuildLabels(

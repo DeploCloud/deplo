@@ -308,3 +308,10 @@ A power cut is Proxmox's `stop` (an immediate kill); a hang is a freeze. The pro
 - [User documentation](https://deplo.build/docs) - the manual, in `DeploCloud/docs`
 - [`AGENTS.md`](../../AGENTS.md) - the architecture rules these decisions produced
 - [`CONTEXT.md`](../../CONTEXT.md) - the glossary
+
+## What fencing stopped comes back (23 Nov 2026)
+
+On cluster eu an App that two lost members had fenced stayed down once they were back when its compose named no restart policy: the agent read a service with no `restart:` as `no`, and a fence stop exits 0, which `on-failure` never restarts either. Decided by the owner:
+
+1. **When a member's lease is back, its agent starts again exactly the containers its fence stopped**, whatever their restart policy (agent `cluster-supervise.json` `fenced`, the containers that exited since the fence began). A stack whose lease went to another member meanwhile forgets them: it stays down and is cleaned up as before. A deploy, a start or the stack's removal forgets them too.
+2. **Under a lease, a service with no restart policy is kept up** (`deplo.restart=unless-stopped`), so a crash or a power cut brings it back like any other. A policy the person wrote wins, `"no"` included, and a service another one waits to finish (`service_completed_successfully`) runs once as before.
