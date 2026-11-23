@@ -71,6 +71,8 @@ interface AgentAttempt {
   builtWith?: string;
   // The source turned out to carry a compose file: nothing was built or started.
   sourceCompose?: SourceCompose;
+  // What the built image declares as volumes, read on the server that built it.
+  imageVolumes?: string[];
 }
 
 function planBuilds(plan: AgentBuildPlan): boolean {
@@ -146,12 +148,14 @@ async function buildOnBuildServer(opts: {
   builtOn?: string;
   builtWith?: string;
   sourceCompose?: SourceCompose;
+  imageVolumes?: string[];
 }> {
   const targetName = opts.targetServerName ?? "the app's server";
 
   let builder: { id: string; name: string } | null = null;
   let commitSha = "";
   let builtWith: string | undefined;
+  let imageVolumes: string[] | undefined;
   for (const [i, candidate] of opts.builders.entries()) {
     try {
       const built = await runAgentDeploy({
@@ -181,6 +185,7 @@ async function buildOnBuildServer(opts: {
         return { outcome: "failed", commitSha: built.commitSha };
       commitSha = built.commitSha;
       builtWith = built.builtWith;
+      imageVolumes = built.imageVolumes;
       builder = candidate;
       break;
     } catch (e) {
@@ -216,7 +221,13 @@ async function buildOnBuildServer(opts: {
       "info",
       `Copied ${formatBytes(bytes)} from ${builder.name} to ${targetName}`,
     );
-    return { outcome: "built", commitSha, builtOn: builder.id, builtWith };
+    return {
+      outcome: "built",
+      commitSha,
+      builtOn: builder.id,
+      builtWith,
+      imageVolumes,
+    };
   } catch (e) {
     console.error(
       `[deplo] image copy ${builder.id} -> ${opts.serverId} failed:`,
@@ -306,6 +317,7 @@ export async function tryAgent(opts: {
     let plan = opts.plan;
     let builtCommitSha = "";
     let builtWith: string | undefined;
+    let builtVolumes: string[] | undefined;
     try {
       const builders = (opts.builders ?? []).filter(
         (b) => b.id !== opts.serverId,
@@ -338,6 +350,7 @@ export async function tryAgent(opts: {
         if (leg.outcome === "built") {
           builtCommitSha = leg.commitSha;
           builtWith = leg.builtWith;
+          builtVolumes = leg.imageVolumes;
           if (leg.builtOn)
             await setDep(opts.depId, { buildServerId: leg.builtOn });
           plan = { kind: "image", image: opts.imageRef, pull: false };
@@ -374,6 +387,9 @@ export async function tryAgent(opts: {
         observedPort: result.observedPort,
         builtWith: result.builtWith ?? builtWith,
         sourceCompose: result.sourceCompose,
+        imageVolumes: result.imageVolumes?.length
+          ? result.imageVolumes
+          : builtVolumes,
       };
     } catch (e) {
       if (agentIsDown(e)) {

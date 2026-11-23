@@ -158,4 +158,91 @@ volumes:
       undefined,
     );
   });
+  test("what an image Deplo built declares is kept once, as the image's, from its first deploy", async () => {
+    const built = `prj_built${n}`;
+    await seedApp(db, {
+      id: built,
+      slug: `built${n}`,
+      source: "github",
+      compose: null,
+    });
+    const added = await keepUnnamedVolumes(
+      built,
+      SERVER_1,
+      () => {},
+      async () => [],
+      ["/data"],
+    );
+    assert.deepEqual(
+      added.map((v) => [v.name, v.service ?? null, v.mountPath, v.origin]),
+      [["data", null, "/data", "image"]],
+    );
+    assert.deepEqual(
+      await keepUnnamedVolumes(
+        built,
+        SERVER_1,
+        () => {},
+        async () => [],
+        ["/data"],
+      ),
+      [],
+      "the next build adds nothing",
+    );
+  });
+
+  test("a private image is read with the team's login for its registry", async () => {
+    const { registries } =
+      await import("../db/schema/control-plane/integrations");
+    const { encryptSecret } = await import("../crypto");
+    const { __setDnsLookupForTest, __resetDnsLookupForTest } =
+      await import("../outbound-url");
+    const app = await loadAppGraph(id);
+    await db.insert(registries).values({
+      id: `reg_${n}`,
+      teamId: app!.teamId,
+      name: "acme",
+      type: "ghcr",
+      registryUrl: "ghcr.io",
+      username: "acme-bot",
+      passwordEnc: encryptSecret("p4ss"),
+      createdAt: new Date().toISOString(),
+    });
+    __setDnsLookupForTest(async () => [{ address: "140.82.112.33" }]);
+    const origFetch = globalThis.fetch;
+    const basic = `Basic ${Buffer.from("acme-bot:p4ss").toString("base64")}`;
+    const asked: string[] = [];
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const auth = new Headers(init?.headers).get("authorization") ?? "";
+      asked.push(`${url} ${auth.split(" ")[0]}`);
+      if (url === "https://ghcr.io/v2/")
+        return new Response("", {
+          status: 401,
+          headers: {
+            "www-authenticate":
+              'Bearer realm="https://ghcr.io/token",service="ghcr.io"',
+          },
+        });
+      if (url.startsWith("https://ghcr.io/token"))
+        return auth === basic
+          ? Response.json({ token: "t0k" })
+          : new Response("", { status: 401 });
+      if (url.includes("/manifests/"))
+        return auth === "Bearer t0k"
+          ? Response.json({ config: { digest: "sha256:abc" } })
+          : new Response("", { status: 401 });
+      if (url.includes("/blobs/"))
+        return Response.json({ config: { Volumes: { "/srv/uploads": {} } } });
+      return new Response("", { status: 404 });
+    }) as typeof fetch;
+    try {
+      const added = await keepUnnamedVolumes(id, SERVER_1, () => {});
+      const web = added.find((v) => v.service === "web");
+      assert.equal(web?.mountPath, "/srv/uploads", asked.join("\n"));
+      assert.equal(web?.origin, "image");
+    } finally {
+      globalThis.fetch = origFetch;
+      __resetDnsLookupForTest();
+    }
+  });
 });

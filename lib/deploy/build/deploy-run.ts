@@ -392,6 +392,42 @@ async function runDeployment(depId: string): Promise<void> {
       };
     };
 
+    // What a built image declares and no Volume holds yet becomes one, and the App starts again on it at once.
+    const keepBuiltVolumes = async (
+      attempt: Awaited<ReturnType<typeof tryAgent>>,
+      image: string,
+    ) => {
+      if (
+        attempt.outcome !== "agent" ||
+        !attempt.imageVolumes?.length ||
+        preview
+      )
+        return attempt;
+      const kept = await keepUnnamedVolumes(
+        project.id,
+        serverId,
+        (m) => log(depId, "info", m),
+        undefined,
+        attempt.imageVolumes,
+      ).catch(() => []);
+      if (kept.length === 0) return attempt;
+      project.volumes = [...(project.volumes ?? []), ...kept];
+      const again = await renderStack(image);
+      const next = await tryAgent({
+        depId,
+        serverId,
+        project: agentProject,
+        imageRef: image,
+        composeYaml: again.composeYaml,
+        network: again.network,
+        env: again.env,
+        plan: { kind: "image", image, pull: false },
+        forceRecreate: true,
+        ready,
+        agentDeployId: `${depId}-volumes`,
+      });
+      return { ...next, commitSha: next.commitSha || attempt.commitSha };
+    };
     const buildAndMaybeAgent = async (treeOpts: {
       workDir: string;
       root: string;
@@ -442,27 +478,30 @@ async function runDeployment(depId: string): Promise<void> {
         );
       const { composeYaml, env, buildEnv, network, overlap } =
         await renderStack(treeOpts.imageRef);
-      const attempt = await tryAgent({
-        depId,
-        serverId,
-        project: agentProject,
-        imageRef: treeOpts.imageRef,
-        composeYaml,
-        network,
-        env,
-        buildEnv,
-        plan: { kind: "dockerfile", buildDir, build },
-        overlap,
-        noCache,
-        pullBase,
-        forceRecreate,
-        ready,
-        githubToken:
-          build.buildMethod === "railpack"
-            ? ((await buildMetadataToken(project.teamId)) ?? undefined)
-            : undefined,
-        ...buildServerOpts,
-      });
+      const attempt = await keepBuiltVolumes(
+        await tryAgent({
+          depId,
+          serverId,
+          project: agentProject,
+          imageRef: treeOpts.imageRef,
+          composeYaml,
+          network,
+          env,
+          buildEnv,
+          plan: { kind: "dockerfile", buildDir, build },
+          overlap,
+          noCache,
+          pullBase,
+          forceRecreate,
+          ready,
+          githubToken:
+            build.buildMethod === "railpack"
+              ? ((await buildMetadataToken(project.teamId)) ?? undefined)
+              : undefined,
+          ...buildServerOpts,
+        }),
+        treeOpts.imageRef,
+      );
       agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
       observedPort = attempt.observedPort;
       if (attempt.outcome === "agent")
@@ -701,6 +740,7 @@ async function runDeployment(depId: string): Promise<void> {
           if (attempt.outcome !== "agent")
             noCodeButCompose(skipped, attempt.error);
         }
+        attempt = await keepBuiltVolumes(attempt, imageRef);
         if (attempt.sourceCompose) {
           agentOutcome = "stack";
           await deployStackFrom(attempt.sourceCompose, {

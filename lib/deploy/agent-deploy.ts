@@ -64,6 +64,8 @@ export interface AgentDeployResult {
   // The compose file the source turned out to carry: render it and deploy it as a stack.
   sourceCompose?: SourceCompose;
   listeningPorts?: number[];
+  // What the image this deploy built declares as volumes, read where it was built.
+  imageVolumes?: string[];
 }
 
 export async function fileVolumePathsForApp(appId: string): Promise<string[]> {
@@ -500,6 +502,7 @@ function handleEvent(
       builtWith: ev.result.builtWith || undefined,
       sourceCompose: ev.result.sourceCompose,
       listeningPorts: ev.result.listeningPorts,
+      imageVolumes: ev.result.imageVolumes ?? [],
     };
   }
   return undefined;

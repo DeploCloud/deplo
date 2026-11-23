@@ -139,6 +139,7 @@ test("a repository's compose file is read, then deployed as a stack under its ow
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
         }
       : {
           ready: false,
@@ -147,6 +148,7 @@ test("a repository's compose file is read, then deployed as a stack under its ow
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
         };
   await runDeploymentGuarded("dpl_1");
@@ -200,6 +202,7 @@ test("an explicit Compose app whose file reaches the server is refused before an
     observedPort: 0,
     builtWith: "",
     listeningPorts: [],
+    imageVolumes: [],
     sourceCompose: {
       path: "compose.yaml",
       content: "services:\n  web:\n    build: .\n    privileged: true\n",
@@ -221,6 +224,7 @@ test("Detect automatically records the Dockerfile the agent found", async () => 
     observedPort: 0,
     builtWith: "dockerfile",
     listeningPorts: [3000],
+    imageVolumes: [],
   });
   await runDeploymentGuarded("dpl_1");
   assert.equal(sent.length, 1);
@@ -239,6 +243,7 @@ test("a port the app really listens on is adopted, with its domains", async () =
     observedPort: 8080,
     builtWith: "railpack",
     listeningPorts: [8080],
+    imageVolumes: [],
   });
   await runDeploymentGuarded("dpl_1");
   const build = (
@@ -263,6 +268,7 @@ test("a compose file of images only falls back to Railpack under Detect automati
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: {
             path: "docker-compose.yml",
             content: "services:\n  mysql:\n    image: mysql:9\n",
@@ -275,6 +281,7 @@ test("a compose file of images only falls back to Railpack under Detect automati
           observedPort: 0,
           builtWith: "",
           listeningPorts: [3000],
+          imageVolumes: [],
         };
   await runDeploymentGuarded("dpl_1");
   assert.equal(sent.length, 2);
@@ -309,6 +316,7 @@ test("a repository's traefik labels never route, even when an admin saved labels
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
         }
       : {
           ready: false,
@@ -317,6 +325,7 @@ test("a repository's traefik labels never route, even when an admin saved labels
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: {
             path: "compose.yaml",
             content:
@@ -338,6 +347,7 @@ test("a stack's real port is adopted from the port its check used", async () => 
           observedPort: 8080,
           builtWith: "",
           listeningPorts: [8080],
+          imageVolumes: [],
         }
       : {
           ready: false,
@@ -346,6 +356,7 @@ test("a stack's real port is adopted from the port its check used", async () => 
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
         };
   await runDeploymentGuarded("dpl_1");
@@ -369,6 +380,7 @@ test("a single-image deploy drops the stack a source deployed before", async () 
     observedPort: 0,
     builtWith: "",
     listeningPorts: [3000],
+    imageVolumes: [],
   });
   await runDeploymentGuarded("dpl_1");
   const app = (await db.select().from(apps).where(eq(apps.id, "prj_1")))[0];
@@ -385,6 +397,7 @@ test("a stack that fails is not stored as the app's stack", async () => {
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
         }
       : {
           ready: false,
@@ -393,6 +406,7 @@ test("a stack that fails is not stored as the app's stack", async () => {
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
         };
   await runDeploymentGuarded("dpl_1");
@@ -424,6 +438,7 @@ test("the app's submodules setting reaches the agent on both legs of a stack", a
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
         }
       : {
           ready: false,
@@ -432,6 +447,7 @@ test("the app's submodules setting reaches the agent on both legs of a stack", a
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
         };
   await runDeploymentGuarded("dpl_1");
@@ -453,6 +469,7 @@ test("an agent too old for submodules builds without them and says so", async ()
     observedPort: 0,
     builtWith: "",
     listeningPorts: [3000],
+    imageVolumes: [],
   });
   await runDeploymentGuarded("dpl_1");
   assert.equal(sent[0].git?.submodules, false);
@@ -474,6 +491,7 @@ test("a compose file Detect automatically could not deploy falls back to Railpac
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: {
             path: "docker-compose.yml",
             content:
@@ -487,6 +505,7 @@ test("a compose file Detect automatically could not deploy falls back to Railpac
           observedPort: 0,
           builtWith: "",
           listeningPorts: [3000],
+          imageVolumes: [],
         };
   await runDeploymentGuarded("dpl_1");
   assert.equal(sent.length, 2);
@@ -518,6 +537,7 @@ test("a compose file of images only is named as the app when Railpack then finds
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
           sourceCompose: {
             path: "compose.yml",
             content:
@@ -532,6 +552,7 @@ test("a compose file of images only is named as the app when Railpack then finds
           observedPort: 0,
           builtWith: "",
           listeningPorts: [],
+          imageVolumes: [],
         };
   await runDeploymentGuarded("dpl_1");
   const logs = (
@@ -560,6 +581,7 @@ test("a repository's stack with replicas starts beside the live one from the ima
     observedPort: 0,
     builtWith: "",
     listeningPorts: [],
+    imageVolumes: [],
     ...(req.buildKind === BuildKind.BUILD_KIND_COMPOSE
       ? {}
       : { sourceCompose: { path: "compose.yaml", content: compose } }),
@@ -575,4 +597,38 @@ test("a repository's stack with replicas starts beside the live one from the ima
   assert.match(stack.standInComposeYaml, /image: deplo\/shop-web:/);
   // Building twice would be a second copy of the work, and a second image name.
   assert.doesNotMatch(stack.standInComposeYaml, /build:/);
+});
+
+test("a built image that declares a volume keeps it as a Volume and starts again on it in the same deploy", async () => {
+  caps = [...CAPS, "volumes.adopt", "deploy.image-volumes"];
+  answer = (req) => ({
+    ready: true,
+    error: "",
+    commitSha: SHA,
+    observedPort: 0,
+    builtWith: "dockerfile",
+    listeningPorts: [3000],
+    // Only the build reads the image: the second leg starts what was built.
+    imageVolumes: req.buildSpec ? ["/var/lib/app"] : [],
+  });
+  await runDeploymentGuarded("dpl_1");
+  assert.equal(sent.length, 2, "one build, then one start on the Volume");
+  const [, second] = sent;
+  assert.equal(second.deployId, "dpl_1-volumes");
+  assert.match(second.composeYaml, /\/var\/lib\/app/);
+  assert.deepEqual(
+    second.adoptVolumes.map((a) => [a.target, a.volume]),
+    [["/var/lib/app", "deplo-shop-app"]],
+  );
+  const [dep] = await db
+    .select()
+    .from(deployments)
+    .where(eq(deployments.id, "dpl_1"));
+  assert.equal(dep.status, "ready");
+
+  // The next deploy builds once: the Volume is there already.
+  sent = [];
+  await seedDeployment(db, { id: "dpl_2", appId: "prj_1", status: "queued" });
+  await runDeploymentGuarded("dpl_2");
+  assert.equal(sent.length, 1);
 });

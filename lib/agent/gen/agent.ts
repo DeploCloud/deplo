@@ -1255,6 +1255,11 @@ export interface DeployResult {
     | undefined;
   /** The ports the checked container listened on from outside it, for the log. */
   listeningPorts: number[];
+  /**
+   * The paths the image this deploy built declares as volumes (VOLUME), read where it was built.
+   * Hello capability `deploy.image-volumes`.
+   */
+  imageVolumes: string[];
 }
 
 /** A compose file read from the app's source. */
@@ -7486,6 +7491,7 @@ function createBaseDeployResult(): DeployResult {
     builtWith: "",
     sourceCompose: undefined,
     listeningPorts: [],
+    imageVolumes: [],
   };
 }
 
@@ -7515,6 +7521,9 @@ export const DeployResult: MessageFns<DeployResult> = {
         writer.int32(v);
       }
       writer.join();
+    }
+    for (const v of message.imageVolumes) {
+      writer.uint32(66).string(v!);
     }
     return writer;
   },
@@ -7598,6 +7607,14 @@ export const DeployResult: MessageFns<DeployResult> = {
 
             break;
           }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.imageVolumes.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -7639,6 +7656,11 @@ export const DeployResult: MessageFns<DeployResult> = {
         : globalThis.Array.isArray(object?.listening_ports)
         ? object.listening_ports.map((e: any) => globalThis.Number(e))
         : [],
+      imageVolumes: globalThis.Array.isArray(object?.imageVolumes)
+        ? object.imageVolumes.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.image_volumes)
+        ? object.image_volumes.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -7665,6 +7687,9 @@ export const DeployResult: MessageFns<DeployResult> = {
     if (message.listeningPorts?.length) {
       obj.listeningPorts = message.listeningPorts.map((e) => Math.round(e));
     }
+    if (message.imageVolumes?.length) {
+      obj.imageVolumes = message.imageVolumes;
+    }
     return obj;
   },
 
@@ -7682,6 +7707,7 @@ export const DeployResult: MessageFns<DeployResult> = {
       ? SourceCompose.fromPartial(object.sourceCompose)
       : undefined;
     message.listeningPorts = object.listeningPorts?.map((e) => e) || [];
+    message.imageVolumes = object.imageVolumes?.map((e) => e) || [];
     return message;
   },
 };
