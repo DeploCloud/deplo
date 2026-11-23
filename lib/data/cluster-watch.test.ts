@@ -692,3 +692,40 @@ test("a member gone past the grace no longer counts, so the next one to stop is 
   assert.ok(!said.some((t) => t.startsWith("Too few")), said.join(" | "));
   __forgetGone();
 });
+
+// eu, 23 Nov 2026: "eu-1 answers again" twice while eu-1 was off: a leader that just took over reports every server
+// "ok" until it hears it. Then the same leader's "not responding" took a fenced server back a step.
+test("a leader that has not heard a server never makes it answer again, nor a fenced one not responding", async () => {
+  const cluster = await eu();
+  await db
+    .update(clusterMembers)
+    .set({ leaseState: "fenced" })
+    .where(eq(clusterMembers.serverId, "srv_3"));
+  snapshot = {
+    head: 0,
+    clusters: {
+      [cluster.id]: {
+        epoch: 1,
+        superseded: false,
+        members: [
+          { id: "srv_2", state: "ok", heard: true },
+          { id: "srv_3", state: "ok", heard: false },
+        ],
+      },
+    },
+  };
+  await watchUntil(cluster.id, 0);
+  assert.equal((await states(cluster.id))["srv_3"], "fenced");
+  await applyLeaderEvent(cluster.id, {
+    seq: 1,
+    type: "member_state",
+    cluster: cluster.id,
+    data: { member: "srv_3", state: "not_responding" },
+  });
+  assert.equal((await states(cluster.id))["srv_3"], "fenced");
+  const said = await activityTexts();
+  assert.ok(
+    !said.some((t) => /answers again|not responding/.test(t)),
+    said.join(" | "),
+  );
+});

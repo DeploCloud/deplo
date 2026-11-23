@@ -10,7 +10,7 @@ import {
   installClusterLeader,
 } from "../../infra/agent-client/cluster-host";
 import type { Cluster } from "../../types/cluster";
-import { recordActivity } from "../activity";
+import { activityAt, recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
 import { updatingClusterHost } from "./binary-rollout";
@@ -200,11 +200,13 @@ async function adopt(
   misses.delete(cluster.id);
   const named = namedHeir(cluster.id);
   if (named) forgetHeir(cluster.id, named.serverId === heir.serverId);
-  // Said when it is adopted: what follows reaches every member, and a silent one waits out its link.
+  // Said when it is adopted, dated when it led: Deplo may read it long after, back from a cut.
   const heirName = (await getServerById(heir.serverId))?.name ?? "A server";
-  await say(
-    cluster,
-    `${name} stopped answering its servers, so ${heirName}, next in line, leads cluster ${cluster.name}`,
+  await activityAt(heir.ledAt ?? undefined, () =>
+    say(
+      cluster,
+      `${name} stopped answering its servers, so ${heirName}, next in line, leads cluster ${cluster.name}`,
+    ),
   );
   forgetLeaderRoster(cluster.id);
   const led = (await getClusterById(cluster.id))!;

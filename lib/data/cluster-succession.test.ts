@@ -11,7 +11,10 @@ import {
 } from "../db/schema/control-plane/clusters";
 import { doorClosed, doorOpened } from "../infra/agent-link/registry";
 import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
-import { servers as serversTable } from "../db/schema/control-plane/servers";
+import {
+  serverAgentCapabilities,
+  servers as serversTable,
+} from "../db/schema/control-plane/servers";
 import { nowIso } from "../ids";
 import { __forgetMemberProbes } from "../infra/agent-client/cluster-host";
 import { AgentUnreachableError } from "../infra/agent-client/errors";
@@ -31,6 +34,7 @@ import { listClusterMembers } from "./clusters/members";
 import { getClusterById } from "./clusters/roster";
 import { __forgetHeirsForTest, clusterHeirs } from "./clusters/succession";
 import { refreshClusterWarnings } from "./clusters/warnings";
+import { applyLeaderEvent } from "./clusters/watch";
 import {
   leaderLab,
   relayRosters,
@@ -84,8 +88,13 @@ async function three() {
   return cluster;
 }
 
-/** The leader on a server answers its snapshot with this cluster led at `epoch`. */
-function leading(h: FakeClusterHost, clusterId: string, epoch: number) {
+/** The leader on a server answers its snapshot with this cluster led at `epoch`, since `ledAt` when given. */
+function leading(
+  h: FakeClusterHost,
+  clusterId: string,
+  epoch: number,
+  ledAt?: string,
+) {
   const calls = h.leader;
   h.leader = (method, payload) =>
     method === "leader.snapshot"
@@ -93,7 +102,7 @@ function leading(h: FakeClusterHost, clusterId: string, epoch: number) {
           JSON.stringify({
             head: 7,
             clusters: {
-              [clusterId]: { epoch, leads: true, superseded: false },
+              [clusterId]: { epoch, leads: true, superseded: false, ledAt },
             },
           }),
         )
@@ -509,4 +518,132 @@ test("a leader whose server leaves the direct majority moves to one inside it", 
   const before = (await stored(cluster.id)).epoch;
   await placeClusterLeaders();
   assert.equal((await stored(cluster.id)).epoch, before);
+});
+
+// eu, 23 Nov 2026: Deplo restarted, then two servers stopped; it had not heard their Hello since, so it took them for
+// agents that cannot pre-vote, knew no line, and its own machine stood in. What each agent last said counts.
+test("Deplo knows the line from what each agent last reported, also after a restart with servers off", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    await db
+      .insert(serverAgentCapabilities)
+      .values({
+        serverId: id,
+        capability: CLUSTER_SUCCESSION_CAPABILITY,
+        agentVersion: "0.5.3",
+        reportedAt: nowIso(),
+      })
+      .onConflictDoNothing();
+  let now = 1_000_000;
+  __setLeaderBeatClockForTest(() => now);
+  try {
+    hosts[led.leaderServerId!].unreachable = true;
+    hosts[first].unreachable = true;
+    __forgetMemberProbes();
+    hosts[second].status = runs;
+    trying(hosts[second], cluster.id, led.leaderEpoch + 2);
+    now += TAKEOVER_AFTER_MS;
+    for (let i = 0; i < 3; i++)
+      assert.equal(await superviseClusterLeader(cluster.id), null);
+    assert.equal((await stored(cluster.id)).takenOver, false, "no stand-in");
+    assert.match(
+      (await messages()).join("\n"),
+      new RegExp(`Deplo gives its word to ${second}, next in line`),
+    );
+  } finally {
+    __setLeaderBeatClockForTest(null);
+  }
+});
+
+// The relay lets the heirs' leaders in and the line names them: a server that stopped never takes them off it.
+test("the heirs stay named when the servers before them stopped", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  const old = led.leaderServerId!;
+  hosts[old].unreachable = true;
+  hosts[first].unreachable = true;
+  await paths(cluster.id, [old, first, second], (a, b) =>
+    [a, b].includes(old) || [a, b].includes(first) ? "relay" : "direct",
+  );
+  assert.deepEqual(await clusterHeirs(led), [second]);
+});
+
+test("of two heirs that say they lead, Deplo adopts the one at the highest epoch", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  hosts[led.leaderServerId!].unreachable = true;
+  hosts[first].status = runs;
+  hosts[second].status = runs;
+  leading(hosts[first], cluster.id, led.leaderEpoch + 1);
+  leading(hosts[second], cluster.id, led.leaderEpoch + 2);
+  assert.equal(await superviseClusterLeader(cluster.id), "succeeded");
+  assert.deepEqual(await stored(cluster.id), {
+    server: second,
+    takenOver: false,
+    epoch: led.leaderEpoch + 2,
+  });
+});
+
+// Back from a cut, Deplo adopts an heir that led minutes before: Activity says it at that time.
+test("an adopted heir's takeover is dated when it led, not when Deplo read it", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [heir] = await clusterHeirs(led);
+  hosts[led.leaderServerId!].unreachable = true;
+  hosts[heir].status = runs;
+  const ledAt = new Date(Date.now() - 9 * 60_000).toISOString();
+  leading(hosts[heir], cluster.id, led.leaderEpoch + 1, ledAt);
+  assert.equal(await superviseClusterLeader(cluster.id), "succeeded");
+  const [line] = await db
+    .select({ at: activities.createdAt })
+    .from(activities)
+    .where(like(activities.message, `%so ${heir}, next in line, leads%`));
+  assert.equal(new Date(String(line!.at)).toISOString(), ledAt);
+});
+
+// A leader whose server is silent may have been replaced by an heir already: moving it would hand over that heir.
+test("no leader is moved while its server is silent", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const on = led.leaderServerId!;
+  await paths(cluster.id, ["srv_2", "srv_3", "srv_4"], (a, b) =>
+    a === on || b === on ? "relay" : "direct",
+  );
+  hosts[on].unreachable = true;
+  await placeClusterLeaders();
+  assert.deepEqual(await stored(cluster.id), {
+    server: on,
+    takenOver: false,
+    epoch: led.leaderEpoch,
+  });
+});
+
+// eu, 23 Nov 2026: "the leader stepped down" while Deplo was cut off from every server, which it could not know.
+test("a leader stepping down is not said while Deplo reaches none of the cluster's servers", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  for (const id of ["srv_2", "srv_3", "srv_4"]) hosts[id].unreachable = true;
+  await db.update(serversTable).set({ lastSeenAt: nowIso() });
+  doorOpened(Date.now() - LINK_SETTLE_MS - 1000);
+  try {
+    const led = (await getClusterById(cluster.id))!;
+    await applyLeaderEvent(cluster.id, {
+      seq: led.eventSeq + 1,
+      type: "superseded",
+      cluster: cluster.id,
+      data: { epoch: led.leaderEpoch + 1 },
+    });
+    assert.ok(!(await messages()).some((m) => m.includes("stepped down")));
+  } finally {
+    doorClosed();
+  }
 });
