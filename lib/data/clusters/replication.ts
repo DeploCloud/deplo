@@ -1,7 +1,7 @@
 import "server-only";
 
 import { and, eq, inArray, notInArray, or } from "drizzle-orm";
-import { appDisk, copiesLine } from "../../apps/failover-copy";
+import { appDisk, copiesActivity } from "../../apps/failover-copy";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
@@ -191,12 +191,9 @@ async function recordReports(
     const { copyRows } = await import("../apps/failover");
     const rows = await copyRows(app, [...reports.keys()], after);
     const server = (await getServerById(app.serverId))?.name ?? "its server";
-    const line = copiesLine(server, rows);
     await recordActivity(
       "app",
-      now
-        ? `${app.name}: ${line}. It can move if ${server} goes off.`
-        : `${app.name}: ${line}`,
+      copiesActivity(app.name, server, rows, now),
       "Deplo",
       app.id,
       app.teamId,
