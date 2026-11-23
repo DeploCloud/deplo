@@ -4,7 +4,8 @@ import { and, eq, lt } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { watchClusterLeader } from "../../infra/agent-client/cluster-host";
-import type { ClusterLeaseState } from "../../types/cluster";
+import type { Cluster, ClusterLeaseState } from "../../types/cluster";
+import { activityAt } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import {
   adoptLeaderMoves,
@@ -32,6 +33,7 @@ import { messageOf } from "../../utils";
 import { leaseChangeSentence } from "./lease-activity";
 import { memberGone } from "./gone";
 import { moveStarted } from "./moves";
+import { clusterOutOfReach } from "./reach";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
 // Events carry a sequence; the last one applied is stored, so a restart or a reconnect replays only what is new.
@@ -41,6 +43,8 @@ export interface LeaderEvent {
   type: string;
   cluster: string;
   data: Record<string, unknown>;
+  /** When the leader recorded it: what Activity says of it carries this time. */
+  at?: string;
 }
 
 export type WatchLine =
@@ -77,6 +81,7 @@ export function parseWatchLine(raw: Uint8Array): WatchLine | null {
             string,
             unknown
           >,
+          ...(typeof v.at === "string" ? { at: v.at } : {}),
         },
       };
   } catch {
@@ -93,6 +98,8 @@ async function memberLeaseChanged(
   serverId: string,
   state: ClusterLeaseState,
 ): Promise<void> {
+  // Deplo cannot reach the cluster: what a leader standing in sees of its servers is a guess, so the last state stays.
+  if (await clusterOutOfReach(clusterId)) return;
   if (!(await setMemberLease(clusterId, serverId, state))) return;
   // A preview never fails over: it reads offline until it is deployed again (#212).
   if (state === "fenced") await markPreviewsOffline(serverId);
@@ -118,12 +125,25 @@ export type EventResult = "applied" | "skipped" | "frozen";
 export async function applyLeaderEvent(
   clusterId: string,
   e: LeaderEvent,
-  opts: { advance?: boolean } = {},
+  opts: { advance?: boolean; after?: number } = {},
 ): Promise<EventResult> {
   if (await instanceFrozen()) return "frozen";
   const cluster = await getClusterById(clusterId);
-  if (!cluster || e.cluster !== clusterId || e.seq <= cluster.eventSeq)
+  if (
+    !cluster ||
+    e.cluster !== clusterId ||
+    e.seq <= (opts.after ?? cluster.eventSeq)
+  )
     return "skipped";
+  return activityAt(e.at, () => applyOne(cluster, e, opts));
+}
+
+async function applyOne(
+  cluster: Cluster,
+  e: LeaderEvent,
+  opts: { advance?: boolean },
+): Promise<EventResult> {
+  const clusterId = cluster.id;
   const advance = async (extra: { leaderEpoch?: number } = {}) => {
     if (opts.advance === false) return;
     await getDb()
@@ -193,7 +213,10 @@ export async function applyLeaderEvent(
     }
     case "member_gone":
     case "member_rejoined": {
-      if (typeof d.member === "string") {
+      if (
+        typeof d.member === "string" &&
+        !(await clusterOutOfReach(clusterId))
+      ) {
         memberGone(clusterId, d.member, e.type === "member_gone");
         const name = (await getServerById(d.member))?.name ?? "A server";
         await recordClusterActivity(
@@ -285,6 +308,70 @@ export async function reconcileCluster(
     await resend(clusterId).catch((e) =>
       console.warn(`[failover-bundle] ${clusterId}: ${messageOf(e)}`),
     );
+}
+
+/**
+ * Before a cluster goes back to the leader Deplo's machine stood in for: what that leader did meanwhile is applied from
+ * the last event Deplo saw, with its own times, and its moves join the mirror the roster will carry back. Returns the
+ * last sequence applied, or null when its buffer no longer reaches back that far.
+ */
+export async function replayBeforeHandBack(
+  cluster: Cluster,
+  serverId: string,
+  since: number | null,
+  within = 20_000,
+): Promise<number | null> {
+  let seq: number | null = null;
+  let lost: { after: number; before: number } | null = null;
+  if (since !== null) {
+    const stream = watchClusterLeader(serverId, since);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>(
+      (r) => (timer = setTimeout(r, within, null)),
+    );
+    let head: number | null = null;
+    try {
+      while (head === null || (seq ?? since) < head) {
+        const next = await Promise.race([stream.next(), late]);
+        if (!next || next.done) break;
+        const line = parseWatchLine(next.value);
+        if (!line || line.kind === "ping") continue;
+        if (line.kind === "hello") {
+          // Its buffer started over: nothing there follows what Deplo saw.
+          if (line.head < since) break;
+          head = line.head;
+          seq = since;
+          if (line.gap) lost = { after: since, before: line.head + 1 };
+          continue;
+        }
+        if (lost && seq === since) lost.before = line.event.seq;
+        if (line.event.cluster === cluster.id)
+          await applyLeaderEvent(cluster.id, line.event, {
+            advance: false,
+            after: seq ?? since,
+          });
+        seq = line.event.seq;
+      }
+    } catch (e) {
+      console.warn(
+        `[cluster-watch] ${cluster.id}: replay before hand-back: ${messageOf(e)}`,
+      );
+    } finally {
+      clearTimeout(timer);
+      // A stream still waiting on its leader is let go, not awaited.
+      void stream.return(undefined).catch(() => undefined);
+    }
+  }
+  const view = (
+    await readLeaderSnapshot({ ...cluster, leaderTakeoverAt: null }).catch(
+      () => null,
+    )
+  )?.clusters[cluster.id];
+  if (view)
+    await adoptLeaderMoves(cluster, view, seq === null ? null : lost).catch(
+      (e) => console.warn(`[cluster-watch] ${cluster.id}: ${messageOf(e)}`),
+    );
+  return seq;
 }
 
 /** Moves the stored sequence up to `seq`, never down. */

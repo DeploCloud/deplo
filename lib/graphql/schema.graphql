@@ -414,6 +414,11 @@ type AppFailover {
   """
   heldBy: Int
 
+  """
+  While no server of its cluster answers Deplo: the sentence that says so, since when; the rest is how it stood then.
+  """
+  outOfReach: String
+
   """How many other servers of its cluster keep a copy that follows it now."""
   replicatedTo: Int
 

@@ -56,6 +56,8 @@ export async function leadFrom(
     leaderServerId: string | null;
     leaderTakeoverAt: string | null;
     leaderTeamId?: string;
+    /** Where the watch starts on the new leader's buffer; its newest event when not given. */
+    eventSeq?: number | null;
   },
 ): Promise<Cluster> {
   const target: Cluster = {
@@ -67,7 +69,14 @@ export async function leadFrom(
   if (!next) throw new Error(NO_HOST);
   const before = await leaderHost(cluster);
   // Its buffer may hold events of an earlier time it led: the watch starts after them.
-  const head = Number((await readLeaderSnapshot(target))?.head) || 0;
+  const head =
+    to.eventSeq ?? (Number((await readLeaderSnapshot(target))?.head) || 0);
+  // Standing in, Deplo keeps where it was in the stored leader's events, so handing back replays what came after.
+  const resumeEventSeq = !to.leaderTakeoverAt
+    ? null
+    : cluster.leaderTakeoverAt
+      ? await resumeSeqOf(cluster.id)
+      : cluster.eventSeq;
   const claimed = await getDb()
     .update(clustersTable)
     .set({
@@ -75,6 +84,7 @@ export async function leadFrom(
       leaderTakeoverAt: to.leaderTakeoverAt,
       leaderEpoch: Math.max(cluster.leaderEpoch, 1) + 1,
       eventSeq: head,
+      resumeEventSeq,
       ...(to.leaderTeamId ? { leaderTeamId: to.leaderTeamId } : {}),
     })
     .where(
@@ -99,6 +109,16 @@ export async function leadFrom(
       () => {},
     );
   return led;
+}
+
+/** The stored leader's last event Deplo applied before its machine stood in; null when it does not stand in. */
+export async function resumeSeqOf(clusterId: string): Promise<number | null> {
+  const [row] = await getDb()
+    .select({ seq: clustersTable.resumeEventSeq })
+    .from(clustersTable)
+    .where(eq(clustersTable.id, clusterId))
+    .limit(1);
+  return row?.seq ?? null;
 }
 
 /** The servers the leader can run on, Deplo's own machine first. Not dialed: the move itself asks the agent. */

@@ -2,7 +2,11 @@
 
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { displayStatus, type DisplayStatus } from "@/lib/apps/display-status";
+import {
+  OUT_OF_REACH,
+  displayStatus,
+  type DisplayStatus,
+} from "@/lib/apps/display-status";
 import type { AppStatus } from "@/lib/types/app";
 import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { OverviewRuntimeView } from "../apps-grid/overview-state";
@@ -12,6 +16,8 @@ type StatusRuntime = AppRuntimeView | OverviewRuntimeView;
 export function detailFor(runtime: StatusRuntime | null): string | null {
   if (runtime?.moveTo)
     return `Its server stopped answering, so its cluster is starting it on ${runtime.moveTo}. It reads Running again once ${runtime.moveTo} answers with a valid certificate.`;
+  if (runtime?.unreachable && runtime.offlineWhy?.startsWith(OUT_OF_REACH))
+    return "No server of its cluster answers Deplo, so its servers decide on their own: it may run on another one by now. This is how it stood when Deplo last heard them; Activity says what happened meanwhile once they answer again.";
   if (runtime?.unreachable && runtime.offlineWhy)
     return runtime.offlineWhy === "Offline: no up-to-date copy"
       ? "Its server is not answering, and no other server holds an up-to-date copy of its data yet, so it waits for its server."

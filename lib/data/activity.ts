@@ -1,5 +1,7 @@
 import "server-only";
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import {
   and,
   desc,
@@ -290,6 +292,24 @@ export async function listActivityActors(): Promise<
 
 export type ActivityActor = string | { name: string; provider: string };
 
+// When what is being said happened, if not now: a leader's event Deplo reads only after an outage.
+const happenedAt = new AsyncLocalStorage<string>();
+
+/** Activity written inside `fn` carries the time `at` (an ISO time), never one later than now. */
+export function activityAt<T>(
+  at: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return at && Number.isFinite(Date.parse(at)) ? happenedAt.run(at, fn) : fn();
+}
+
+function activityTime(): string {
+  const at = Date.parse(happenedAt.getStore() ?? "");
+  return Number.isFinite(at) && at < Date.now()
+    ? new Date(at).toISOString()
+    : nowIso();
+}
+
 export async function recordActivity(
   type: ActivityType,
   message: string,
@@ -331,7 +351,7 @@ export async function recordActivity(
       actorProvider: provider,
       appId,
       databaseId,
-      createdAt: nowIso(),
+      createdAt: activityTime(),
     };
     await insertActivityRow(activity, opts.serverChange === true);
     written = true;

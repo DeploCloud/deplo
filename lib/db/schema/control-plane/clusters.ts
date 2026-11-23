@@ -32,6 +32,8 @@ export const clusters = pgTable("clusters", {
   }),
   // The last leader event this control plane applied; a reconnect replays from here.
   eventSeq: bigint("event_seq", { mode: "number" }).notNull().default(0),
+  // While Deplo's machine stands in: the stored leader's last event applied, so handing back replays what came after.
+  resumeEventSeq: bigint("resume_event_seq", { mode: "number" }),
   // Off: the leader holds no failover bundle, so it moves nothing (ADR-0045).
   failoverEnabled: boolean("failover_enabled").notNull().default(true),
   // On: the stored data of its Apps is copied to every other member, the only way such an App fails over.

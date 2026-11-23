@@ -11,10 +11,12 @@ import {
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
+import { deployments } from "../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { moveAppToCluster } from "./apps/source";
 import { moveDatabaseToCluster } from "./databases/server-move";
 import { listClusterServerChoices } from "./clusters/member-choice";
+import { __setRunnerForTest } from "../deploy/deploy-queue";
 import {
   DATA,
   appRow,
@@ -24,10 +26,18 @@ import {
   disks,
   emptyLab,
   eu,
+  rosters,
   runningApp,
 } from "./cluster-empty-test-helpers";
 
 emptyLab();
+
+// Where the last roster the leader took places a workload: what its renewals name from then on.
+function rosterPlaces(kind: string, id: string): string | undefined {
+  const last = rosters.at(-1) as
+    { placement: { kind: string; id: string; member: string }[] } | undefined;
+  return last?.placement.find((e) => e.kind === kind && e.id === id)?.member;
+}
 
 async function placedOn(kind: string, id: string) {
   const rows = await db
@@ -50,6 +60,29 @@ test("an App on a cluster moves to the server of it that is picked, and the lead
   assert.deepEqual([web.serverId, web.clusterId], ["srv_3", cluster.id]);
   assert.deepEqual(await placedOn("app", "web"), ["srv_3"]);
   assert.deepEqual(asked, [], "the cluster did not pick");
+});
+
+test("a move between two servers of a cluster reaches the leader before its deploy starts", async () => {
+  await runningApp("web", "srv_2");
+  const cluster = await eu();
+  let leaderHad: string | undefined = "no deploy";
+  // The stand-in settles its row: one left queued is picked again at once, forever.
+  __setRunnerForTest(async (depId) => {
+    leaderHad = rosterPlaces("app", "web");
+    await db
+      .update(deployments)
+      .set({ status: "canceled" })
+      .where(eq(deployments.id, depId));
+  });
+  try {
+    await asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3"));
+    for (let i = 0; i < 100 && leaderHad === "no deploy"; i++)
+      await new Promise((r) => setTimeout(r, 20));
+  } finally {
+    __setRunnerForTest(async () => {});
+  }
+  assert.equal(leaderHad, "srv_3", "the leader placed it there first");
+  assert.deepEqual(await placedOn("app", "web"), ["srv_3"]);
 });
 
 test("an App outside the cluster lands on the server of it that is picked", async () => {
@@ -130,7 +163,22 @@ test("a database on a cluster moves to the server of it that is picked", async (
   d.stacks.set("db-main", "services: {}\n");
   d.volumes.set("deplo-db-main_db-main-data", DATA);
   const cluster = await eu();
+  // Each start on the new server, with where the leader placed the database at that moment.
+  const starts: (string | undefined)[] = [];
+  const calls = disks.get("srv_3")!.calls;
+  const push = calls.push.bind(calls);
+  calls.push = (...v: string[]) => {
+    for (const c of v)
+      if (c === "start:db-main")
+        starts.push(rosterPlaces("database", "db_main"));
+    return push(...v);
+  };
   await asAdmin(() => moveDatabaseToCluster("db_main", cluster.id, "srv_3"));
+  assert.deepEqual(
+    starts,
+    ["srv_3"],
+    "started only once the leader placed it there",
+  );
   const [row] = await db
     .select()
     .from(databasesTable)

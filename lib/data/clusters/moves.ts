@@ -4,6 +4,7 @@ import tls from "node:tls";
 import { eq } from "drizzle-orm";
 
 import { appDisk } from "../../apps/failover-copy";
+import { OUT_OF_REACH } from "../../apps/display-status";
 import { leaderHearsEnough } from "../../clusters/failover-reach";
 import { getDb } from "../../db/client";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
@@ -12,6 +13,7 @@ import { getServerById } from "../servers/roster";
 import { serverAddresses } from "../servers/addresses";
 import { promotable, replicaRows } from "./replica-state";
 import { votingLeaseStates } from "./gone";
+import { clusterOutOfReach, sinceClock } from "./reach";
 import { getClusterById } from "./roster";
 
 // An App the cluster is moving reads "Moving to eu-2" until its new server answers with a valid certificate,
@@ -126,6 +128,12 @@ export async function appMoveState(
       offlineWhy: null,
     };
   if (!unreachable || !app.clusterId) return { move: null, offlineWhy: null };
+  const since = await clusterOutOfReach(app.clusterId);
+  if (since)
+    return {
+      move: null,
+      offlineWhy: `${OUT_OF_REACH} since ${sinceClock(since)}`,
+    };
   const leases = await votingLeaseStates(app.clusterId);
   const answering = leases.filter((s) => s === "ok").length;
   if (leases.length >= 2 && !leaderHearsEnough(answering, leases.length))

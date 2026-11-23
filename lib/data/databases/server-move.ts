@@ -46,6 +46,7 @@ import {
   recordPlacement,
 } from "../clusters/placement";
 import { assertMemberTakes } from "../clusters/member-choice";
+import { placeAtLeaderFirst } from "../clusters/leader-sync";
 import { resolveTeamCluster } from "../clusters/roster";
 import { ensureFailoverBackup } from "./failover";
 import { dropStandbyCopy, endStandby, syncStandbySoon } from "./standby";
@@ -265,6 +266,9 @@ async function applyDatabasePlacement(
             `The move was rolled back - the database is still on its original server.`,
         );
       }
+      // Inside a cluster the leader goes first: the new server's lease names the database before it starts there.
+      if (cluster && cur.clusterId === cluster.id)
+        await placeAtLeaderFirst(cluster, "database", id, targetServer.id);
       try {
         await startStackOn(targetServer.id, cur.host);
       } catch (e) {

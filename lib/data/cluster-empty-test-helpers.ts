@@ -239,8 +239,21 @@ export function emptyLab(): void {
       },
       leader: (method, payload) => {
         if (method === "leader.roster") rosters.push(dec(payload));
-        if (method === "leader.snapshot")
-          return new TextEncoder().encode(JSON.stringify({ clusters: {} }));
+        // The leader holds what the last roster placed, as a real one does once it took it.
+        if (method === "leader.snapshot") {
+          const last = rosters.at(-1) as
+            | { cluster: string; epoch: number; placement: unknown[] }
+            | undefined;
+          const clusters = last
+            ? {
+                [last.cluster]: {
+                  epoch: last.epoch,
+                  placement: last.placement,
+                },
+              }
+            : {};
+          return new TextEncoder().encode(JSON.stringify({ clusters }));
+        }
         if (method !== "placement.place") return payload;
         const { workload } = dec(payload);
         asked.push(workload);

@@ -1870,6 +1870,13 @@
       "when": 1796069000000,
       "tag": "0277_app_volume_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1796070000000,
+      "tag": "0278_cluster_resume_event_seq",
+      "breakpoints": true
     }
   ]
 }
