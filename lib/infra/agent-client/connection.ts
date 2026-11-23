@@ -338,10 +338,14 @@ export interface AgentConnection {
   /** The dated copies a returning cluster member set aside of these volumes (Hello `volumes.set-aside`). */
   setAsideCopies(of: string[]): Promise<SetAsideCopy[]>;
   removeSetAside(volumeName: string): Promise<{ ok: boolean; error: string }>;
+  /** Copies these volumes of a stack aside under dated names; an absent one is skipped (Hello `volumes.newest-wins`). */
+  setAside(slug: string, volumeNames: string[]): Promise<SetAsideCopy[]>;
   importVolume(
     volumeName: string,
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
+    /** Writes a new set-aside copy of this volume instead (Hello `volumes.newest-wins`). */
+    asideOf?: string,
   ): Promise<{
     ok: boolean;
     error: string;
@@ -379,7 +383,13 @@ export interface AgentConnection {
     imageRef: string,
     chunks: AsyncIterable<Buffer>,
   ): Promise<{ ok: boolean; error: string; bytesWritten: number }>;
-  readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
+  /** `lastRanMs` / `running`: when a container of it last ran (Hello `volumes.newest-wins`; 0 from an older agent). */
+  readStack(slug: string): Promise<{
+    exists: boolean;
+    yaml: string;
+    lastRanMs?: number;
+    running?: boolean;
+  }>;
   checkPort(port: number): Promise<{ available: boolean; reason: string }>;
   probeHttp(req: AgentProbeHttpRequest): Promise<AgentProbeHttpResult>;
   selfUpdate(

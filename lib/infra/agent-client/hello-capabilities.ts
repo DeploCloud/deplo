@@ -163,3 +163,6 @@ export const SPREAD_CAPABILITY = "deploy.spread";
 
 // The agent keeps its own binary in the stack directory's .deplo-probe: a port probe that needs no shell in the image (deplo#281).
 export const PROBE_CAPABILITY = "deploy.probe";
+
+// ReadStack says when a stack last ran, and SetAside copies volumes aside on ask: a newer copy is never written over.
+export const NEWEST_WINS_CAPABILITY = "volumes.newest-wins";

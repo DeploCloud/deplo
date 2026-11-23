@@ -39,6 +39,7 @@ export function dataCopyRpc(
   | "volumeUsage"
   | "setAsideCopies"
   | "removeSetAside"
+  | "setAside"
   | "importVolume"
   | "exportHostPath"
   | "importHostPath"
@@ -98,6 +99,26 @@ export function dataCopyRpc(
         );
       });
     },
+    setAside(slug: string, volumeNames: string[]) {
+      return new Promise<SetAsideCopy[]>((resolve, reject) => {
+        client.setAside(
+          { slug, volumeNames },
+          new Metadata(),
+          copyDeadline(),
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve(
+                  resp.copies.map((v) => ({
+                    volumeName: v.volumeName,
+                    of: v.setAsideOf,
+                    atMs: Number(v.setAsideAtMs),
+                    bytes: Number(v.bytes),
+                  })),
+                ),
+        );
+      });
+    },
     removeSetAside(volumeName: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.removeSetAside(
@@ -115,6 +136,7 @@ export function dataCopyRpc(
       volumeName: string,
       wipeFirst: boolean,
       chunks: AsyncIterable<Buffer>,
+      asideOf?: string,
     ) {
       return new Promise<{
         ok: boolean;
@@ -139,7 +161,7 @@ export function dataCopyRpc(
         );
         pumpClientStream<VolumeChunk>(
           call,
-          { header: { volumeName, wipeFirst } },
+          { header: { volumeName, wipeFirst, asideOf: asideOf ?? "" } },
           chunks,
           (data) => ({ data }),
           (e) => reject(toAgentError(e)),

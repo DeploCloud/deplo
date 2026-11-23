@@ -248,6 +248,7 @@ export async function copyVolumeBetween(
   targetName: string = volumeName,
   onBytes?: OnBytes,
   signal?: AbortSignal,
+  asideOf?: string,
 ): Promise<VolumeCopyResult> {
   try {
     if (!(await sourceHasData(source, volumeName)))
@@ -284,7 +285,7 @@ export async function copyVolumeBetween(
     dropped?: DroppedEntries;
   };
   try {
-    res = await dest.importVolume(targetName, true, counted);
+    res = await dest.importVolume(targetName, true, counted, asideOf);
   } catch (e) {
     stopIfAborted(signal);
     throw attributeCopyError(e);

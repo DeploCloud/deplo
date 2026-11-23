@@ -81,8 +81,12 @@ export interface Disk {
   volumes: Map<string, Buffer>;
   calls: string[];
   fail: Partial<Record<"import", string>>;
+  /** When each stack last ran here, as ReadStack says it (none: never). */
+  ran: Map<string, { lastRanMs: number; running: boolean }>;
 }
 export const disks = new Map<string, Disk>();
+/** Each member's fake agent, so a test can give it a capability. */
+export const hosts = new Map<string, ReturnType<typeof fleet.host>>();
 
 export function diskOps(d: Disk): Partial<AgentConnection> {
   const ok = { ok: true, error: "" };
@@ -90,7 +94,23 @@ export function diskOps(d: Disk): Partial<AgentConnection> {
     readStack: async (slug: string) => ({
       exists: d.stacks.has(slug),
       yaml: d.stacks.get(slug) ?? "",
+      lastRanMs: d.ran.get(slug)?.lastRanMs ?? 0,
+      running: d.ran.get(slug)?.running ?? false,
     }),
+    setAside: async (_slug: string, names: string[]) =>
+      names
+        .filter((n) => d.volumes.has(n))
+        .map((n) => {
+          d.calls.push(`aside:${n}`);
+          const v = d.volumes.get(n)!;
+          d.volumes.set(`${n}-aside-20261123T074913Z`, v);
+          return {
+            volumeName: `${n}-aside-20261123T074913Z`,
+            of: n,
+            atMs: 1,
+            bytes: v.length,
+          };
+        }),
     stopStack: async (slug: string) => {
       d.calls.push(`stop:${slug}`);
       return d.stacks.has(slug) ? ok : { ok: false, error: "no such stack" };
@@ -136,8 +156,9 @@ export function diskOps(d: Disk): Partial<AgentConnection> {
       name: string,
       _wipe: boolean,
       chunks: AsyncIterable<Buffer>,
+      asideOf?: string,
     ) => {
-      d.calls.push(`import:${name}`);
+      d.calls.push(asideOf ? `import-aside:${name}` : `import:${name}`);
       const parts: Buffer[] = [];
       for await (const c of chunks) parts.push(Buffer.from(c));
       const none = { links: 0, special: 0, names: [] };
@@ -267,9 +288,10 @@ export function emptyLab(): void {
         volumes: new Map(),
         calls: [],
         fail: {},
+        ran: new Map(),
       };
       disks.set(id, d);
-      fleet.host(id, { extra: diskOps(d) });
+      hosts.set(id, fleet.host(id, { extra: diskOps(d) }));
     }
     __setClusterPinForTest({ version: "0.2.0", min: "0.2.0" });
     __resetReleaseCacheForTests();

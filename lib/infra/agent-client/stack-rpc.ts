@@ -171,17 +171,25 @@ export function stackRpc(
       );
     },
     readStack(slug: string) {
-      return new Promise<{ exists: boolean; yaml: string }>(
-        (resolve, reject) => {
-          client.readStack(
-            { slug, removeVolumes: false, reclaimVolumes: [], services: [] },
-            (err, resp) =>
-              err
-                ? reject(toAgentError(err))
-                : resolve({ exists: resp.exists, yaml: resp.yaml }),
-          );
-        },
-      );
+      return new Promise<{
+        exists: boolean;
+        yaml: string;
+        lastRanMs: number;
+        running: boolean;
+      }>((resolve, reject) => {
+        client.readStack(
+          { slug, removeVolumes: false, reclaimVolumes: [], services: [] },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({
+                  exists: resp.exists,
+                  yaml: resp.yaml,
+                  lastRanMs: Number(resp.lastRanMs ?? 0),
+                  running: resp.running ?? false,
+                }),
+        );
+      });
     },
   };
 }

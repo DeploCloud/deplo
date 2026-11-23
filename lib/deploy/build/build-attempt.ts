@@ -1,5 +1,7 @@
 import "server-only";
 
+import { moveClusterDataBeforeStart } from "../../data/app-migration";
+
 import { eq } from "drizzle-orm";
 import { withKeyedLock } from "../../data/keyed-mutex";
 import { getServerById } from "../../data/servers/roster";
@@ -356,6 +358,16 @@ export async function tryAgent(opts: {
           plan = { kind: "image", image: opts.imageRef, pull: false };
         }
       }
+
+      // A cluster App's data arrives before its stack starts on a new member: it never serves an empty copy.
+      const first = await moveClusterDataBeforeStart(
+        opts.project.id,
+        opts.serverId,
+        opts.project.deployKey,
+        (level, text) => log(opts.depId, level, text),
+      );
+      if (first === "rolled-back" || first === "held")
+        return { outcome: "failed", commitSha: builtCommitSha };
 
       const result = await runAgentDeploy({
         serverId: opts.serverId,
