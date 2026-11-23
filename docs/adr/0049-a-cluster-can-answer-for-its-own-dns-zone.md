@@ -255,6 +255,15 @@ A power cut is Proxmox's `stop` (an immediate kill); a hang is a freeze. The pro
 - **Found and fixed, not released yet**: a start order renewed a member's lease without the gone members, so eu-1 counted eu-3 again and the whole zone answered SERVFAIL for one second (deplo-cluster#12); after a shrink the panel said "nothing moves" and "Offline: waiting for a majority of servers" for 22 s while the leader moved `lab-pg` (deplo#302).
 - **Found, not fixed**: a new name's first check still writes "does not reach the cluster yet" to Activity a second before the zone answers it; a returning name server answers its last agreed set, itself included, for about 8 s; the relay's new priority reaches apps.idra.app only when its panel route is next written. **fise keeps its database where nothing carries it**: its compose binds `./data/db` at `/var/lib/postgresql`, but `postgres:17` keeps its data in `/var/lib/postgresql/data`, a volume of the image, so every container re-creation, each move included, starts it on an empty anonymous volume. Deplo counts neither as data, so fise is fenced nowhere, replicated nowhere, and moves without its data.
 
+## A server back, and a new name (23 Nov 2026)
+
+Three things cluster eu left unexplained on 23 Nov: an App that two lost members had fenced stayed down once they were back when its compose named no restart policy (the agent read a service with no `restart:` as `no`, and a fence stop exits 0, which `on-failure` never restarts either); a returning name server answered its old set for about 8 s; and a new name wrote "does not reach the cluster yet" a second before the zone answered it. Decided by the owner:
+
+1. **When a member's lease is back, its agent starts again exactly the containers its fence stopped**, whatever their restart policy (agent `cluster-supervise.json` `fenced`, the containers that exited since the fence began). A stack whose lease went to another member meanwhile forgets them: it stays down and is cleaned up as before. A deploy, a start or the stack's removal forgets them too.
+2. **Under a lease, a service with no restart policy is kept up** (`deplo.restart=unless-stopped`), so a crash or a power cut brings it back like any other. A policy the person wrote wins, `"no"` included, and a service another one waits to finish (`service_completed_successfully`) runs once as before.
+3. **A returning name server names only what it hears now** (agent DeploCloud/deplo-agent#91). Just started, or thawed past 5 s of its own pushes, it used to answer its last agreed set from disk, servers it no longer hears included, for about 8 s. It now answers nothing for its zone (no reply, so a resolver asks another name server, never `SERVFAIL`) until it hears every server of its cluster, or until the removal time is over, and then decides on what it hears; `_deplo-server` keeps answering. The panel still reads the state as `warming` ("Starting").
+4. **A new name's first check waits for its setup**: a domain answered by the cluster's zone that resolves to nothing within a minute of being added reads pending, writes nothing to Activity, and is checked once more when the minute is over, so only a real failure says "does not reach the cluster yet".
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
@@ -308,10 +317,3 @@ A power cut is Proxmox's `stop` (an immediate kill); a hang is a freeze. The pro
 - [User documentation](https://deplo.build/docs) - the manual, in `DeploCloud/docs`
 - [`AGENTS.md`](../../AGENTS.md) - the architecture rules these decisions produced
 - [`CONTEXT.md`](../../CONTEXT.md) - the glossary
-
-## What fencing stopped comes back (23 Nov 2026)
-
-On cluster eu an App that two lost members had fenced stayed down once they were back when its compose named no restart policy: the agent read a service with no `restart:` as `no`, and a fence stop exits 0, which `on-failure` never restarts either. Decided by the owner:
-
-1. **When a member's lease is back, its agent starts again exactly the containers its fence stopped**, whatever their restart policy (agent `cluster-supervise.json` `fenced`, the containers that exited since the fence began). A stack whose lease went to another member meanwhile forgets them: it stays down and is cleaned up as before. A deploy, a start or the stack's removal forgets them too.
-2. **Under a lease, a service with no restart policy is kept up** (`deplo.restart=unless-stopped`), so a crash or a power cut brings it back like any other. A policy the person wrote wins, `"no"` included, and a service another one waits to finish (`service_completed_successfully`) runs once as before.
