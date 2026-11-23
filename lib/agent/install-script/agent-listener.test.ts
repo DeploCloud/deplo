@@ -77,6 +77,8 @@ test("a reinstall clears the saved link state with the certificates, so it canno
     "no-listener",
     // A copy the panel refused: the new identity is its own (ADR-0050).
     "identity-in-use",
+    // The cluster network key of the server it was copied from.
+    "cluster-mesh.json",
   ])
     await writeFile(join(dir, f), "old");
   await writeFile(join(dir, "build-cache.salt"), "kept");

@@ -1237,14 +1237,15 @@ mkdir -p "$AGENT_DATA"
 chmod 700 "$AGENT_DATA"
 
 # A reinstall means a fresh bootstrap, but the agent skips it while old mTLS materials are on
-# disk and would serve a certificate the panel no longer pins. Clear them and the link state they
-# belonged to; a plain restart of the agent carries no token and keeps everything.
+# disk and would serve a certificate the panel no longer pins. Clear them, the link state they
+# belonged to and the network key: a copy must not speak as the server it was copied from.
 clear_old_materials() {
   if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
     step "Existing agent materials found - clearing them for a fresh bootstrap"
     systemctl stop deplo-agent >&9 2>&9 || true
     rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt" \
-      "$AGENT_DATA/link-addresses.json" "$AGENT_DATA/no-listener" "$AGENT_DATA/identity-in-use"
+      "$AGENT_DATA/link-addresses.json" "$AGENT_DATA/no-listener" "$AGENT_DATA/identity-in-use" \
+      "$AGENT_DATA/cluster-mesh.json"
     ok "Old materials cleared" "the agent will re-provision with the new token"
   fi
 }
