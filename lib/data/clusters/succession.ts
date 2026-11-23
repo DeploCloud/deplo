@@ -51,11 +51,14 @@ export async function leaderCandidates(clusterId: string): Promise<string[]> {
   const facts = new Map(
     (await clusterMemberFacts(clusterId)).map((f) => [f.id, f]),
   );
-  const out: string[] = [];
-  for (const id of core)
-    if (!facts.get(id)?.emptying && (await probeClusterHost(id)) === "ok")
-      out.push(id);
-  return out;
+  // At once: a silent member waits out its link, and one per member in turn added up to a minute.
+  const ok = await Promise.all(
+    core.map(
+      async (id) =>
+        !facts.get(id)?.emptying && (await probeClusterHost(id)) === "ok",
+    ),
+  );
+  return core.filter((_, i) => ok[i]);
 }
 
 /** Where a cluster's leader should live: the candidate with the most free memory, the fewest workloads on a tie. */
