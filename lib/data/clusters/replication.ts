@@ -26,7 +26,7 @@ import { getServerById } from "../servers/roster";
 import { refreshAppBundle, restoreDescriptor } from "./app-restore";
 import { storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
-import { promotable, replicaRows } from "./replica-state";
+import { REPLICA_ID, promotable, replicaRows } from "./replica-state";
 import { clusterOutOfReach } from "./reach";
 import { getClusterById } from "./roster";
 
@@ -186,7 +186,12 @@ async function recordReports(
     if (!app) continue;
     const was = promotable(before, app);
     const now = promotable(after, app);
-    if (was === now) continue;
+    // A bundle pushed while no copy was whole (a deploy, a move, Deplo's return) is put in step here too.
+    const held = (await storedBundle(app.id))?.restore?.backupId === REPLICA_ID;
+    if (was === now) {
+      if (held !== now) await refreshAppBundle(app.id).catch(quietly(app.slug));
+      continue;
+    }
     await refreshAppBundle(app.id).catch(quietly(app.slug));
     // The App's page and its Activity say the same line.
     const { copyRows } = await import("../apps/failover");

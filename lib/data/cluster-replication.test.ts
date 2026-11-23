@@ -14,7 +14,11 @@ import type { ClusterReplicaReport } from "../infra/agent-client/connection";
 import { CLUSTER_REPLICAS_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { seedDeployment } from "./app-graph-test-helpers";
 import { pushAppBundle } from "./clusters/app-restore";
-import { type FailoverStack, flushFailoverBundles } from "./clusters/bundles";
+import {
+  type FailoverStack,
+  flushFailoverBundles,
+  pushFailoverBundle,
+} from "./clusters/bundles";
 import { setClusterReplication } from "./clusters/manage";
 import {
   AGENT_TOO_OLD,
@@ -272,4 +276,24 @@ test("an App's first copy starts the moment its bundle is stored, not on the wat
     ["prj_web"],
   );
   assert.equal(host.srv_3.replicaTables.at(-1)?.clusterId, cluster.id);
+});
+
+// eu, 23 Nov 2026: memos' bundle was pushed while no copy was whole and never sent again, since its copies became
+// whole between two passes: a failover waited for its server for 3 minutes. Each pass puts the bundle in step.
+test("a bundle stored without its whole copy is sent again with it, though no copy changed", async () => {
+  const cluster = await replicated();
+  host.srv_3.replicaReports = [report()];
+  await replicateCluster(cluster.id, true);
+  await flushFailoverBundles();
+  assert.equal((await open("app/prj_web")).restore?.backupId, "replica");
+  await pushFailoverBundle({
+    appId: "prj_web",
+    deploymentId: "dpl_1",
+    stack: STACK,
+  });
+  await flushFailoverBundles();
+  assert.equal((await open("app/prj_web")).restore, undefined);
+  await replicateCluster(cluster.id);
+  await flushFailoverBundles();
+  assert.equal((await open("app/prj_web")).restore?.backupId, "replica");
 });
