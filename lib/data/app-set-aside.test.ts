@@ -58,7 +58,9 @@ async function withCopy() {
 test("the App's page lists the copies its cluster servers set aside, with date and size", async () => {
   const { app, asked } = await withCopy();
   const copies = await asAdmin(() => listAppSetAsideCopies(app.id));
-  assert.deepEqual(asked, [[`deplo-${app.slug}_data`]]);
+  assert.deepEqual(asked, [
+    [`deplo-${app.slug}_data`, `deplo-${app.slug}.files`],
+  ]);
   assert.deepEqual(copies, [
     {
       serverId: "srv_3",
@@ -72,6 +74,24 @@ test("the App's page lists the copies its cluster servers set aside, with date a
   await assert.rejects(
     asTeamB(() => listAppSetAsideCopies(app.id)),
     /not found/i,
+  );
+});
+
+test("a copy of the App's Files folder is listed as its Files", async () => {
+  const { app } = await withCopy();
+  hosts.srv_3.extra!.setAsideCopies = async () => [
+    {
+      volumeName: `deplo-${app.slug}.files-aside-20261123T040506Z`,
+      of: `deplo-${app.slug}.files`,
+      atMs: Date.parse("2026-11-23T04:05:06Z"),
+      bytes: 12,
+    },
+  ];
+  const [copy] = await asAdmin(() => listAppSetAsideCopies(app.id));
+  assert.equal(copy?.of, "Files");
+  assert.equal(
+    copy?.volumeName,
+    `deplo-${app.slug}.files-aside-20261123T040506Z`,
   );
 });
 

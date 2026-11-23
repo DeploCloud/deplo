@@ -4,7 +4,11 @@ import { connectAgent } from "../../infra/agent-client/connect";
 import { getCurrentUser } from "../../auth/current-user";
 import { recordActivity } from "../activity";
 import { requireAppCapability } from "../node-access";
-import { appOwnVolumeNames } from "../project-backup-descriptor";
+import {
+  appHasFilesDir,
+  appOwnVolumeNames,
+} from "../project-backup-descriptor";
+import { filesAsideOf } from "../clusters/copy-aside";
 import { getServerById } from "../servers/roster";
 import { clusterMemberServerIds } from "../clusters/roster";
 import { getAppById } from "./listing";
@@ -27,6 +31,12 @@ export interface SetAsideCopyView {
   bytes: number;
 }
 
+/** The names an App's set-aside copies are copies of: its volumes, and its Files folder. */
+function asideNames(app: App): string[] {
+  const names = appOwnVolumeNames(app);
+  return appHasFilesDir(app) ? [...names, filesAsideOf(app.slug)] : names;
+}
+
 async function copiesOn(
   serverId: string,
   names: string[],
@@ -41,7 +51,7 @@ async function copiesOn(
         serverId,
         serverName: name,
         volumeName: c.volumeName,
-        of: c.of,
+        of: c.of.endsWith(".files") ? "Files" : c.of,
         at: new Date(c.atMs || 0).toISOString(),
         bytes: c.bytes,
       }));
@@ -60,7 +70,7 @@ export async function listAppSetAsideCopies(
 ): Promise<SetAsideCopyView[]> {
   const app = await getAppById(appId);
   if (!app) throw new Error("App not found");
-  const names = appOwnVolumeNames(app);
+  const names = asideNames(app);
   if (names.length === 0 || !app.clusterId) return [];
   const servers = await clusterMemberServerIds(app.clusterId);
   const all = (
@@ -76,7 +86,7 @@ export async function listAppSetAsideCopies(
 export async function removeSetAsideCopiesOfDeleted(
   app: App,
 ): Promise<string | null> {
-  const names = appOwnVolumeNames(app);
+  const names = asideNames(app);
   if (names.length === 0 || !app.clusterId) return null;
   const gone = new Map<string, number>();
   const silent: string[] = [];

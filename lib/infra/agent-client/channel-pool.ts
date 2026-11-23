@@ -6,6 +6,7 @@ import type { HelloResponse } from "../../agent/gen/agent";
 import { LINK_WAIT_MS } from "../agent-link/protocol";
 import {
   currentLink,
+  lastHeardAt,
   revokeAgentLink,
   waitForLink,
   type AgentLink,
@@ -79,7 +80,11 @@ async function linkFor(
     declaredDown.delete(serverId);
     return link;
   }
-  const wait = declaredDown.has(serverId) ? DOWN_LINK_WAIT_MS : LINK_WAIT_MS;
+  // Silent for longer than the wait itself, its link is not about to come back: every call waited it out in turn.
+  const heard = lastHeardAt(serverId);
+  const gone = heard !== null && Date.now() - heard > LINK_WAIT_MS;
+  const wait =
+    declaredDown.has(serverId) || gone ? DOWN_LINK_WAIT_MS : LINK_WAIT_MS;
   link = (await waitForLink(serverId, wait)) ?? undefined;
   if (link?.pinnedFingerprint === pinnedFingerprint) return link;
   throw new AgentOfflineError(serverId);

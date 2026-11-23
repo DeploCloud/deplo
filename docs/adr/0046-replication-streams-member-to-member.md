@@ -40,4 +40,11 @@ On eu, removing eu-4 moved fise to eu-1; the deploy started fise on eu-1 before 
 3. **A cluster App's data arrives before its stack starts** on the member it moves to (`moveClusterDataBeforeStart`, inside the deploy, after the build), so a new member never serves an empty copy; a move that rolls back is placed back at the leader on the old member.
 4. **Deleting an App removes its set-aside copies** on every member, under the delete's own confirmation, and Activity says how many and where; a member that does not answer keeps its copies, and the line says so.
 
-Out of scope: an App's Files folder is copied as before, never set aside.
+Out of scope: an App's Files folder is copied as before, never set aside (lifted below).
+
+## Deploy anyway, and the Files folder (23 Nov 2026)
+
+Decided by the owner after the c28 lab:
+
+1. **"Deploy anyway" sets the old copy aside** instead of deleting it, for a cluster App whose move is held: when the old member answers, its copy is set aside where the App runs (`setAsideHeldCopy`, the same copy as a newer copy kept) and the old stack goes after; when it does not, Deplo deletes nothing there and the member sets its copy aside itself once back, as any returning member. Activity says which, when it is done. Outside a cluster a held move still removes the old copy, as a finished move does.
+2. **An App's Files folder is set aside with its Volumes** wherever a copy is set aside: the agent copies it to a dated copy named as a volume (`deplo-<slug>.files-aside-<UTC time>`, agent Hello `volumes.set-aside-files`), so listing, removing, deleting with the App and copying it to another member work unchanged. The Storage page lists it as Files, and a return says one size per App.

@@ -48,6 +48,7 @@ export default async function AppOverview(
         error={project.dataCopyError}
         canAccept={canDeploy}
         move={Boolean(project.migrateFromServerId)}
+        setAside={Boolean(project.migrateFromServerId && project.clusterId)}
       />
 
       <AppWaitingNotice

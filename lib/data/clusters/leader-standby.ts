@@ -86,14 +86,18 @@ export async function superviseClusterLeader(
   }
   // Deplo is restarting it for an update: its leases are extended, and nobody needs to stand in.
   if (updatingClusterHost(cluster.leaderServerId)) return null;
-  const reach = await clusterLeaderReach(cluster.leaderServerId);
+  // The heir is asked while the leader is: a leader that went silent waits out its link first.
+  const [reach, leading] = await Promise.all([
+    clusterLeaderReach(cluster.leaderServerId),
+    leadingHeir(cluster),
+  ]);
   const answers = reach === "answers";
   const name =
     (await getServerById(cluster.leaderServerId))?.name ??
     "The leader's server";
   // A member next in line may lead on its own already: Deplo adopts it, rather than standing in or handing back.
   if (!answers || cluster.leaderTakeoverAt || !(await stillLeads(cluster))) {
-    const heir = await leadingHeir(cluster);
+    const heir = leading;
     if (heir && heir.serverId !== cluster.leaderServerId) {
       await adopt(cluster, heir, name);
       return "succeeded";
@@ -193,6 +197,12 @@ async function adopt(
   misses.delete(cluster.id);
   const named = namedHeir(cluster.id);
   if (named) forgetHeir(cluster.id, named.serverId === heir.serverId);
+  // Said when it is adopted: what follows reaches every member, and a silent one waits out its link.
+  const heirName = (await getServerById(heir.serverId))?.name ?? "A server";
+  await say(
+    cluster,
+    `${name} stopped answering its servers, so ${heirName}, next in line, leads cluster ${cluster.name}`,
+  );
   forgetLeaderRoster(cluster.id);
   const led = (await getClusterById(cluster.id))!;
   await pushLeaderRoster(led).catch(() => false);
@@ -202,11 +212,6 @@ async function adopt(
   for (const id of new Set([cluster.leaderServerId, own?.id]))
     if (id && id !== heir.serverId)
       await tellLeaderReplaced(id, cluster.id, heir.epoch).catch(() => {});
-  const heirName = (await getServerById(heir.serverId))?.name ?? "A server";
-  await say(
-    cluster,
-    `${name} stopped answering its servers, so ${heirName}, next in line, leads cluster ${cluster.name}`,
-  );
   await reconcileClusterBundles(cluster.id).catch(() => {});
 }
 

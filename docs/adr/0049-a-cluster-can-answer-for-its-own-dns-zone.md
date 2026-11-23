@@ -397,3 +397,7 @@ Released this round: agent v0.5.3-canary.38 and panel v0.8.2-canary.75 (both abo
 1. **A new member never answers with only itself.** eu-4, just installed, first heard every other server only as just back, so it held them all out and named only itself for about 10 s (07:21:15 to 07:21:25). A name server that hears the others only as held answers nothing, as at its start (agent `DecideHolding`), like any returning one.
 2. **"Too few servers answer" only when the leader does not lead**: the sentence, and the card's, also ask the leader that leads now; one that says it leads has a majority, whatever states Deplo stored.
 3. **Deplo's machine standing in says what it hears**: "Deplo's machine, standing in as the leader of cluster eu, hears eu-3: eu-1 is off, or cut off from it", never that the others do not answer; the stored leader's events replayed at a hand-back keep their own words.
+
+## fise's backups at 08:15 and 08:30 (23 Nov 2026)
+
+Both ran while the lab had cut Deplo off from every member of eu (08:11 to 08:18 and 08:25 to 08:30): a backup is taken through the App's server agent, so none could be, and the next ones (08:45 on) were taken. Nothing was lost; the fault was the reason given, "This server is offline", while the servers ran on. A run that fails while Deplo reaches no server of the App's cluster now says `Deplo cannot reach cluster eu since 08:22 UTC, so it could not take this backup: its servers keep running without Deplo` (`outOfReachFailure`).

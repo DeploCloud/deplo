@@ -5,6 +5,7 @@ import { inArray } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { lastHeardAt, serverAnswers } from "../../infra/agent-link/registry";
+import { clusterOfServer } from "./members";
 import { clusterMemberServerIds } from "./roster";
 
 // Deplo says what it does not know: while none of a cluster's servers answers it, they decide on their own.
@@ -38,3 +39,15 @@ export function sinceClock(iso: string, now = Date.now()): string {
 /** The one sentence pages and Activity say while Deplo cannot reach a cluster. */
 export const outOfReachSentence = (since: string, name?: string) =>
   `Deplo cannot reach ${name ? `cluster ${name}` : "this cluster"} since ${sinceClock(since)}: its servers decide on their own`;
+
+/** Why a call to a cluster's server got no answer, when the truth is that Deplo reaches none of that cluster. */
+export async function outOfReachFailure(
+  serverId: string,
+  what: string,
+): Promise<string | null> {
+  const cluster = serverId ? await clusterOfServer(serverId) : null;
+  const since = cluster ? await clusterOutOfReach(cluster.id) : null;
+  return cluster && since
+    ? `Deplo cannot reach cluster ${cluster.name} since ${sinceClock(since)}, so it could not ${what}: its servers keep running without Deplo`
+    : null;
+}

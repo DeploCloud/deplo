@@ -339,7 +339,7 @@ async function keepNewer(
   let copies: SetAsideCopy[];
   try {
     if (ctx.hasStack) await stopStackOn(from, app.slug);
-    copies = await setAsideOnto(from, app.serverId, ctx.names);
+    copies = await setAsideOnto(from, app.serverId, ctx.names, app.slug);
   } catch (e) {
     emit(
       "warn",
@@ -367,6 +367,44 @@ async function keepNewer(
     app.id,
   );
   return "kept";
+}
+
+/**
+ * "Deploy anyway" on a cluster App whose move is held: the old member's copy is set aside where the App runs, never
+ * deleted; one that does not answer sets it aside itself once it is back. Returns the sentence that says which.
+ */
+export async function setAsideHeldCopy(app: App): Promise<string> {
+  const from = app.migrateFromServerId!;
+  const [fromName, toName] = await Promise.all([
+    serverName(from),
+    serverName(app.serverId),
+  ]);
+  try {
+    let names: string[];
+    let hasStack: boolean;
+    const old = await connectAgent(from);
+    try {
+      const stack = await old.readStack(app.slug);
+      hasStack = stack.exists;
+      names = await presentVolumes(
+        old,
+        appMoveVolumeNames(app, stack.exists ? stack.yaml : ""),
+      );
+      assertSafeVolumeNames(app.slug, names);
+    } finally {
+      old.close();
+    }
+    if (hasStack) await stopStackOn(from, app.slug);
+    const copies = await setAsideOnto(from, app.serverId, names, app.slug);
+    await teardownOrQueue(strayEntry(app, from, names)).catch(() => {});
+    return copies.length > 0
+      ? `What ${fromName} held of ${app.name} was set aside on ${toName} (${formatBytes(sum(copies))}).`
+      : `${fromName} held none of ${app.name}'s data.`;
+  } catch (e) {
+    return isUnreachable(e)
+      ? `${fromName} does not answer: it sets what it holds of ${app.name} aside itself once it is back.`
+      : `What ${fromName} holds of ${app.name} could not be set aside (${errMsg(e)}), so it stays there.`;
+  }
 }
 
 function strayEntry(app: App, serverId: string, reclaim?: string[]) {

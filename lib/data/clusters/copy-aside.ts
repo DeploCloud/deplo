@@ -5,7 +5,10 @@ import type {
   AgentConnection,
   SetAsideCopy,
 } from "../../infra/agent-client/connection";
-import { NEWEST_WINS_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import {
+  NEWEST_WINS_CAPABILITY,
+  SET_ASIDE_FILES_CAPABILITY,
+} from "../../infra/agent-client/hello-capabilities";
 import { copyVolumeBetween } from "../volume-migration";
 
 // A moved App's two copies: the one that ran last wins, and the other is set aside where the App runs, never written over.
@@ -41,6 +44,9 @@ async function newestWins(agent: AgentConnection): Promise<boolean> {
   return !!(await agent.hello()).capabilities?.includes(NEWEST_WINS_CAPABILITY);
 }
 
+/** What an App's Files folder is set aside as on its servers, listed and removed like a volume's copy. */
+export const filesAsideOf = (slug: string) => `deplo-${slug}.files`;
+
 const stamp = (at: Date) =>
   at
     .toISOString()
@@ -62,11 +68,15 @@ export async function setAsideOn(
   }
 }
 
-/** Copies `from`'s volumes into new set-aside copies on `to`, the server the App stays on. Throws when it cannot. */
+/**
+ * Copies `from`'s volumes, and its Files folder of `slug`, into new set-aside copies on `to`, the server the App stays
+ * on. Throws when it cannot.
+ */
 export async function setAsideOnto(
   from: string,
   to: string,
   names: string[],
+  slug?: string,
 ): Promise<SetAsideCopy[]> {
   const source = await connectAgent(from);
   try {
@@ -95,6 +105,22 @@ export async function setAsideOnto(
             bytes: res.bytes,
           });
       }
+      // The Files folder is set aside on `from` first, then copied like a volume, and the copy there goes.
+      const caps = (await source.hello()).capabilities ?? [];
+      if (slug && caps.includes(SET_ASIDE_FILES_CAPABILITY))
+        for (const f of await source.setAside(slug, [])) {
+          const res = await copyVolumeBetween(
+            source,
+            dest,
+            f.volumeName,
+            f.volumeName,
+            undefined,
+            undefined,
+            f.of,
+          );
+          await source.removeSetAside(f.volumeName).catch(() => null);
+          if (!res.empty) out.push({ ...f, bytes: res.bytes });
+        }
       return out;
     } finally {
       dest.close();

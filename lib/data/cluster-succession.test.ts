@@ -1,7 +1,8 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
+import { activities } from "../db/schema/control-plane/activity";
 import type { TestDb } from "../db/test-harness";
 import {
   clusterNetworkLinks,
@@ -10,6 +11,7 @@ import {
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { nowIso } from "../ids";
 import { __forgetMemberProbes } from "../infra/agent-client/cluster-host";
+import { AgentUnreachableError } from "../infra/agent-client/errors";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { CLUSTER_SUCCESSION_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { SERVER_1 } from "./app-graph-test-helpers";
@@ -176,6 +178,41 @@ test("no line while one member's agent cannot pre-vote", async () => {
   );
   __forgetMemberProbes();
   assert.deepEqual(await clusterHeirs((await getClusterById(cluster.id))!), []);
+});
+
+test("Deplo adopts a leading heir without waiting out each silent server in turn", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [heir, next] = await clusterHeirs(led);
+  const old = led.leaderServerId!;
+  // Powered off: each call waits out its link before it fails, as a server's does for 10 s.
+  const silent = {
+    hello: async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      throw new AgentUnreachableError("the server is offline");
+    },
+  };
+  hosts[old].extra = silent;
+  hosts[next].extra = silent;
+  hosts[heir].status = {
+    installed: true,
+    running: true,
+    version: "0.2.0",
+    relay: false,
+    member: true,
+    relayLinks: 0,
+  };
+  leading(hosts[heir], cluster.id, led.leaderEpoch + 1);
+  const started = Date.now();
+  assert.equal(await superviseClusterLeader(cluster.id), "succeeded");
+  assert.equal((await stored(cluster.id)).server, heir);
+  const [line] = await db
+    .select({ at: activities.createdAt })
+    .from(activities)
+    .where(like(activities.message, `%so ${heir}, next in line, leads%`));
+  const took = Date.parse(String(line!.at)) - started;
+  assert.ok(took < 700, `adopted and said after ${took} ms`);
 });
 
 test("an heir that took the cluster over without Deplo is adopted at its own epoch", async () => {
