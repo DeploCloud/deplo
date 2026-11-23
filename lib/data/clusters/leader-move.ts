@@ -233,14 +233,19 @@ export async function moveClusterLeader(
  * member that reaches the others directly and has the most room. Never throws.
  */
 export async function placeClusterLeaders(): Promise<void> {
-  for (const { cluster, to, toName } of await leadersToMove()) {
+  for (const { cluster, to, toName, why } of await leadersToMove()) {
     try {
       const target = await getServerById(to);
       if (!target) continue;
+      const from = cluster.leaderServerId
+        ? ((await getServerById(cluster.leaderServerId))?.name ?? "its server")
+        : "";
       await leadOn(cluster, target, undefined);
       await recordClusterActivity(
         cluster.id,
-        `The leader of cluster ${cluster.name} now runs on ${toName}, one of its own servers, so the cluster keeps leading itself while Deplo's machine is down`,
+        why === "relayed"
+          ? `The leader of cluster ${cluster.name} now runs on ${toName}: ${from} reaches some of its servers only through Deplo's relay`
+          : `The leader of cluster ${cluster.name} now runs on ${toName}, one of its own servers, so the cluster keeps leading itself while Deplo's machine is down`,
       );
     } catch (e) {
       warn(cluster.id, e);

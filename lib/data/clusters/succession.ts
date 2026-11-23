@@ -195,24 +195,44 @@ export async function keepHeirsReady(cluster: Cluster): Promise<boolean> {
 }
 
 /** The clusters led from Deplo's machine from outside them, with the member that should lead instead. */
-export async function leadersToMove(): Promise<
-  { cluster: Cluster; to: string; toName: string }[]
-> {
+export async function leadersToMove(): Promise<LeaderToMove[]> {
   if (await instanceFrozen()) return [];
   const rows = await getDb()
     .select({ id: clustersTable.id })
     .from(clustersTable);
-  const out: { cluster: Cluster; to: string; toName: string }[] = [];
+  const out: LeaderToMove[] = [];
   for (const { id } of rows) {
     const cluster = await getClusterById(id);
     // Deplo's machine standing in is the supervisor's to end, not a move.
-    if (!cluster || cluster.leaderTakeoverAt || !(await leaderOutside(cluster)))
-      continue;
+    if (!cluster || cluster.leaderTakeoverAt) continue;
+    const why = (await leaderOutside(cluster))
+      ? "outside"
+      : (await leaderRelayed(cluster))
+        ? "relayed"
+        : null;
+    if (!why) continue;
     const to = await leaderHome(id).catch(() => null);
     const server = to ? await getServerById(to) : null;
     // Its agent first: the one beside a leader starts and stops it, and an update would restart it again at once.
     if (server && !(await agentBehind(server.id).catch(() => true)))
-      out.push({ cluster, to: server.id, toName: server.name });
+      out.push({ cluster, to: server.id, toName: server.name, why });
   }
   return out;
+}
+
+export interface LeaderToMove {
+  cluster: Cluster;
+  to: string;
+  toName: string;
+  /** On Deplo's machine from outside the cluster, or on a member that left the direct majority. */
+  why: "outside" | "relayed";
+}
+
+/** The leader's member reaches some others only through the relay while two or more members reach each other directly. */
+async function leaderRelayed(cluster: Cluster): Promise<boolean> {
+  const id = cluster.leaderServerId;
+  if (!id || !(await clusterMemberServerIds(cluster.id)).includes(id))
+    return false;
+  const candidates = await leaderCandidates(cluster.id);
+  return candidates.length >= 2 && !candidates.includes(id);
 }
