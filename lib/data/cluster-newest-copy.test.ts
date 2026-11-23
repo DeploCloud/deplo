@@ -212,8 +212,12 @@ async function said(re: RegExp): Promise<string> {
 
 test('"Deploy anyway" on a held move sets the old copy and its Files aside where the App runs, never deletes them', async () => {
   const old = await heldMove();
+  // On disk a copy takes more than the compressed stream that brought it.
+  const ops = hosts.get("srv_3")!.extra as Partial<AgentConnection>;
+  ops.volumeUsage = async (names: string[]) =>
+    new Map(names.map((n) => [n, 41_041_920] as const));
   await asAdmin(() => acceptDataCopyLoss({ kind: "app", id: "fise" }));
-  await said(/What srv_2 held of fise was set aside on srv_3/);
+  await said(/What srv_2 held of fise was set aside on srv_3 \(78\.3 MiB\)/);
 
   const eu1 = disks.get("srv_3")!;
   assert.deepEqual(eu1.volumes.get(`${VOL}-aside-${aside(eu1)}`), OLD);

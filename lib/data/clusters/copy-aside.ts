@@ -121,7 +121,14 @@ export async function setAsideOnto(
           await source.removeSetAside(f.volumeName).catch(() => null);
           if (!res.empty) out.push({ ...f, bytes: res.bytes });
         }
-      return out;
+      // What each copy takes on disk, as the App's page lists it; a stream's bytes are compressed.
+      const usage = await dest
+        .volumeUsage(out.map((c) => c.volumeName))
+        .catch(() => null);
+      return out.map((c) => ({
+        ...c,
+        bytes: usage?.get(c.volumeName) ?? c.bytes,
+      }));
     } finally {
       dest.close();
     }
