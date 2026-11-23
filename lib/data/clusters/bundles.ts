@@ -34,7 +34,8 @@ import {
 import { leaderHostOf } from "./host";
 import { isBuiltImage } from "./images";
 import { clusterOutOfReach } from "./reach";
-import { clusterMemberServerIds, getClusterById } from "./roster";
+import { clusterHeirs, silentMembers } from "./succession";
+import { getClusterById } from "./roster";
 import { messageOf } from "../../utils";
 
 const ACTOR = "Deplo";
@@ -177,14 +178,17 @@ async function refreshKeyOf(
 }
 
 /**
- * Keeps the key of each leader that may lead: its own, every member's that runs one and Deplo's machine's. A leader
- * that does not answer keeps the key it had; the key of a server that left the cluster is retired.
+ * Keeps the key of each leader that may lead: its own, the line's and Deplo's machine's. A leader that does not
+ * answer keeps the key it had; the key of a server the leader left is retired.
  */
 export async function refreshLeaderKeys(cluster: Cluster): Promise<void> {
-  // The line holds the bundles too: an heir that takes over fails over without Deplo (ADR-0045). Any member may come
-  // next in line, so one that was off keeps its key (eu, 23 Nov 2026: eu-3 led with a stale bundle and memos waited).
-  const members = await clusterMemberServerIds(cluster.id).catch(() => []);
-  const wanted = [...new Set([cluster.leaderServerId, ...members, null])];
+  // The line holds the bundles too: an heir that takes over fails over without Deplo (ADR-0045). A member that is off
+  // keeps its key, or it leads later with a stale bundle (eu, 23 Nov 2026: memos had no restore there and waited).
+  const heirs = await clusterHeirs(cluster).catch(() => []);
+  const silent = await silentMembers(cluster.id);
+  const wanted = [
+    ...new Set([cluster.leaderServerId, ...heirs, ...silent, null]),
+  ];
   for (const serverId of wanted)
     await refreshKeyOf(cluster, serverId).catch(() => {});
   for (const k of await keyRows(cluster.id))

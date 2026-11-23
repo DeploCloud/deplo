@@ -226,10 +226,8 @@ test("joining records Activity and pushes the roster with the new member", async
   );
   const roster = relay.calls.filter((c) => c.method === "relay.roster").at(-1)!;
   const body = JSON.parse(new TextDecoder().decode(roster.payload));
-  // Every member's leader is let in: any member may come next in line.
   assert.deepEqual(body.parties, [
     { fingerprint: FP1, role: "leader" },
-    { fingerprint: FP2, role: "leader" },
     { fingerprint: FP1, role: "member" },
     { fingerprint: FP2, role: "member" },
   ]);

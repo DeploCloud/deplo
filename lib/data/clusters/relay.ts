@@ -34,6 +34,7 @@ import { loadPanelTunnel } from "../instance-settings/panel-tunnel-store";
 import type { Server } from "../../types/server";
 import { getServerById } from "../servers/roster";
 import { leaderHostOf } from "./host";
+import { clusterHeirs, silentMembers } from "./succession";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import { nextFingerprints } from "./rotations";
 import { messageOf } from "../../utils";
@@ -89,10 +90,11 @@ export async function clusterRoster(
       const host = await leaderHostOf(id);
       if (host) leaderIds.add(host.id);
     }
-    // Any member may come next in line, so every member takes its leader's orders: pins pushed while a server was
-    // off never leave the next heir out (eu, 23 Nov 2026: two heirs, each unknown to the other, never led).
+    // The members next in line may lead too, so members take their orders; one that is silent stays named, or a push
+    // while it was off leaves it unknown to the others (eu, 23 Nov 2026: two heirs never led).
     for (const id of [
-      ...(await clusterMemberServerIds(clusterId)),
+      ...(await clusterHeirs(cluster).catch(() => [])),
+      ...(await silentMembers(clusterId)),
       ...alsoLeaders,
     ])
       leaderIds.add(id);

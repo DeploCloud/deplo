@@ -88,7 +88,6 @@ test("Deplo's own server joins like any server: only its Apps become cluster wor
     cluster: cluster.id,
     parties: [
       { fingerprint: FP1, role: "leader" },
-      { fingerprint: FP2, role: "leader" },
       { fingerprint: FP1, role: "member" },
       { fingerprint: FP2, role: "member" },
     ],
@@ -279,7 +278,6 @@ test("removing Deplo's own server: its agent leaves and the leader keeps running
     cluster: cluster.id,
     parties: [
       { fingerprint: FP1, role: "leader" },
-      { fingerprint: FP2, role: "leader" },
       { fingerprint: FP1, role: "member" },
       { fingerprint: FP2, role: "member" },
     ],
