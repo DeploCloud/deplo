@@ -287,6 +287,21 @@ Decided by the owner after Deplo's machine was cut off for an hour (above): the 
 - **eu-2 named eu-3 8 s after its power-on, eu-1 18 s**: a bug. A name server holds a server heard again after a gap for the removal time (10 s), but only one it had heard before; eu-2, itself back a minute earlier, had never heard eu-3, so it held nothing. A server first heard after this one listened for the removal time is held the same way now.
 - **"Try again" for fise three times in 40 s during a cut**: not the zone. This server's resolver is Deplo's DNS cache (CoreDNS on 10.201.0.1, forwarding to 1.1.1.1 and 8.8.8.8). A public resolver that asks the silent name server first waits out its timeout; when that outlasts CoreDNS's forward timeout, CoreDNS answers SERVFAIL and keeps it for 5 s (its default for a failure), which glibc reports as "try again". The zone's short TTL means a cache miss every few seconds during a cut, so each miss can land on the silent name server again.
 
+## What cluster eu showed with the leader inside (23 Nov 2026, panel v0.8.2-canary.72 and .73)
+
+A power cut is Proxmox's `stop`; a cut is a named nftables table on the member that removes itself. The prober asked each name server every second and fetched fise and memos over IPv6.
+
+- **The rollouts** (.72, then .73 with agent v0.5.3-canary.37 and leader v0.1.0-canary.13): no SERVFAIL, never two name servers silent at once, each silent 6 s. eu's leader moved from Deplo's machine to eu-3 with no App stopping. During .72's agent rollout fise had 7 s of timeouts through eu-3 while that server's agent restarted (its forwarders), memos 1 s; during .73's, fise none and memos one reset.
+- **A built image**: `distribution/distribution-library-image` built from its Dockerfile kept `/var/lib/registry` as the Volume `deplo-lab-reg-registry` in its first deployment, which started the App again on it 2 s after the first start.
+- **A cut between the leader (eu-3) and its heir (eu-1)**, the heir's relay cut too: the heir asked to lead after 10 s and no quorum took its epoch; the leader stayed at its epoch and named eu-2 heir; back, eu-1 came last in the line. fise, on the cut-off side, moved in 45 s; eu-1 back saved a backup and set aside a dated copy (46.5 MiB), Activity said so and fise's Storage page listed it.
+- **The heir (eu-2) cut off alone for 60 s**: it asked, nothing took its epoch, no second leader; eu-1 became heir; memos moved off it. Its private network took 40 s after the cut to carry a renewal again.
+- **Relay levels**: one server relayed: the icon on that server only; every pair relayed: "Not OK for production" stored and said in Activity (and ended 1 minute after the blocks went); the leader on a server that came to need the relay moved to a direct one 2 minutes 46 s later, with no App stopping.
+- **Deplo unreachable for 10 minutes** (every member dropping this host's and the panel's Cloudflare addresses): every lease was renewed by eu-1 throughout and memos never stopped; eu-3, powered off at 1 minute 43 s, had lab-pg on eu-1 after 34 s and fise on eu-2 after about 30 s, without Deplo. Back, Deplo handed the cluster back to eu-1 at a new epoch.
+- **The leader's server powered off, first on .72**: both heirs asked (10 and 15 s) and Deplo's machine stood in after 69 s, but none led: the leader beside an heir reached its own server only through Deplo's relay, and a dead server took the whole send timeout in each pass, so a pre-vote was too old when its probe was due. fise, memos and lab-pg were down until eu-3 was back; then two heirs passed the cluster back and forth (epochs 4 to 34 in two minutes) until agent .36 was installed by hand. Fixed: agent DeploCloud/deplo-agent#94 and #95, leader DeploCloud/deplo-cluster#16.
+- **The same on .73**: eu-1 powered off one minute after a leader update had announced an extension: eu-2 asked after 11 s and led after 16 s; Deplo adopted it 40 s after the cut; memos and lab-pg moved after 5 minutes 16 s, the announced extension honoured as decided. eu-2 powered off with no extension announced: eu-3 asked after 9 s and led after 14 s, and fise answered again from eu-1 49 s after the cut.
+- **Writes at a cut**: a row into lab-pg every 100 ms, its server powered off: 864 rows acknowledged, 863 on the server it moved to; back, its dated copy held all 864. The copies were then removed from lab-pg's page, and Activity said so.
+- **Found, not fixed**: moving an App between two servers of a cluster deploys before the leader's placement follows, so the new copy is stopped for about 10 s and the deploy reports a failure, then runs; after Deplo's own outage the hand-back reads the leader's events from their head, so a server's return during the outage (and its set-aside copies) is not said in Activity, though the copies are listed; while Deplo is cut off it writes "Not copied yet" and "cannot fail over yet" lines it cannot know; the first renewal after a server of the line was cut off alone took 40 s once the cut ended.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
@@ -302,7 +317,7 @@ Decided by the owner after Deplo's machine was cut off for an hour (above): the 
 
 ## Before a stable release
 
-**Now proven on cluster eu** (22 and 23 Nov 2026): a real Cloudflare zone, the delegation from it and its glue (fise); a wildcard from Let's Encrypt checked over DNS through the zone; one server off and two off, as decided above; load balancing with no Cloudflare in front; proxy restarts one member at a time; a real power cut; certificates on every server and a move whose first answer has its certificate; servers lost one after another; a caught clone's network key replaced; an App whose data an image volume holds, replicated, fenced and moved with it (fise); what fencing stopped coming back by itself; a returning name server naming only what it hears; the cluster without its leader for an hour.
+**Now proven on cluster eu** (22 and 23 Nov 2026): the leader on a member and its heir taking over without Deplo, a cut between leader and heir and an heir cut off alone changing nothing, failover with Deplo unreachable, both relay levels, a returning server's set-aside copy holding the write its copy had not sent, a built image's Volume from its first deploy; a real Cloudflare zone, the delegation from it and its glue (fise); a wildcard from Let's Encrypt checked over DNS through the zone; one server off and two off, as decided above; load balancing with no Cloudflare in front; proxy restarts one member at a time; a real power cut; certificates on every server and a move whose first answer has its certificate; servers lost one after another; a caught clone's network key replaced; an App whose data an image volume holds, replicated, fenced and moved with it (fise); what fencing stopped coming back by itself; a returning name server naming only what it hears; the cluster without its leader for an hour.
 
 **Still not proven**:
 
@@ -310,7 +325,9 @@ Decided by the owner after Deplo's machine was cut off for an hour (above): the 
 - **Nearest first through a real public resolver** that sends EDNS Client Subnet, and a visitor placed by its resolver's address: eu-1..3 sit in one place.
 - **A server back while Deplo is down**, a real power cut (a freeze stands in for it), servers in different places or networks, more than three servers, and IPv4: eu-1..3 are reached over IPv6 only.
 - **The three fixes found in .71's live tests**, panel #311, agent DeploCloud/deplo-agent#92 and deplo-cluster#13, which wait for the next release.
-- **The leader on a member and its line of succession**, the two relay levels, set-aside copies and the volumes of built and private images (23 Nov 2026): proven only by the live tests of the release that carries them.
+- **A private image's volumes** read with a registry login: CI only (`unnamed-volumes.test.ts`), no private registry on eu.
+- **The Add dialog's "Not OK for production"** was checked in the stored warning it renders, not on screen.
+- **The line of succession with more than three servers**, a second heir taking over after the first one fails too, and an heir on another network than the leader: eu-1..3 are three servers on one LAN.
 
 ## Considered options
 
