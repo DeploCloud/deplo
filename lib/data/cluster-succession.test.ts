@@ -266,3 +266,29 @@ test("no leader moves onto a member whose agent is behind the pin", async () => 
   await placeClusterLeaders();
   assert.equal((await stored(cluster.id)).server, null);
 });
+
+test("a leader whose server leaves the direct majority moves to one inside it", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const on = led.leaderServerId!;
+  // Its server now reaches the other two only through Deplo's relay.
+  await paths(cluster.id, ["srv_2", "srv_3", "srv_4"], (a, b) =>
+    a === on || b === on ? "relay" : "direct",
+  );
+  await placeClusterLeaders();
+  const now = await stored(cluster.id);
+  assert.notEqual(now.server, on);
+  assert.ok(now.epoch > led.leaderEpoch);
+  assert.match(
+    (await messages()).join("\n"),
+    new RegExp(
+      `now runs on ${now.server}: ${on} reaches some of its servers only through Deplo's relay`,
+    ),
+  );
+  // Every pair relayed: no direct majority to move into, so it stays.
+  await paths(cluster.id, ["srv_2", "srv_3", "srv_4"], () => "relay");
+  const before = (await stored(cluster.id)).epoch;
+  await placeClusterLeaders();
+  assert.equal((await stored(cluster.id)).epoch, before);
+});
