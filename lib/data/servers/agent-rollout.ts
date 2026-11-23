@@ -5,6 +5,11 @@ import { count, eq, inArray, sql } from "drizzle-orm";
 import { resolveAgentRelease } from "../../agent/release";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import {
+  clusterDnsZones,
+  clusterMembers,
+  clusters as clustersTable,
+} from "../../db/schema/control-plane/clusters";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { instanceSettings } from "../../db/schema/control-plane/instance";
 import { isDeploHostServer } from "../../deploy/domains";
@@ -45,7 +50,27 @@ import { instanceFrozen } from "../deplo-move/freeze";
 
 const TICK_MS = 60_000;
 const FIRST_RUN_MS = 20_000;
-export const rolloutTiming = { confirmTries: 20, confirmDelayMs: 1500 };
+export const rolloutTiming = {
+  confirmTries: 20,
+  confirmDelayMs: 1500,
+  nameServerMarginMs: 5000,
+  wait: (ms: number) => sleep(ms),
+};
+
+// A name server just updated stays silent until it hears its cluster (ADR-0049): the next waits it out.
+async function nameServerSettleMs(serverId: string): Promise<number> {
+  const rows = await getDb()
+    .select({ drop: clustersTable.dnsDropAfter })
+    .from(clusterMembers)
+    .innerJoin(clustersTable, eq(clustersTable.id, clusterMembers.clusterId))
+    .innerJoin(clusterDnsZones, eq(clusterDnsZones.clusterId, clustersTable.id))
+    .where(eq(clusterMembers.serverId, serverId));
+  if (rows.length === 0) return 0;
+  return (
+    Math.max(...rows.map((r) => r.drop)) * 1000 +
+    rolloutTiming.nameServerMarginMs
+  );
+}
 
 export interface FleetAgent {
   id: string;
@@ -324,6 +349,8 @@ export async function attemptAgentUpdate(
       `Updated the server agent on ${server.name} to v${version}`,
       actor,
     );
+    const settle = await nameServerSettleMs(server.id);
+    if (settle > 0) await rolloutTiming.wait(settle);
   } catch (e) {
     await fail("error", errorText(e)).catch(() => {});
   }

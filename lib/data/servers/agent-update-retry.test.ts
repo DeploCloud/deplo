@@ -7,6 +7,11 @@ import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import { serverAgentUpdates } from "../../db/schema/control-plane/servers";
+import {
+  clusterDnsZones,
+  clusterMembers,
+  clusters,
+} from "../../db/schema/control-plane/clusters";
 import { runWithIdentity } from "../../auth/request-context";
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
@@ -37,6 +42,7 @@ interface FakeAgent {
 }
 const agents = new Map<string, FakeAgent>();
 const order: string[] = [];
+const waits: number[] = [];
 
 function fakeConnector(id: string): Promise<AgentConnection> {
   const a = agents.get(id)!;
@@ -98,6 +104,7 @@ before(async () => {
   process.env.DEPLO_SERVER_IP = "192.0.2.250";
   rolloutTiming.confirmTries = 2;
   rolloutTiming.confirmDelayMs = 0;
+  rolloutTiming.wait = async (ms) => void waits.push(ms);
   (globalThis as Record<symbol, unknown>)[
     Symbol.for("deplo.agent.release.cache")
   ] = {
@@ -119,11 +126,12 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(
-    `truncate table servers, activities, users, teams restart identity cascade;`,
+    `truncate table servers, activities, users, teams, clusters restart identity cascade;`,
   );
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A }] });
   agents.clear();
   order.length = 0;
+  waits.length = 0;
   __setAgentConnectorForTest(fakeConnector);
 });
 
@@ -230,4 +238,32 @@ test("the button is refused for a server that hasn't connected to Deplo yet, and
     /can't reach Deplo/,
   );
   assert.equal(agents.get("srv_blocked")!.updates, 0);
+});
+
+test("a name server is given its silent time before the next server updates", async () => {
+  await server("srv_ns", BEHIND);
+  await server("srv_alone", BEHIND);
+  const at = new Date().toISOString();
+  await db
+    .insert(clusters)
+    .values({ id: "clu_1", name: "eu", createdAt: at, dnsDropAfter: 10 });
+  await db
+    .insert(clusterMembers)
+    .values({ serverId: "srv_ns", clusterId: "clu_1", joinedAt: at });
+  await db
+    .insert(clusterDnsZones)
+    .values({
+      id: "czn_1",
+      clusterId: "clu_1",
+      name: "go.example.com",
+      createdAt: at,
+    });
+  await runAgentRollout();
+  assert.equal(agents.get("srv_ns")!.version, AGENT_VERSION);
+  assert.equal(agents.get("srv_alone")!.version, AGENT_VERSION);
+  assert.deepEqual(
+    waits,
+    [15_000],
+    "the removal time and a margin, after the name server only",
+  );
 });
