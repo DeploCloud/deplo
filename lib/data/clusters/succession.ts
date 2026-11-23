@@ -153,12 +153,29 @@ async function heirView(
 export async function leadingHeir(
   cluster: Cluster,
 ): Promise<LeadingHeir | null> {
-  for (const serverId of await clusterHeirs(cluster).catch(() => [])) {
-    const v = await heirView(serverId, cluster.id);
+  for (const [serverId, v] of await lineViews(cluster))
     if (v?.leads && v.epoch > cluster.leaderEpoch)
       return { serverId, epoch: v.epoch, head: v.head };
-  }
   return null;
+}
+
+/**
+ * Every member but the stored leader's, in join order, with what its leader says, while every agent pre-votes. Not the
+ * candidates: the paths of the servers that stopped read as gone exactly when the line is needed. Never throws.
+ */
+async function lineViews(
+  cluster: Cluster,
+): Promise<[string, HeirView | null | undefined][]> {
+  try {
+    const ids = await clusterMemberServerIds(cluster.id);
+    for (const id of ids) if (!(await memberSucceeds(id))) return [];
+    const leader = (await leaderHostOf(cluster.leaderServerId))?.id;
+    const line = ids.filter((id) => id !== leader);
+    const views = await Promise.all(line.map((id) => heirView(id, cluster.id)));
+    return line.map((id, i) => [id, views[i]]);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -169,8 +186,7 @@ export async function lineReach(
   cluster: Cluster,
 ): Promise<{ answers: boolean; trying: LeadingHeir | null }> {
   let answers = false;
-  for (const serverId of await clusterHeirs(cluster).catch(() => [])) {
-    const v = await heirView(serverId, cluster.id);
+  for (const [serverId, v] of await lineViews(cluster)) {
     if (v === undefined) continue;
     answers = true;
     if (v && v.succeed && !v.leads && v.epoch > cluster.leaderEpoch)

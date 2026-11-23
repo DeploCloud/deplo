@@ -282,6 +282,36 @@ const beatsTo = (h: FakeClusterHost) =>
       (c) => (JSON.parse(dec.decode(c.payload)) as { epochs: object }).epochs,
     );
 
+test("the paths of the servers that stopped never take the line away from Deplo", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  const old = led.leaderServerId!;
+  let now = 1_000_000;
+  __setLeaderBeatClockForTest(() => now);
+  try {
+    hosts[old].unreachable = true;
+    hosts[first].unreachable = true;
+    // What the one left reports once the others stopped: no direct pair is left (eu, 23 Nov 2026).
+    await paths(cluster.id, [old, first, second], (a, b) =>
+      [a, b].includes(old) || [a, b].includes(first) ? "relay" : "direct",
+    );
+    hosts[second].status = runs;
+    trying(hosts[second], cluster.id, led.leaderEpoch + 2);
+    now += TAKEOVER_AFTER_MS;
+    for (let i = 0; i < 3; i++)
+      assert.equal(await superviseClusterLeader(cluster.id), null);
+    assert.equal((await stored(cluster.id)).takenOver, false, "no stand-in");
+    assert.match(
+      (await messages()).join("\n"),
+      new RegExp(`Deplo gives its word to ${second}, next in line`),
+    );
+  } finally {
+    __setLeaderBeatClockForTest(null);
+  }
+});
+
 test("with half of the servers left, Deplo gives its word to the next in line, and its machine does not stand in", async () => {
   const cluster = await three();
   await placeClusterLeaders();
