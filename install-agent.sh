@@ -1238,7 +1238,7 @@ chmod 700 "$AGENT_DATA"
 
 # A reinstall means a fresh bootstrap, but the agent skips it while old mTLS materials are on
 # disk and would serve a certificate the panel no longer pins. Clear them, the link state they
-# belonged to and the network key: a copy must not speak as the server it was copied from.
+# belonged to, and the network key and leader state: a copy must not speak as the server it was copied from.
 clear_old_materials() {
   if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
     step "Existing agent materials found - clearing them for a fresh bootstrap"
@@ -1246,6 +1246,7 @@ clear_old_materials() {
     rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt" \
       "$AGENT_DATA/link-addresses.json" "$AGENT_DATA/no-listener" "$AGENT_DATA/identity-in-use" \
       "$AGENT_DATA/cluster-mesh.json"
+    rm -rf "$AGENT_DATA/cluster/leader"
     ok "Old materials cleared" "the agent will re-provision with the new token"
   fi
 }
