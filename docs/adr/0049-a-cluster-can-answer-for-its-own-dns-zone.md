@@ -385,7 +385,7 @@ Released this round: agent v0.5.3-canary.40, leader v0.1.0-canary.15 and panel v
 - **The delegation check against a registrar other than Cloudflare**: records typed by hand, glue and a stray `DS`, which CI checks only against fake parent servers (`dns-delegation.test.ts`).
 - **Nearest first through a real public resolver** that sends EDNS Client Subnet, and a visitor placed by its resolver's address: eu-1..3 sit in one place.
 - **A real power cut** (Proxmox's `stop` stands in for it), servers in different places or networks, more than five servers, and IPv4: eu-1..3 are reached over IPv6 only.
-- **The second heir's failover of an App with data on three servers**: it led on Deplo's word (canary.78), but memos stayed put until deplo#328 (bundle keys for every member) is released.
+- **The second heir's failover of an App with data on three servers**: it led on Deplo's word (canary.78), but memos stayed put until deplo#328 (a silent member keeps its bundle key) is released.
 - **A new member watched for 10 minutes, and "Deploy anyway" with the old member off** (deplo#324): not run on canary.78.
 - **An heir on another network than the leader.**
 
