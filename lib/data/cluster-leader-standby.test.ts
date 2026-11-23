@@ -4,7 +4,12 @@ import assert from "node:assert/strict";
 import type { TestDb } from "../db/test-harness";
 import { TEAM_B, USER_1 } from "./identity-test-helpers";
 import { SERVER_1 } from "./app-graph-test-helpers";
-import { clusterLeaderKeys } from "../db/schema/control-plane/clusters";
+import { eq, like } from "drizzle-orm";
+import { activities } from "../db/schema/control-plane/activity";
+import {
+  clusterLeaderKeys,
+  clusters as clustersTable,
+} from "../db/schema/control-plane/clusters";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { getClusterLeader } from "./clusters/leader";
@@ -103,6 +108,62 @@ test("Deplo's machine leads while the leader's server is away, and each change o
     (await messages(TEAM_B)).filter((m) => m.startsWith("Deplo: ")),
     [],
   );
+});
+
+test("handing back replays what the leader did while Deplo's machine stood in, at the time it did it", async () => {
+  const cluster = await eu();
+  const web = await clusterApp(cluster.id);
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  const w = hosts.srv_4.watch;
+  // The last event Deplo read from it before it went away.
+  const seen = w.push("epoch", cluster.id, { epoch: 2 });
+  await db
+    .update(clustersTable)
+    .set({ eventSeq: seen.seq })
+    .where(eq(clustersTable.id, cluster.id));
+  hosts.srv_4.unreachable = true;
+  await superviseClusterLeader(cluster.id);
+  assert.equal(await superviseClusterLeader(cluster.id), "taken_over");
+
+  // Meanwhile the leader went on: a server stopped, it moved the App, the server came back.
+  const ago = (min: number) =>
+    new Date(Date.now() - min * 60_000).toISOString();
+  const [stopped, moved, back] = [ago(9), ago(8), ago(4)];
+  const said = (type: string, data: unknown, at: string) => {
+    w.push(type, cluster.id, data);
+    w.log.at(-1)!.at = at;
+  };
+  said("member_state", { member: "srv_2", state: "fenced" }, stopped);
+  said(
+    "placement",
+    { kind: "app", workloadId: web.id, members: ["srv_3"], epoch: 2 },
+    moved,
+  );
+  said("member_state", { member: "srv_2", state: "ok" }, back);
+
+  hosts.srv_4.unreachable = false;
+  assert.equal(await superviseClusterLeader(cluster.id), "handed_back");
+  const rows = await db
+    .select({ at: activities.createdAt })
+    .from(activities)
+    .where(like(activities.message, "srv_2 %"))
+    .orderBy(activities.createdAt);
+  assert.deepEqual(
+    rows.map((r) => new Date(r.at).toISOString()),
+    [stopped, back],
+    "each change of srv_2 is said at the time it happened",
+  );
+  // The roster it got back carries its own move, and the watch goes on after what was replayed.
+  const roster = leaders.srv_4.rosters.at(-1)!;
+  assert.equal(roster.epoch, 4);
+  assert.deepEqual(
+    (roster.placement as { id: string; member: string }[])
+      .filter((e) => e.id === web.id)
+      .map((e) => e.member),
+    ["srv_3"],
+  );
+  const after = (await getClusterById(cluster.id))!;
+  assert.equal(after.eventSeq, w.log.at(-1)!.seq);
 });
 
 test("a leader below the version Deplo accepts counts as away", async () => {
@@ -254,7 +315,8 @@ test("the background pass takes over on its own and moves the watch to the leade
       takenOver: false,
       epoch: 4,
     });
-    await until(() => hosts.srv_4.watch.opens.length === 2);
+    // The replay of what it did while away, then the watch from there.
+    await until(() => hosts.srv_4.watch.opens.length === 3);
   } finally {
     __resetClusterWatchForTest();
     for (const h of Object.values(hosts)) h.watch.drop();

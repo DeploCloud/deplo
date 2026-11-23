@@ -1,0 +1,1 @@
+ALTER TABLE "clusters" ADD COLUMN "resume_event_seq" bigint;

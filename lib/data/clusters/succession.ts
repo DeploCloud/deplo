@@ -152,6 +152,7 @@ export async function adoptHeir(
       leaderTakeoverAt: null,
       leaderEpoch: heir.epoch,
       eventSeq: heir.head,
+      resumeEventSeq: null,
     })
     .where(
       and(

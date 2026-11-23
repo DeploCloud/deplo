@@ -32,7 +32,8 @@ import {
   leadingHeir,
   type LeadingHeir,
 } from "./succession";
-import { leadFrom } from "./leader-move";
+import { leadFrom, resumeSeqOf } from "./leader-move";
+import { replayBeforeHandBack } from "./watch";
 import { ensureClusterRelay, pushClusterRoster } from "./relay";
 import { recordClusterActivity } from "./cluster-activity";
 import { getClusterById } from "./roster";
@@ -96,9 +97,16 @@ export async function superviseClusterLeader(
   }
   if (cluster.leaderTakeoverAt) {
     if (!answers) return null;
+    // What it did while Deplo's machine stood in is said first, at its own times, and the roster it gets back keeps it.
+    const replayed = await replayBeforeHandBack(
+      cluster,
+      cluster.leaderServerId,
+      await resumeSeqOf(cluster.id),
+    );
     await leadFrom(cluster, {
       leaderServerId: cluster.leaderServerId,
       leaderTakeoverAt: null,
+      eventSeq: replayed,
     });
     await say(
       cluster,
