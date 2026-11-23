@@ -234,11 +234,13 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   last, a failure retried with backoff and shown on the cluster card. A leader below `clusterMin`
   is refused, and Deplo's machine leads its cluster until the update lands.
 - **Which leader leads a cluster is ONE seam, and every change of hands is a new epoch.**
-  `leaderHost(cluster)` (`lib/data/clusters/host.ts`) is the leader that leads now: the server it
-  was moved to, or Deplo's own machine while that one is away (`clusters.leader_takeover_at`). Only
+  `leaderHost(cluster)` (`lib/data/clusters/host.ts`) is the leader that leads now: the member it
+  lives on, or Deplo's own machine while that one is away (`clusters.leader_takeover_at`). Only
   `leadFrom` (`lib/data/clusters/leader-move.ts`) changes it, and it stores the next epoch BEFORE
-  telling the leader, so no two leaders are ever handed the same one. Both may lead, so a bundle
-  goes to every leader key (`refreshLeaderKeys`) and both are parties of every relay roster.
+  telling the leader; the one exception is `adoptHeir` (`lib/data/clusters/succession.ts`), which
+  stores the epoch an heir took on its own. The leader, its line of heirs and Deplo's machine may all
+  lead, so a bundle goes to every one of their keys (`refreshLeaderKeys`) and all are parties of
+  every relay roster; a member gives each epoch to one leader only (`Order.From`, ADR-0043).
 - **A leader leads only with a quorum, and Deplo's beat breaks a tie**
   (`docs/agents/cluster-rollout.md` §5). More than half of the cluster's servers answer it, or
   exactly half while Deplo named its epoch in the last 20 s (`beatClusterLeaders`, every 5 s, to

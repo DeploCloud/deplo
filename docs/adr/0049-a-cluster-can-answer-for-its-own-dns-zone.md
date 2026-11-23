@@ -277,6 +277,16 @@ A power cut is Proxmox's `stop`. The prober on Deplo's machine asked each name s
 - **A member back**: eu-2, back while eu-3 was off, refused and then stayed silent until 19 s after its start, and only ever named eu-1 and eu-2; eu-1 and eu-3, each back after a cut, answered nothing until they heard the others, then only the current set.
 - **Found, not fixed**: during a cut, the resolver on Deplo's machine answered "try again" for fise three times in 40 s while one name server was silent; eu-2, itself back a minute earlier, named eu-3 8 s after eu-3's power-on, while eu-1 waited 18 s; eu-1 logged "memos stays down until it is started or deployed again" every second while it held memos' old copy.
 
+## The leader inside, set-aside copies, every image's volumes (23 Nov 2026)
+
+Decided by the owner after Deplo's machine was cut off for an hour (above): the leader lives on a member with a line of succession (ADR-0043, ADR-0045), relayed servers are warned in two levels (ADR-0047), writes not copied at a cut are set aside (ADR-0046), and:
+
+- **Volumes of built and private images.** The rule that every unnamed volume becomes a Volume now covers both. A built image is read on the server that built it (`DeployResult.image_volumes`, agent Hello `deploy.image-volumes`): what it declares and no Volume holds yet becomes one, and the same deployment starts the App again on it at once (a second agent leg, `<deployment>-volumes`, with the image it just built), so the Volume is there from the first deploy. A private image is read from its registry with the login the team already gave Deplo (Basic, or a token asked with it).
+- **"Copies: 0 of 2 up to date. It can move"**: a whole copy that is behind does let an App move. Activity now says "no copy is up to date yet. It can still move if eu-1 goes off, without the writes no copy has received" (`copiesActivity`).
+- **"memos stays down" every second on eu-1**: the stop of its held copy was asked again each second, and each ask was logged. Said once per change of state now.
+- **eu-2 named eu-3 8 s after its power-on, eu-1 18 s**: a bug. A name server holds a server heard again after a gap for the removal time (10 s), but only one it had heard before; eu-2, itself back a minute earlier, had never heard eu-3, so it held nothing. A server first heard after this one listened for the removal time is held the same way now.
+- **"Try again" for fise three times in 40 s during a cut**: not the zone. This server's resolver is Deplo's DNS cache (CoreDNS on 10.201.0.1, forwarding to 1.1.1.1 and 8.8.8.8). A public resolver that asks the silent name server first waits out its timeout; when that outlasts CoreDNS's forward timeout, CoreDNS answers SERVFAIL and keeps it for 5 s (its default for a failure), which glibc reports as "try again". The zone's short TTL means a cache miss every few seconds during a cut, so each miss can land on the silent name server again.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
@@ -300,7 +310,7 @@ A power cut is Proxmox's `stop`. The prober on Deplo's machine asked each name s
 - **Nearest first through a real public resolver** that sends EDNS Client Subnet, and a visitor placed by its resolver's address: eu-1..3 sit in one place.
 - **A server back while Deplo is down**, a real power cut (a freeze stands in for it), servers in different places or networks, more than three servers, and IPv4: eu-1..3 are reached over IPv6 only.
 - **The three fixes found in .71's live tests**, panel #311, agent DeploCloud/deplo-agent#92 and deplo-cluster#13, which wait for the next release.
-- **A volume of an image Deplo builds**, or of a private image Deplo cannot read: it stays unnamed.
+- **The leader on a member and its line of succession**, the two relay levels, set-aside copies and the volumes of built and private images (23 Nov 2026): proven only by the live tests of the release that carries them.
 
 ## Considered options
 
