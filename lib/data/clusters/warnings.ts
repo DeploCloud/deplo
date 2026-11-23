@@ -24,6 +24,8 @@ import { listClusterReplication } from "./replica-state";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import { clusterNetworkLinksOf } from "./network";
 import { recordClusterActivity } from "./cluster-activity";
+import { activityAt } from "../activity";
+import { clusterOutOfReach, outOfReachSentence, sinceClock } from "./reach";
 import { NOT_FOR_PRODUCTION, relayLevel } from "../../clusters/direct-core";
 import { sharedClusterAddresses } from "./dns-zone";
 import { sharedAddressWarnings } from "../../clusters/shared-addresses";
@@ -43,6 +45,22 @@ function withDeadline<T>(p: Promise<T>, ms: number): Promise<T | null> {
 
 /** Asks the cluster's leader what is wrong and stores the answer; nothing to store while failover is off. */
 export async function refreshClusterWarnings(cluster: Cluster): Promise<void> {
+  const out = await getDb()
+    .select({ key: clusterWarningsTable.key })
+    .from(clusterWarningsTable)
+    .where(
+      and(
+        eq(clusterWarningsTable.clusterId, cluster.id),
+        eq(clusterWarningsTable.key, OUT_OF_REACH_KEY),
+      ),
+    );
+  const since = await clusterOutOfReach(cluster.id);
+  if (since) return keepLastKnown(cluster, since, out.length > 0);
+  if (out.length > 0)
+    await recordClusterActivity(
+      cluster.id,
+      `Deplo reaches cluster ${cluster.name} again`,
+    );
   const [{ n }] = await getDb()
     .select({ n: count() })
     .from(clusterMembersTable)
@@ -97,6 +115,39 @@ export async function refreshClusterWarnings(cluster: Cluster): Promise<void> {
 }
 
 export const NOT_FOR_PRODUCTION_KEY = "not_for_production";
+export const OUT_OF_REACH_KEY = "out_of_reach";
+
+// Deplo cannot reach the cluster: what the leader standing in sees is a guess, so the last check stays under this line.
+async function keepLastKnown(
+  cluster: Cluster,
+  since: string,
+  said: boolean,
+): Promise<void> {
+  const row = {
+    clusterId: cluster.id,
+    key: OUT_OF_REACH_KEY,
+    position: -1,
+    title: outOfReachSentence(since),
+    body: `What this page shows is how the cluster stood at ${sinceClock(since)}. Once Deplo reaches it again, Activity says what happened meanwhile, at the time it happened.`,
+    startLeader: false,
+    fixCloudflareToken: false,
+    checkedAt: nowIso(),
+  };
+  await getDb()
+    .insert(clusterWarningsTable)
+    .values(row)
+    .onConflictDoUpdate({
+      target: [clusterWarningsTable.clusterId, clusterWarningsTable.key],
+      set: row,
+    });
+  if (!said)
+    await activityAt(since, () =>
+      recordClusterActivity(
+        cluster.id,
+        `${outOfReachSentence(since, cluster.name)}. What Deplo shows of it is how it stood then.`,
+      ),
+    );
+}
 
 /** How much of the cluster stops with Deplo's machine, from the paths its servers last reported. */
 export async function relayLevelOf(clusterId: string): Promise<0 | 1 | 2> {

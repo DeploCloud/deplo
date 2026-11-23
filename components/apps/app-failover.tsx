@@ -98,6 +98,12 @@ export function AppFailoverCard({
               />
             </p>
           </div>
+          {failover.outOfReach && (
+            <p className="flex items-start gap-1.5 text-sm">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
+              {failover.outOfReach}
+            </p>
+          )}
           {failover.disk === "volume" && failover.automatic && (
             <>
               <FailoverPromises promises={REPLICATION_PROMISES} />

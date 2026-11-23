@@ -71,6 +71,14 @@ export function serverAnswers(serverId: string): boolean | null {
   return Date.now() - opened < LINK_SETTLE_MS ? null : false;
 }
 
+/** When the server's agent was last heard, on its link or the last one that ended; null when never in this process. */
+export function lastHeardAt(serverId: string): number | null {
+  const link = registry.links.get(serverId);
+  return link
+    ? (link.heardAt?.() ?? Date.now())
+    : (lastHeard.get(serverId) ?? null);
+}
+
 export function hasLinked(serverId: string): boolean {
   return registry.seen.has(serverId);
 }

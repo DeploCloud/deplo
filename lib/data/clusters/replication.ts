@@ -27,6 +27,7 @@ import { refreshAppBundle, restoreDescriptor } from "./app-restore";
 import { storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
 import { promotable, replicaRows } from "./replica-state";
+import { clusterOutOfReach } from "./reach";
 import { getClusterById } from "./roster";
 
 // Replication (ADR-0046): each member's server agent is handed the cluster's replicated Apps. The one that runs an
@@ -207,6 +208,8 @@ export async function replicateCluster(
   force = false,
 ): Promise<void> {
   if (await instanceFrozen()) return;
+  // Nobody answers: how each copy stood when Deplo last heard is kept, never a guess.
+  if (await clusterOutOfReach(clusterId)) return;
   await recordReports(clusterId, await pushReplicaTables(clusterId, force));
   await standbyForCluster(clusterId);
 }

@@ -1,5 +1,8 @@
 import type { AppStatus } from "@/lib/types/app";
 
+/** The start of an App's offline reason while no server of its cluster answers Deplo. */
+export const OUT_OF_REACH = "Offline: Deplo cannot reach its cluster";
+
 export type DisplayStatus =
   | AppStatus
   | "restarting"

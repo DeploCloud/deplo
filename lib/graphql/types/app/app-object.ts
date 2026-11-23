@@ -135,6 +135,12 @@ const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
         '"Copies: 2 of 2 up to date", "Copying to eu-2 and eu-3" or "Not copied yet: ..."; null without replication.',
       resolve: (f) => f.copies,
     }),
+    outOfReach: t.string({
+      nullable: true,
+      description:
+        "While no server of its cluster answers Deplo: the sentence that says so, since when; the rest is how it stood then.",
+      resolve: (f) => f.outOfReach,
+    }),
     copyRows: t.stringList({
       description:
         "Each other server's copy as its page lists it under Advanced: server, state, last copy, seconds behind, bytes.",

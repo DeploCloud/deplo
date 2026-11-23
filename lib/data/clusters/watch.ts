@@ -33,6 +33,7 @@ import { messageOf } from "../../utils";
 import { leaseChangeSentence } from "./lease-activity";
 import { memberGone } from "./gone";
 import { moveStarted } from "./moves";
+import { clusterOutOfReach } from "./reach";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
 // Events carry a sequence; the last one applied is stored, so a restart or a reconnect replays only what is new.
@@ -97,6 +98,8 @@ async function memberLeaseChanged(
   serverId: string,
   state: ClusterLeaseState,
 ): Promise<void> {
+  // Deplo cannot reach the cluster: what a leader standing in sees of its servers is a guess, so the last state stays.
+  if (await clusterOutOfReach(clusterId)) return;
   if (!(await setMemberLease(clusterId, serverId, state))) return;
   // A preview never fails over: it reads offline until it is deployed again (#212).
   if (state === "fenced") await markPreviewsOffline(serverId);
@@ -210,7 +213,10 @@ async function applyOne(
     }
     case "member_gone":
     case "member_rejoined": {
-      if (typeof d.member === "string") {
+      if (
+        typeof d.member === "string" &&
+        !(await clusterOutOfReach(clusterId))
+      ) {
         memberGone(clusterId, d.member, e.type === "member_gone");
         const name = (await getServerById(d.member))?.name ?? "A server";
         await recordClusterActivity(

@@ -34,6 +34,7 @@ import {
 import { leaderHostOf } from "./host";
 import { clusterHeirs } from "./succession";
 import { isBuiltImage } from "./images";
+import { clusterOutOfReach } from "./reach";
 import { getClusterById } from "./roster";
 import { messageOf } from "../../utils";
 
@@ -234,6 +235,17 @@ export async function recordOnce(
 export const cannotFailOver = (name: string, cluster: string, why: string) =>
   `${name} cannot fail over yet: ${why} Cluster ${cluster} will not move it to another server until that is fixed.`;
 
+/** Says why a workload cannot fail over, once a day; nothing while Deplo cannot reach its cluster, which decides alone then. */
+export async function sayCannotFailOver(
+  w: { id: string; name: string; teamId: string },
+  cluster: Cluster,
+  why: string,
+  kind: BundleKind = KIND,
+): Promise<void> {
+  if (await clusterOutOfReach(cluster.id)) return;
+  await recordOnce(w, cannotFailOver(w.name, cluster.name, why), kind);
+}
+
 const UNREACHED =
   "Deplo could not reach the cluster's leader to hand it what it needs to restart this App elsewhere.";
 const NOT_TAKEN =
@@ -420,8 +432,7 @@ export async function pushFailoverBundle(input: {
   const keys = await keyRows(cluster.id);
   const lead = cluster.failoverEnabled ? keys.find(leading(cluster)) : null;
   // A leader standing by without it is put right by the sweep; only the one that leads decides a failover.
-  if (lead === undefined)
-    await recordOnce(app, cannotFailOver(app.name, cluster.name, UNREACHED));
+  if (lead === undefined) await sayCannotFailOver(app, cluster, UNREACHED);
   if (keys.length === 0) return;
   const tunnelToken = await loadAppConnectorToken(app.id);
   // The certificates a deploy does not change stay with the App, for the domains still switched on.
@@ -459,7 +470,7 @@ export async function pushFailoverBundle(input: {
     ),
   );
   if (lead && failed.includes(keyFingerprint(lead.publicKey)))
-    await recordOnce(app, cannotFailOver(app.name, cluster.name, NOT_TAKEN));
+    await sayCannotFailOver(app, cluster, NOT_TAKEN);
 }
 
 const inFlight = new Set<Promise<void>>();
@@ -605,18 +616,14 @@ export async function reconcileClusterBundles(
       );
       return !list || list.get(app.id) !== live || unsent;
     });
-    if (!lead)
-      await recordOnce(app, cannotFailOver(app.name, cluster.name, UNREACHED));
+    if (!lead) await sayCannotFailOver(app, cluster, UNREACHED);
     if (lacking.length === 0) continue;
     if (!source) {
       if (lead && lacking.includes(lead))
-        await recordOnce(
+        await sayCannotFailOver(
           app,
-          cannotFailOver(
-            app.name,
-            cluster.name,
-            "Deplo has no saved copy of its last deploy to give the cluster's leader. It is sent with the next deploy.",
-          ),
+          cluster,
+          "Deplo has no saved copy of its last deploy to give the cluster's leader. It is sent with the next deploy.",
         );
       continue;
     }
@@ -631,7 +638,7 @@ export async function reconcileClusterBundles(
       await bundleMeta(app.id, bundle.stack.imageRef),
     );
     if (lead && failed.includes(keyFingerprint(lead.publicKey)))
-      await recordOnce(app, cannotFailOver(app.name, cluster.name, NOT_TAKEN));
+      await sayCannotFailOver(app, cluster, NOT_TAKEN);
   }
   const fps = keys.map((k) => keyFingerprint(k.publicKey));
   const ids = members.map((m) => m.id);

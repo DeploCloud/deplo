@@ -45,14 +45,13 @@ import { dropLeaderBundle, listLeaderBundles } from "./bundle-calls";
 import {
   type FailoverBundle,
   type FailoverRestore,
-  cannotFailOver,
   deliver,
   hostFor,
   keyFingerprint,
   keyRows,
   leading,
-  recordOnce,
   refreshLeaderKeys,
+  sayCannotFailOver,
 } from "./bundles";
 import { copyImagesToMembers, stackImages } from "./images";
 import { standbyMemberOf } from "./placement";
@@ -190,7 +189,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
   const keys = await keyRows(cluster.id);
   const say = async (why: string) => {
     if (cluster.failoverEnabled)
-      await recordOnce(db, cannotFailOver(db.name, cluster.name, why), KIND);
+      await sayCannotFailOver(db, cluster, why, KIND);
   };
   const lead = keys.find(leading(cluster));
   // A leader standing by without it is put right by the sweep; only the one that leads decides a failover.

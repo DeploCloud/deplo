@@ -22,6 +22,7 @@ const failover = (over: Partial<AppFailover> = {}): AppFailover => ({
   why: null,
   copies: null,
   copyRows: [],
+  outOfReach: null,
   ...over,
 });
 
@@ -103,4 +104,20 @@ test("an App with a Bind never fails over, so it is promised nothing about one",
   );
   assert.match(card, /web never fails over/);
   assert.doesNotMatch(card, /Never two writers|latest backup/);
+});
+
+test("while Deplo cannot reach the cluster, the card says so above how the App stood then", () => {
+  const card = text(
+    failover({
+      automatic: true,
+      outOfReach:
+        "Deplo cannot reach this cluster since 05:32 UTC: its servers decide on their own. This is how web stood then.",
+      copies: "Copies: 1 of 2 up to date",
+    }),
+  );
+  assert.match(
+    card,
+    /Deplo cannot reach this cluster since 05:32 UTC: its servers decide on their own\. This is how web stood then\.[\s\S]*Copies: 1 of 2 up to date/,
+  );
+  assert.doesNotMatch(text(failover()), /cannot reach/);
 });

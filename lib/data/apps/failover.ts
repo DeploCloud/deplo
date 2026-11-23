@@ -40,6 +40,7 @@ import {
   replicationStates,
   type ReplicaRow,
 } from "../clusters/replica-state";
+import { clusterOutOfReach, outOfReachSentence } from "../clusters/reach";
 import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { requireFolderCapabilityForApp } from "../folder-access";
 import { requireAppCapability } from "../node-access";
@@ -104,6 +105,8 @@ export interface AppFailover {
   /** "Copies: 2 of 2 up to date", and each other server's copy under Advanced; null without replication. */
   copies: string | null;
   copyRows: CopyRow[];
+  /** While no server of its cluster answers Deplo: the sentence that says so; what is above is how it stood then. */
+  outOfReach: string | null;
 }
 
 /** Each other member's copy of the App, in its page's words. */
@@ -158,6 +161,7 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
     heldBy: 0,
     copies: null,
     copyRows: [],
+    outOfReach: null as string | null,
   };
   if (disk === "bind")
     return {
@@ -180,6 +184,9 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
   // Fenced: its server has stopped it by now, so a second copy cannot write beside it.
   const waiting = member?.state === "fenced";
   const way = waiting ? await wayBack(app) : null;
+  const since = await clusterOutOfReach(cluster.id);
+  // Read as of the last time Deplo heard the cluster: a copy is not "behind" for a silence Deplo cannot explain.
+  const asOf = since ? Date.parse(since) : Date.now();
   const replicated = cluster.replicationEnabled;
   const memberIds = replicated ? await clusterMemberServerIds(cluster.id) : [];
   const rows = replicated ? await replicaRows([app.id]) : [];
@@ -195,9 +202,10 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
         ],
         new Map([[cluster.id, memberIds]]),
         rows,
+        asOf,
       )
     : [];
-  const each = replicated ? await copyRows(app, memberIds, rows) : [];
+  const each = replicated ? await copyRows(app, memberIds, rows, asOf) : [];
   return {
     ...base,
     waiting,
@@ -214,6 +222,9 @@ export async function getAppFailover(id: string): Promise<AppFailover | null> {
     why: way?.why ? `${app.name} cannot be brought back: ${way.why}` : null,
     copies: replicated ? copiesLine(serverName, each) : null,
     copyRows: each,
+    outOfReach: since
+      ? `${outOfReachSentence(since)}. This is how ${app.name} stood then.`
+      : null,
   };
 }
 
