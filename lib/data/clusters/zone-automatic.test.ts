@@ -1,4 +1,5 @@
 import { test, beforeEach, afterEach } from "node:test";
+import { __cancelAnswerRechecksForTest } from "./answer-dns";
 import assert from "node:assert/strict";
 
 import { eq } from "drizzle-orm";
@@ -144,6 +145,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  __cancelAnswerRechecksForTest();
   restoreCf();
   restoreCf = () => {};
   __setDelegationDepsForTest(null);

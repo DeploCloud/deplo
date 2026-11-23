@@ -67,6 +67,7 @@ type AnswerDomain = {
   status: string;
   ssl: boolean;
   zoneId: string | null;
+  createdAt: string;
 };
 
 async function answeringDomains(clusterId: string): Promise<AnswerDomain[]> {
@@ -80,6 +81,7 @@ async function answeringDomains(clusterId: string): Promise<AnswerDomain[]> {
       status: domainsTable.status,
       ssl: domainsTable.ssl,
       zoneId: domainsTable.dnsZoneId,
+      createdAt: domainsTable.createdAt,
     })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
@@ -147,13 +149,16 @@ export function nativeStatus(
     : "misconfigured";
 }
 
+export const SETUP_GRACE_MS = 60_000;
+const LATER = Symbol("check again later");
+
 /** Answered by the cluster's own zone (ADR-0049): nothing to write, only whether the name reaches the zone yet. */
 async function checkNative(
   d: AnswerDomain,
   clusterId: string,
   native: { zone: string; target: string },
   changed: Set<string>,
-): Promise<string | null> {
+): Promise<string | typeof LATER | null> {
   const { clusterMemberAddresses } = await import("./dns-zone");
   const [found, members] = await Promise.all([
     lookupHostAddresses(d.name),
@@ -165,6 +170,12 @@ async function checkNative(
   if (status === null) return null;
   await recordVerdict(d, status, changed);
   if (status === "valid") return null;
+  // A name just added is still being set up: no answer yet is not a failure until the setup had its time.
+  if (
+    status === "pending" &&
+    Date.now() - Date.parse(d.createdAt) < SETUP_GRACE_MS
+  )
+    return LATER;
   // Cloudflare proxies a new record by default, and then answers in the cluster's place (ADR-0049).
   if (resolvesToCloudflare(found))
     return `${d.name} reaches Cloudflare, not the cluster: in Cloudflare, set its record to DNS only (grey cloud)`;
@@ -195,11 +206,15 @@ export async function syncClusterAnswerDns(
     for (const d of domains) {
       const native = await domainNativeZone(clusterId, d);
       if (native) {
-        let problem: string | null;
+        let problem: string | typeof LATER | null;
         try {
           problem = await checkNative(d, clusterId, native, changed);
         } catch (e) {
           problem = `Deplo could not check the DNS of ${d.name}: ${messageOf(e)}`;
+        }
+        if (problem === LATER) {
+          recheckAfterSetup(clusterId, reroute);
+          continue;
         }
         if (!problem) said.delete(d.id);
         else if (said.get(d.id) !== problem) {
@@ -228,6 +243,31 @@ export async function syncClusterAnswerDns(
       console.warn(`[answer-dns] reroute ${appId}: ${messageOf(e)}`),
     );
   }
+}
+
+const rechecks = new Map<string, NodeJS.Timeout>();
+
+// Once, when the youngest name's setup time is over: only then does no answer count as a failure.
+function recheckAfterSetup(
+  clusterId: string,
+  reroute: (appId: string) => Promise<unknown>,
+): void {
+  if (rechecks.has(clusterId)) return;
+  const t = setTimeout(() => {
+    rechecks.delete(clusterId);
+    void syncClusterAnswerDns(clusterId, reroute).catch((e) =>
+      console.warn(`[answer-dns] ${clusterId}: ${messageOf(e)}`),
+    );
+  }, SETUP_GRACE_MS + 1_000);
+  t.unref();
+  rechecks.set(clusterId, t);
+}
+
+export function __cancelAnswerRechecksForTest(): string[] {
+  const ids = [...rechecks.keys()];
+  for (const t of rechecks.values()) clearTimeout(t);
+  rechecks.clear();
+  return ids;
 }
 
 /** A domain that answers on every server is verified against the whole set, not against one server. */
