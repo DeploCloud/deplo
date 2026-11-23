@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { panelRoute, withPanelRoute } from "./traefik-stack";
+import { panelRoute, panelRouteFile, withPanelRoute } from "./traefik-stack";
 import {
   type Doc,
   INSTALLED_WITH_PANEL,
@@ -137,4 +137,53 @@ test("the relay's route outranks any plain route for the panel's own name", () =
     Number(relay.priority) >
       "Host(`a-very-long-panel-name.example.com`)".length * 100,
   );
+});
+
+const WITHOUT_REDIRECT = INSTALLED_WITH_PANEL.split("\n")
+  .filter((l) => !/http\.redirections/.test(l))
+  .join("\n");
+
+test("a proxy that does not send :80 to :443 itself gets the panel's names sent there", () => {
+  const http = panelFileOf(withPanelRoute(WITHOUT_REDIRECT, PANEL_ROUTE)).http;
+  assert.deepEqual(http.routers["deplo-panel-http"], {
+    rule: "Host(`deplo.example.com`)",
+    entryPoints: ["web"],
+    service: "deplo-panel",
+    priority: 2,
+    middlewares: ["deplo-panel-https"],
+  });
+  assert.equal(
+    http.routers["deplo-panel-fallback-http"].rule,
+    "Host(`deplo-cb007109.deplo.site`)",
+  );
+  assert.ok(
+    (http.middlewares as Record<string, unknown> | undefined)?.[
+      "deplo-panel-https"
+    ],
+  );
+  // One that does already: nothing of it, and a route written before goes.
+  const back = panelFileOf(
+    withPanelRoute(
+      withPanelRoute(WITHOUT_REDIRECT, PANEL_ROUTE).replace(
+        "--entrypoints.web.address=:80",
+        "--entrypoints.web.address=:80\n      - --entrypoints.web.http.redirections.entrypoint.to=websecure",
+      ),
+      PANEL_ROUTE,
+    ),
+  ).http;
+  assert.equal(back.routers["deplo-panel-http"], undefined);
+  assert.equal(
+    (back.middlewares as Record<string, unknown> | undefined)?.[
+      "deplo-panel-https"
+    ],
+    undefined,
+  );
+});
+
+test("rendering the panel's route twice writes the same file, so the sweep rewrites it only when Deplo changed", () => {
+  for (const base of [INSTALLED_WITH_PANEL, WITHOUT_REDIRECT]) {
+    const once = withPanelRoute(base, { ...PANEL_ROUTE, relay: true });
+    const twice = withPanelRoute(once, panelRoute(once)!);
+    assert.equal(panelRouteFile(twice), panelRouteFile(once));
+  }
 });

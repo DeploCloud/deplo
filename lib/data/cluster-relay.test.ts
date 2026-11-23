@@ -548,3 +548,20 @@ test("the relay's route and rosters are part of the Deplo move freeze like every
   );
   assert.match(src, /instanceFrozen\(\)\) return;\n[\s\S]*cluster relay/);
 });
+
+test("a route Deplo now renders differently is written again by the sweep, once", async () => {
+  const host = deploHost();
+  await asAdmin(() => createCluster("eu", everyone));
+  assert.match(host.proxy.yaml, /priority: 100000/);
+  // Written by a Deplo from before the relay's priority went up.
+  host.proxy.yaml = host.proxy.yaml.replaceAll(
+    "priority: 100000",
+    "priority: 3",
+  );
+  const applied = host.proxy.applied;
+  assert.equal(await syncClusterRelayRoute(), "on");
+  assert.match(host.proxy.yaml, /priority: 100000/);
+  assert.equal(host.proxy.applied, applied + 1);
+  assert.equal(await syncClusterRelayRoute(), "unchanged");
+  assert.equal(host.proxy.applied, applied + 1);
+});

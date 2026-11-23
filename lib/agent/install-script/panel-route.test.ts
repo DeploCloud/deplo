@@ -57,6 +57,7 @@ printf '%s\\n' "$TRAEFIK_PANEL_CONFIG"
     command:
       - --providers.file.directory=/deplo-dynamic
       - --providers.file.watch=true
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
     configs:
       - source: deplo-panel
         target: /deplo-dynamic/deplo-panel.yml
