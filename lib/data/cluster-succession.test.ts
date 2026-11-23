@@ -5,6 +5,7 @@ import { eq, like } from "drizzle-orm";
 import { activities } from "../db/schema/control-plane/activity";
 import type { TestDb } from "../db/test-harness";
 import {
+  clusterLeaderKeys,
   clusterNetworkLinks,
   clusterWarnings,
   clusters as clustersTable,
@@ -646,4 +647,55 @@ test("a leader stepping down is not said while Deplo reaches none of the cluster
   } finally {
     doorClosed();
   }
+});
+
+// eu, 23 Nov 2026: eu-1 was off when Deplo last told the members whose orders to take, so it kept a list without
+// eu-3, and eu-3's left out eu-1. Cut off from Deplo, the two heirs could not reach each other and nobody led.
+test("every member takes the orders of every member's leader, also one that was off when the line was named", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  hosts[first].unreachable = true;
+  const { pushClusterRoster } = await import("./clusters/relay");
+  await pushClusterRoster(cluster.id);
+  const parties = relayRosters(hosts[SERVER_1]).at(-1)!.parties;
+  for (const id of [led.leaderServerId!, first, second]) {
+    const [row] = await db
+      .select({ fp: serversTable.agentCertFingerprint })
+      .from(serversTable)
+      .where(eq(serversTable.id, id));
+    assert.ok(
+      parties.some((p) => p.role === "leader" && p.fingerprint === row.fp),
+      `${id}'s leader is not one the members take orders from`,
+    );
+  }
+});
+
+// eu, 23 Nov 2026: eu-3 was off when Deplo last refreshed the leaders' keys, so its key was dropped and later bundles
+// never reached it; it led with a stale one that held no restore, and memos never moved. A member off keeps its key.
+test("a member's leader that is off keeps its key, so the bundles still reach it", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first] = await clusterHeirs(led);
+  // The heirs run a leader of their own, which gives its key.
+  await keepLeadersHome([cluster.id]);
+  const { refreshLeaderKeys } = await import("./clusters/bundles");
+  await refreshLeaderKeys(led);
+  const owners = async () =>
+    (
+      await db
+        .select({ serverId: clusterLeaderKeys.serverId })
+        .from(clusterLeaderKeys)
+        .where(eq(clusterLeaderKeys.clusterId, cluster.id))
+    ).map((k) => k.serverId);
+  assert.ok((await owners()).includes(first), "the heir holds no key");
+  hosts[first].unreachable = true;
+  __forgetMemberProbes();
+  await refreshLeaderKeys(led);
+  assert.ok(
+    (await owners()).includes(first),
+    "an heir that is off lost its key",
+  );
 });

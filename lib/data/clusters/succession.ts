@@ -63,6 +63,22 @@ export async function leaderCandidates(clusterId: string): Promise<string[]> {
 }
 
 /**
+ * The members whose agent does not answer now. What Deplo tells the others keeps them: one that was off at a push
+ * keeps a list without them and leads later with what it held (eu, 23 Nov 2026). Never throws.
+ */
+export async function silentMembers(clusterId: string): Promise<string[]> {
+  try {
+    const ids = await clusterMemberServerIds(clusterId);
+    const ok = await Promise.all(
+      ids.map(async (id) => (await probeClusterHost(id)) === "ok"),
+    );
+    return ids.filter((_, i) => !ok[i]);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Whether every member's agent pre-votes, as each last reported or says now: a member that is off still counts by
  * what it said. An older agent would take an heir's epoch unasked.
  */
