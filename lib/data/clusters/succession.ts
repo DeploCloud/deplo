@@ -119,11 +119,19 @@ export async function leadingHeir(
       );
       const snap = JSON.parse(new TextDecoder().decode(raw)) as {
         head?: number;
-        clusters?: Record<string, { epoch: number; leads: boolean }>;
+        clusters?: Record<
+          string,
+          { epoch: number; leads: boolean; since?: number }
+        >;
       };
       const v = snap.clusters?.[cluster.id];
+      // Its moves while Deplo was away are replayed from where its epoch began.
       if (v?.leads && v.epoch > cluster.leaderEpoch)
-        return { serverId, epoch: v.epoch, head: Number(snap.head) || 0 };
+        return {
+          serverId,
+          epoch: v.epoch,
+          head: v.since ? v.since - 1 : Number(snap.head) || 0,
+        };
     } catch {
       // not answering: not the one that leads
     }
@@ -168,15 +176,20 @@ export function __forgetHeirsForTest(): void {
  */
 export async function keepHeirsReady(cluster: Cluster): Promise<boolean> {
   const heirs = await clusterHeirs(cluster).catch(() => []);
+  let ready = true;
   for (const id of heirs)
-    if (!(await clusterLeaderAnswers(id)))
+    if (!(await clusterLeaderAnswers(id))) {
+      ready = false;
       // Every member reaches it directly, so it needs no relay of its own.
       await installClusterLeader(id, { relay: false }).catch((e) =>
         warn(cluster.id, e),
       );
+    }
   const signature = heirs.join(",");
   const changed = lastHeirs.get(cluster.id) !== signature;
-  lastHeirs.set(cluster.id, signature);
+  // An heir whose leader only just started gives its key at the next pass: the line counts as new until then.
+  if (ready) lastHeirs.set(cluster.id, signature);
+  else lastHeirs.delete(cluster.id);
   return changed;
 }
 

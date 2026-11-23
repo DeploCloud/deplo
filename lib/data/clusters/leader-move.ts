@@ -288,6 +288,11 @@ async function leadOn(
   if (next !== null && relay)
     await syncLeaderRelayRoute(target, true).catch((e) => warn(clusterId, e));
   await installClusterLeader(target.id, { relay });
+  // The members take the new leader's orders before it gives any: the old one stops the moment it is told.
+  if (next !== null)
+    await pushClusterRoster(clusterId, undefined, [target.id]).catch((e) =>
+      warn(clusterId, e),
+    );
 
   if (next === null && cluster.leaderTakeoverAt)
     // Deplo's own machine already leads in its place: no hands change, so the epoch stays.

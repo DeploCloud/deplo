@@ -80,6 +80,7 @@ async function remoteRelayHost(clusterId: string): Promise<Server | null> {
 export async function clusterRoster(
   clusterId: string,
   memberServerIds: string[] = [],
+  alsoLeaders: string[] = [],
 ): Promise<RelayRoster> {
   const parties: RelayParty[] = [];
   const cluster = await getClusterById(clusterId);
@@ -90,7 +91,10 @@ export async function clusterRoster(
       if (host) leaderIds.add(host.id);
     }
     // The members next in line may lead too, so members take their orders.
-    for (const id of await clusterHeirs(cluster).catch(() => []))
+    for (const id of [
+      ...(await clusterHeirs(cluster).catch(() => [])),
+      ...alsoLeaders,
+    ])
       leaderIds.add(id);
     // A key staged for a rotation is let in before it is installed (ADR-0050).
     const next = await nextFingerprints([...leaderIds, ...memberServerIds]);
@@ -122,9 +126,10 @@ const encode = (v: unknown): Uint8Array =>
 export async function pushClusterRoster(
   clusterId: string,
   given?: string[],
+  alsoLeaders: string[] = [],
 ): Promise<RosterPush> {
   const memberServerIds = given ?? (await clusterMemberServerIds(clusterId));
-  const roster = await clusterRoster(clusterId, memberServerIds);
+  const roster = await clusterRoster(clusterId, memberServerIds, alsoLeaders);
   const out: RosterPush = { roster, dialing: [], failed: [] };
   const relayHost = await deploHostServer();
   if (!relayHost) {
