@@ -11,10 +11,7 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { nowIso } from "../../ids";
-import {
-  CLUSTER_REPLICAS_CAPABILITY,
-  VOLUME_USAGE_CAPABILITY,
-} from "../../infra/agent-client/hello-capabilities";
+import { CLUSTER_REPLICAS_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { formatBytes } from "../backups/format-bytes";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type {
@@ -28,9 +25,15 @@ import { standbyForCluster } from "../databases/standby";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
 import { refreshAppBundle, restoreDescriptor } from "./app-restore";
+import { __forgetSizes, volumeBytes } from "./data-size";
 import { inLine, storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
-import { REPLICA_ID, promotable, replicaRows } from "./replica-state";
+import {
+  REPLICA_ID,
+  promotable,
+  replicaRows,
+  type ReplicaRow,
+} from "./replica-state";
 import { clusterOutOfReach } from "./reach";
 import { getClusterById } from "./roster";
 
@@ -100,27 +103,8 @@ export function noRoomForCopy(
   return `${server} has ${formatBytes(free)} free, too little for a copy of ${app} (about ${formatBytes(need)}) and a tenth of its disk free`;
 }
 export const NO_ROOM_FOR_COPY = "too little for a copy of";
-
-// ponytail: an App's size is measured at most once a minute per process; a copy that grows past it shows next time.
-const sizes = new Map<string, { at: number; bytes: number }>();
-
-/** What an App's Volumes hold now, measured on the server it runs on; 0 when that server cannot say. */
-async function appBytes(serverId: string, volumes: string[]): Promise<number> {
-  const key = `${serverId}|${volumes.join(",")}`;
-  const hit = sizes.get(key);
-  if (hit && Date.now() - hit.at < 60_000) return hit.bytes;
-  let bytes = 0;
-  const conn = await connectAgent(serverId);
-  try {
-    const hello = await conn.hello();
-    if (hello.capabilities?.includes(VOLUME_USAGE_CAPABILITY))
-      for (const n of (await conn.volumeUsage(volumes)).values()) bytes += n;
-  } finally {
-    conn.close();
-  }
-  sizes.set(key, { at: Date.now(), bytes });
-  return bytes;
-}
+/** How a server agent ends a copy it stopped for room, at a tenth of its disk free (deplo-agent `room.Marker`). */
+export const AGENT_NO_ROOM = "keep a tenth of its disk free";
 
 /**
  * The entries a member does not start a copy of, with why: a replica follows a backup's rule and starts only when
@@ -144,18 +128,45 @@ async function copiesThatDoNotFit(
     .from(appsTable)
     .where(inArray(appsTable.id, ids));
   let disk: { free: number; total: number } | null | undefined;
+  // Held back last time: it starts again only with a fifth more room, so a copy the agent stopped does not start
+  // and stop over and over.
+  const before = new Set(
+    (
+      await getDb()
+        .select({
+          appId: clusterAppReplicas.appId,
+          error: clusterAppReplicas.error,
+        })
+        .from(clusterAppReplicas)
+        .where(
+          and(
+            eq(clusterAppReplicas.serverId, serverId),
+            inArray(clusterAppReplicas.appId, ids),
+          ),
+        )
+    )
+      .filter((r) => r.error.includes(NO_ROOM_FOR_COPY))
+      .map((r) => r.appId),
+  );
   for (const e of table.entries) {
     const app = apps.find((a) => a.id === e.appId);
     if (!app?.serverId || app.serverId === serverId) continue;
     if (e.volumeNames.length === 0) continue;
     const copy = held.find((r) => r.appId === e.appId);
     if (copy?.synced || copy?.role === "sending") continue;
-    const size = await appBytes(app.serverId, e.volumeNames).catch(() => 0);
+    const size = await volumeBytes(app.serverId, e.volumeNames).catch(() => 0);
     // A copy not whole yet grows with its App: it is held back whenever the disk would be under a tenth free, not
     // only at its start (eu-1 reached 92% with the copy of an App that was small when its copy began).
-    const need = Math.max(size - (copy?.bytes ?? 0), 0);
+    const need =
+      Math.max(size - (copy?.bytes ?? 0), 0) +
+      (before.has(e.appId) ? size / 5 : 0);
     disk ??= await memberDisk(serverId).catch(() => null);
-    if (!disk || disk.total <= 0 || disk.free - need >= disk.total / 10)
+    // The agent's own word: it stopped the copy at a tenth free (a copy bigger than Deplo measured).
+    const stopped = !!copy?.error.includes(AGENT_NO_ROOM);
+    if (
+      !stopped &&
+      (!disk || disk.total <= 0 || disk.free - need >= disk.total / 10)
+    )
       continue;
     const name = (await getServerById(serverId))?.name ?? "This server";
     out.set(
@@ -163,7 +174,7 @@ async function copiesThatDoNotFit(
       noRoomForCopy(
         name,
         app.name,
-        disk.free,
+        disk?.free ?? 0,
         Math.max(size, copy?.bytes ?? 0),
       ),
     );
@@ -298,6 +309,7 @@ async function recordReports(
       ),
     );
   const after = await replicaRows(ids);
+  await sayCopiesWithoutRoom(before, after);
   for (const e of table.entries) {
     const app = await loadAppGraph(e.appId);
     if (!app) continue;
@@ -317,6 +329,32 @@ async function recordReports(
     await recordActivity(
       "app",
       copiesActivity(app.name, server, rows, now),
+      "Deplo",
+      app.id,
+      app.teamId,
+    );
+  }
+}
+
+/** Activity says it once, in the App's team, when a copy of it is first held back for room on a server. */
+async function sayCopiesWithoutRoom(
+  before: ReplicaRow[],
+  after: ReplicaRow[],
+): Promise<void> {
+  const held = (rows: ReplicaRow[], r: ReplicaRow) =>
+    rows.some(
+      (b) =>
+        b.appId === r.appId &&
+        b.serverId === r.serverId &&
+        b.error.includes(NO_ROOM_FOR_COPY),
+    );
+  for (const r of after) {
+    if (!r.error.includes(NO_ROOM_FOR_COPY) || held(before, r)) continue;
+    const app = await loadAppGraph(r.appId);
+    if (!app) continue;
+    await recordActivity(
+      "server",
+      `${r.error}. Free some space on it, and the copy starts.`,
       "Deplo",
       app.id,
       app.teamId,
@@ -405,5 +443,5 @@ export async function refreshVolumeAppBundles(
 /** Test seam: forget what each member was handed. */
 export function __forgetHandedTables(): void {
   handed.clear();
-  sizes.clear();
+  __forgetSizes();
 }

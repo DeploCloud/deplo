@@ -7,6 +7,10 @@ import { RestoreRequest } from "../agent/gen/agent";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { appVolumes } from "../db/schema/control-plane/apps";
 import {
+  backupDestination,
+  backupRuns,
+} from "../db/schema/control-plane/backups";
+import {
   clusterAppReplicas,
   clusters as clustersTable,
 } from "../db/schema/control-plane/clusters";
@@ -416,4 +420,95 @@ test("a copy not whole yet stops once the disk would be under a tenth free, howe
     members.find((m) => m.serverId === "srv_3")!.copyWarning,
     /server-3 has 1\.0 GB free, too little for a copy of web \(about 716\.8 MB\)/,
   );
+});
+
+// eu, 24 Nov 2026: no warning showed while copies filled eu-1 and eu-3; the agent now stops one at a tenth free.
+test("a copy its server stopped for room is held back, shown on the server and said once in Activity", async () => {
+  const cluster = await replicated();
+  const GB = 1024 ** 3;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeUsage = async () =>
+    new Map([["deplo-web-data", 2 * GB]]);
+  // Deplo's measure says it fits; the copy turned out bigger, and the agent stopped it.
+  host.srv_3.extra.metrics = disk(14 * GB, 10 * GB);
+  host.srv_3.replicaReports = [
+    report({
+      synced: false,
+      bytes: 1.5 * GB,
+      error:
+        "replica: big: this server has 1.4 GB free, too little to go on with this copy and keep a tenth of its disk free",
+    }),
+  ];
+  await replicateCluster(cluster.id, true);
+  assert.deepEqual(host.srv_3.replicaTables.at(-1)!.entries, []);
+  const members = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.match(
+    members.find((m) => m.serverId === "srv_3")!.copyWarning,
+    /server-3 has 4\.0 GB free, too little for a copy of web \(about 2\.0 GB\)/,
+  );
+  await replicateCluster(cluster.id, true);
+  const lines = (await said()).filter((m) =>
+    m.includes("too little for a copy of web"),
+  );
+  assert.equal(lines.length, 1, "Activity says it once");
+  assert.match(lines[0]!, /Free some space on it, and the copy starts\.$/);
+
+  // Gone from its disk, the copy needs a fifth more room than it takes before it is handed again.
+  host.srv_3.replicaReports = [];
+  host.srv_3.extra.metrics = disk(14 * GB, 10.4 * GB);
+  await replicateCluster(cluster.id, true);
+  assert.deepEqual(host.srv_3.replicaTables.at(-1)!.entries, []);
+  host.srv_3.extra.metrics = disk(14 * GB, 9 * GB);
+  await replicateCluster(cluster.id, true);
+  assert.equal(host.srv_3.replicaTables.at(-1)!.entries.length, 1);
+});
+
+test("a backup refused for room on a server's disk shows on that server, naming the App", async () => {
+  const cluster = await replicated();
+  await db.insert(backupDestination).values({
+    id: "dst_3",
+    teamId: "team_a",
+    name: "server-3's disk",
+    kind: "server",
+    serverId: "srv_3",
+    ageRecipient: "age1x",
+    ageIdentityEnc: "enc",
+    status: "ok",
+    createdAt: new Date().toISOString(),
+  });
+  const run = (
+    id: string,
+    status: string,
+    error: string | null,
+    at: number,
+  ) => ({
+    id,
+    teamId: "team_a",
+    targetKind: "app",
+    appId: "prj_web",
+    targetId: "prj_web",
+    destinationId: "dst_3",
+    objectKey: "",
+    sizeBytes: 0,
+    status,
+    error,
+    startedAt: new Date(Date.now() - at).toISOString(),
+  });
+  const refused =
+    "server-3 has 1.2 GB free, too little for this backup (about 2.0 GB) and a tenth of its disk free, so it did not start";
+  await db
+    .insert(backupRuns)
+    .values([
+      run("brun_1", "success", null, 60_000),
+      run("brun_2", "failed", refused, 1_000),
+    ]);
+  const members = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.equal(
+    members.find((m) => m.serverId === "srv_3")!.copyWarning,
+    `Backup of web: ${refused}.`,
+  );
+  // The next run landed: nothing to say.
+  await db.insert(backupRuns).values(run("brun_3", "success", null, 0));
+  const later = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.equal(later.find((m) => m.serverId === "srv_3")!.copyWarning, "");
 });

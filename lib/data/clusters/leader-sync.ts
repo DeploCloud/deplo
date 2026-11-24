@@ -283,6 +283,10 @@ export async function pushLeaderRoster(
       images: f?.images ?? [],
       emptying: f?.emptying ?? false,
       databaseEnvs: f?.databaseEnvs ?? [],
+      // A failover never takes data to a disk it would leave under a tenth free (ADR-0043).
+      ...(f?.diskTotal
+        ? { diskFree: f.diskFree, diskTotal: f.diskTotal, holds: f.holds }
+        : {}),
       // The leader never hands a moved workload to an agent that would not start it.
       ...(tooOld ? { noFailover: true } : {}),
       // Nor a database to an agent that would start it empty.

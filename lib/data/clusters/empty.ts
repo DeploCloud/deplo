@@ -1,5 +1,6 @@
 import "server-only";
 
+import { appDataBytes } from "./data-size";
 import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -298,6 +299,7 @@ async function move(
     environmentId: w.environmentId,
     limitMb: w.limitMb,
     archs: await redeployArchs(w.kind, w.id),
+    diskBytes: w.kind === "app" ? await appDataBytes(w.id) : 0,
   });
   const placed = () =>
     recordPlacement({

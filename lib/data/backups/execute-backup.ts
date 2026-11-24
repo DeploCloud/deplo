@@ -3,6 +3,8 @@ import "server-only";
 import { and, eq, gt } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
@@ -230,6 +232,14 @@ export async function executeBackup(
 
   const finishedAt = nowIso();
   let canceled = false;
+  // A backup that lands after its App or database was deleted is removed, never kept as a backup (ADR-0043).
+  const gone = !failure && (await targetGone(opts));
+  if (gone) {
+    failure = "its App or database was deleted while it ran";
+    if (result?.ok && result.objectKey && creds)
+      await removeLanded(creds, targetServerId, result.objectKey, runId);
+    result = null;
+  }
   const finished = await getDb().transaction(async (tx): Promise<BackupRun> => {
     const set = failure
       ? { status: "failed" as const, error: failure, finishedAt }
@@ -260,7 +270,8 @@ export async function executeBackup(
         .from(backupRunsTable)
         .where(eq(backupRunsTable.id, runId))
         .limit(1);
-      canceled = still[0]?.status === "canceled";
+      // No row left: its target was deleted meanwhile, with its backups.
+      canceled = !still[0] || still[0].status === "canceled";
       return { ...run, ...set } as BackupRun;
     }
     if (opts.backupId) {
@@ -276,21 +287,11 @@ export async function executeBackup(
   });
 
   if (canceled) {
-    if (!failure && result?.ok && result.objectKey && creds) {
-      try {
-        const via =
-          destinationServerId(creds.destination, targetServerId) ||
-          (await anyBackupCapableServer());
-        if (via) await deleteFromDestination(creds, via, result.objectKey);
-      } catch (e) {
-        console.warn(
-          `[backups] canceled run ${runId} left ${result.objectKey} behind: ` +
-            `${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
-    }
+    if (!failure && result?.ok && result.objectKey && creds)
+      await removeLanded(creds, targetServerId, result.objectKey, runId);
     throw new Error("This backup was canceled");
   }
+  if (gone) throw new Error(`Backup of ${label} stopped: ${failure}`);
 
   // A database on a cluster fails over from its latest backup: its leader learns of this one now (#202).
   if (!failure && opts.kind === "database" && opts.databaseId)
@@ -322,6 +323,71 @@ export async function executeBackup(
 
   if (failure) throw new Error(failure);
   return finished;
+}
+
+async function removeLanded(
+  creds: NonNullable<
+    Awaited<ReturnType<typeof getDestinationWithSecretsForTeam>>
+  >,
+  targetServerId: string,
+  objectKey: string,
+  runId: string,
+): Promise<void> {
+  try {
+    const via =
+      destinationServerId(creds.destination, targetServerId) ||
+      (await anyBackupCapableServer());
+    if (via) await deleteFromDestination(creds, via, objectKey);
+  } catch (e) {
+    console.warn(
+      `[backups] run ${runId} left ${objectKey} behind: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+/** Its App or database is gone, or on its way out. */
+async function targetGone(opts: {
+  kind: BackupTargetKind;
+  appId: string | null;
+  databaseId: string | null;
+}): Promise<boolean> {
+  const db = getDb();
+  if (opts.kind === "app" && opts.appId) {
+    const [a] = await db
+      .select({ deletingAt: appsTable.deletingAt })
+      .from(appsTable)
+      .where(eq(appsTable.id, opts.appId))
+      .limit(1);
+    return !a || !!a.deletingAt;
+  }
+  if (opts.kind === "database" && opts.databaseId) {
+    const [d] = await db
+      .select({ id: databasesTable.id })
+      .from(databasesTable)
+      .where(eq(databasesTable.id, opts.databaseId))
+      .limit(1);
+    return !d;
+  }
+  return false;
+}
+
+/** A delete stops its target's running backups first: what one already wrote goes (ADR-0043). */
+export async function cancelBackupsOfDeleted(targetId: string): Promise<void> {
+  const running = await getDb()
+    .update(backupRunsTable)
+    .set({
+      status: "canceled",
+      error: "Its App or database was deleted",
+      finishedAt: nowIso(),
+    })
+    .where(
+      and(
+        eq(backupRunsTable.targetId, targetId),
+        eq(backupRunsTable.status, "running"),
+      ),
+    )
+    .returning({ id: backupRunsTable.id });
+  for (const r of running) backupRunsInFlight.get(r.id)?.abort();
 }
 
 export async function cancelBackupRun(runId: string): Promise<boolean> {

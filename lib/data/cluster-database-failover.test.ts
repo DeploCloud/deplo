@@ -310,6 +310,40 @@ test("a database that found no room is named as waiting, in its own team", async
   assert.equal(row.serverId, "srv_2");
 });
 
+// A failover never takes data to a disk it would leave under a tenth free; with no such server it waits (ADR-0043).
+test("a database that found no server with room on its disk says so while it waits", async () => {
+  const cluster = await eu();
+  await main(cluster.id, TEAM_B);
+  await apply(
+    cluster.id,
+    event(cluster.id, "placement", {
+      kind: "database",
+      workloadId: "db_main",
+      members: [""],
+      epoch: 1,
+    }),
+    event(cluster.id, "failover", {
+      member: "srv_2",
+      reason: "stopped_answering",
+      moved: [],
+      waiting: [
+        {
+          kind: "database",
+          workloadId: "db_main",
+          reason: "no_disk",
+          neededMb: 256,
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(
+    (await deploSaid(TEAM_B)).filter((m) => /waiting/.test(m)),
+    [
+      "main is waiting for room in eu: server-2 stopped answering and no other server has room for its data and a tenth of its disk free",
+    ],
+  );
+});
+
 test("a database's failover is a marker on its charts, read over MCP too and by no other team", async () => {
   const cluster = await eu();
   await main(cluster.id);

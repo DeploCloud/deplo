@@ -1,6 +1,7 @@
 import { authorizeComposeTraefik } from "./traefik-labels";
 import "server-only";
 
+import { appDataBytes } from "../clusters/data-size";
 import { answerArrivingDomains } from "../domains/cluster-answer";
 
 import { and, eq, sql } from "drizzle-orm";
@@ -137,6 +138,7 @@ export async function moveAppToCluster(
       environmentId: app.environmentId ?? null,
       limitMb,
       archs,
+      diskBytes: await appDataBytes(id),
     }));
   await writeAppSource(
     id,

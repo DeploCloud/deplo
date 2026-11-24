@@ -22,6 +22,7 @@ import { appOwnVolumeNames } from "../project-backup-descriptor";
 import { teardownOrQueue } from "../teardown-queue";
 import { recordActivity } from "../activity";
 import { deleteBackupsWithTarget } from "../backups/artifact-delete";
+import { cancelBackupsOfDeleted } from "../backups/execute-backup";
 import { mapLimit } from "../../utils";
 import { errMsg } from "./lifecycle";
 import { removeSetAsideCopiesOfDeleted } from "./set-aside";
@@ -35,6 +36,7 @@ async function markAppsDeleting(ids: string[]): Promise<void> {
     .update(appsTable)
     .set({ deletingAt: nowIso() })
     .where(inArray(appsTable.id, ids));
+  for (const id of ids) await cancelBackupsOfDeleted(id);
 }
 
 async function beginAppDelete(

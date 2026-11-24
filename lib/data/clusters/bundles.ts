@@ -1,5 +1,6 @@
 import "server-only";
 
+import { appDataBytes } from "./data-size";
 import { and, desc, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
 import { peakMemoryMb } from "../../monitoring/container-history";
 import { getDb } from "../../db/client";
@@ -291,6 +292,8 @@ export async function bundleMeta(
     peakMb: peakMemoryMb(appId, app?.replicas),
     hasDomain: Boolean(dom),
     createdAt: app?.createdAt ?? "",
+    // No member is given its data past a tenth of its disk free (ADR-0043).
+    diskBytes: await appDataBytes(appId),
   };
 }
 

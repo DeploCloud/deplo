@@ -6,7 +6,11 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
-import { backups as backupsTable } from "../../db/schema/control-plane/backups";
+import {
+  backupRuns,
+  backups as backupsTable,
+} from "../../db/schema/control-plane/backups";
+import { databases } from "../../db/schema/control-plane/databases";
 import { seedBackup } from "../backup-test-helpers";
 import { asUser1, seedBase } from "./backups-test-helpers";
 import { runAppBackup, runBackup, runDatabaseBackup } from "./run-now";
@@ -196,4 +200,48 @@ test("a backup that fails before it reaches the server still names what it was b
     "Backup of database main failed",
     "Backup of prj_1 failed",
   ]);
+});
+
+// eu, 24 Nov 2026: a copy saved 3 s after its App was deleted stayed as a backup. One that lands after its target
+// went is removed from the destination, never listed, and Activity says nothing of it.
+test("a backup that lands after its database was deleted is removed, not kept", async (t) => {
+  const deleted: string[] = [];
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup(req: { s3?: { objectKey?: string } }) {
+        await db.delete(databases).where(eq(databases.id, "db_1"));
+        yield {
+          result: {
+            ok: true,
+            error: "",
+            sizeBytes: 3,
+            sha256: "",
+            objectKey: req.s3?.objectKey ?? "",
+          },
+        };
+      },
+      s3Delete: async (target: { objectKey: string }) => {
+        deleted.push(target.objectKey);
+        return { ok: true, error: "", deleted: 1 };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await assert.rejects(() => runDatabaseBackup("db_1", "s3_1"), /deleted/);
+  });
+  const runs = await db.select().from(backupRuns);
+  assert.equal(runs.length, 1);
+  assert.notEqual(runs[0]!.status, "success");
+  assert.deepEqual(deleted, [runs[0]!.objectKey]);
+  const lines = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    !lines.some((m) => /Backed up|Backup of .* failed/.test(m)),
+    lines.join("\n"),
+  );
 });

@@ -9,7 +9,12 @@ import { dispatchAlert } from "../../notify/dispatch";
 import type { Cluster } from "../../types/cluster";
 import { formatBytes, joinNames } from "../../utils";
 import { recordActivity } from "../activity";
-import { recordLeftBehindRun } from "../backups/left-behind";
+import { leftBehindStem, recordLeftBehindRun } from "../backups/left-behind";
+import { deleteFromDestination } from "../backup-transport";
+import {
+  destinationServerId,
+  getDestinationWithSecretsForTeam,
+} from "../destinations/credentials";
 import { getServerById } from "../servers/roster";
 import { clusterMemberServerIds } from "./roster";
 
@@ -24,6 +29,8 @@ interface Workload {
   name: string;
   teamId: string;
   app: { id: string; slug: string } | null;
+  /** Being deleted: what a member saves of it now goes, never kept as a backup. */
+  deleting?: boolean;
 }
 
 type Row = Record<string, unknown>;
@@ -61,6 +68,7 @@ async function namedWorkloads(
           name: appsTable.name,
           slug: appsTable.slug,
           teamId: appsTable.teamId,
+          deletingAt: appsTable.deletingAt,
         })
         .from(appsTable)
         .where(
@@ -93,6 +101,7 @@ async function namedWorkloads(
       name: a.name,
       teamId: a.teamId,
       app: { id: a.id, slug: a.slug },
+      deleting: !!a.deletingAt,
     });
   for (const r of dbs)
     out.set(`database/${r.id}`, {
@@ -183,6 +192,64 @@ async function whyKept(
   };
 }
 
+/**
+ * What a member saved of a workload deleted meanwhile goes from its destination: a copy that finishes after its
+ * App was deleted is never kept as a backup (ADR-0043). Only a file under that workload's own backups.
+ */
+async function dropSavedOfDeleted(
+  member: string,
+  saved: Row[],
+  known: Map<string, Workload>,
+): Promise<Row[]> {
+  const kept: Row[] = [];
+  for (const s of saved) {
+    const w = known.get(keyOf(s));
+    // Another cluster's or not this one's: never touched, only not listed.
+    if ((w && !w.deleting) || (!w && (await stillThere(s)))) {
+      kept.push(s);
+      continue;
+    }
+    if (typeof s.ref !== "string" || typeof s.objectKey !== "string") continue;
+    const [dest] = await getDb()
+      .select({ teamId: destTable.teamId })
+      .from(destTable)
+      .where(eq(destTable.id, s.ref))
+      .limit(1);
+    const kind = s.kind as Kind;
+    if (
+      !dest ||
+      !s.objectKey.startsWith(
+        leftBehindStem(dest.teamId, kind, String(s.workloadId)),
+      )
+    )
+      continue;
+    try {
+      const creds = await getDestinationWithSecretsForTeam(dest.teamId, s.ref);
+      await deleteFromDestination(
+        creds,
+        destinationServerId(creds.destination, member),
+        s.objectKey,
+      );
+    } catch (e) {
+      console.warn(
+        `[clusters] ${s.objectKey}, saved after its ${kind} was deleted, stayed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+  return kept;
+}
+
+async function stillThere(s: Row): Promise<boolean> {
+  const id = String(s.workloadId);
+  const table = s.kind === "database" ? databasesTable : appsTable;
+  const [row] = await getDb()
+    .select({ id: table.id })
+    .from(table)
+    .where(eq(table.id, id))
+    .limit(1);
+  return !!row;
+}
+
 /** A server saved, after its return, what it had kept: the backup is listed and each team reads one line. */
 export async function applyLeftSaved(
   cluster: Cluster,
@@ -190,8 +257,9 @@ export async function applyLeftSaved(
 ): Promise<void> {
   if (typeof d.member !== "string") return;
   const member = d.member;
-  const saved = rows(d, "saved");
-  const known = await namedWorkloads(cluster.id, saved);
+  const named = rows(d, "saved");
+  const known = await namedWorkloads(cluster.id, named);
+  const saved = await dropSavedOfDeleted(member, named, known);
   const server = (await getServerById(member))?.name ?? "A server";
   // One word per workload: listed if any of its files was, however many the event names.
   const fate = new Map<string, { w: Workload; listed: boolean }>();
@@ -241,7 +309,7 @@ export async function applyMemberReturned(
 ): Promise<void> {
   if (typeof d.member !== "string") return;
   const member = d.member;
-  const [stopped, saved, kept, aside] = [
+  const [stopped, named, kept, aside] = [
     rows(d, "stopped"),
     rows(d, "saved"),
     rows(d, "kept"),
@@ -249,10 +317,11 @@ export async function applyMemberReturned(
   ];
   const known = await namedWorkloads(cluster.id, [
     ...stopped,
-    ...saved,
+    ...named,
     ...kept,
     ...aside,
   ]);
+  const saved = await dropSavedOfDeleted(member, named, known);
   const own = (list: Row[], teamId: string) =>
     list.flatMap((r) => {
       const w = known.get(keyOf(r));
