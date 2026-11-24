@@ -36,6 +36,7 @@ import {
   type ReplicaRow,
 } from "./replica-state";
 import { clusterOutOfReach } from "./reach";
+import { heldBy, QUEUED, setReplicaTurns } from "./copy-turns";
 import { getClusterById } from "./roster";
 
 // Replication (ADR-0046): each member's server agent is handed the cluster's replicated Apps. The one that runs an
@@ -205,6 +206,65 @@ async function memberDisk(serverId: string) {
   }
 }
 
+/**
+ * Which new copies wait their turn: a server takes one copy at a time, sent or received (ADR-0043). A copy a member
+ * already holds goes on; one it holds none of starts only while neither end copies anything else.
+ */
+export async function queuedCopies(
+  table: ClusterReplicaTable,
+  held: Map<string, ClusterReplicaReport[]>,
+  refused: Map<string, Map<string, string>>,
+): Promise<Map<string, Map<string, string>>> {
+  const out = new Map<string, Map<string, string>>();
+  const ids = table.entries.map((e) => e.appId);
+  if (ids.length === 0) return out;
+  const apps = await getDb()
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(inArray(appsTable.id, ids));
+  const app = new Map(apps.map((a) => [a.id, a]));
+  const busy = new Map<string, string>();
+  const take = (ids: string[], what: string) => {
+    for (const id of ids) if (!busy.has(id)) busy.set(id, what);
+  };
+  for (const m of table.members) {
+    const b = heldBy(m.serverId);
+    if (b) busy.set(m.serverId, b);
+  }
+  // Under way: a copy a member holds that is not whole yet keeps both ends busy.
+  for (const [serverId, reports] of held)
+    for (const r of reports) {
+      const a = app.get(r.appId);
+      if (!a?.serverId || a.serverId === serverId || r.role === "sending")
+        continue;
+      if (!r.synced) take([serverId, a.serverId], `a copy of ${a.name}`);
+    }
+  for (const e of table.entries) {
+    const a = app.get(e.appId);
+    if (!a?.serverId) continue;
+    for (const m of table.members) {
+      if (m.serverId === a.serverId || !held.has(m.serverId)) continue;
+      if (refused.get(m.serverId)?.has(e.appId)) continue;
+      if (held.get(m.serverId)!.some((r) => r.appId === e.appId)) continue;
+      const at = [m.serverId, a.serverId].find((id) => busy.has(id));
+      if (!at) {
+        take([m.serverId, a.serverId], `a copy of ${a.name}`);
+        continue;
+      }
+      const name = (await getServerById(at))?.name ?? "Another server";
+      const q = out.get(m.serverId) ?? new Map<string, string>();
+      q.set(e.appId, `${QUEUED} ${name} is busy with ${busy.get(at)}`);
+      out.set(m.serverId, q);
+    }
+  }
+  setReplicaTurns(busy);
+  return out;
+}
+
 /** Hands every member the table and reads back its copies; a member that cannot take it is noted, the rest go on. */
 export async function pushReplicaTables(
   clusterId: string,
@@ -212,8 +272,10 @@ export async function pushReplicaTables(
 ): Promise<Map<string, ClusterReplicaReport[] | string>> {
   const table = await replicaTable(clusterId);
   const out = new Map<string, ClusterReplicaReport[] | string>();
+  // What each holds now decides what it may start: never what Deplo stored last.
+  const held = new Map<string, ClusterReplicaReport[]>();
+  const refused = new Map<string, Map<string, string>>();
   for (const m of table.members) {
-    const key = `${clusterId}|${m.serverId}`;
     try {
       const conn = await connectAgent(m.serverId);
       try {
@@ -222,12 +284,34 @@ export async function pushReplicaTables(
           out.set(m.serverId, AGENT_TOO_OLD);
           continue;
         }
-        // What it holds now decides what it may start: never what Deplo stored last.
-        const held = await conn.clusterReplicaStatus();
-        const refused = await copiesThatDoNotFit(table, m.serverId, held);
+        const reports = await conn.clusterReplicaStatus();
+        held.set(m.serverId, reports);
+        refused.set(
+          m.serverId,
+          await copiesThatDoNotFit(table, m.serverId, reports),
+        );
+      } finally {
+        conn.close();
+      }
+    } catch (e) {
+      handed.delete(`${clusterId}|${m.serverId}`);
+      out.set(m.serverId, `This server did not answer: ${messageOf(e)}`);
+    }
+  }
+  const queued = await queuedCopies(table, held, refused);
+  for (const m of table.members) {
+    if (!held.has(m.serverId)) continue;
+    const key = `${clusterId}|${m.serverId}`;
+    const notNow = new Map([
+      ...(refused.get(m.serverId) ?? []),
+      ...(queued.get(m.serverId) ?? []),
+    ]);
+    try {
+      const conn = await connectAgent(m.serverId);
+      try {
         const mine = {
           ...table,
-          entries: table.entries.filter((e) => !refused.has(e.appId)),
+          entries: table.entries.filter((e) => !notNow.has(e.appId)),
         };
         const sum = JSON.stringify(mine);
         if (force || handed.get(key) !== sum) {
@@ -235,9 +319,9 @@ export async function pushReplicaTables(
           handed.set(key, sum);
         }
         const reports = (await conn.clusterReplicaStatus()).filter(
-          (r) => !refused.has(r.appId),
+          (r) => !notNow.has(r.appId),
         );
-        for (const [appId, error] of refused)
+        for (const [appId, error] of notNow)
           reports.push({
             appId,
             role: "idle",

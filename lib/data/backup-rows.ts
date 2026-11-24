@@ -252,7 +252,7 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,
   } satisfies Record<
-    Exclude<keyof BackupRun, "leftOnServer">,
+    Exclude<keyof BackupRun, "leftOnServer" | "queued">,
     unknown
   > as BackupRunInsert;
 }

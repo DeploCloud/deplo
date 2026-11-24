@@ -44,6 +44,7 @@ import { formatBytes } from "./format-bytes";
 import { roomForBackup } from "./room";
 import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import { outOfReachFailure } from "../clusters/reach";
+import { takeTurn } from "../clusters/copy-turns";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
 // On globalThis: a scheduled run starts in the scheduler's bundle and is canceled from a request's (eu, 24 Nov
@@ -189,16 +190,31 @@ export async function executeBackup(
       project: target.project,
       ...(base ? { archive: PostgresArchive.POSTGRES_ARCHIVE_BASE } : {}),
     };
-    failure = await roomForBackup(creds, transport, target.targetId);
-    if (!failure) {
-      result = await backupToDestination(
-        creds,
-        transport,
-        objectKey,
-        abort.signal,
-      );
-      if (!result.ok)
-        failure = result.error || "the agent reported a failed backup";
+    // One copy at a time on each end (ADR-0043): the run waits its turn, and its row says for what.
+    const release = await takeTurn(
+      [
+        target.serverId,
+        destinationServerId(creds.destination, target.serverId),
+      ],
+      `a backup of ${label}`,
+      { signal: abort.signal, note: runId },
+    );
+    try {
+      failure = abort.signal.aborted
+        ? "canceled"
+        : await roomForBackup(creds, transport, target.targetId);
+      if (!failure) {
+        result = await backupToDestination(
+          creds,
+          transport,
+          objectKey,
+          abort.signal,
+        );
+        if (!result.ok)
+          failure = result.error || "the agent reported a failed backup";
+      }
+    } finally {
+      release();
     }
 
     if (!failure) {

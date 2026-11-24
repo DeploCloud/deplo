@@ -128,6 +128,7 @@ export function AppFailoverCard({
                             `, ${r.behindSeconds} s behind`}
                           {r.bytes > 0 && `, ${formatBytes(r.bytes)}`}
                           {r.state !== "Not copied" &&
+                            r.state !== "Queued" &&
                             (r.relayed
                               ? ", sent through Deplo"
                               : ", sent server to server")}

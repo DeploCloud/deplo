@@ -12,10 +12,17 @@ import {
   NEWEST_WINS_CAPABILITY,
   SET_ASIDE_FILES_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
-import { moveClusterDataBeforeStart } from "./app-migration";
+import {
+  __forgetMoveTries,
+  moveClusterDataBeforeStart,
+  moveRetry,
+} from "./app-migration";
 import { __setDeployAnywayForTest, acceptDataCopyLoss } from "./data-copy";
 import { drainTeardowns } from "./teardown-queue";
-import { AgentOfflineError } from "../infra/agent-client/errors";
+import {
+  AgentOfflineError,
+  AgentUnreachableError,
+} from "../infra/agent-client/errors";
 import { moveAppToCluster } from "./apps/source";
 import { removeClusterMember } from "./clusters/dissolve";
 import { VOLUME_COPY_MEMBER_CAPABILITY } from "../infra/agent-client/hello-capabilities";
@@ -365,4 +372,57 @@ test("a move Deplo carries only when no path joins the two members, and Activity
   const { to } = await moveBetweenMembers(true);
   assert.ok(to.calls.includes(`import:${VOL}`), "Deplo carried it");
   await said(/Moved fise's data from srv_2 to srv_3, through Deplo/);
+});
+
+// c37: eu-4's link closed mid-copy (21:30:44) and the move rolled back; a dropped link now never ends a move.
+test("a move whose copy breaks when a link drops runs the App where it was, then goes again by itself", async () => {
+  __forgetMoveTries();
+  await fise("srv_2");
+  for (const id of ["srv_2", "srv_3"])
+    hosts.get(id)!.capabilities.push(VOLUME_COPY_MEMBER_CAPABILITY);
+  const old = disks.get("srv_2")!;
+  old.volumes.set(VOL, OLD);
+  old.ran.set("fise", { lastRanMs: Date.now() - 2_000, running: true });
+  const cluster = await eu();
+  __setRunnerForTest(async (depId) => {
+    await db
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(eq(deploymentsTable.id, depId));
+  });
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  const ops = hosts.get("srv_2")!.extra as Partial<AgentConnection>;
+  const send = ops.sendClusterVolume;
+  ops.sendClusterVolume = async () => {
+    throw new AgentUnreachableError(
+      "14 UNAVAILABLE: connect ENOENT /tmp/deplo-link-x/15.sock",
+    );
+  };
+  moveRetry.waitMs = 10;
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "rolled-back",
+  );
+  assert.equal((await appRow("fise")).serverId, "srv_2");
+  assert.ok(old.calls.includes("start:fise"), "it runs where it was");
+  await said(
+    /Moving fise to srv_3 broke when a link dropped - it runs on srv_2 again, and the move goes again by itself/,
+  );
+  ops.sendClusterVolume = send;
+  for (let i = 0; i < 300; i++) {
+    if ((await appRow("fise")).serverId === "srv_3") break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.equal((await appRow("fise")).migrateFromServerId, "srv_2");
+  const lines: string[] = [];
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", (_l, t) =>
+      lines.push(t),
+    ),
+    "done",
+    lines.join("\n"),
+  );
+  assert.deepEqual(disks.get("srv_3")!.volumes.get(VOL), OLD);
+  moveRetry.waitMs = 5_000;
+  __setRunnerForTest(async () => {});
 });

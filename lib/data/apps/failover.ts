@@ -45,6 +45,7 @@ import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { requireFolderCapabilityForApp } from "../folder-access";
 import { requireAppCapability } from "../node-access";
 import { getServerById } from "../servers/roster";
+import { QUEUED } from "../clusters/copy-turns";
 
 // How a cluster App that keeps data on its server fails over: with its cluster's replication, or not at all.
 // https://deplo.build/docs/operations/clusters/apps-with-stored-data
@@ -127,7 +128,9 @@ export async function copyRows(
           ? "Behind"
           : r.connected
             ? "Copying"
-            : "Not copied";
+            : r.error.startsWith(QUEUED)
+              ? "Queued"
+              : "Not copied";
     out.push({
       server: (await getServerById(id))?.name ?? id,
       state,
@@ -138,7 +141,10 @@ export async function copyRows(
           : null,
       bytes: r?.bytes ?? 0,
       relayed: r?.relayed ?? false,
-      error: r?.error ?? "",
+      error:
+        state === "Queued"
+          ? r!.error.slice(QUEUED.length).trim()
+          : (r?.error ?? ""),
     });
   }
   return out.sort((a, b) => a.server.localeCompare(b.server));
