@@ -416,6 +416,18 @@ Released this round: agent v0.5.3-canary.44 to .46 and panel v0.8.2-canary.81 to
 - **First cut with a new domain**: on canary.82, lab-web, its domain added 38 s before eu-1 was powered off, answered on eu-3 after 31 s with no 404 (deplo#342), but the failover of lab-pause2 copied its 2 GB copy into place on eu-2 then eu-3: on the shared disk every lease ran out, fise was down 85 s by name (97 s on eu-2), lab-web 107 s, memos on and off for 90 s, the zone silent 10 s, and eu-2 led at epoch 86. On canary.83, with the copy moved into place, the same cut (lab-cut, domain added 32 s before): lab-cut back after 20 s by name, lab-pause2 after 32 s, memos and lab-web untouched, fise never down on a member (30 s by name for the prober, which takes only the first address).
 - **Activity**: 112 lines in the round, each once, "Moved lab-cut to eu-2" and "Moved lab-pause2 to eu-3" included.
 
+## What cluster eu showed (24 Nov 2026, panel v0.8.2-canary.85 live, agent v0.5.3-canary.48, leader v0.1.0-canary.19)
+
+Released this round: agent v0.5.3-canary.47 and .48, leader v0.1.0-canary.19, panel v0.8.2-canary.84 and .85 (ADR-0043, "A busy disk costs no lease"); canary.85 is live, built on this server under a 6 GB cap (peaks 5.07 and 4.99 GB, no kill, no restart of the App that leaks). Before the release the new agent and leader ran on eu-1..3 by hand, as `0.5.3-canary.46.x` and `0.1.0-canary.18.1`, so the release still replaced them. The prober asked each name server every second and fetched fise, memos and every `lab-` App by name and on each member over IPv6.
+
+- **The rollouts**: canary.84's agent stopped on each server after its self-update (ADR-0043); memos answered nothing by name for 6 min 40 s, every name server for 2 min 40 s and fise nearly as long, until the agents were started by hand. canary.85: every agent on canary.48 82 s after Deplo restarted, each name server silent for one probe (eu-1 10:50:34, eu-3 10:50:52, eu-2 10:51:10), never two, no SERVFAIL, no App down.
+- **A disk and CPU hog on eu-1** (1 core, two busy loops and a 0.8 to 1.5 GB file written and synced over and over, 2 minutes) while lab-load (2.2 to 2.8 GB) replicated: before leader canary.19 every lease ran out once (7.8 s without a renewal); after, no lease ran out, no fence, the zone always answered, live with the leader on eu-1 itself. Replication waited for the hog to end. The Apps' own writes still stall on the saturated shared disk: fise 6 s by name, lab-load 46 s while its own container wrote 600 MB.
+- **Power cut of a 2 GB App's server** (eu-3: lab-load 2.8 GB and fise, canary.84): lab-load back on eu-1 after 19 s (26 s by name), fise on eu-2 after 39 s, memos never stopped (15 s by name: the prober's first address was the dead one); no lease ran out on eu-1 or eu-2. Cutting the leader's server (eu-1): eu-2 led at epoch 89, lab-load and lab-send back after 30 s; fise and memos on eu-2 stopped while nobody led, as a leader's loss does (fise 29 s by name).
+- **A send cut midway**: covered in ADR-0043 item 2; the destination kept nothing both times, and the run named it (`eu-2, this backup's destination, is offline.`) once canary.85 was live.
+- **Delete after a return**: covered in ADR-0043 item 3; within 2 minutes of the member answering, nothing of the App on any member.
+- **A member comes back**: eu-3's 2.94 GB copy of lab-load set aside by a rename in 300 ms, fise's in 227 ms; the member then took a whole new replica of lab-load beside its dated copy.
+- **Leader at the end**: eu-2, epoch 89, line eu-3 then eu-1.
+
 ## Test plan
 
 **CI only, for every change** (each repo's own job, plus the cross-repo contract job ADR-0048 set up):
