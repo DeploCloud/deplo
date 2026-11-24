@@ -469,16 +469,18 @@ export function fakeClusterHosts(): {
       clusterReplicaStatus: () => guard(() => [...h.replicaReports]),
       close: () => void h.closed++,
     };
-    const merged = { ...conn, ...h.extra } as AgentConnection;
     // A test that sizes the volumes sizes them for both reads; its biggest file is none unless it says.
-    if (h.extra.volumeUsage && !h.extra.volumeSizes)
-      merged.volumeSizes = async (names) => ({
+    const merged = {
+      ...conn,
+      volumeSizes: async (names: string[]) => ({
         bytes: [...(await merged.volumeUsage(names)).values()].reduce(
           (a, b) => a + b,
           0,
         ),
         largest: 0,
-      });
+      }),
+      ...h.extra,
+    } as AgentConnection;
     return merged;
   });
   return {

@@ -10,7 +10,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { clusterMembers } from "../db/schema/control-plane/clusters";
-import { fingerprintOf } from "./clusters/relay";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import {
   AgentOfflineError,
@@ -138,6 +138,17 @@ export async function backupToDestination(
     ...(await relayBackup(creds, target, objectKey, destServer, req, signal)),
     path: "relay",
   };
+}
+
+/** A server agent's certificate, as a member knows another by it; null before it enrolled. */
+async function fingerprintOf(serverId: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ fp: serversTable.agentCertFingerprint })
+    .from(serversTable)
+    .where(eq(serversTable.id, serverId))
+    .limit(1);
+  const fp = row?.fp?.toLowerCase() ?? "";
+  return /^[0-9a-f]{64}$/.test(fp) ? fp : null;
 }
 
 /** Whether two servers are members of one cluster, so they share its private network. */
