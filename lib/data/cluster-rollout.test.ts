@@ -309,8 +309,10 @@ test("a leader that stops within its first minute stops the rollout before the n
     return { version, running: true };
   };
   const real = h.extra.clusterStatus;
+  // Up when the install is confirmed, stopped at the first look of its minute: a count of looks the 20 ms hold
+  // may not reach under load would make it pass for held (deplo#363).
   h.extra.clusterStatus = async () => {
-    if (h.status.version === "0.3.0" && ++statuses > 3)
+    if (h.status.version === "0.3.0" && ++statuses > 1)
       h.status = { ...h.status, running: false };
     return real ? real() : h.status;
   };
