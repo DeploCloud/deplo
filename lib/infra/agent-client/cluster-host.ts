@@ -103,15 +103,17 @@ export async function installClusterLeader(
     throw new ClusterReleaseUnavailableError(
       "This Deplo has no cluster release to install yet.",
     );
-  const { resolveClusterRelease } = await import("../../agent/release");
+  const { resolveClusterRelease, servedByDeplo } =
+    await import("../../agent/release");
   const release = await resolveClusterRelease(version);
   if (!release)
     throw new ClusterReleaseUnavailableError(
       "Could not download the cluster release this Deplo installs from GitHub. Try again in a minute.",
     );
-  const binaries: Record<string, { url: string; sha256: string }> = {};
+  const fromGitHub: Record<string, { url: string; sha256: string }> = {};
   for (const [arch, bin] of Object.entries(release.binaries))
-    if (bin) binaries[arch] = { url: bin.url, sha256: bin.sha256 };
+    if (bin) fromGitHub[arch] = { url: bin.url, sha256: bin.sha256 };
+  const binaries = servedByDeplo(fromGitHub, "deplo-cluster");
   return onHost(serverId, async (conn) => {
     const here = await conn.clusterStatus();
     if (here.installed && isNewer(here.version, release.version))

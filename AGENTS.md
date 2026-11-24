@@ -428,6 +428,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     nothing from the request) and
     `address`, which answers the caller's own address as text so a server agent learns where its traffic
     leaves from (ADR-0050) and reads nothing else, and
+    `agent/release/[file]`, which streams only the agent and leader binaries this Deplo pins from
+    their GitHub release, so a server that reaches GitHub slowly still updates (the agent checks
+    the release's own sha256), and
     `avatar/[style]/[preset]/[seed]`, which renders a deterministic picture from the path and
     reads nothing - onboarding shows the picker before an account exists. Its styles and presets
     are a FIXED list (`lib/apps/avatar-shared.ts`): four packs plus `initials`, each preset one
