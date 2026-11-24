@@ -1588,6 +1588,7 @@ write_agent_unit() {
 Description=Deplo server agent
 After=$UNIT_AFTER
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -1598,8 +1599,9 @@ EnvironmentFile=-$BOOTSTRAP_ENV
 ExecStart=$AGENT_BIN \\
   --data-dir / \\
   --agent-dir $AGENT_DATA
-Restart=on-failure
-RestartSec=5
+# Any exit starts it again: a stop systemd takes as clean once left every server without its agent (ADR-0043).
+Restart=always
+RestartSec=1
 $DOCKER_UNIT_LINES
 
 [Install]

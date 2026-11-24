@@ -3386,7 +3386,7 @@ takeover_uninstall() {
   if [ -x /usr/local/bin/deplo-agent ]; then
     systemctl disable --now deplo-agent >&9 2>&9 || true
     rm -f /usr/local/bin/deplo-agent /etc/systemd/system/deplo-agent.service
-    rm -rf /var/lib/deplo-agent
+    rm -rf /var/lib/deplo-agent /etc/systemd/system/deplo-agent.service.d
     systemctl daemon-reload >&9 2>&9 || true
   fi
   rm -f /usr/local/bin/deplo
