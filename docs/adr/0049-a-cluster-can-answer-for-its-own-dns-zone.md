@@ -428,6 +428,15 @@ Released this round: agent v0.5.3-canary.47 and .48, leader v0.1.0-canary.19, pa
 - **A member comes back**: eu-3's 2.94 GB copy of lab-load set aside by a rename in 300 ms, fise's in 227 ms; the member then took a whole new replica of lab-load beside its dated copy.
 - **Leader at the end**: eu-2, epoch 89, line eu-3 then eu-1.
 
+## What cluster eu showed (24 Nov 2026, panel v0.8.2-canary.88 live, agent v0.5.3-canary.50, leader v0.1.0-canary.21)
+
+Released this round: agent v0.5.3-canary.50, leader v0.1.0-canary.21, panel v0.8.2-canary.87 and .88 (ADR-0043, "No copy fills a disk"; .88 because .87 counted a disk's root-reserved blocks as free and churned a copy that did not fit). Both built on this server under a 6 GB cap (peaks 4.75 and 4.62 GiB, no kill, the leaking App never restarted). Before the release a clone of eu-1 (eu-4) ran the real self-update from the canary.49 release binary to the build under systemd (TestSystemd, then 5 minutes up, no restart), a replica that grew past its room, a destination power-cut mid-backup and a name server restart with one server unreachable (0.46 s).
+
+- **The rollout**: agents on .50 eu-1 16:53:56, eu-3 16:55:01, eu-4 16:56:05, eu-2 16:57:12, Deplo's machine 16:58:16, a minute apart; leaders on .21 after them, Deplo's machine last (16:59:26). No `SERVFAIL`, no name server missed a probe, never two silent at once. Apps: one probe each when the agent they were passed through restarted (`ECONNRESET`), fise by name once (16:53:53), memos once (16:57:09).
+- **Copies, placement, partials, deletes**: as in ADR-0043; the highest use was eu-4 89.9% (the .87 churn, at the agent's stop), eu-1 80%, eu-2 79%, eu-3 75%; lab-fit was down 36 s by name after its server's power cut (21 s on the members).
+- **The lab's internet path** was down three times with nothing of Deplo behind it, while this server reached everything else: 14:55:43 to 14:57:27, 15:00:22 to 15:06:22 and 16:17:46 to 16:29:19 UTC (the owner's network, as on 13:40 to 13:48).
+- **Leader at the end**: eu-2, epoch 91, line eu-1 then eu-3.
+
 ## What cluster eu showed (24 Nov 2026, panel v0.8.2-canary.86 live, agent v0.5.3-canary.49, leader v0.1.0-canary.20)
 
 Released this round: agent v0.5.3-canary.49, leader v0.1.0-canary.20, panel v0.8.2-canary.86 (ADR-0043, "A self-update never takes a server down"); canary.86 is live, built on this server under a 6 GB cap (peak 5.59 GB, no kill; the App that leaks was restarted once for the 7 GB the build needs). Before the release a clone of eu-1 (eu-4) ran the real self-update path from the canary.48 release binary to the build under its own systemd and stayed up 5 minutes, and five load runs on the cluster found the four renewal causes of ADR-0043 item 4. The prober asked each name server every second and fetched fise, memos and every `lab-` App by name and on each member over IPv6.
