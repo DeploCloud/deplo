@@ -16,13 +16,15 @@ import {
 export async function selfUpdateServerAgent(
   serverId: string,
 ): Promise<{ version: string; restarting: boolean }> {
-  const { resolveAgentRelease } = await import("../../agent/release");
+  const { resolveAgentRelease, servedByDeplo } =
+    await import("../../agent/release");
   const release = await resolveAgentRelease();
   if (!release) throw new AgentReleaseUnavailableError();
-  const binaries: Record<string, { url: string; sha256: string }> = {};
+  const fromGitHub: Record<string, { url: string; sha256: string }> = {};
   for (const [arch, bin] of Object.entries(release.binaries)) {
-    if (bin) binaries[arch] = { url: bin.url, sha256: bin.sha256 };
+    if (bin) fromGitHub[arch] = { url: bin.url, sha256: bin.sha256 };
   }
+  const binaries = servedByDeplo(fromGitHub, "deplo-agent");
 
   const conn = await openAgent(serverId);
   try {
