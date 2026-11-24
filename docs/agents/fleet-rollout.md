@@ -251,6 +251,13 @@ the entire reason to do this over the agent channel instead of re-running the in
 If `syscall.Exec` _does_ return (it only returns on failure), the agent logs loudly and keeps
 running the **old** code with the **new** binary already on disk - restart the service to apply.
 
+**The new run inherits every fd the old one did not mark close-on-exec, its stdout and stderr
+first.** canary.47 put a pipe of its own on stderr whose reader closes at the exec: the new run died
+on its first log line by SIGPIPE, which systemd takes as a clean stop, and nothing restarted it on
+eu-1..3 (24 Nov 2026). `logpipe.Restore` puts the real log back before the exec, and `logpipe.Revive`
+gives a run handed a dead one the journal again. A change to the agent's fds is tested across a
+self-update, not only across a `systemctl restart`.
+
 Control-plane side: `selfUpdateServerAgent` sends `Hello` first and requires the `"self-update"`
 capability (`SELF_UPDATE_CAPABILITY`); an agent too old gets `AgentUpdateUnsupportedError` ("re-run
 the install command") rather than a raw `UNIMPLEMENTED`. The RPC deadline is
