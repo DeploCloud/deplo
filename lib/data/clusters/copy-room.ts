@@ -12,7 +12,7 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { AGENT_NO_ROOM, NO_ROOM_FOR_COPY } from "./replication";
 
 // A copy that does not fit on a server is said on its row and its page (ADR-0043).
-// https://deplo.build/docs/operations/clusters/replication#room
+// https://deplo.build/docs/operations/clusters/replication#what-it-costs
 
 /** A backup refused before it started, in the words of `roomForBackup`. */
 const NO_ROOM_FOR_BACKUP = "too little for this backup";
