@@ -18,7 +18,11 @@ import { reconcileClusterImages } from "./images";
 import { runLoadBalancingPass } from "./load-balancing";
 import { runReplicationPass } from "./replication";
 import { leaderHost } from "./host";
-import { BEAT_EVERY_MS, beatClusterLeaders } from "./leader-beat";
+import {
+  BEAT_EVERY_MS,
+  beatClusterLeaders,
+  leadersMissingBeats,
+} from "./leader-beat";
 import { keepLeadersHome } from "./leader-move";
 import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
@@ -242,6 +246,14 @@ export async function runClusterBeat(): Promise<void> {
   if (!state.holds) return;
   await beatClusterLeaders().catch((e) =>
     console.error("[deplo] naming the cluster leaders failed:", e),
+  );
+  // A leader that missed its beat is checked now: the 15 s tick would leave its Apps waiting.
+  await Promise.all(
+    leadersMissingBeats().map((id) =>
+      superviseClusterLeader(id).catch((e) =>
+        console.warn(`[cluster-leader] ${id}: ${messageOf(e)}`),
+      ),
+    ),
   );
 }
 

@@ -40,6 +40,7 @@ import { clusterRotations } from "./rotations";
 import { getServerById } from "../servers/roster";
 import { messageOf } from "../../utils";
 import {
+  AGENT_QUICK_STOP_VERSION,
   AGENT_SHORT_FENCE_VERSION,
   reportedAgentVersion,
   versionAtLeast,
@@ -201,6 +202,8 @@ export interface LeaderSnapshot {
       members: { id: string; state: string; heard?: boolean }[];
       placement?: LeaderEntry[];
       moves?: LeaderMove[];
+      /** The members its renewals name to lead next, heir first. */
+      line?: string[];
     }
   >;
 }
@@ -287,6 +290,10 @@ export async function pushLeaderRoster(
       // A leader that takes over waits less for a dead member whose agent stops its work on the short fence.
       ...(agent && versionAtLeast(agent, AGENT_SHORT_FENCE_VERSION)
         ? { shortFence: true }
+        : {}),
+      // And less again when it kills its stacks all at once.
+      ...(agent && versionAtLeast(agent, AGENT_QUICK_STOP_VERSION)
+        ? { quickStop: true }
         : {}),
       // Only an agent that answers a pre-vote is asked one: an older one would take the epoch.
       ...((await memberSucceeds(id)) ? { succession: true } : {}),

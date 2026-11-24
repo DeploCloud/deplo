@@ -33,6 +33,7 @@ import {
 import { forgetLeaderRoster, pushLeaderRoster } from "./clusters/leader-sync";
 import { listClusterMembers } from "./clusters/members";
 import { getClusterById } from "./clusters/roster";
+import { leaderHost } from "./clusters/host";
 import { __forgetHeirsForTest, clusterHeirs } from "./clusters/succession";
 import { refreshClusterWarnings } from "./clusters/warnings";
 import { applyLeaderEvent } from "./clusters/watch";
@@ -389,7 +390,13 @@ test("with half of the servers left, Deplo gives its word to the next in line, a
         `${led.leaderServerId} stopped answering, so Deplo gives its word to ${second}, next in line, to lead cluster eu`,
       ),
     );
+    assert.deepEqual(
+      beatsTo(hosts[second]),
+      [{ [cluster.id]: epoch }],
+      "the word leaves as soon as it is given",
+    );
     hosts[SERVER_1].calls.length = 0;
+    hosts[second].calls.length = 0;
     await beatClusterLeaders();
     assert.deepEqual(beatsTo(hosts[second]), [{ [cluster.id]: epoch }]);
     assert.deepEqual(
@@ -464,13 +471,38 @@ test("a relayed server gets the warning on itself, and a cluster with no direct 
   assert.ok((await keys()).includes("not_for_production"));
   await refreshClusterWarnings((await getClusterById(cluster.id))!);
 
+  // Direct again, but the leader names nobody to lead next yet: a cut now would find no heir (eu, 24 Nov 2026).
   await paths(cluster.id, ["srv_2", "srv_3", "srv_4"], direct);
+  await refreshClusterWarnings((await getClusterById(cluster.id))!);
+  assert.ok((await keys()).includes("not_for_production"));
+
+  const now = (await getClusterById(cluster.id))!;
+  const heirs = await clusterHeirs(now);
+  assert.equal(heirs.length, 2);
+  const host = (await leaderHost(now))!.id;
+  const calls = hosts[host].leader;
+  hosts[host].leader = (method, payload) =>
+    method === "leader.snapshot"
+      ? new TextEncoder().encode(
+          JSON.stringify({
+            head: 7,
+            clusters: {
+              [cluster.id]: {
+                epoch: now.leaderEpoch,
+                leads: true,
+                superseded: false,
+                line: heirs,
+              },
+            },
+          }),
+        )
+      : calls(method, payload);
   await refreshClusterWarnings((await getClusterById(cluster.id))!);
   assert.ok(!(await keys()).includes("not_for_production"));
   const said = (await messages()).filter((m) => /OK for production/.test(m));
   assert.deepEqual(said, [
     "Deplo: Cluster eu is not OK for production: fewer than half of its servers reach each other directly, so if Deplo's machine stops, every App and database of it stops",
-    "Deplo: Cluster eu is OK for production again: more than half of its servers reach each other directly",
+    `Deplo: Cluster eu is OK for production again: more than half of its servers reach each other directly, and ${heirs.join(" then ")} lead it next if its leader's server stops`,
   ]);
   assert.deepEqual(
     (await asAdmin(() => listClusterMembers(cluster.id))).map(

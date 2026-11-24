@@ -1928,6 +1928,11 @@ export interface BackupResult {
    * consistently, in milliseconds. 0 when nothing was held.
    */
   heldMs: number;
+  /**
+   * Why the app stayed paused for the whole copy instead of only while its data was
+   * copied on its own server's disk; empty when it was not.
+   */
+  heldWhy: string;
 }
 
 export interface RestoreRequest {
@@ -12399,7 +12404,16 @@ export const BackupEvent: MessageFns<BackupEvent> = {
 };
 
 function createBaseBackupResult(): BackupResult {
-  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "", decryptedSizeBytes: 0, heldMs: 0 };
+  return {
+    ok: false,
+    error: "",
+    objectKey: "",
+    sizeBytes: 0,
+    sha256: "",
+    decryptedSizeBytes: 0,
+    heldMs: 0,
+    heldWhy: "",
+  };
 }
 
 export const BackupResult: MessageFns<BackupResult> = {
@@ -12424,6 +12438,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     }
     if (message.heldMs !== 0) {
       writer.uint32(56).int64(message.heldMs);
+    }
+    if (message.heldWhy !== "") {
+      writer.uint32(66).string(message.heldWhy);
     }
     return writer;
   },
@@ -12497,6 +12514,14 @@ export const BackupResult: MessageFns<BackupResult> = {
             message.heldMs = longToNumber(reader.int64());
             continue;
           }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.heldWhy = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -12534,6 +12559,11 @@ export const BackupResult: MessageFns<BackupResult> = {
         : isSet(object.held_ms)
         ? globalThis.Number(object.held_ms)
         : 0,
+      heldWhy: isSet(object.heldWhy)
+        ? globalThis.String(object.heldWhy)
+        : isSet(object.held_why)
+        ? globalThis.String(object.held_why)
+        : "",
     };
   },
 
@@ -12560,6 +12590,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     if (message.heldMs !== 0) {
       obj.heldMs = Math.round(message.heldMs);
     }
+    if (message.heldWhy !== "") {
+      obj.heldWhy = message.heldWhy;
+    }
     return obj;
   },
 
@@ -12575,6 +12608,7 @@ export const BackupResult: MessageFns<BackupResult> = {
     message.sha256 = object.sha256 ?? "";
     message.decryptedSizeBytes = object.decryptedSizeBytes ?? 0;
     message.heldMs = object.heldMs ?? 0;
+    message.heldWhy = object.heldWhy ?? "";
     return message;
   },
 };

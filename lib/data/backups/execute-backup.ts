@@ -12,6 +12,7 @@ import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
 import { requireMembership } from "../../membership";
 import { recordActivity } from "../activity";
+import { heldLabel } from "../../backup-hold";
 import { dispatchAlert } from "../../notify/dispatch";
 import { PostgresArchive } from "../../agent/gen/agent";
 import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
@@ -279,7 +280,11 @@ export async function executeBackup(
     "backup",
     failure
       ? `Backup of ${label} failed: ${failure}`
-      : `Backed up ${label} (${formatBytes(finished.sizeBytes)})`,
+      : `Backed up ${label} (${formatBytes(finished.sizeBytes)})${
+          result?.heldWhy
+            ? `. It was paused for the whole copy (${heldLabel(result.heldMs)?.replace(/^App paused /, "") ?? "briefly"}): ${result.heldWhy}`
+            : ""
+        }`,
     actor,
     activityAppId,
     teamId,

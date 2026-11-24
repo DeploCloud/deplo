@@ -9,8 +9,16 @@ import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers
 import {
   __setLeaderBeatClockForTest,
   beatClusterLeaders,
+  leadersMissingBeats,
   TAKEOVER_AFTER_MS,
 } from "./clusters/leader-beat";
+import {
+  admitLink,
+  doorClosed,
+  doorOpened,
+  linkGeneration,
+  nextLinkId,
+} from "../infra/agent-link/registry";
 import { moveClusterLeader } from "./clusters/leader-move";
 import { superviseClusterLeader } from "./clusters/leader-standby";
 import { createCluster } from "./clusters/manage";
@@ -177,5 +185,80 @@ test("a frozen Deplo names nobody, and only the Deplo that holds the watch does"
     __resetClusterWatchForTest();
     for (const h of Object.values(hosts)) h.watch.drop();
     await releaseClusterWatchLease();
+  }
+});
+
+test("Deplo asks its word to hold 8 s, and waits only that and 5 s once the leader says it holds no longer", async () => {
+  const cluster = await eu();
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  let now = 1_000_000;
+  __setLeaderBeatClockForTest(() => now);
+  const echo = hosts.srv_4.leader;
+  hosts.srv_4.leader = (m, p) =>
+    m === "leader.beat"
+      ? new TextEncoder().encode(JSON.stringify({ ok: true, holdsMs: 8_000 }))
+      : echo(m, p);
+  await beatClusterLeaders();
+  const asked = hosts.srv_4.calls
+    .filter((c) => c.method === "leader.beat")
+    .at(-1)!;
+  assert.equal(
+    (JSON.parse(new TextDecoder().decode(asked.payload)) as { trustMs: number })
+      .trustMs,
+    8_000,
+  );
+
+  hosts.srv_4.unreachable = true;
+  for (let i = 0; i < 3; i++)
+    assert.equal(await superviseClusterLeader(cluster.id), null);
+  now += 13_000 - 1;
+  assert.equal(await superviseClusterLeader(cluster.id), null);
+  now += 1;
+  assert.equal(await superviseClusterLeader(cluster.id), "taken_over");
+});
+
+test("a leader that misses its beat is checked at once, not at the next watch tick", async () => {
+  const cluster = await eu();
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  try {
+    await runClusterWatchTick();
+    let now = 1_000_000;
+    __setLeaderBeatClockForTest(() => now);
+    await runClusterBeat();
+    hosts.srv_4.unreachable = true;
+    now += TAKEOVER_AFTER_MS;
+    for (let i = 0; i < 3; i++) await runClusterBeat();
+    assert.equal((await stored(cluster.id)).takenOver, true);
+  } finally {
+    __resetClusterWatchForTest();
+    for (const h of Object.values(hosts)) h.watch.drop();
+    await releaseClusterWatchLease();
+  }
+});
+
+test("a leader whose server was not heard for two of the link's pings misses its beat without waiting on it", async () => {
+  const cluster = await eu();
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  doorOpened();
+  admitLink(
+    {
+      id: nextLinkId(),
+      serverId: "srv_4",
+      pinnedFingerprint: "x",
+      client: {} as never,
+      hello: {} as never,
+      openedAt: Date.now() - 60_000,
+      heardAt: () => Date.now() - 6_000,
+      close() {},
+    },
+    linkGeneration("srv_4"),
+  );
+  try {
+    hosts.srv_4.calls.length = 0;
+    await beatClusterLeaders();
+    assert.deepEqual(beats(hosts.srv_4), [], "no beat was sent to wait on");
+    assert.deepEqual(leadersMissingBeats(), [cluster.id]);
+  } finally {
+    doorClosed();
   }
 });

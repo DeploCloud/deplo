@@ -143,6 +143,42 @@ test("a run records how long the agent held the App, and nothing when it held no
   });
 });
 
+test("a backup that paused the App for its whole copy says why in Activity", async (t) => {
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        yield {
+          result: {
+            ok: true,
+            error: "",
+            sizeBytes: 3,
+            sha256: "",
+            heldMs: 12_300,
+            heldWhy:
+              "the server has 0.3 GB free, too little to copy 2.0 GB of data on its own disk first",
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(() => runDatabaseBackup("db_1", "s3_1"));
+  const said = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    said.some((m) =>
+      /^Backed up .*\. It was paused for the whole copy \(12\.3 s\): the server has 0\.3 GB free, too little to copy 2\.0 GB of data on its own disk first$/.test(
+        m,
+      ),
+    ),
+    said.join("\n"),
+  );
+});
+
 test("a backup that fails before it reaches the server still names what it was backing up", async (t) => {
   __setAgentConnectorForTest(async () => {
     throw new AgentUnreachableError("offline", GrpcStatus.UNAVAILABLE);
