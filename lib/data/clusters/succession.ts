@@ -1,7 +1,8 @@
 import "server-only";
 
 import { and, eq } from "drizzle-orm";
-import { serverAnswers } from "../../infra/agent-link/registry";
+import { silentFor } from "../../infra/agent-link/registry";
+import { SILENT_AFTER_MS } from "./leader-beat";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { directCore, type PathReport } from "../../clusters/direct-core";
@@ -164,7 +165,7 @@ async function heirView(
   clusterId: string,
 ): Promise<HeirView | null | undefined> {
   // A server silent on its link does not answer: asking would only wait out its Hello.
-  if (serverAnswers(serverId) === false) return undefined;
+  if (silentFor(serverId, SILENT_AFTER_MS)) return undefined;
   try {
     const raw = await callClusterLeader(
       serverId,

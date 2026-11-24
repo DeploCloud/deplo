@@ -145,8 +145,11 @@ async function nameTheLine(
       (await readLeaderSnapshot(now))?.clusters[cluster.id]?.line ?? [];
     if (named.length === 0 || !named.every((id) => line.includes(id)))
       return { full: false };
+    // In the order the leader's renewals name them: the first of them leads next.
     const names = await Promise.all(
-      named.map(async (id) => (await getServerById(id))?.name ?? id),
+      line
+        .filter((id) => named.includes(id))
+        .map(async (id) => (await getServerById(id))?.name ?? id),
     );
     return { full: true, heirs: names.join(" then "), many: names.length > 1 };
   } catch {

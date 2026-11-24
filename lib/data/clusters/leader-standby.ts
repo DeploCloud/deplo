@@ -13,11 +13,12 @@ import type { Cluster } from "../../types/cluster";
 import { activityAt, recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
-import { serverAnswers } from "../../infra/agent-link/registry";
+import { silentFor } from "../../infra/agent-link/registry";
 import { updatingClusterHost } from "./binary-rollout";
 import { reconcileClusterBundles } from "./bundles";
 import { leaderHostOf } from "./host";
 import {
+  SILENT_AFTER_MS,
   __setLeaderBeatClockForTest,
   beatClusterLeaders,
   forgetHeir,
@@ -105,7 +106,7 @@ async function supervise(clusterId: string): Promise<LeaderHandover> {
   // The heir is asked while the leader is: a leader that went silent waits out its link first.
   const [reach, leading] = await Promise.all([
     // Silent on its link already: asking would only wait out its Hello.
-    serverAnswers(cluster.leaderServerId) === false
+    silentFor(cluster.leaderServerId, SILENT_AFTER_MS)
       ? ("away" as const)
       : clusterLeaderReach(cluster.leaderServerId),
     leadingHeir(cluster),

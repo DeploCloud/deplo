@@ -4,7 +4,7 @@ import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { callClusterLeader } from "../../infra/agent-client/cluster-host";
 import { CLUSTER_BEAT_TIMEOUT_MS } from "../../infra/agent-client/deadlines";
-import { lastHeardAt, serverAnswers } from "../../infra/agent-link/registry";
+import { silentFor } from "../../infra/agent-link/registry";
 import { LINK_PING_MS } from "../../infra/agent-link/protocol";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { leaderHost } from "./host";
@@ -20,7 +20,8 @@ export const TRUST_MS = 8_000;
 const LEGACY_TRUST_MS = 20_000;
 // What a beat may take to reach the leader after it left: the wait covers it.
 const IN_TRANSIT_MS = 5_000;
-const SILENT_AFTER_MS = 2 * LINK_PING_MS - 1_000;
+/** Two of the link's pings unheard: a server that is gone, for every check that would otherwise wait on it. */
+export const SILENT_AFTER_MS = 2 * LINK_PING_MS - 1_000;
 
 /** How long a leader whose word holds 20 s goes unnamed before another may lead. */
 export const TAKEOVER_AFTER_MS = LEGACY_TRUST_MS + IN_TRANSIT_MS;
@@ -95,11 +96,7 @@ async function beat(
   try {
     // A server not heard for longer than two of the link's pings is not reached: the beat would only wait out its
     // Hello, while the leader that may replace it waits on this miss.
-    const heard = lastHeardAt(serverId);
-    if (
-      serverAnswers(serverId) === false ||
-      (heard !== null && Date.now() - heard > SILENT_AFTER_MS)
-    )
+    if (silentFor(serverId, SILENT_AFTER_MS))
       throw new Error("the server does not answer");
     const raw = await callClusterLeader(
       serverId,

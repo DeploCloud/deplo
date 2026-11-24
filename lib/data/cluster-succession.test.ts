@@ -10,7 +10,13 @@ import {
   clusterWarnings,
   clusters as clustersTable,
 } from "../db/schema/control-plane/clusters";
-import { doorClosed, doorOpened } from "../infra/agent-link/registry";
+import {
+  admitLink,
+  doorClosed,
+  doorOpened,
+  linkGeneration,
+  nextLinkId,
+} from "../infra/agent-link/registry";
 import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
 import {
   serverAgentCapabilities,
@@ -34,7 +40,11 @@ import { forgetLeaderRoster, pushLeaderRoster } from "./clusters/leader-sync";
 import { listClusterMembers } from "./clusters/members";
 import { getClusterById } from "./clusters/roster";
 import { leaderHost } from "./clusters/host";
-import { __forgetHeirsForTest, clusterHeirs } from "./clusters/succession";
+import {
+  __forgetHeirsForTest,
+  clusterHeirs,
+  lineReach,
+} from "./clusters/succession";
 import { refreshClusterWarnings } from "./clusters/warnings";
 import { applyLeaderEvent } from "./clusters/watch";
 import {
@@ -491,7 +501,8 @@ test("a relayed server gets the warning on itself, and a cluster with no direct 
                 epoch: now.leaderEpoch,
                 leads: true,
                 superseded: false,
-                line: heirs,
+                // The leader's own order, not Deplo's: its first heir leads next.
+                line: [...heirs].reverse(),
               },
             },
           }),
@@ -502,7 +513,7 @@ test("a relayed server gets the warning on itself, and a cluster with no direct 
   const said = (await messages()).filter((m) => /OK for production/.test(m));
   assert.deepEqual(said, [
     "Deplo: Cluster eu is not OK for production: fewer than half of its servers reach each other directly, so if Deplo's machine stops, every App and database of it stops",
-    `Deplo: Cluster eu is OK for production again: more than half of its servers reach each other directly, and ${heirs.join(" then ")} lead it next if its leader's server stops`,
+    `Deplo: Cluster eu is OK for production again: more than half of its servers reach each other directly, and ${[...heirs].reverse().join(" then ")} lead it next if its leader's server stops`,
   ]);
   assert.deepEqual(
     (await asAdmin(() => listClusterMembers(cluster.id))).map(
@@ -730,4 +741,35 @@ test("a member's leader that is off keeps its key, so the bundles still reach it
     (await owners()).includes(first),
     "an heir that is off lost its key",
   );
+});
+
+test("an heir not heard for two of the link's pings is read as away, without waiting on its Hello", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [heir] = await clusterHeirs(led);
+  doorOpened();
+  admitLink(
+    {
+      id: nextLinkId(),
+      serverId: heir,
+      pinnedFingerprint: "x",
+      client: {} as never,
+      hello: {} as never,
+      openedAt: Date.now() - 60_000,
+      heardAt: () => Date.now() - 6_000,
+      close() {},
+    },
+    linkGeneration(heir),
+  );
+  try {
+    hosts[heir].calls.length = 0;
+    await lineReach(led);
+    assert.deepEqual(
+      hosts[heir].calls.filter((c) => c.method === "leader.snapshot"),
+      [],
+    );
+  } finally {
+    doorClosed();
+  }
 });

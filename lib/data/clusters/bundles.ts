@@ -483,6 +483,14 @@ const tails = new Map<string, Promise<void>>();
 
 /** Runs a bundle's push in the background, after the workload's earlier ones: a later push always lands last. */
 export function inBackground(id: string, push: () => Promise<void>): void {
+  void inLine(id, push);
+}
+
+/**
+ * Runs a bundle's push after the workload's earlier ones and resolves once it is done. Every push that reads the
+ * stored bundle goes through here: two that overlap would each send what the other did not read (eu, 24 Nov 2026).
+ */
+export function inLine(id: string, push: () => Promise<void>): Promise<void> {
   const p: Promise<void> = (tails.get(id) ?? Promise.resolve())
     .then(push)
     .catch((e) => console.warn(`[failover-bundle] ${id}: ${messageOf(e)}`))
@@ -492,6 +500,7 @@ export function inBackground(id: string, push: () => Promise<void>): void {
     });
   tails.set(id, p);
   inFlight.add(p);
+  return p;
 }
 
 /** Fire-and-forget after a successful deploy. */
