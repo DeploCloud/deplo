@@ -49,7 +49,7 @@ export function clusterRpc(
       const r = await unary(
         client.removeCluster.bind(client),
         {},
-        CLUSTER_INSTALL_TIMEOUT_MS,
+        CLUSTER_CALL_TIMEOUT_MS,
       );
       return { removed: r.removed };
     },
