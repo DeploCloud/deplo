@@ -35,6 +35,7 @@ import { requireBackupCapability } from "./target-access";
 import { resolveTarget, targetLabel } from "./target-descriptor";
 import { MAX_RUNS_PER_TARGET, pruneRetention } from "./retention";
 import { formatBytes } from "./format-bytes";
+import { roomForBackup } from "./room";
 import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import { outOfReachFailure } from "../clusters/reach";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
@@ -165,20 +166,24 @@ export async function executeBackup(
       .set({ objectKey })
       .where(eq(backupRunsTable.id, runId));
 
-    result = await backupToDestination(
-      creds,
-      {
-        serverId: target.serverId,
-        kind: opts.kind,
-        database: target.database,
-        project: target.project,
-        ...(base ? { archive: PostgresArchive.POSTGRES_ARCHIVE_BASE } : {}),
-      },
-      objectKey,
-      abort.signal,
-    );
-    if (!result.ok)
-      failure = result.error || "the agent reported a failed backup";
+    const transport = {
+      serverId: target.serverId,
+      kind: opts.kind,
+      database: target.database,
+      project: target.project,
+      ...(base ? { archive: PostgresArchive.POSTGRES_ARCHIVE_BASE } : {}),
+    };
+    failure = await roomForBackup(creds, transport, target.targetId);
+    if (!failure) {
+      result = await backupToDestination(
+        creds,
+        transport,
+        objectKey,
+        abort.signal,
+      );
+      if (!result.ok)
+        failure = result.error || "the agent reported a failed backup";
+    }
 
     if (!failure) {
       try {

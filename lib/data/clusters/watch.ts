@@ -137,7 +137,35 @@ export async function applyLeaderEvent(
     e.seq <= (opts.after ?? cluster.eventSeq)
   )
     return "skipped";
-  return activityAt(e.at, () => applyOne(cluster, e, opts));
+  // Two watches can read the same event at once (a new leader's, a replay): it is said once (eu, 24 Nov 2026).
+  const release = claimEvent(clusterId, e);
+  if (!release) return "skipped";
+  try {
+    const r = await activityAt(e.at, () => applyOne(cluster, e, opts));
+    if (r === "frozen") release();
+    return r;
+  } catch (err) {
+    release();
+    throw err;
+  }
+}
+
+const CLAIMED = Symbol.for("deplo.cluster.watch.claimed");
+const claimedState = globalThis as unknown as {
+  [CLAIMED]?: Map<string, Set<string>>;
+};
+
+/** Claims one event for this process; null when it is applied or being applied already. */
+function claimEvent(clusterId: string, e: LeaderEvent): (() => void) | null {
+  const all = (claimedState[CLAIMED] ??= new Map());
+  let seen = all.get(clusterId);
+  if (!seen) all.set(clusterId, (seen = new Set()));
+  const id = JSON.stringify([e.seq, e.type, e.at ?? "", e.data]);
+  if (seen.has(id)) return null;
+  seen.add(id);
+  // ponytail: the newest 1000 per cluster; an older event is below the stored sequence by then.
+  if (seen.size > 1000) seen.delete(seen.values().next().value!);
+  return () => seen.delete(id);
 }
 
 async function applyOne(
