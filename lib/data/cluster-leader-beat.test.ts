@@ -16,6 +16,7 @@ import {
   admitLink,
   doorClosed,
   doorOpened,
+  linkEnded,
   linkGeneration,
   nextLinkId,
 } from "../infra/agent-link/registry";
@@ -249,7 +250,9 @@ test("a leader whose server was not heard for two of the link's pings misses its
       hello: {} as never,
       openedAt: Date.now() - 60_000,
       heardAt: () => Date.now() - 6_000,
-      close() {},
+      close() {
+        linkEnded(this as never, "test");
+      },
     },
     linkGeneration("srv_4"),
   );
