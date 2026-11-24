@@ -18,7 +18,11 @@ import { PostgresArchive } from "../../agent/gen/agent";
 import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
 import { POSTGRES_ARCHIVE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { serverSupports } from "../../infra/agent-client/preflight";
-import { mapBackupUnsupported } from "../../infra/agent-client/errors";
+import {
+  AgentOfflineError,
+  mapBackupUnsupported,
+} from "../../infra/agent-client/errors";
+import { backupServerOffline } from "./offline";
 import { unreachableMessage } from "../../infra/server-health";
 import {
   destinationServerId,
@@ -200,13 +204,15 @@ export async function executeBackup(
       }
     }
   } catch (e) {
-    // A server that dropped away mid-run is offline: say so, never the transport's words.
+    // A server that dropped away mid-run is offline: say which, never the transport's words.
     const offline = unreachableMessage(e);
+    const down = e instanceof AgentOfflineError ? e.serverId : targetServerId;
     failure =
       (offline &&
-        (await outOfReachFailure(targetServerId, "take this backup").catch(
+        (await outOfReachFailure(down, "take this backup").catch(
           () => null,
         ))) ??
+      (await backupServerOffline(e, targetServerId).catch(() => null)) ??
       offline ??
       (mapBackupUnsupported(e) as Error).message;
   } finally {

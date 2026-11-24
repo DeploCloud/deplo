@@ -79,7 +79,9 @@ export async function deleteBackupRun(runId: string): Promise<void> {
 
   await recordActivity(
     "backup",
-    `Deleted a backup of ${target.label} from ${formatBytes(run.sizeBytes)}`,
+    run.sizeBytes
+      ? `Deleted a ${formatBytes(run.sizeBytes)} backup of ${target.label}`
+      : `Deleted a backup of ${target.label}`,
     user.name,
     run.appId,
     teamId,
