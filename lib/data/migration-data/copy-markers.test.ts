@@ -111,7 +111,7 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
   );
   assert.equal(rows.rows[0].data_copy_error, "");
   const trail = await db.execute(
-    "select message from activities where message like '%without the data%'",
+    "select message from activities where message like 'Accepted that % without the data%'",
   );
   assert.equal(trail.rows.length, 1);
 });

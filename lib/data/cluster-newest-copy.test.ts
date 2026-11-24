@@ -13,7 +13,7 @@ import {
   SET_ASIDE_FILES_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import { moveClusterDataBeforeStart } from "./app-migration";
-import { acceptDataCopyLoss } from "./data-copy";
+import { __setDeployAnywayForTest, acceptDataCopyLoss } from "./data-copy";
 import { drainTeardowns } from "./teardown-queue";
 import { AgentOfflineError } from "../infra/agent-client/errors";
 import { moveAppToCluster } from "./apps/source";
@@ -212,8 +212,14 @@ async function said(re: RegExp): Promise<string> {
   assert.fail(`never said ${re}: ${(await activity()).join("\n")}`);
 }
 
-test('"Deploy anyway" on a held move sets the old copy and its Files aside where the App runs, never deletes them', async () => {
+test('"Deploy anyway" on a held move sets the old copy and its Files aside where the App runs, never deletes them', async (t) => {
+  t.after(() => __setDeployAnywayForTest());
   const old = await heldMove();
+  let deployedAfter = "";
+  __setDeployAnywayForTest(async () => {
+    deployedAfter = old.calls.join(" ");
+    return "dep_none";
+  });
   // On disk a copy takes more than the compressed stream that brought it.
   const ops = hosts.get("srv_3")!.extra as Partial<AgentConnection>;
   ops.volumeUsage = async (names: string[]) =>
@@ -234,9 +240,53 @@ test('"Deploy anyway" on a held move sets the old copy and its Files aside where
   const row = await appRow("fise");
   assert.equal(row.migrateFromServerId, null);
   assert.equal(row.dataCopyError, "");
+  assert.match(
+    deployedAfter,
+    /stop:fise/,
+    "the same click deploys, once the old copy is stopped",
+  );
 });
 
-test('"Deploy anyway" while the old member is silent deletes nothing there, and sets its copy aside once it answers', async () => {
+test('"Deploy anyway" deploys the App, and Activity says "Deployed" only once that deploy is ready', async (t) => {
+  t.after(() => __setRunnerForTest(async () => {}));
+  await heldMove();
+  const ops = hosts.get("srv_2")!.extra as Partial<AgentConnection>;
+  ops.readStack = async () => {
+    throw new AgentOfflineError("srv_2");
+  };
+  let release = () => {};
+  const ready = new Promise<void>((r) => (release = r));
+  __setRunnerForTest(async (depId) => {
+    await ready;
+    await db
+      .update(deploymentsTable)
+      .set({ status: "ready" })
+      .where(eq(deploymentsTable.id, depId));
+  });
+  await asAdmin(() => acceptDataCopyLoss({ kind: "app", id: "fise" }));
+  await said(/: Deploying fise$/);
+  assert.ok(
+    !(await activity()).some((l) => /: Deployed fise/.test(l)),
+    "nothing says Deployed before the deploy is done",
+  );
+  release();
+  for (let i = 0; i < 60; i++) {
+    if (
+      (await activity()).some((l) =>
+        /: Deployed fise without the data its previous server still holds$/.test(
+          l,
+        ),
+      )
+    )
+      return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.fail(`never said Deployed: ${(await activity()).join("\n")}`);
+});
+
+test('"Deploy anyway" while the old member is silent deletes nothing there, and sets its copy aside once it answers', async (t) => {
+  t.after(() => __setDeployAnywayForTest());
+  __setDeployAnywayForTest(async () => "dep_none");
   const old = await heldMove();
   const ops = hosts.get("srv_2")!.extra as Partial<AgentConnection>;
   const readStack = ops.readStack!;
@@ -245,14 +295,14 @@ test('"Deploy anyway" while the old member is silent deletes nothing there, and 
   };
   await asAdmin(() => acceptDataCopyLoss({ kind: "app", id: "fise" }));
   await said(
-    /srv_2 does not answer: what it holds of fise is set aside on srv_3 once it answers again/,
+    /srv_2 does not answer, so what it holds of fise stays on it for now: Activity says where it is kept once srv_2 answers again/,
   );
   assert.ok(!old.calls.includes("destroy:fise"));
   assert.deepEqual(old.volumes.get(VOL), OLD);
   assert.equal((await db.select().from(pendingTeardowns)).length, 1);
   assert.ok(
     (await activity()).some((l) =>
-      /Deployed fise without the data its previous server still holds: Deplo sets that copy aside, never deletes it/.test(
+      /Accepted that fise starts without the data its previous server still holds: Deplo sets that copy aside, never deletes it/.test(
         l,
       ),
     ),

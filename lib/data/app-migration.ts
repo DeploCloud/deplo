@@ -377,6 +377,7 @@ async function keepNewer(
 async function setAsideOldCopy(
   app: App,
   from: string,
+  stopped: () => void = () => {},
 ): Promise<{ copies: SetAsideCopy[]; names: string[] }> {
   let names: string[];
   let hasStack: boolean;
@@ -393,6 +394,7 @@ async function setAsideOldCopy(
     old.close();
   }
   if (hasStack) await stopStackOn(from, app.slug);
+  stopped();
   return {
     copies: await setAsideOnto(from, app.serverId, names, app.slug),
     names,
@@ -406,20 +408,25 @@ const asideSentence = async (app: App, from: string, copies: SetAsideCopy[]) =>
 
 /**
  * "Deploy anyway" on a cluster App whose move is held: the old member's copy is set aside where the App runs, never
- * deleted. One that does not answer has its removal queued, and the queue sets the copy aside first. Says which.
+ * deleted. One that does not answer has its removal queued, and Activity says where its copy went once it answers.
+ * `stopped` runs once the old copy is stopped, or could not be reached to stop: the new one may start then.
  */
-export async function setAsideHeldCopy(app: App): Promise<string> {
+export async function setAsideHeldCopy(
+  app: App,
+  stopped: () => void = () => {},
+): Promise<string> {
   const from = app.migrateFromServerId!;
   try {
-    const { copies, names } = await setAsideOldCopy(app, from);
+    const { copies, names } = await setAsideOldCopy(app, from, stopped);
     await teardownOrQueue(strayEntry(app, from, names)).catch(() => {});
     return await asideSentence(app, from, copies);
   } catch (e) {
+    stopped();
     const fromName = await serverName(from);
     if (!isUnreachable(e))
       return `What ${fromName} holds of ${app.name} could not be set aside (${errMsg(e)}), so it stays there.`;
     await enqueueTeardowns([strayEntry(app, from)]);
-    return `${fromName} does not answer: what it holds of ${app.name} is set aside on ${await serverName(app.serverId)} once it answers again, then removed there.`;
+    return `${fromName} does not answer, so what it holds of ${app.name} stays on it for now: Activity says where it is kept once ${fromName} answers again.`;
   }
 }
 
