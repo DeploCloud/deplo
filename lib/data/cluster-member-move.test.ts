@@ -5,7 +5,14 @@ import { and, eq } from "drizzle-orm";
 
 import { SERVER_1 } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
-import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { apps as appsTable, appVolumes } from "../db/schema/control-plane/apps";
+import type { ServerMetrics } from "./monitoring";
+import {
+  clearMetricsHistory,
+  recordMetricsSample,
+} from "../monitoring/history";
+import { VOLUME_USAGE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import { clusterMemberFacts } from "./clusters/facts";
 import {
   clusterMembers,
   workloadPlacements,
@@ -26,6 +33,7 @@ import {
   disks,
   emptyLab,
   eu,
+  hosts,
   rosters,
   runningApp,
 } from "./cluster-empty-test-helpers";
@@ -155,6 +163,67 @@ test("the Move picker names each server of the cluster, the one it runs on and w
       ["srv_3", false, "srv_3 is offline, so web cannot move there now."],
     ],
   );
+});
+
+// eu, 24 Nov 2026: two new Apps landed on the member with the least room. A move never takes an App's data to a
+// server it would leave with less than a tenth of its disk free (ADR-0043).
+test("a server without room for an App's data is refused in words before anything moves", async () => {
+  await runningApp("web", "srv_2");
+  await db.insert(appVolumes).values({
+    appId: "web",
+    position: 0,
+    volumeId: "vol_web",
+    type: "named",
+    name: "data",
+    hostPath: null,
+    mountPath: "/data",
+    readOnly: false,
+  });
+  disks.get("srv_2")!.volumes.set("deplo-web-data", Buffer.alloc(50));
+  hosts.get("srv_2")!.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  const cluster = await eu();
+  const sample = (serverId: string, used: number) =>
+    recordMetricsSample({
+      serverId,
+      online: true,
+      diskUsed: used,
+      diskTotal: 1000,
+      ts: Date.now(),
+    } as ServerMetrics);
+  sample("srv_3", 870);
+  await assert.rejects(
+    asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3")),
+    {
+      message:
+        "srv_3 has 130 B free, too little for web's data (about 50 B) and a tenth of its disk free.",
+    },
+  );
+  assert.equal((await appRow("web")).serverId, "srv_2");
+  const [choice] = await asAdmin(() =>
+    listClusterServerChoices({
+      id: "web",
+      name: "web",
+      limitMb: 0,
+      archs: [],
+      clusterId: cluster.id,
+      serverId: "srv_2",
+    }),
+  );
+  assert.match(choice!.servers[1]!.refusal ?? "", /too little for web's data/);
+  // The leader is told each server's disk, for a failover while Deplo is away.
+  const facts = await clusterMemberFacts(cluster.id);
+  assert.deepEqual(
+    facts.map((f) => [f.id, f.diskFree, f.diskTotal]),
+    [
+      ["srv_2", 0, 0],
+      ["srv_3", 130, 1000],
+    ],
+  );
+  clearMetricsHistory("srv_3");
+  sample("srv_3", 800);
+  await asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3"));
+  assert.equal((await appRow("web")).serverId, "srv_3");
+  clearMetricsHistory();
 });
 
 test("a database on a cluster moves to the server of it that is picked", async () => {

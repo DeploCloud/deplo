@@ -7,6 +7,8 @@ import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
 import { requireActiveTeamId } from "../../membership";
 import { archWords, type Cluster } from "../../types/cluster";
+import { formatBytes } from "../backups/format-bytes";
+import { appDataBytes } from "./data-size";
 import { clusterMemberFacts, neededMb } from "./facts";
 import { listClustersForTeam } from "./roster";
 
@@ -62,10 +64,22 @@ async function refusals(
   { row: Awaited<ReturnType<typeof members>>[number]; refusal: string | null }[]
 > {
   const rows = await members(cluster.id);
-  const free = new Map(
-    (await clusterMemberFacts(cluster.id)).map((f) => [f.id, f.freeMb]),
+  const facts = new Map(
+    (await clusterMemberFacts(cluster.id)).map((f) => [f.id, f]),
   );
+  const free = new Map([...facts].map(([id, f]) => [id, f.freeMb]));
   const need = neededMb(w.id, w.limitMb);
+  const data = await appDataBytes(w.id);
+  // Its data never leaves a member under a tenth of its disk free; one that holds it whole needs no more (ADR-0043).
+  const noDisk = (id: string, name: string): string | null => {
+    const f = facts.get(id);
+    if (!f?.diskTotal || w.on === id) return null;
+    const more = f.holds.includes(w.id) ? 0 : data;
+    if (f.diskFree - more >= f.diskTotal / 10) return null;
+    return more
+      ? `${name} has ${formatBytes(f.diskFree)} free, too little for ${w.name}'s data (about ${formatBytes(more)}) and a tenth of its disk free.`
+      : `${name} has less than a tenth of its disk free.`;
+  };
   return rows.map((row) => {
     const name = row.server.name;
     const refusal =
@@ -79,7 +93,7 @@ async function refusals(
               ? `${w.name} runs on ${archWords(w.archs)} servers only, and ${name} is not one.`
               : w.on !== row.id && (free.get(row.id) ?? 0) < need
                 ? `${name} has ${free.get(row.id) ?? 0} MB free and ${w.name} needs ${need} MB.`
-                : null;
+                : noDisk(row.id, name);
     return { row, refusal };
   });
 }

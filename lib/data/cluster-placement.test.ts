@@ -282,6 +282,28 @@ test("a refusal is the exact sentence and nothing is created", async () => {
   assert.equal((await db.select().from(workloadPlacements)).length, 0);
 });
 
+test("a refusal for disk is read off the wire and said with the size of the data", async () => {
+  const cluster = await eu();
+  answer = {
+    refusal: {
+      reason: "no_disk",
+      neededMb: 256,
+      neededBytes: 1024 ** 3,
+      cluster: cluster.id,
+      workload: "x",
+    },
+  } as typeof answer;
+  await assert.rejects(
+    () => asMember(() => newApp(cluster.id)),
+    (e: unknown) => {
+      assert.ok(e instanceof PlacementRefusedError);
+      assert.match(e.message, /room for web's data \(about 1\.0 GB\)/);
+      return true;
+    },
+  );
+  assert.equal((await db.select().from(appsTable)).length, 0);
+});
+
 test("a refusal on an App that already runs changes nothing: no move, no stop", async () => {
   const cluster = await eu();
   await seedApp(db, { id: "live", serverId: "srv_4", source: "docker-image" });
@@ -327,6 +349,18 @@ test("the whole fixed set of sentences", () => {
   assert.equal(
     refusalSentence(r("no_image"), names),
     "No server in cluster eu has web's image yet. Try again in a minute.",
+  );
+  // A member is never handed data past a tenth of its disk free (ADR-0043).
+  assert.equal(
+    refusalSentence(
+      { ...r("no_image"), reason: "no_disk", neededBytes: 2 * 1024 ** 3 },
+      names,
+    ),
+    "No server in cluster eu has room for web's data (about 2.0 GB) and a tenth of its disk free. Free some space on one, or add a server.",
+  );
+  assert.equal(
+    refusalSentence({ ...r("no_image"), reason: "no_disk" }, names),
+    "Every server in cluster eu has less than a tenth of its disk free. Free some space on one, or add a server.",
   );
 });
 

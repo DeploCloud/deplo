@@ -90,6 +90,8 @@ export function moveRefusal(reason: string, name: string): string {
       return `${name} has no backup or copy another server can read.`;
     case "no_room":
       return `No other server of the cluster has room for ${name}.`;
+    case "no_disk":
+      return `No other server of the cluster has room for ${name}'s data and a tenth of its disk free.`;
     case "no_member_online":
       return `No other server of the cluster is online to take ${name}.`;
     case "start_failed":
