@@ -151,13 +151,22 @@ async function copiesThatDoNotFit(
     const copy = held.find((r) => r.appId === e.appId);
     if (copy?.synced || copy?.role === "sending") continue;
     const size = await appBytes(app.serverId, e.volumeNames).catch(() => 0);
-    const need = size - (copy?.bytes ?? 0);
-    if (need <= 0) continue;
+    // A copy not whole yet grows with its App: it is held back whenever the disk would be under a tenth free, not
+    // only at its start (eu-1 reached 92% with the copy of an App that was small when its copy began).
+    const need = Math.max(size - (copy?.bytes ?? 0), 0);
     disk ??= await memberDisk(serverId).catch(() => null);
     if (!disk || disk.total <= 0 || disk.free - need >= disk.total / 10)
       continue;
     const name = (await getServerById(serverId))?.name ?? "This server";
-    out.set(e.appId, noRoomForCopy(name, app.name, disk.free, size));
+    out.set(
+      e.appId,
+      noRoomForCopy(
+        name,
+        app.name,
+        disk.free,
+        Math.max(size, copy?.bytes ?? 0),
+      ),
+    );
   }
   return out;
 }
