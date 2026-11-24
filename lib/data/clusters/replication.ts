@@ -161,10 +161,11 @@ async function copiesThatDoNotFit(
     ).catch(() => ({ bytes: 0, largest: 0 }));
     // A copy not whole yet grows with its App: it is held back whenever the disk would be under a tenth free, not
     // only at its start (eu-1 reached 92% with the copy of an App that was small when its copy began). What it
-    // holds is its size on disk, and its biggest file counts twice while it is rebuilt beside the old one.
+    // holds is its size on disk; where it holds part of the data, the biggest file counts twice while it is rebuilt.
     const has = copy?.diskBytes || copy?.bytes || 0;
+    const peak = has > 0 ? largest : 0;
     const need =
-      Math.max(size - has, 0) + largest + (before.has(e.appId) ? size / 5 : 0);
+      Math.max(size - has, 0) + peak + (before.has(e.appId) ? size / 5 : 0);
     disk ??= await memberDisk(serverId).catch(() => null);
     // The agent's own word: it stopped the copy at a tenth free (a copy bigger than Deplo measured).
     const stopped = !!copy?.error.includes(AGENT_NO_ROOM);
@@ -180,7 +181,7 @@ async function copiesThatDoNotFit(
         name,
         app.name,
         disk?.free ?? 0,
-        Math.max(size, copy?.bytes ?? 0),
+        Math.max(size + peak, copy?.bytes ?? 0),
       ),
     );
   }

@@ -548,9 +548,15 @@ test("a copy starts only if a tenth stays free with its biggest file held twice"
     bytes: 1 * GB,
     largest: 1 * GB,
   });
-  // 3.3 GB free of 14: the copy (1 GB) fits a tenth, the rebuild of its 1 GB file beside the old one does not.
-  host.srv_3.extra.metrics = disk(14 * GB, 10.7 * GB);
-  host.srv_3.replicaReports = [report({ synced: false, bytes: 0 })];
+  // 3.2 GB free of 14: the rest of the copy (0.9 GB) fits a tenth, the rebuild of its 1 GB file beside it does not.
+  host.srv_3.extra.metrics = disk(14 * GB, 10.8 * GB);
+  host.srv_3.replicaReports = [
+    report({
+      synced: false,
+      bytes: 100 * 1024 ** 2,
+      diskBytes: 100 * 1024 ** 2,
+    }),
+  ];
   await replicateCluster(cluster.id, true);
   assert.deepEqual(host.srv_3.replicaTables.at(-1)!.entries, []);
   host.srv_3.extra.metrics = disk(14 * GB, 9 * GB);
@@ -573,4 +579,21 @@ test("a copy's size is what it takes on disk, and whether it went through Deplo"
   // An agent that does not say its size on disk keeps what it said before.
   assert.equal(of("srv_4").bytes, 5000);
   assert.equal(of("srv_4").relayed, false);
+});
+
+// eu, 24 Nov 2026: eu-4, back with 4.3 GB free, was refused a fresh 1.6 GB copy as if its file were rebuilt.
+test("a fresh copy writes each file once, so its biggest file is not counted twice", async () => {
+  const cluster = await replicated();
+  const GB = 1024 ** 3;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeSizes = async () => ({
+    bytes: 1 * GB,
+    largest: 1 * GB,
+  });
+  host.srv_3.extra.metrics = disk(14 * GB, 10.7 * GB);
+  host.srv_3.replicaReports = [
+    report({ synced: false, bytes: 0, diskBytes: 0 }),
+  ];
+  await replicateCluster(cluster.id, true);
+  assert.equal(host.srv_3.replicaTables.at(-1)!.entries.length, 1);
 });
