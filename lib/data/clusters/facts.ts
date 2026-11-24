@@ -14,15 +14,27 @@ import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { peakMemoryMb } from "../../monitoring/container-history";
 import { getMetricsHistory } from "../../monitoring/history";
 
+/**
+ * What a copy may still write on a disk: its free bytes less the ones kept for root, read back from the share
+ * the agent reports (used of used and available). The agent stops a copy on that same measure (ADR-0043).
+ */
+export function writableBytes(m: {
+  diskTotal: number;
+  diskUsed: number;
+  diskPct?: number;
+}): number {
+  const pct = m.diskPct ?? 0;
+  if (pct > 0 && pct < 100 && m.diskUsed > 0)
+    return Math.round((m.diskUsed * (100 - pct)) / pct);
+  return Math.max(m.diskTotal - m.diskUsed, 0);
+}
+
 /** A server's disk as its last metrics said, within two minutes; zeros are unknown, and fit anything. */
 export function latestDisk(serverId: string): { free: number; total: number } {
   const last = getMetricsHistory(serverId).at(-1);
   if (!last || Date.now() - last.ts > 120_000 || last.diskTotal <= 0)
     return { free: 0, total: 0 };
-  return {
-    free: Math.max(last.diskTotal - last.diskUsed, 0),
-    total: last.diskTotal,
-  };
+  return { free: writableBytes(last), total: last.diskTotal };
 }
 
 /** The least memory a workload is assumed to need; the leader's rule uses the same floor. */
