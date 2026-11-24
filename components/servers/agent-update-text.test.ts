@@ -46,6 +46,15 @@ test("each state reads as one line, unusable first", () => {
     agentUpdateText(failed({ running: true }), "usable", NOW),
     "Updating the server agent",
   );
+  // A release that broke it is never retried on its own (ADR-0043).
+  assert.equal(
+    agentUpdateText(
+      failed({ failure: "no_return", gaveUp: true, nextRetryAt: null }),
+      "usable",
+      NOW,
+    ),
+    "Update stopped: the new server agent did not stay up",
+  );
   assert.equal(
     agentUpdateText(
       failed({ nextRetryAt: new Date(NOW - 1).toISOString() }),

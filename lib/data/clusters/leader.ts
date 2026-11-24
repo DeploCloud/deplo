@@ -174,7 +174,7 @@ async function updateMessage(host: Server | null): Promise<string> {
   for (const server of [host, own]) {
     const row = server && (await failingClusterUpdate(server.id));
     if (row)
-      return `Deplo could not update the leader on ${server.name} to v${row.targetVersion}: ${row.lastError} It retries on its own.`;
+      return `Deplo could not update the leader on ${server.name} to v${row.targetVersion}: ${row.lastError}${row.failure === "no_return" ? "" : " It retries on its own."}`;
   }
   return "";
 }
