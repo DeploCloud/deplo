@@ -202,6 +202,8 @@ export interface LeaderSnapshot {
       members: { id: string; state: string; heard?: boolean }[];
       placement?: LeaderEntry[];
       moves?: LeaderMove[];
+      /** The members its renewals name to lead next, heir first. */
+      line?: string[];
     }
   >;
 }
