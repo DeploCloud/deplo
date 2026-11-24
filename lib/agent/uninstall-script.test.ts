@@ -17,7 +17,8 @@ test("removes the agent service, binary, state, proxy and network", async () => 
   const script = await renderUninstallScript();
 
   assert.match(script, /systemctl disable --now deplo-agent/);
-  assert.match(script, /rm -f "\$UNIT"/);
+  // The restart drop-in goes with the unit (ADR-0043).
+  assert.match(script, /rm -rf "\$UNIT" "\$UNIT\.d"/);
   assert.match(script, /AGENT_BIN="\/usr\/local\/bin\/deplo-agent"/);
   assert.match(script, /rm -rf "\$AGENT_DATA"/);
   assert.match(script, /docker network rm "\$n"/);
