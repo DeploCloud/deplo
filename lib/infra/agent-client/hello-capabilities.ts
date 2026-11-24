@@ -14,6 +14,9 @@ export const BACKUP_STORE_SEALED_CAPABILITY = "backup-store.sealed";
 // A backup goes member to member over the cluster's private network, not through Deplo (ADR-0047).
 export const BACKUP_STORE_MEMBER_CAPABILITY = "backup-store.member";
 
+// A move copies a volume member to member over the cluster's private network (ADR-0047).
+export const VOLUME_COPY_MEMBER_CAPABILITY = "volume-copy.member";
+
 export const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
 
 export const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";

@@ -18,6 +18,7 @@ import { drainTeardowns } from "./teardown-queue";
 import { AgentOfflineError } from "../infra/agent-client/errors";
 import { moveAppToCluster } from "./apps/source";
 import { removeClusterMember } from "./clusters/dissolve";
+import { VOLUME_COPY_MEMBER_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { runEmptyingPass } from "./clusters/empty";
 import {
   activity,
@@ -321,4 +322,47 @@ test('"Deploy anyway" while the old member is silent deletes nothing there, and 
   await said(
     /What srv_2 held of fise was set aside on srv_3 .* Finished the teardown of fise on srv_2/,
   );
+});
+
+// eu, 24 Nov 2026: a move's 600 MB went from eu-4 to eu-3 through Deplo, across the lab's internet line twice.
+async function moveBetweenMembers(noPath: boolean) {
+  await fise("srv_2");
+  for (const id of ["srv_2", "srv_3"])
+    hosts.get(id)!.capabilities.push(VOLUME_COPY_MEMBER_CAPABILITY);
+  const old = disks.get("srv_2")!;
+  old.volumes.set(VOL, OLD);
+  old.ran.set("fise", { lastRanMs: Date.now() - 2_000, running: false });
+  if (noPath) old.fail.memberPath = "no path";
+  const cluster = await eu();
+  __setRunnerForTest(async (depId) => {
+    await db
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(eq(deploymentsTable.id, depId));
+  });
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "done",
+  );
+  const to = disks.get("srv_3")!;
+  assert.deepEqual(to.volumes.get(VOL), OLD);
+  assert.ok(
+    to.calls.includes(`expect:${VOL}:2`),
+    "srv_3 was told to take it from srv_2",
+  );
+  return { old, to };
+}
+
+test("a move between two members copies the data between them, not through Deplo", async () => {
+  const { old, to } = await moveBetweenMembers(false);
+  assert.ok(to.calls.includes(`member-import:${VOL}`));
+  assert.ok(!old.calls.includes(`export:${VOL}`), "Deplo carried nothing");
+  await said(/Moved fise's data from srv_2 to srv_3, server to server/);
+});
+
+test("a move Deplo carries only when no path joins the two members, and Activity says so", async () => {
+  const { to } = await moveBetweenMembers(true);
+  assert.ok(to.calls.includes(`import:${VOL}`), "Deplo carried it");
+  await said(/Moved fise's data from srv_2 to srv_3, through Deplo/);
 });

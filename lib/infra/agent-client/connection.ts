@@ -434,6 +434,22 @@ export interface AgentConnection {
     sourceFingerprint: string,
     keep: number,
   ): Promise<void>;
+  /** Needs `volume-copy.member`: tells this member to take one volume from one member's certificate, once. */
+  expectClusterVolume(
+    volumeName: string,
+    wipeFirst: boolean,
+    sourceFingerprint: string,
+  ): Promise<void>;
+  /** Needs `volume-copy.member`: copies a volume to that member; path "none" when nothing joins them. */
+  sendClusterVolume(
+    volumeName: string,
+    targetFingerprint: string,
+  ): Promise<{
+    bytes: number;
+    sha256: string;
+    path: string;
+    missing: boolean;
+  }>;
   /** Needs `backup-store.member`: tells this member to keep one backup from one member's certificate, once. */
   expectClusterBackup(
     store: StoreTarget,
