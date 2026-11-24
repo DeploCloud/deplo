@@ -389,7 +389,13 @@ test("with half of the servers left, Deplo gives its word to the next in line, a
         `${led.leaderServerId} stopped answering, so Deplo gives its word to ${second}, next in line, to lead cluster eu`,
       ),
     );
+    assert.deepEqual(
+      beatsTo(hosts[second]),
+      [{ [cluster.id]: epoch }],
+      "the word leaves as soon as it is given",
+    );
     hosts[SERVER_1].calls.length = 0;
+    hosts[second].calls.length = 0;
     await beatClusterLeaders();
     assert.deepEqual(beatsTo(hosts[second]), [{ [cluster.id]: epoch }]);
     assert.deepEqual(

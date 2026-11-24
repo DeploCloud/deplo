@@ -308,6 +308,7 @@ export function fakeClusterHosts(): {
             sha256: "",
             decryptedSizeBytes: h.backupBytes,
             heldMs: 0,
+            heldWhy: "",
           },
         };
       },
