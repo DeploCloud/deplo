@@ -135,8 +135,11 @@ export function DomainRow({
   cluster = null,
   everyServer = null,
   autoDnsZones = [],
+  tunnels = false,
 }: {
   domain: Row;
+  /** The Tunnels experiment is on, so a domain may be served through Cloudflare Tunnel. */
+  tunnels?: boolean;
   /** Domains connected for automatic DNS that the viewer may use in this team. */
   autoDnsZones?: string[];
   /** The records a domain answering on every server needs when a person keeps them: one per healthy server. */
@@ -682,7 +685,7 @@ export function DomainRow({
                     id={`edit-${domain.id}-cf`}
                     zone={zone ?? "Cloudflare"}
                     tunnel={tunnel}
-                    onTunnel={setWantsTunnel}
+                    onTunnel={tunnels ? setWantsTunnel : undefined}
                     proxied={config.proxied}
                     onProxied={(on) => setConfig({ ...config, proxied: on })}
                   />

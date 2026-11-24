@@ -68,7 +68,6 @@ export const instanceSettings = pgTable("instance_settings", {
     .notNull()
     .default(false),
   experimentClusters: boolean("experiment_clusters").notNull().default(false),
-  // Unread since tunnels left the experiments; dropped one release later, after a rollback can no longer need it.
   experimentTunnels: boolean("experiment_tunnels").notNull().default(false),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
