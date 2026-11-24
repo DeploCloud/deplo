@@ -209,6 +209,7 @@ export async function recordLeftBehindRun(input: {
     sizeBytes: input.sizeBytes,
     decryptedSizeBytes: input.decryptedSizeBytes,
     heldMs: null,
+    path: null,
     sha256: input.sha256,
     orphanedAt: null,
     leftAt: input.failedOverAt,

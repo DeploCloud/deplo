@@ -199,6 +199,8 @@ test("a leader answer places the App: the member runs it, placements and server_
   assert.equal(asked[0].cluster, cluster.id);
   assert.equal(asked[0].workload.name, "web");
   assert.equal(asked[0].workload.limitMb, 0);
+  // eu, 24 Nov 2026: a new App's data is unknown, so the leader puts it where it can grow.
+  assert.equal(asked[0].workload.dataUnknown, true);
 });
 
 test("a later leader report moves server_id with it and a waiting App keeps where it was", async () => {

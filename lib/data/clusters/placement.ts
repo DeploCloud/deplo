@@ -46,6 +46,8 @@ export interface PlacementRequest {
   exclude?: string[];
   /** What its data takes on a member that holds none of it; 0 for a new App (ADR-0043). */
   diskBytes?: number;
+  /** A new workload, whose data nobody can measure yet: the leader puts it where it can grow (ADR-0043). */
+  dataUnknown?: boolean;
 }
 
 export type PlacementRefusalReason =
@@ -172,6 +174,7 @@ async function askLeader(
             image: req.imageRef ?? "",
             archs: req.archs ?? [],
             ...(req.diskBytes ? { diskBytes: req.diskBytes } : {}),
+            ...(req.dataUnknown ? { dataUnknown: true } : {}),
           },
           members: facts,
           ...(many

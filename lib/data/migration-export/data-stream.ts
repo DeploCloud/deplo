@@ -184,6 +184,7 @@ export async function openDatabaseDump(
     ageRecipient: recipient,
     streamOut: true,
     archive: PostgresArchive.POSTGRES_ARCHIVE_NONE,
+    memberFingerprint: "",
   });
   return {
     chunks: (async function* () {

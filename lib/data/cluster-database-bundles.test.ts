@@ -144,6 +144,7 @@ test("the bundle is sent again when a new backup completes, and not when nothing
         decryptedSizeBytes: 0,
         heldMs: 0,
         heldWhy: "",
+        path: "",
       },
     };
   };
@@ -177,6 +178,7 @@ test("the bundle is sent again when a new backup completes, and not when nothing
         decryptedSizeBytes: 0,
         heldMs: 0,
         heldWhy: "",
+        path: "",
       },
     };
   };

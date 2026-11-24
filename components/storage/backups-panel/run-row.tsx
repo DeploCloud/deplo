@@ -132,6 +132,15 @@ export function RunRow({
           {ok && heldLabel(run.heldMs) && (
             <span> · {heldLabel(run.heldMs)}</span>
           )}
+          {ok && run.path && (
+            <span>
+              {" "}
+              ·{" "}
+              {run.path === "direct"
+                ? "sent server to server"
+                : "sent through Deplo"}
+            </span>
+          )}
           {ok && !run.sha256 && (
             <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
               <span> · not checksummed</span>

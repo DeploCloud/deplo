@@ -69,6 +69,10 @@ export interface ClusterReplicaReport {
   bytes: number;
   error: string;
   fromServerId: string;
+  /** A relay, so Deplo, carries its stream. */
+  relayed?: boolean;
+  /** What the copy takes on this member's disk; 0 from an agent that does not say. */
+  diskBytes?: number;
 }
 
 /** One server's place on its cluster's network (ADR-0047): its tunnel address and every other server of the cluster. */
@@ -337,6 +341,10 @@ export interface AgentConnection {
   }): Promise<{ ok: boolean; error: string }>;
   exportVolume(volumeName: string): AsyncGenerator<Buffer, void, unknown>;
   volumeUsage(volumeNames: string[]): Promise<Map<string, number>>;
+  /** What the volumes hold together, and their biggest file: a copy rebuilding it holds it twice meanwhile. */
+  volumeSizes(
+    volumeNames: string[],
+  ): Promise<{ bytes: number; largest: number }>;
   /** The dated copies a returning cluster member set aside of these volumes (Hello `volumes.set-aside`). */
   setAsideCopies(of: string[]): Promise<SetAsideCopy[]>;
   removeSetAside(volumeName: string): Promise<{ ok: boolean; error: string }>;
@@ -425,6 +433,11 @@ export interface AgentConnection {
     imageRef: string,
     sourceFingerprint: string,
     keep: number,
+  ): Promise<void>;
+  /** Needs `backup-store.member`: tells this member to keep one backup from one member's certificate, once. */
+  expectClusterBackup(
+    store: StoreTarget,
+    sourceFingerprint: string,
   ): Promise<void>;
   // Needs `cluster.images` (ADR-0044): send a built image to one member, which prunes older releases.
   copyClusterImage(

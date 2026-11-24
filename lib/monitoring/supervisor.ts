@@ -36,6 +36,7 @@ import type {
   MetricsSample,
 } from "../agent/gen/agent";
 import { checkResourceThresholds } from "../notify/thresholds";
+import { noteDiskUse } from "../data/servers/disk-full";
 import { pruneMetricsHistoryTo, recordMetricsSample } from "./history";
 import {
   clearMetricsStreamUnsupported,
@@ -148,8 +149,14 @@ async function ingestFrame(
 ): Promise<Map<string, ContainerStat[]>> {
   const host = hostSampleFrom(serverId, frame, facts);
   // Above the save-metrics gate on purpose: turning charts off must not turn alerting off.
-  if (host)
+  if (host) {
     checkResourceThresholds(serverId, facts.serverName || serverId, host);
+    void noteDiskUse(
+      serverId,
+      facts.serverName || serverId,
+      host.diskPct,
+    ).catch(() => {});
+  }
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
 
   const byProject = new Map<string, ContainerStat[]>();

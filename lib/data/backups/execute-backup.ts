@@ -116,6 +116,7 @@ export async function executeBackup(
     sizeBytes: 0,
     decryptedSizeBytes: null,
     heldMs: null,
+    path: null,
     sha256: null,
     orphanedAt: null,
     status: "running",
@@ -250,6 +251,7 @@ export async function executeBackup(
           sizeBytes: result!.sizeBytes,
           decryptedSizeBytes: result!.decryptedSizeBytes || null,
           heldMs: result!.heldMs || null,
+          path: result!.path ?? null,
           sha256: result!.sha256 || null,
           finishedAt,
         };

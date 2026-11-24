@@ -147,6 +147,36 @@ test("a run records how long the agent held the App, and nothing when it held no
   });
 });
 
+// eu, 24 Nov 2026: nothing said that a backup between two members went through Deplo.
+test("a run records whether it went server to server or through Deplo", async (t) => {
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        yield {
+          result: {
+            ok: true,
+            error: "",
+            sizeBytes: 3,
+            sha256: "",
+            path: "direct",
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await runDatabaseBackup("db_1", "s3_1");
+    const runs = await listBackupRuns({ databaseId: "db_1" });
+    assert.ok(runs.some((r) => r.path === "direct"));
+  });
+});
+
 test("a backup that paused the App for its whole copy says why in Activity", async (t) => {
   __setAgentConnectorForTest(async () => {
     const conn = {

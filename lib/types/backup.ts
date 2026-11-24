@@ -78,6 +78,8 @@ export interface BackupRun {
   sizeBytes: number;
   decryptedSizeBytes: number | null;
   heldMs: number | null;
+  /** How it reached another server's disk: "direct" (server to server) or "relay" (through Deplo); null otherwise. */
+  path?: "direct" | "relay" | null;
   sha256: string | null;
   orphanedAt: string | null;
   /** Data a returning cluster member had left: when the failover happened, and the server it was on. */

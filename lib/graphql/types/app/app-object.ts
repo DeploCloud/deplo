@@ -143,7 +143,7 @@ const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
     }),
     copyRows: t.stringList({
       description:
-        "Each other server's copy as its page lists it under Advanced: server, state, last copy, seconds behind, bytes.",
+        "Each other server's copy as its page lists it under Advanced: server, state, last copy, seconds behind, bytes on disk, direct or relayed.",
       resolve: (f) =>
         f.copyRows.map((r) =>
           [
@@ -152,6 +152,7 @@ const AppFailoverRef = builder.objectRef<AppFailover>("AppFailover").implement({
             r.lastCopyAt ?? "",
             r.behindSeconds ?? "",
             r.bytes,
+            r.relayed ? "relayed" : "direct",
           ].join(" | "),
         ),
     }),

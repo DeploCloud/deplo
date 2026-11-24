@@ -137,6 +137,7 @@ export async function copyRows(
           ? Math.round((now - Date.parse(r.appliedAt)) / 1000)
           : null,
       bytes: r?.bytes ?? 0,
+      relayed: r?.relayed ?? false,
       error: r?.error ?? "",
     });
   }

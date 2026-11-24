@@ -106,6 +106,11 @@ export const BackupRunRef = builder
         description:
           "How long the App was paused so its data could be copied consistently, in milliseconds. Null when it was not paused.",
       }),
+      path: t.exposeString("path", {
+        nullable: true,
+        description:
+          '"direct" when it went from the App\'s server straight to the server that keeps it, "relay" when it went through Deplo; null for a bucket or the App\'s own server.',
+      }),
       leftAt: t.exposeString("leftAt", {
         nullable: true,
         description:
