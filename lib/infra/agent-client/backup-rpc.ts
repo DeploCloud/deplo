@@ -27,6 +27,13 @@ import {
 import { toAgentError } from "./errors";
 import { bytesFrom, type AgentChannel } from "./mtls-channel";
 
+// A link's connection closes nothing when its caller leaves: the call itself is cancelled, and the agent stops.
+function cancelOn(signal: AbortSignal | undefined, call: { cancel(): void }) {
+  if (!signal) return;
+  if (signal.aborted) call.cancel();
+  else signal.addEventListener("abort", () => call.cancel(), { once: true });
+}
+
 export function backupRpc(
   channel: AgentChannel,
 ): Pick<
@@ -52,8 +59,10 @@ export function backupRpc(
     deadline: new Date(Date.now() + RESTORE_DEADLINE_MS),
   });
   return {
-    backup(req: BackupRequest) {
-      return streamEvents(client.backup(req, backupDeadline()), {
+    backup(req: BackupRequest, signal?: AbortSignal) {
+      const call = client.backup(req, backupDeadline());
+      cancelOn(signal, call);
+      return streamEvents(call, {
         normalise: toAgentError,
         pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
       });
@@ -149,6 +158,7 @@ export function backupRpc(
       store: StoreTarget,
       overwrite: boolean,
       chunks: AsyncIterable<Buffer>,
+      signal?: AbortSignal,
     ) {
       return new Promise<{
         ok: boolean;
@@ -169,6 +179,7 @@ export function backupRpc(
                   sha256: resp.sha256,
                 }),
         );
+        cancelOn(signal, call);
         pumpClientStream<StoreChunk>(
           call,
           { header: { store, overwrite } },

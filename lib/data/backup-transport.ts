@@ -101,7 +101,7 @@ export async function backupToDestination(
     });
     const release = abortWith(signal, conn);
     try {
-      return await consumeBackup(conn, req, objectKey);
+      return await consumeBackup(conn, req, objectKey, signal);
     } finally {
       release();
       conn.close();
@@ -131,9 +131,10 @@ async function consumeBackup(
   conn: AgentConnection,
   req: BackupRequest,
   objectKey: string,
+  signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   let result: BackupOutcome | null = null;
-  for await (const ev of conn.backup(req)) {
+  for await (const ev of conn.backup(req, signal)) {
     if (ev.result) {
       result = {
         ok: ev.result.ok,
@@ -191,6 +192,12 @@ async function relayBackup(
   });
   let sink: AgentConnection | null = null;
   let release = abortWith(signal, src);
+  // Both ends stop together: on a cancel, and whenever either one ends first (eu, 24 Nov 2026: a canceled
+  // relayed backup went on copying for 2 minutes and nearly filled its destination).
+  const stop = new AbortController();
+  const stopBoth = () => stop.abort();
+  if (signal?.aborted) stop.abort();
+  else signal?.addEventListener("abort", stopBoth, { once: true });
   try {
     sink = await connectBackupAgent(destServer, { store: true });
     release();
@@ -198,11 +205,14 @@ async function relayBackup(
     const source: { result: BackupOutcome | null } = { result: null };
 
     const bytes = (async function* () {
-      for await (const ev of src.backup({
-        ...base,
-        streamOut: true,
-        s3: undefined,
-      })) {
+      for await (const ev of src.backup(
+        {
+          ...base,
+          streamOut: true,
+          s3: undefined,
+        },
+        stop.signal,
+      )) {
         if (ev.result) {
           source.result = {
             ok: ev.result.ok,
@@ -228,6 +238,7 @@ async function relayBackup(
         storeTargetFor(dest, objectKey),
         false,
         bytes,
+        stop.signal,
       );
     } catch (e) {
       if (!(e instanceof RelayAborted)) throw e;
@@ -306,6 +317,8 @@ async function relayBackup(
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
+    stop.abort();
+    signal?.removeEventListener("abort", stopBoth);
     release();
     sink?.close();
     src.close();

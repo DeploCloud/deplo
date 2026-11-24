@@ -495,7 +495,11 @@ export interface AgentConnection {
     req: UpdateControlPlaneRequest,
   ): Promise<UpdateControlPlaneResponse>;
 
-  backup(req: BackupRequest): AsyncGenerator<BackupEvent, void, unknown>;
+  /** The signal cancels the call: the agent then stops the copy and the App runs again. */
+  backup(
+    req: BackupRequest,
+    signal?: AbortSignal,
+  ): AsyncGenerator<BackupEvent, void, unknown>;
   restore(req: RestoreRequest): AsyncGenerator<RestoreEvent, void, unknown>;
   s3Check(s3: S3Target): Promise<{ ok: boolean; error: string }>;
   s3Delete(
@@ -523,6 +527,7 @@ export interface AgentConnection {
     store: StoreTarget,
     overwrite: boolean,
     chunks: AsyncIterable<Buffer>,
+    signal?: AbortSignal,
   ): Promise<{
     ok: boolean;
     error: string;
