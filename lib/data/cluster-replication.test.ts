@@ -13,10 +13,11 @@ import {
 import type { ClusterReplicaReport } from "../infra/agent-client/connection";
 import { CLUSTER_REPLICAS_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { seedDeployment } from "./app-graph-test-helpers";
-import { pushAppBundle } from "./clusters/app-restore";
+import { pushAppBundle, refreshAppBundle } from "./clusters/app-restore";
 import {
   type FailoverStack,
   flushFailoverBundles,
+  inBackground,
   pushFailoverBundle,
 } from "./clusters/bundles";
 import { setClusterReplication } from "./clusters/manage";
@@ -296,4 +297,32 @@ test("a bundle stored without its whole copy is sent again with it, though no co
   await replicateCluster(cluster.id);
   await flushFailoverBundles();
   assert.equal((await open("app/prj_web")).restore?.backupId, "replica");
+});
+
+// eu, 24 Nov 2026: a refresh by replication read lab-web's bundle while a domain's refresh was on its way, then sent it
+// last: the App moved without its routes and answered 404 for 5 minutes. Every refresh waits its turn, then reads.
+test("a refresh by replication waits for a push under way, and keeps what that push changed", async () => {
+  const cluster = await replicated();
+  await replicateCluster(cluster.id, true);
+  await flushFailoverBundles();
+  let release = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  inBackground("prj_web", async () => {
+    await gate;
+    await refreshAppBundle("prj_web", (s) => ({
+      ...s,
+      composeYaml: s.composeYaml + "# routed\n",
+    }));
+  });
+  host.srv_3.replicaReports = [report()];
+  let done = false;
+  const pass = replicateCluster(cluster.id).then(() => (done = true));
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(done, false, "the pass waits for the push under way");
+  release();
+  await pass;
+  await flushFailoverBundles();
+  const b = await open("app/prj_web");
+  assert.equal(b.restore?.backupId, "replica");
+  assert.match(b.stack.composeYaml, /# routed/);
 });

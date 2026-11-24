@@ -24,7 +24,7 @@ import { standbyForCluster } from "../databases/standby";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
 import { refreshAppBundle, restoreDescriptor } from "./app-restore";
-import { storedBundle } from "./bundles";
+import { inLine, storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
 import { REPLICA_ID, promotable, replicaRows } from "./replica-state";
 import { clusterOutOfReach } from "./reach";
@@ -189,10 +189,10 @@ async function recordReports(
     // A bundle pushed while no copy was whole (a deploy, a move, Deplo's return) is put in step here too.
     const held = (await storedBundle(app.id))?.restore?.backupId === REPLICA_ID;
     if (was === now) {
-      if (held !== now) await refreshAppBundle(app.id).catch(quietly(app.slug));
+      if (held !== now) await inLine(app.id, () => refreshAppBundle(app.id));
       continue;
     }
-    await refreshAppBundle(app.id).catch(quietly(app.slug));
+    await inLine(app.id, () => refreshAppBundle(app.id));
     // The App's page and its Activity say the same line.
     const { copyRows } = await import("../apps/failover");
     const rows = await copyRows(app, [...reports.keys()], after);
@@ -281,7 +281,7 @@ export async function refreshVolumeAppBundles(
   for (const r of await appsOf(clusterId)) {
     const app = await loadAppGraph(r.id);
     if (app && appDisk(app) === "volume")
-      await refreshAppBundle(r.id).catch(quietly(r.id));
+      await inLine(r.id, () => refreshAppBundle(r.id));
   }
 }
 
