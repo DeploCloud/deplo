@@ -44,7 +44,16 @@ import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import { outOfReachFailure } from "../clusters/reach";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
-export const backupRunsInFlight = new Map<string, AbortController>();
+// On globalThis: a scheduled run starts in the scheduler's bundle and is canceled from a request's (eu, 24 Nov
+// 2026: a canceled scheduled backup went on copying, the cancel never reached it).
+const IN_FLIGHT_KEY = Symbol.for("deplo.backups.in-flight");
+const inFlight = globalThis as unknown as {
+  [IN_FLIGHT_KEY]?: Map<string, AbortController>;
+};
+export const backupRunsInFlight = (inFlight[IN_FLIGHT_KEY] ??= new Map<
+  string,
+  AbortController
+>());
 
 // Read from the ROW, not from memory: two runs seconds apart once tarred one 61 GB volume in parallel.
 export async function assertNotAlreadyBackingUp(

@@ -92,3 +92,14 @@ test("stopping a backup needs manage_backups", async () => {
     assert.equal(run!.status, "running");
   });
 });
+
+// A scheduled run starts in the scheduler's bundle, a cancel comes in through a request's: one map for both.
+test("a cancel reaches a run started in another bundle of the same process", async () => {
+  const { backupRunsInFlight } = await import("./execute-backup");
+  assert.equal(
+    (globalThis as Record<symbol, unknown>)[
+      Symbol.for("deplo.backups.in-flight")
+    ],
+    backupRunsInFlight,
+  );
+});
