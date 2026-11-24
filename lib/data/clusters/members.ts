@@ -7,6 +7,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
+  clusterAppReplicas,
   clusterMembers as membersTable,
   clusterTeams as clusterTeamsTable,
   clusters as clustersTable,
@@ -55,6 +56,7 @@ import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
 import { getCluster, getClusterById, requireClusterAdmin } from "./roster";
 import { messageOf } from "../../utils";
+import { NO_ROOM_FOR_COPY } from "./replication";
 
 /** A join refused: `reasons` lists every blocker found, so the admin fixes them in one pass. */
 export class ClusterJoinRefusedError extends Error {
@@ -289,9 +291,10 @@ async function toMember(
   r: MemberRow,
   viewer: Viewer,
   network: ClusterMemberNetwork = { relayed: [], unreachable: [] },
-  extra: Pick<ClusterMember, "relayWarning" | "nextInLine"> = {
+  extra: Pick<ClusterMember, "relayWarning" | "nextInLine" | "copyWarning"> = {
     relayWarning: "",
     nextInLine: 0,
+    copyWarning: "",
   },
 ): Promise<ClusterMember> {
   const held = await listMemberWorkloads(r.serverId);
@@ -389,6 +392,7 @@ async function readMembers(
   );
   const cluster = await getClusterById(clusterId);
   const heirs = cluster ? await clusterHeirs(cluster).catch(() => []) : [];
+  const noRoom = await copiesWithoutRoom(ids, viewer);
   return Promise.all(
     rows.map((r) =>
       toMember(r, viewer, network.get(r.serverId), {
@@ -396,9 +400,36 @@ async function readMembers(
           ? relayedServerWarning(r.serverName)
           : "",
         nextInLine: heirs.indexOf(r.serverId) + 1,
+        copyWarning: noRoom.get(r.serverId) ?? "",
       }),
     ),
   );
+}
+
+/** The copies each server cannot start for want of room (ADR-0043): the App and its size, to an admin only. */
+async function copiesWithoutRoom(
+  serverIds: string[],
+  viewer: Viewer,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (serverIds.length === 0) return out;
+  const rows = await getDb()
+    .select({
+      serverId: clusterAppReplicas.serverId,
+      error: clusterAppReplicas.error,
+    })
+    .from(clusterAppReplicas)
+    .where(inArray(clusterAppReplicas.serverId, serverIds));
+  for (const r of rows) {
+    if (!r.error.includes(NO_ROOM_FOR_COPY)) continue;
+    const said = out.get(r.serverId);
+    const line = viewer.admin
+      ? `${r.error}. Free some space on it, and the copy starts.`
+      : "A copy of an App does not fit on this server.";
+    if (!said) out.set(r.serverId, line);
+    else if (viewer.admin) out.set(r.serverId, `${said} ${line}`);
+  }
+  return out;
 }
 
 /** A cluster's members, for whoever may see the cluster: an instance admin, or a team it is shared with. */

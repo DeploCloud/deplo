@@ -11,7 +11,11 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { nowIso } from "../../ids";
-import { CLUSTER_REPLICAS_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_REPLICAS_CAPABILITY,
+  VOLUME_USAGE_CAPABILITY,
+} from "../../infra/agent-client/hello-capabilities";
+import { formatBytes } from "../backups/format-bytes";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type {
   ClusterReplicaReport,
@@ -86,13 +90,94 @@ export async function replicaTable(
 // What each member was last handed, so a table that did not change is not sent again.
 const handed = new Map<string, string>();
 
+/** A copy that does not fit, in the words the server's row and page show it (ADR-0043). */
+export function noRoomForCopy(
+  server: string,
+  app: string,
+  free: number,
+  need: number,
+): string {
+  return `${server} has ${formatBytes(free)} free, too little for a copy of ${app} (about ${formatBytes(need)}) and a tenth of its disk free`;
+}
+export const NO_ROOM_FOR_COPY = "too little for a copy of";
+
+// ponytail: an App's size is measured at most once a minute per process; a copy that grows past it shows next time.
+const sizes = new Map<string, { at: number; bytes: number }>();
+
+/** What an App's Volumes hold now, measured on the server it runs on; 0 when that server cannot say. */
+async function appBytes(serverId: string, volumes: string[]): Promise<number> {
+  const key = `${serverId}|${volumes.join(",")}`;
+  const hit = sizes.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.bytes;
+  let bytes = 0;
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (hello.capabilities?.includes(VOLUME_USAGE_CAPABILITY))
+      for (const n of (await conn.volumeUsage(volumes)).values()) bytes += n;
+  } finally {
+    conn.close();
+  }
+  sizes.set(key, { at: Date.now(), bytes });
+  return bytes;
+}
+
+/**
+ * The entries a member does not start a copy of, with why: a replica follows a backup's rule and starts only when
+ * it leaves a tenth of the member's disk free, the set-aside copies on it counted (ADR-0043). A copy the member says
+ * it holds whole, or the App it runs, is never held back.
+ */
+async function copiesThatDoNotFit(
+  table: ClusterReplicaTable,
+  serverId: string,
+  held: ClusterReplicaReport[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = table.entries.map((e) => e.appId);
+  if (ids.length === 0) return out;
+  const apps = await getDb()
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(inArray(appsTable.id, ids));
+  let disk: { free: number; total: number } | null | undefined;
+  for (const e of table.entries) {
+    const app = apps.find((a) => a.id === e.appId);
+    if (!app?.serverId || app.serverId === serverId) continue;
+    if (e.volumeNames.length === 0) continue;
+    const copy = held.find((r) => r.appId === e.appId);
+    if (copy?.synced || copy?.role === "sending") continue;
+    const size = await appBytes(app.serverId, e.volumeNames).catch(() => 0);
+    const need = size - (copy?.bytes ?? 0);
+    if (need <= 0) continue;
+    disk ??= await memberDisk(serverId).catch(() => null);
+    if (!disk || disk.total <= 0 || disk.free - need >= disk.total / 10)
+      continue;
+    const name = (await getServerById(serverId))?.name ?? "This server";
+    out.set(e.appId, noRoomForCopy(name, app.name, disk.free, size));
+  }
+  return out;
+}
+
+async function memberDisk(serverId: string) {
+  const conn = await connectAgent(serverId);
+  try {
+    const m = await conn.metrics();
+    return { free: m.diskTotal - m.diskUsed, total: m.diskTotal };
+  } finally {
+    conn.close();
+  }
+}
+
 /** Hands every member the table and reads back its copies; a member that cannot take it is noted, the rest go on. */
 export async function pushReplicaTables(
   clusterId: string,
   force = false,
 ): Promise<Map<string, ClusterReplicaReport[] | string>> {
   const table = await replicaTable(clusterId);
-  const sum = JSON.stringify(table);
   const out = new Map<string, ClusterReplicaReport[] | string>();
   for (const m of table.members) {
     const key = `${clusterId}|${m.serverId}`;
@@ -104,11 +189,34 @@ export async function pushReplicaTables(
           out.set(m.serverId, AGENT_TOO_OLD);
           continue;
         }
+        // What it holds now decides what it may start: never what Deplo stored last.
+        const held = await conn.clusterReplicaStatus();
+        const refused = await copiesThatDoNotFit(table, m.serverId, held);
+        const mine = {
+          ...table,
+          entries: table.entries.filter((e) => !refused.has(e.appId)),
+        };
+        const sum = JSON.stringify(mine);
         if (force || handed.get(key) !== sum) {
-          await conn.setClusterReplicas(table);
+          await conn.setClusterReplicas(mine);
           handed.set(key, sum);
         }
-        out.set(m.serverId, await conn.clusterReplicaStatus());
+        const reports = (await conn.clusterReplicaStatus()).filter(
+          (r) => !refused.has(r.appId),
+        );
+        for (const [appId, error] of refused)
+          reports.push({
+            appId,
+            role: "idle",
+            connected: false,
+            streams: 0,
+            synced: false,
+            appliedAt: "",
+            bytes: 0,
+            error,
+            fromServerId: "",
+          });
+        out.set(m.serverId, reports);
       } finally {
         conn.close();
       }
@@ -288,4 +396,5 @@ export async function refreshVolumeAppBundles(
 /** Test seam: forget what each member was handed. */
 export function __forgetHandedTables(): void {
   handed.clear();
+  sizes.clear();
 }

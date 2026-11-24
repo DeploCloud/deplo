@@ -133,6 +133,16 @@ export default async function ServerDetailPage(
                   </Badge>
                 </SimpleTooltip>
               )}
+              {asMember?.copyWarning && (
+                <SimpleTooltip content={asMember.copyWarning}>
+                  <Badge
+                    variant="warning"
+                    className="shrink-0 gap-1 whitespace-nowrap"
+                  >
+                    <TriangleAlert className="size-3" />A copy does not fit
+                  </Badge>
+                </SimpleTooltip>
+              )}
               {isDeploHost && (
                 <Badge className="shrink-0 gap-1 whitespace-nowrap">
                   <DeploMark size={12} className="text-current" />

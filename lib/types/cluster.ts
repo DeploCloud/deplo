@@ -144,6 +144,8 @@ export interface ClusterMember {
   relayWarning: string;
   /** Where it stands in the line of succession: 1 leads next, 2 after it, 0 not in the line. */
   nextInLine: number;
+  /** A copy of an App it cannot start for want of room, naming the App and its size; empty otherwise (ADR-0043). */
+  copyWarning: string;
 }
 
 /** The servers a member reaches only through Deplo's relay, or not at all though both are up. Empty: all direct. */
