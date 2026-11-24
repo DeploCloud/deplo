@@ -166,7 +166,9 @@ export async function acceptDataCopyLoss(
     if (app && heldMove && asideHeld) {
       let started = false;
       const once = () => {
-        if (!started) ((started = true), deploy());
+        if (started) return;
+        started = true;
+        deploy();
       };
       void setAsideHeldCopy({ ...app, migrateFromServerId: heldMove }, once)
         .then((note) => recordActivity("app", note, user.name, target.id))
