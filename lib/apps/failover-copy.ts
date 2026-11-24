@@ -112,6 +112,8 @@ export interface CopyRow {
   /** How long since the App's server last reached it, while it is behind. */
   behindSeconds: number | null;
   bytes: number;
+  /** Its stream goes through Deplo, not server to server. */
+  relayed?: boolean;
   error: string;
 }
 

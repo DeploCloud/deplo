@@ -402,7 +402,7 @@ type AppFailover {
   copies: String
 
   """
-  Each other server's copy as its page lists it under Advanced: server, state, last copy, seconds behind, bytes.
+  Each other server's copy as its page lists it under Advanced: server, state, last copy, seconds behind, bytes on disk, direct or relayed.
   """
   copyRows: [String!]
 
@@ -940,6 +940,11 @@ type BackupRun {
 
   """Object key of the stored artifact."""
   objectKey: String
+
+  """
+  "direct" when it went from the App's server straight to the server that keeps it, "relay" when it went through Deplo; null for a bucket or the App's own server.
+  """
+  path: String
   sizeBytes: Float
   startedAt: String
   status: BackupRunStatus

@@ -3,7 +3,14 @@ import "server-only";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { mapBackupUnsupported } from "../infra/agent-client/errors";
 import { connectBackupAgent } from "../infra/agent-client/preflight";
-import { BACKUP_STORE_SEALED_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  BACKUP_STORE_MEMBER_CAPABILITY,
+  BACKUP_STORE_SEALED_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "../db/client";
+import { clusterMembers } from "../db/schema/control-plane/clusters";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import {
   AgentOfflineError,
@@ -48,6 +55,8 @@ export interface BackupOutcome {
   // Why that pause lasted the whole copy, not only a copy on the App's own disk; empty when it did not.
   heldWhy?: string;
   sha256: string;
+  // How it reached another server's disk: "direct" (server to server) or "relay" (through Deplo).
+  path?: "direct" | "relay";
 }
 
 class RelayAborted extends Error {
@@ -85,6 +94,7 @@ export function backupRequestFor(
     ageRecipient: dest.ageRecipient ?? "",
     streamOut: false,
     archive: target.archive ?? PostgresArchive.POSTGRES_ARCHIVE_NONE,
+    memberFingerprint: "",
   };
 }
 
@@ -115,7 +125,112 @@ export async function backupToDestination(
     }
   }
 
-  return relayBackup(creds, target, objectKey, destServer, req, signal);
+  const direct = await memberBackup(
+    creds,
+    target,
+    objectKey,
+    destServer,
+    req,
+    signal,
+  );
+  if (direct) return direct;
+  return {
+    ...(await relayBackup(creds, target, objectKey, destServer, req, signal)),
+    path: "relay",
+  };
+}
+
+/** A server agent's certificate, as a member knows another by it; null before it enrolled. */
+async function fingerprintOf(serverId: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ fp: serversTable.agentCertFingerprint })
+    .from(serversTable)
+    .where(eq(serversTable.id, serverId))
+    .limit(1);
+  const fp = row?.fp?.toLowerCase() ?? "";
+  return /^[0-9a-f]{64}$/.test(fp) ? fp : null;
+}
+
+/** Whether two servers are members of one cluster, so they share its private network. */
+async function sameCluster(a: string, b: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({
+      clusterId: clusterMembers.clusterId,
+      serverId: clusterMembers.serverId,
+    })
+    .from(clusterMembers)
+    .where(eq(clusterMembers.serverId, a));
+  for (const r of rows) {
+    const [hit] = await getDb()
+      .select({ serverId: clusterMembers.serverId })
+      .from(clusterMembers)
+      .where(
+        and(
+          eq(clusterMembers.clusterId, r.clusterId),
+          eq(clusterMembers.serverId, b),
+        ),
+      )
+      .limit(1);
+    if (hit) return true;
+  }
+  return false;
+}
+
+/**
+ * A backup from one cluster member to another's disk goes between them over the cluster's network (ADR-0047);
+ * null when it cannot, before anything was read, and Deplo relays it instead.
+ */
+async function memberBackup(
+  creds: DestinationWithSecrets,
+  target: TransportTarget,
+  objectKey: string,
+  destServer: string,
+  req: BackupRequest,
+  signal?: AbortSignal,
+): Promise<BackupOutcome | null> {
+  if (target.archive || !(await sameCluster(target.serverId, destServer)))
+    return null;
+  const [from, to] = await Promise.all([
+    fingerprintOf(target.serverId),
+    fingerprintOf(destServer),
+  ]);
+  if (!from || !to) return null;
+  const store = storeTargetFor(creds.destination, objectKey);
+  const sink = await connectBackupAgent(destServer, { store: true });
+  try {
+    if (
+      !(await sink.hello()).capabilities?.includes(
+        BACKUP_STORE_MEMBER_CAPABILITY,
+      )
+    )
+      return null;
+    await sink.expectClusterBackup(store, from);
+  } finally {
+    sink.close();
+  }
+  const src = await connectBackupAgent(target.serverId, { store: true });
+  const release = abortWith(signal, src);
+  try {
+    if (
+      !(await src.hello()).capabilities?.includes(
+        BACKUP_STORE_MEMBER_CAPABILITY,
+      )
+    )
+      return null;
+    const out = await consumeBackup(
+      src,
+      { ...req, store, s3: undefined, memberFingerprint: to },
+      objectKey,
+      signal,
+    );
+    if (out.path === undefined) return null;
+    return out;
+  } catch (e) {
+    throw lostServer(e, target.serverId);
+  } finally {
+    release();
+    src.close();
+  }
 }
 
 function abortWith(
@@ -152,6 +267,9 @@ async function consumeBackup(
         heldMs: Number(ev.result.heldMs ?? 0),
         heldWhy: ev.result.heldWhy ?? "",
         sha256: ev.result.sha256 ?? "",
+        ...(ev.result.path === "direct" || ev.result.path === "relay"
+          ? { path: ev.result.path }
+          : {}),
       };
     }
   }

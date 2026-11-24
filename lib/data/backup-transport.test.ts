@@ -1,18 +1,34 @@
-import { test, after } from "node:test";
+import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
+import { eq } from "drizzle-orm";
+
+import { makeTestDb, type TestDb } from "../db/test-harness";
+import { __setTestDb, __resetTestDb } from "../db/client";
+import { clusterMembers, clusters } from "../db/schema/control-plane/clusters";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
+import { seedServerRow } from "./infra-test-helpers";
 
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import {
   BACKUP_CAPABILITY,
   BACKUP_STORE_CAPABILITY,
+  BACKUP_STORE_MEMBER_CAPABILITY,
   BACKUP_STORE_SEALED_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import type { BackupDestination } from "../types/backup";
 import { AgentOfflineError } from "../infra/agent-client/errors";
 import { backupToDestination } from "./backup-transport";
 
-after(() => __setAgentConnectorForTest());
+let db: TestDb;
+before(async () => {
+  ({ db } = await makeTestDb());
+  __setTestDb(db);
+});
+after(() => {
+  __setAgentConnectorForTest();
+  __resetTestDb();
+});
 
 const hello = async () => ({
   capabilities: [BACKUP_CAPABILITY, BACKUP_STORE_CAPABILITY],
@@ -291,4 +307,134 @@ test("a server lost mid-send is the one named, source or destination", async () 
       (e: unknown) => e instanceof AgentOfflineError && e.serverId === lost,
     );
   }
+});
+
+/** srv_src and srv_dst as members of one cluster, each with its agent's certificate. */
+async function members() {
+  const AT = "2026-11-24T00:00:00.000Z";
+  for (const [id, fp] of [
+    ["srv_src", "a"],
+    ["srv_dst", "b"],
+  ] as const) {
+    await seedServerRow(db, { id, name: id });
+    await db
+      .update(serversTable)
+      .set({ agentCertFingerprint: fp.repeat(64) })
+      .where(eq(serversTable.id, id));
+  }
+  await db.insert(clusters).values({ id: "clu_eu", name: "eu", createdAt: AT });
+  await db.insert(clusterMembers).values(
+    ["srv_src", "srv_dst"].map((serverId) => ({
+      serverId,
+      clusterId: "clu_eu",
+      joinedAt: AT,
+    })),
+  );
+}
+
+const memberHello = async () => ({
+  capabilities: [
+    BACKUP_CAPABILITY,
+    BACKUP_STORE_CAPABILITY,
+    BACKUP_STORE_MEMBER_CAPABILITY,
+  ],
+});
+
+const toDst = {
+  destination: {
+    kind: "server",
+    serverId: "srv_dst",
+    path: "/backups",
+  } as BackupDestination,
+  accessKey: "",
+  secretKey: "",
+  ageIdentity: "",
+};
+
+// eu, 24 Nov 2026: a 600 MB backup from eu-3 to eu-4 went through Deplo, crossing the lab's uplink twice.
+test("a backup between two members of one cluster goes between them, never through Deplo", async () => {
+  await members();
+  const expected: unknown[] = [];
+  let relayed = false;
+  let asked: { memberFingerprint?: string; streamOut?: boolean } = {};
+  const source = {
+    hello: memberHello,
+    close() {},
+    backup: async function* (req: typeof asked) {
+      asked = req;
+      yield {
+        result: { ok: true, sizeBytes: 21, sha256: "ab12", path: "direct" },
+      };
+    },
+  } as unknown as AgentConnection;
+  const sink = {
+    hello: memberHello,
+    close() {},
+    expectClusterBackup: async (store: unknown, from: string) =>
+      void expected.push({ store, from }),
+    writeStoreFile: async () => {
+      relayed = true;
+      return { ok: true, error: "", bytesWritten: 0, sha256: "" };
+    },
+  } as unknown as AgentConnection;
+  __setAgentConnectorForTest(async (id) =>
+    id === "srv_src" ? source : id === "srv_dst" ? sink : null,
+  );
+  const out = await backupToDestination(
+    toDst,
+    { serverId: "srv_src", kind: "app", project: { slug: "lab-web" } as never },
+    "lab-web/1.tar.gz",
+  );
+  assert.equal(out.ok, true, out.error);
+  assert.equal(out.path, "direct");
+  assert.equal(relayed, false, "Deplo carried no byte of it");
+  assert.equal(asked.memberFingerprint, "b".repeat(64));
+  assert.deepEqual(expected, [
+    {
+      store: { root: "/backups", objectKey: "lab-web/1.tar.gz" },
+      from: "a".repeat(64),
+    },
+  ]);
+});
+
+test("a backup Deplo relays only when no path joins the two members, and it says so", async () => {
+  const calls: string[] = [];
+  const source = {
+    hello: memberHello,
+    close() {},
+    backup: async function* (req: { memberFingerprint?: string }) {
+      if (req.memberFingerprint) {
+        calls.push("member");
+        yield { result: { ok: false, error: "no path", path: "none" } };
+        return;
+      }
+      calls.push("relay");
+      yield { data: Buffer.from("age-encryption.org/v1") };
+      yield { result: { ok: true, sizeBytes: 21, sha256: "ab12" } };
+    },
+  } as unknown as AgentConnection;
+  const sink = {
+    hello: memberHello,
+    close() {},
+    expectClusterBackup: async () => {},
+    writeStoreFile: async (
+      _store: unknown,
+      _overwrite: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) => {
+      for await (const _ of chunks);
+      return { ok: true, error: "", bytesWritten: 21, sha256: "ab12" };
+    },
+  } as unknown as AgentConnection;
+  __setAgentConnectorForTest(async (id) =>
+    id === "srv_src" ? source : id === "srv_dst" ? sink : null,
+  );
+  const out = await backupToDestination(
+    toDst,
+    { serverId: "srv_src", kind: "app", project: { slug: "lab-web" } as never },
+    "lab-web/2.tar.gz",
+  );
+  assert.equal(out.ok, true, out.error);
+  assert.deepEqual(calls, ["member", "relay"]);
+  assert.equal(out.path, "relay");
 });

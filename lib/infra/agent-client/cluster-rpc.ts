@@ -23,6 +23,7 @@ export function clusterRpc(
   | "clusterWatch"
   | "copyClusterImage"
   | "expectClusterImage"
+  | "expectClusterBackup"
   | "setClusterForwarders"
   | "readProxyCertificates"
   | "setClusterNetwork"
@@ -103,6 +104,13 @@ export function clusterRpc(
       await unary(
         client.expectClusterImage.bind(client),
         { imageRef, sourceFingerprint, keep },
+        HELLO_TIMEOUT_MS,
+      );
+    },
+    async expectClusterBackup(store, sourceFingerprint) {
+      await unary(
+        client.expectClusterBackup.bind(client),
+        { store, sourceFingerprint },
         HELLO_TIMEOUT_MS,
       );
     },
@@ -230,6 +238,8 @@ export function clusterRpc(
         bytes: Number(s.bytes ?? 0),
         error: s.error,
         fromServerId: s.fromServerId,
+        relayed: s.relayed,
+        diskBytes: Number(s.diskBytes ?? 0),
       }));
     },
     async clusterCall(method, payload, timeoutMs = CLUSTER_CALL_TIMEOUT_MS) {

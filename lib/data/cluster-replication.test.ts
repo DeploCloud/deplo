@@ -538,3 +538,39 @@ test("a copy fits only in what the disk lets it write, not in the blocks kept fo
     /^server-3 has 2\.4 GB free, too little for a copy of web/,
   );
 });
+
+// eu, 24 Nov 2026: a copy of a big file that changes takes twice its size while it is rebuilt.
+test("a copy starts only if a tenth stays free with its biggest file held twice", async () => {
+  const cluster = await replicated();
+  const GB = 1024 ** 3;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeSizes = async () => ({
+    bytes: 1 * GB,
+    largest: 1 * GB,
+  });
+  // 3.3 GB free of 14: the copy (1 GB) fits a tenth, the rebuild of its 1 GB file beside the old one does not.
+  host.srv_3.extra.metrics = disk(14 * GB, 10.7 * GB);
+  host.srv_3.replicaReports = [report({ synced: false, bytes: 0 })];
+  await replicateCluster(cluster.id, true);
+  assert.deepEqual(host.srv_3.replicaTables.at(-1)!.entries, []);
+  host.srv_3.extra.metrics = disk(14 * GB, 9 * GB);
+  await replicateCluster(cluster.id, true);
+  assert.equal(host.srv_3.replicaTables.at(-1)!.entries.length, 1);
+});
+
+// eu, 24 Nov 2026: a copy's bytes counted every rebuild, so the panel's size of it ran high and its estimate low.
+test("a copy's size is what it takes on disk, and whether it went through Deplo", async () => {
+  const cluster = await replicated();
+  host.srv_3.replicaReports = [
+    report({ bytes: 3 * 1024 ** 3, diskBytes: 1024 ** 3, relayed: true }),
+  ];
+  host.srv_4.replicaReports = [report({ bytes: 5000 })];
+  await replicateCluster(cluster.id, true);
+  const rows = await db.select().from(clusterAppReplicas);
+  const of = (id: string) => rows.find((r) => r.serverId === id)!;
+  assert.equal(of("srv_3").bytes, 1024 ** 3);
+  assert.equal(of("srv_3").relayed, true);
+  // An agent that does not say its size on disk keeps what it said before.
+  assert.equal(of("srv_4").bytes, 5000);
+  assert.equal(of("srv_4").relayed, false);
+});

@@ -25,7 +25,7 @@ import { standbyForCluster } from "../databases/standby";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
 import { refreshAppBundle, restoreDescriptor } from "./app-restore";
-import { __forgetSizes, volumeBytes } from "./data-size";
+import { __forgetSizes, volumeSizes } from "./data-size";
 import { writableBytes } from "./facts";
 import { inLine, storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
@@ -155,12 +155,16 @@ async function copiesThatDoNotFit(
     if (e.volumeNames.length === 0) continue;
     const copy = held.find((r) => r.appId === e.appId);
     if (copy?.synced || copy?.role === "sending") continue;
-    const size = await volumeBytes(app.serverId, e.volumeNames).catch(() => 0);
+    const { bytes: size, largest } = await volumeSizes(
+      app.serverId,
+      e.volumeNames,
+    ).catch(() => ({ bytes: 0, largest: 0 }));
     // A copy not whole yet grows with its App: it is held back whenever the disk would be under a tenth free, not
-    // only at its start (eu-1 reached 92% with the copy of an App that was small when its copy began).
+    // only at its start (eu-1 reached 92% with the copy of an App that was small when its copy began). What it
+    // holds is its size on disk, and its biggest file counts twice while it is rebuilt beside the old one.
+    const has = copy?.diskBytes || copy?.bytes || 0;
     const need =
-      Math.max(size - (copy?.bytes ?? 0), 0) +
-      (before.has(e.appId) ? size / 5 : 0);
+      Math.max(size - has, 0) + largest + (before.has(e.appId) ? size / 5 : 0);
     disk ??= await memberDisk(serverId).catch(() => null);
     // The agent's own word: it stopped the copy at a tenth free (a copy bigger than Deplo measured).
     const stopped = !!copy?.error.includes(AGENT_NO_ROOM);
@@ -288,7 +292,9 @@ async function recordReports(
         connected: r?.connected ?? false,
         synced: r?.synced ?? false,
         appliedAt: r?.appliedAt || null,
-        bytes: r?.bytes ?? 0,
+        // Its size on disk as the agent says it, never the bytes it was sent: a rebuilt file is sent again.
+        bytes: r?.diskBytes || r?.bytes || 0,
+        relayed: r?.relayed ?? false,
         error: typeof got === "string" ? got : (r?.error ?? ""),
         checkedAt: at,
       };
