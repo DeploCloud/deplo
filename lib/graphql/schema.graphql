@@ -3524,6 +3524,7 @@ enum ExperimentKey {
   clusters
   crons
   pullRequests
+  tunnels
   zeroDowntime
 }
 

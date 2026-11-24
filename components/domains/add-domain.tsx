@@ -42,6 +42,8 @@ export interface AddDomainProps {
   suggestedDomain?: string;
   // Domains connected for automatic DNS that the viewer may use in this team.
   autoDnsZones?: string[];
+  // The Tunnels experiment is on, so a domain may be served through Cloudflare Tunnel.
+  tunnels?: boolean;
   // The App runs on a cluster: its DNS zones, and whether the viewer may make the first one (an instance admin).
   cluster?: { zones: string[]; canAddZone: boolean } | null;
 }
@@ -50,6 +52,7 @@ export function AddDomain({
   project,
   suggestedDomain,
   autoDnsZones = [],
+  tunnels = false,
   cluster = null,
 }: AddDomainProps) {
   const canManage = useAppCan("manage_domains");
@@ -72,7 +75,9 @@ export function AddDomain({
       : "tunnel");
   // An App off a cluster, in a connected zone: Deplo makes the record, straight at the server by default.
   const autoDns = cluster == null && zone !== null;
-  const tunnel = choosing ? clusterWay === "tunnel" : autoDns && wantsTunnel;
+  const tunnel = choosing
+    ? clusterWay === "tunnel"
+    : tunnels && autoDns && wantsTunnel;
   const byCluster = inside !== null || (choosing && clusterWay === "cluster");
 
   const services = React.useMemo(
@@ -255,7 +260,7 @@ export function AddDomain({
                     id="add-domain-cf"
                     zone={zone}
                     tunnel={tunnel}
-                    onTunnel={setWantsTunnel}
+                    onTunnel={tunnels ? setWantsTunnel : undefined}
                     proxied={config.proxied}
                     onProxied={(on) => setConfig({ ...config, proxied: on })}
                   />
