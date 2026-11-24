@@ -55,6 +55,34 @@ export function withTraefikImage(currentYaml: string): string | null {
   return dump(doc);
 }
 
+const RESOLVER = /^--certificatesresolvers\.([^.=]+)\.acme\./;
+
+/**
+ * Every resolver of the stack orders ECDSA P-256 keys, unless one already names its key type: a new connection
+ * signed with Traefik's default RSA-4096 key cost 11.6 ms of a one-core server (c38), P-256 0.04 ms. Null when
+ * nothing changes; certificates already issued change at their renewal.
+ */
+export function withEcdsaKeys(currentYaml: string): string | null {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  const command = listOf(service.get("command", true));
+  const resolvers = new Set(
+    command.flatMap((c) => c.match(RESOLVER)?.slice(1, 2) ?? []),
+  );
+  const missing = [...resolvers].filter(
+    (r) =>
+      !command.some((c) =>
+        c.startsWith(`--certificatesresolvers.${r}.acme.keytype=`),
+      ),
+  );
+  if (missing.length === 0) return null;
+  setList(doc, service, "command", [
+    ...command,
+    ...missing.map((r) => `--certificatesresolvers.${r}.acme.keytype=EC256`),
+  ]);
+  return dump(doc);
+}
+
 export function acmeEmail(currentYaml: string): string | null {
   const resolver = stackCertResolver(currentYaml);
   if (resolver === null) return null;
