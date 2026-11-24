@@ -4,6 +4,12 @@ import type { AgentConnection } from "../infra/agent-client/connection";
 import { mapBackupUnsupported } from "../infra/agent-client/errors";
 import { connectBackupAgent } from "../infra/agent-client/preflight";
 import { BACKUP_STORE_SEALED_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import { status as GrpcStatus } from "@grpc/grpc-js";
+import {
+  AgentOfflineError,
+  AgentUnreachableError,
+  toAgentError,
+} from "../infra/agent-client/errors";
 import {
   destinationServerId,
   s3TargetFor,
@@ -177,6 +183,17 @@ function digestMismatch(
         `but ${landed.bytesWritten} landed.`;
 }
 
+// A server whose link drops mid-send is offline, by name: execute-backup says whether it is the source or the
+// destination (eu, 24 Nov 2026: a cut destination read "This server is offline").
+function lostServer(e: unknown, serverId: string): unknown {
+  const err = toAgentError(e);
+  return err instanceof AgentUnreachableError &&
+    !(err instanceof AgentOfflineError) &&
+    err.code === GrpcStatus.UNAVAILABLE
+    ? new AgentOfflineError(serverId)
+    : e;
+}
+
 async function relayBackup(
   creds: DestinationWithSecrets,
   target: TransportTarget,
@@ -206,29 +223,33 @@ async function relayBackup(
     const source: { result: BackupOutcome | null } = { result: null };
 
     const bytes = (async function* () {
-      for await (const ev of src.backup(
-        {
-          ...base,
-          streamOut: true,
-          s3: undefined,
-        },
-        stop.signal,
-      )) {
-        if (ev.result) {
-          source.result = {
-            ok: ev.result.ok,
-            error: ev.result.error,
-            objectKey,
-            sizeBytes: Number(ev.result.sizeBytes ?? 0),
-            decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
-            heldMs: Number(ev.result.heldMs ?? 0),
-            heldWhy: ev.result.heldWhy ?? "",
-            sha256: ev.result.sha256 ?? "",
-          };
-          if (!ev.result.ok) throw new RelayAborted();
-          continue;
+      try {
+        for await (const ev of src.backup(
+          {
+            ...base,
+            streamOut: true,
+            s3: undefined,
+          },
+          stop.signal,
+        )) {
+          if (ev.result) {
+            source.result = {
+              ok: ev.result.ok,
+              error: ev.result.error,
+              objectKey,
+              sizeBytes: Number(ev.result.sizeBytes ?? 0),
+              decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+              heldMs: Number(ev.result.heldMs ?? 0),
+              heldWhy: ev.result.heldWhy ?? "",
+              sha256: ev.result.sha256 ?? "",
+            };
+            if (!ev.result.ok) throw new RelayAborted();
+            continue;
+          }
+          if (ev.data && ev.data.length) yield Buffer.from(ev.data);
         }
-        if (ev.data && ev.data.length) yield Buffer.from(ev.data);
+      } catch (e) {
+        throw lostServer(e, target.serverId);
       }
       if (!source.result) throw new RelayAborted();
     })();
@@ -253,7 +274,7 @@ async function relayBackup(
           : undefined,
       );
     } catch (e) {
-      if (!(e instanceof RelayAborted)) throw e;
+      if (!(e instanceof RelayAborted)) throw lostServer(e, destServer);
       return (
         source.result ?? {
           ok: false,
