@@ -188,6 +188,9 @@ export const pendingTeardowns = pgTable(
     teamId: text("team_id").references(() => teams.id, {
       onDelete: "set null",
     }),
+    // JSON list of volume names reclaimed by name: a retry later removes what the first try would have.
+    reclaimVolumes: text("reclaim_volumes").notNull().default("[]"),
+    dropSetAside: boolean("drop_set_aside").notNull().default(false),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error").notNull().default(""),
     nextAttemptAt: isoTimestamptz("next_attempt_at").notNull(),

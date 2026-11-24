@@ -3,6 +3,7 @@ import "server-only";
 import { retireAppTunnel } from "../clusters/app-tunnel";
 import { dropFailoverBundle } from "../clusters/bundles";
 import { clearPlacement, listAppMembers } from "../clusters/placement";
+import { clusterMemberServerIds } from "../clusters/roster";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -50,6 +51,35 @@ async function beginAppDelete(
   return { project, actor: user.name };
 }
 
+/**
+ * Every server that may hold any of it: where it runs, where it moved from, and each server of its cluster, set-aside
+ * copies included. A server that does not answer has it queued, and done once it answers (ADR-0043).
+ */
+async function tearDownEverywhere(project: App): Promise<boolean> {
+  const reclaimVolumes = appOwnVolumeNames(project);
+  const on = (serverId: string) =>
+    teardownOrQueue({
+      serverId,
+      deployKey: project.slug,
+      projectLabel: project.id,
+      label: project.name,
+      teamId: project.teamId,
+      reclaimVolumes,
+      dropSetAside: true,
+    });
+  const ok = await on(project.serverId);
+  const others = new Set<string>([
+    ...(await listAppMembers(project).catch(() => [])),
+    ...(project.clusterId
+      ? await clusterMemberServerIds(project.clusterId).catch(() => [])
+      : []),
+    ...(project.migrateFromServerId ? [project.migrateFromServerId] : []),
+  ]);
+  others.delete(project.serverId);
+  for (const serverId of others) await on(serverId).catch(() => {});
+  return ok;
+}
+
 async function destroyApp(project: App, actor: string): Promise<void> {
   const id = project.id;
   let asides: string | null = null;
@@ -58,37 +88,9 @@ async function destroyApp(project: App, actor: string): Promise<void> {
     // Previews FIRST: the DELETE below cascades their rows away, and with them the only record those containers exist.
     await destroyPreviewsForApp(id).catch(() => {});
 
-    const ok = await teardownOrQueue({
-      serverId: project.serverId,
-      deployKey: project.slug,
-      projectLabel: project.id,
-      label: project.name,
-      teamId: project.teamId,
-
-      reclaimVolumes: appOwnVolumeNames(project),
-    });
-
-    // The other servers of a cluster that run replicas of it.
-    for (const serverId of await listAppMembers(project).catch(() => []))
-      if (serverId !== project.serverId)
-        await teardownOrQueue({
-          serverId,
-          deployKey: project.slug,
-          projectLabel: project.id,
-          label: project.name,
-          teamId: project.teamId,
-        }).catch(() => {});
-    if (project.migrateFromServerId)
-      await teardownOrQueue({
-        serverId: project.migrateFromServerId,
-        deployKey: project.slug,
-        projectLabel: project.id,
-        label: project.name,
-        teamId: project.teamId,
-        reclaimVolumes: appOwnVolumeNames(project),
-      }).catch(() => {});
-    await removeUploads(id).catch(() => {});
     asides = await removeSetAsideCopiesOfDeleted(project).catch(() => null);
+    const ok = await tearDownEverywhere(project);
+    await removeUploads(id).catch(() => {});
 
     await retireAppTunnel(id).catch(() => null);
     const heldDns = await takeAppDns([id]).catch(() => []);
@@ -180,21 +182,19 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
       `app-lifecycle:${project.id}`,
       async () => {
         await destroyPreviewsForApp(project.id).catch(() => {});
-        const ok = await teardownOrQueue({
-          serverId: project.serverId,
-          deployKey: project.slug,
-          projectLabel: project.id,
-          label: project.name,
-          teamId: project.teamId,
-          reclaimVolumes: appOwnVolumeNames(project),
-        }).catch(() => false);
-        await removeUploads(project.id).catch(() => {});
         const asides = await removeSetAsideCopiesOfDeleted(project).catch(
           () => null,
         );
         if (asides) asideLines.push(asides);
+        const ok = await tearDownEverywhere(project).catch(() => false);
+        await removeUploads(project.id).catch(() => {});
+        await retireAppTunnel(project.id).catch(() => null);
         const heldDns = await takeAppDns([project.id]).catch(() => []);
         await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
+        await clearPlacement("app", project.id).catch(() => {});
+        await dropFailoverBundle(project.id, project.clusterId ?? null).catch(
+          () => {},
+        );
         await deleteReleasedDns(heldDns).catch(() => null);
         return ok;
       },

@@ -111,7 +111,7 @@ export async function removeSetAsideCopiesOfDeleted(
   const left = [...new Set(silent)];
   const note =
     left.length > 0
-      ? ` ${left.join(" and ")} did not answer, so what ${left.length === 1 ? "it holds" : "they hold"} of it stays there.`
+      ? ` ${left.join(" and ")} did not answer: what ${left.length === 1 ? "it holds" : "they hold"} of it goes once ${left.length === 1 ? "it answers" : "they answer"}.`
       : "";
   if (gone.size === 0) return note ? note.trim() : null;
   const n = [...gone.values()].reduce((a, b) => a + b, 0);
