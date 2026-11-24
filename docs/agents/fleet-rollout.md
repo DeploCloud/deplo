@@ -31,6 +31,10 @@ release would strand every server they manage.
    the process. `docker-image.yml` refuses to publish a panel whose pin has no `checksums.txt`.
 4. **Ship the panel.** Once it runs, it updates every server behind the pin by itself (§3). An
    agent-only re-cut goes out the same way, or through a server's Retry.
+   **A server downloads the pinned binary from the panel, not GitHub** (`/api/agent/release/<binary>`,
+   streamed from the release; its sha256 still comes from `checksums.txt`), whenever the panel has an
+   https address. An agent answers SelfUpdate only once the binary is staged, so a server slow to
+   reach GitHub missed the old 2-minute deadline on every try (canary.89); the call now waits 10.
 
 ## 2. The asset-name contract
 
