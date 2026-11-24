@@ -8,6 +8,9 @@ export const BACKUP_CAPABILITY = "backup";
 
 export const BACKUP_STORE_CAPABILITY = "backup-store";
 
+// A relayed backup is kept only when a trailer naming its size and digest matches what landed (ADR-0043).
+export const BACKUP_STORE_SEALED_CAPABILITY = "backup-store.sealed";
+
 export const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
 
 export const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";

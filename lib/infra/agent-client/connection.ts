@@ -315,6 +315,8 @@ export interface AgentConnection {
     slug: string,
     removeVolumes?: boolean,
     reclaimVolumes?: string[],
+    /** A deleted App's set-aside copies go too (capability `teardown.set-aside`). */
+    dropSetAside?: boolean,
   ): Promise<{ ok: boolean; error: string }>;
   reroute(req: {
     slug: string;
@@ -528,6 +530,8 @@ export interface AgentConnection {
     overwrite: boolean,
     chunks: AsyncIterable<Buffer>,
     signal?: AbortSignal,
+    /** What the source sent, read once every chunk is written: the destination keeps nothing else. */
+    sealedBy?: () => { sizeBytes: number; sha256: string },
   ): Promise<{
     ok: boolean;
     error: string;

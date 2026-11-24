@@ -1284,6 +1284,11 @@ export interface StackRef {
    */
   reclaimVolumes: string[];
   /**
+   * DestroyStack only: the set-aside copies of those volumes and of the stack's Files
+   * go too, for an App that is deleted (capability `teardown.set-aside`).
+   */
+  dropSetAside: boolean;
+  /**
    * StopStack only: stop just these compose services instead of the whole stack. Empty
    * stops everything, which is what every caller before the restart-loop guard meant.
    * Field 4 is ADDITIVE (contract stays V1); gated on the `stack.stop-services` capability.
@@ -2077,6 +2082,7 @@ export interface StoreChunk {
    * the gRPC max message size; reassembled in order on the destination.
    */
   data?: Uint8Array | undefined;
+  trailer?: StoreChunk_Trailer | undefined;
 }
 
 export interface StoreChunk_Header {
@@ -2090,6 +2096,17 @@ export interface StoreChunk_Header {
    * silently clobbering it would destroy a good backup.
    */
   overwrite: boolean;
+  /**
+   * The stream ends with a trailer: the artifact is kept only when it holds
+   * exactly what the trailer names (capability `backup-store.sealed`).
+   */
+  sealed: boolean;
+}
+
+/** What the sender sent, the last frame of a sealed stream. */
+export interface StoreChunk_Trailer {
+  sizeBytes: number;
+  sha256: string;
 }
 
 export interface StoreResult {
@@ -7825,7 +7842,7 @@ export const SourceCompose: MessageFns<SourceCompose> = {
 };
 
 function createBaseStackRef(): StackRef {
-  return { slug: "", removeVolumes: false, reclaimVolumes: [], services: [] };
+  return { slug: "", removeVolumes: false, reclaimVolumes: [], dropSetAside: false, services: [] };
 }
 
 export const StackRef: MessageFns<StackRef> = {
@@ -7838,6 +7855,9 @@ export const StackRef: MessageFns<StackRef> = {
     }
     for (const v of message.reclaimVolumes) {
       writer.uint32(26).string(v!);
+    }
+    if (message.dropSetAside !== false) {
+      writer.uint32(40).bool(message.dropSetAside);
     }
     for (const v of message.services) {
       writer.uint32(34).string(v!);
@@ -7882,6 +7902,14 @@ export const StackRef: MessageFns<StackRef> = {
             message.reclaimVolumes.push(reader.string());
             continue;
           }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.dropSetAside = reader.bool();
+            continue;
+          }
           case 4: {
             if (tag !== 34) {
               break;
@@ -7915,7 +7943,14 @@ export const StackRef: MessageFns<StackRef> = {
         : globalThis.Array.isArray(object?.reclaim_volumes)
         ? object.reclaim_volumes.map((e: any) => globalThis.String(e))
         : [],
-      services: globalThis.Array.isArray(object?.services) ? object.services.map((e: any) => globalThis.String(e)) : [],
+      dropSetAside: isSet(object.dropSetAside)
+        ? globalThis.Boolean(object.dropSetAside)
+        : isSet(object.drop_set_aside)
+        ? globalThis.Boolean(object.drop_set_aside)
+        : false,
+      services: globalThis.Array.isArray(object?.services)
+        ? object.services.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -7929,6 +7964,9 @@ export const StackRef: MessageFns<StackRef> = {
     }
     if (message.reclaimVolumes?.length) {
       obj.reclaimVolumes = message.reclaimVolumes;
+    }
+    if (message.dropSetAside !== false) {
+      obj.dropSetAside = message.dropSetAside;
     }
     if (message.services?.length) {
       obj.services = message.services;
@@ -7944,6 +7982,7 @@ export const StackRef: MessageFns<StackRef> = {
     message.slug = object.slug ?? "";
     message.removeVolumes = object.removeVolumes ?? false;
     message.reclaimVolumes = object.reclaimVolumes?.map((e) => e) || [];
+    message.dropSetAside = object.dropSetAside ?? false;
     message.services = object.services?.map((e) => e) || [];
     return message;
   },
@@ -13574,7 +13613,7 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
 };
 
 function createBaseStoreChunk(): StoreChunk {
-  return { header: undefined, data: undefined };
+  return { header: undefined, data: undefined, trailer: undefined };
 }
 
 export const StoreChunk: MessageFns<StoreChunk> = {
@@ -13584,6 +13623,9 @@ export const StoreChunk: MessageFns<StoreChunk> = {
     }
     if (message.data !== undefined) {
       writer.uint32(18).bytes(message.data);
+    }
+    if (message.trailer !== undefined) {
+      StoreChunk_Trailer.encode(message.trailer, writer.uint32(26).fork()).join();
     }
     return writer;
   },
@@ -13617,6 +13659,14 @@ export const StoreChunk: MessageFns<StoreChunk> = {
             message.data = reader.bytes();
             continue;
           }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.trailer = StoreChunk_Trailer.decode(reader, reader.uint32());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -13633,6 +13683,7 @@ export const StoreChunk: MessageFns<StoreChunk> = {
     return {
       header: isSet(object.header) ? StoreChunk_Header.fromJSON(object.header) : undefined,
       data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+      trailer: isSet(object.trailer) ? StoreChunk_Trailer.fromJSON(object.trailer) : undefined,
     };
   },
 
@@ -13643,6 +13694,9 @@ export const StoreChunk: MessageFns<StoreChunk> = {
     }
     if (message.data !== undefined) {
       obj.data = base64FromBytes(message.data);
+    }
+    if (message.trailer !== undefined) {
+      obj.trailer = StoreChunk_Trailer.toJSON(message.trailer);
     }
     return obj;
   },
@@ -13656,12 +13710,15 @@ export const StoreChunk: MessageFns<StoreChunk> = {
       ? StoreChunk_Header.fromPartial(object.header)
       : undefined;
     message.data = object.data ?? undefined;
+    message.trailer = (object.trailer !== undefined && object.trailer !== null)
+      ? StoreChunk_Trailer.fromPartial(object.trailer)
+      : undefined;
     return message;
   },
 };
 
 function createBaseStoreChunk_Header(): StoreChunk_Header {
-  return { store: undefined, overwrite: false };
+  return { store: undefined, overwrite: false, sealed: false };
 }
 
 export const StoreChunk_Header: MessageFns<StoreChunk_Header> = {
@@ -13671,6 +13728,9 @@ export const StoreChunk_Header: MessageFns<StoreChunk_Header> = {
     }
     if (message.overwrite !== false) {
       writer.uint32(16).bool(message.overwrite);
+    }
+    if (message.sealed !== false) {
+      writer.uint32(24).bool(message.sealed);
     }
     return writer;
   },
@@ -13704,6 +13764,14 @@ export const StoreChunk_Header: MessageFns<StoreChunk_Header> = {
             message.overwrite = reader.bool();
             continue;
           }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.sealed = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -13720,6 +13788,7 @@ export const StoreChunk_Header: MessageFns<StoreChunk_Header> = {
     return {
       store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
       overwrite: isSet(object.overwrite) ? globalThis.Boolean(object.overwrite) : false,
+      sealed: isSet(object.sealed) ? globalThis.Boolean(object.sealed) : false,
     };
   },
 
@@ -13730,6 +13799,9 @@ export const StoreChunk_Header: MessageFns<StoreChunk_Header> = {
     }
     if (message.overwrite !== false) {
       obj.overwrite = message.overwrite;
+    }
+    if (message.sealed !== false) {
+      obj.sealed = message.sealed;
     }
     return obj;
   },
@@ -13743,6 +13815,96 @@ export const StoreChunk_Header: MessageFns<StoreChunk_Header> = {
       ? StoreTarget.fromPartial(object.store)
       : undefined;
     message.overwrite = object.overwrite ?? false;
+    message.sealed = object.sealed ?? false;
+    return message;
+  },
+};
+
+function createBaseStoreChunk_Trailer(): StoreChunk_Trailer {
+  return { sizeBytes: 0, sha256: "" };
+}
+
+export const StoreChunk_Trailer: MessageFns<StoreChunk_Trailer> = {
+  encode(message: StoreChunk_Trailer, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.sizeBytes !== 0) {
+      writer.uint32(8).int64(message.sizeBytes);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(18).string(message.sha256);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StoreChunk_Trailer {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseStoreChunk_Trailer();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.sizeBytes = longToNumber(reader.int64());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.sha256 = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): StoreChunk_Trailer {
+    return {
+      sizeBytes: isSet(object.sizeBytes)
+        ? globalThis.Number(object.sizeBytes)
+        : isSet(object.size_bytes)
+        ? globalThis.Number(object.size_bytes)
+        : 0,
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+    };
+  },
+
+  toJSON(message: StoreChunk_Trailer): unknown {
+    const obj: any = {};
+    if (message.sizeBytes !== 0) {
+      obj.sizeBytes = Math.round(message.sizeBytes);
+    }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StoreChunk_Trailer>, I>>(base?: I): StoreChunk_Trailer {
+    return StoreChunk_Trailer.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StoreChunk_Trailer>, I>>(object: I): StoreChunk_Trailer {
+    const message = createBaseStoreChunk_Trailer();
+    message.sizeBytes = object.sizeBytes ?? 0;
+    message.sha256 = object.sha256 ?? "";
     return message;
   },
 };
