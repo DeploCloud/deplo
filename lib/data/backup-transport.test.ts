@@ -6,6 +6,7 @@ import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import {
   BACKUP_CAPABILITY,
   BACKUP_STORE_CAPABILITY,
+  BACKUP_STORE_SEALED_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import type { BackupDestination } from "../types/backup";
 import { backupToDestination } from "./backup-transport";
@@ -180,4 +181,58 @@ test("a canceled backup written by its own server stops its call at once", async
     if (/still running/.test(e.message)) throw e;
   });
   assert.ok(ended, "the copy must end");
+});
+
+// eu, 24 Nov 2026: a failed relayed backup left its 184-byte age header kept on the destination as a whole backup.
+test("a relayed backup is sealed with the source's own size and digest", async () => {
+  let sealed: { sizeBytes: number; sha256: string } | undefined;
+  const source = {
+    hello,
+    close() {},
+    backup: async function* () {
+      yield { data: Buffer.from("age-encryption.org/v1") };
+      yield { result: { ok: true, sizeBytes: 21, sha256: "ab12" } };
+    },
+  } as unknown as AgentConnection;
+  const sink = {
+    hello: async () => ({
+      capabilities: [
+        BACKUP_CAPABILITY,
+        BACKUP_STORE_CAPABILITY,
+        BACKUP_STORE_SEALED_CAPABILITY,
+      ],
+    }),
+    close() {},
+    storeDelete: async () => ({ ok: true }),
+    writeStoreFile: async (
+      _store: unknown,
+      _overwrite: boolean,
+      chunks: AsyncIterable<Buffer>,
+      _signal: AbortSignal,
+      sealedBy?: () => { sizeBytes: number; sha256: string },
+    ) => {
+      for await (const _ of chunks);
+      sealed = sealedBy?.();
+      return { ok: true, error: "", bytesWritten: 21, sha256: "ab12" };
+    },
+  } as unknown as AgentConnection;
+  __setAgentConnectorForTest(async (id) =>
+    id === "srv_src" ? source : id === "srv_dst" ? sink : null,
+  );
+  const out = await backupToDestination(
+    {
+      destination: {
+        kind: "server",
+        serverId: "srv_dst",
+        path: "/backups",
+      } as BackupDestination,
+      accessKey: "",
+      secretKey: "",
+      ageIdentity: "",
+    },
+    { serverId: "srv_src", kind: "app", project: { slug: "lab-web" } as never },
+    "lab-web/1.tar.gz",
+  );
+  assert.equal(out.ok, true, out.error);
+  assert.deepEqual(sealed, { sizeBytes: 21, sha256: "ab12" });
 });

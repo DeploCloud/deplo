@@ -3,6 +3,7 @@ import "server-only";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { mapBackupUnsupported } from "../infra/agent-client/errors";
 import { connectBackupAgent } from "../infra/agent-client/preflight";
+import { BACKUP_STORE_SEALED_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import {
   destinationServerId,
   s3TargetFor,
@@ -232,6 +233,11 @@ async function relayBackup(
       if (!source.result) throw new RelayAborted();
     })();
 
+    // A cut send ends like a whole one on the wire (an http2 cancel half-closes first): the destination keeps only what
+    // the source's own size and digest name (eu, 24 Nov 2026: 184 bytes of a failed backup were kept).
+    const sealed = (await sink.hello()).capabilities?.includes(
+      BACKUP_STORE_SEALED_CAPABILITY,
+    );
     let landed: Awaited<ReturnType<AgentConnection["writeStoreFile"]>>;
     try {
       landed = await sink.writeStoreFile(
@@ -239,6 +245,12 @@ async function relayBackup(
         false,
         bytes,
         stop.signal,
+        sealed
+          ? () => ({
+              sizeBytes: source.result?.sizeBytes ?? -1,
+              sha256: source.result?.sha256 ?? "",
+            })
+          : undefined,
       );
     } catch (e) {
       if (!(e instanceof RelayAborted)) throw e;

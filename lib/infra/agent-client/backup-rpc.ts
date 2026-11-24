@@ -159,6 +159,7 @@ export function backupRpc(
       overwrite: boolean,
       chunks: AsyncIterable<Buffer>,
       signal?: AbortSignal,
+      sealedBy?: () => { sizeBytes: number; sha256: string },
     ) {
       return new Promise<{
         ok: boolean;
@@ -182,10 +183,11 @@ export function backupRpc(
         cancelOn(signal, call);
         pumpClientStream<StoreChunk>(
           call,
-          { header: { store, overwrite } },
+          { header: { store, overwrite, sealed: !!sealedBy } },
           chunks,
           (data) => ({ data }),
           (e) => reject(toAgentError(e)),
+          sealedBy && (() => ({ trailer: sealedBy() })),
         );
       });
     },
