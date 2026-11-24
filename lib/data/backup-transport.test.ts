@@ -9,6 +9,7 @@ import {
   BACKUP_STORE_SEALED_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import type { BackupDestination } from "../types/backup";
+import { AgentOfflineError } from "../infra/agent-client/errors";
 import { backupToDestination } from "./backup-transport";
 
 after(() => __setAgentConnectorForTest());
@@ -235,4 +236,59 @@ test("a relayed backup is sealed with the source's own size and digest", async (
   );
   assert.equal(out.ok, true, out.error);
   assert.deepEqual(sealed, { sizeBytes: 21, sha256: "ab12" });
+});
+
+// eu, 24 Nov 2026: the destination's link was cut mid-send and the run read "This server is offline", naming none.
+test("a server lost mid-send is the one named, source or destination", async () => {
+  const unavailable = () =>
+    Object.assign(new Error("14 UNAVAILABLE: the link ended"), { code: 14 });
+  const dest = {
+    destination: {
+      kind: "server",
+      serverId: "srv_dst",
+      path: "/backups",
+    } as BackupDestination,
+    accessKey: "",
+    secretKey: "",
+    ageIdentity: "",
+  };
+  for (const lost of ["srv_src", "srv_dst"]) {
+    const source = {
+      hello,
+      close() {},
+      backup: async function* () {
+        yield { data: Buffer.from("age-encryption.org/v1") };
+        if (lost === "srv_src") throw unavailable();
+        await new Promise((r) => setTimeout(r, 50));
+      },
+    } as unknown as AgentConnection;
+    const sink = {
+      hello,
+      close() {},
+      writeStoreFile: async (
+        _store: unknown,
+        _overwrite: boolean,
+        chunks: AsyncIterable<Buffer>,
+      ) => {
+        for await (const _ of chunks)
+          if (lost === "srv_dst") throw unavailable();
+        return { ok: true, error: "", bytesWritten: 0, sha256: "" };
+      },
+    } as unknown as AgentConnection;
+    __setAgentConnectorForTest(async (id) =>
+      id === "srv_src" ? source : id === "srv_dst" ? sink : null,
+    );
+    await assert.rejects(
+      backupToDestination(
+        dest,
+        {
+          serverId: "srv_src",
+          kind: "app",
+          project: { slug: "lab-web" } as never,
+        },
+        "lab-web/1.tar.gz",
+      ),
+      (e: unknown) => e instanceof AgentOfflineError && e.serverId === lost,
+    );
+  }
 });
