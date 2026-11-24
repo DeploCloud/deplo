@@ -123,7 +123,10 @@ member that answers vouches for less.**
   announces nothing (an older one), and the first lease an agent ever counts, make it unsure for the
   longest lease. With `Unsure` 0 the presumption drops to the plain lease.
 - **The plain lease is 5 s only for a member Deplo vouches for** (`Member.ShortFence`: its stored
-  agent version is `AGENT_SHORT_FENCE_VERSION` or newer, `lib/version.ts`), else 60 s.
+  agent version is `AGENT_SHORT_FENCE_VERSION` or newer, `lib/version.ts`), else 60 s. An agent at
+  `AGENT_QUICK_STOP_VERSION` or newer (`Member.QuickStop`) kills a fenced stack's containers all at once and is
+  done 11 s after its lease ran out (`fenceTakes`, `stoppedWithin` 16 s), so a leader waits 13 s past the lease
+  for it (`quickMargin`) instead of 21.
 - **A member that answers** the new leader once holds a plain 5 s lease from it (60 s on an older agent), and the usual
   clock applies from then on: after 5 s of silence its Apps without a Volume move, and its databases and
   Apps with a Volume once the member's own fence is over (`stoppedWithin`, 24 s from the last renewal),
@@ -155,7 +158,7 @@ it from everyone else, is the next section's subject.
 
 ### A line of succession (23 Nov 2026)
 
-The leader lives on a member and names its line in every renewal (`Order.Line`, then `Order.Last`, Deplo's machine): at most two heirs Deplo picked (`Roster.Heirs`), each running a leader that stands by (`leader.standby`) and holds the bundles. An heir's agent asks the leader beside it to lead (`leader.succeed`) once its lease went unrenewed for `lease.PreVoteFor` (10 s, the removal time) plus `lease.SucceedStagger` (5 s) per place down the line, never while the lease is extended. That leader asks a pre-vote (`Order.PreVote`: nothing is taken) and probes with `Order.Succeed` only after a quorum said yes; a member refuses both while its leader renewed it within `PreVoteFor`, and gives each epoch to one leader only (`Order.From`). A leader that gets no quorum within `SucceedFor` (10 s of the last ask) stands by again. Deplo adopts an heir that leads (`adoptHeir`) at its epoch, and Deplo's machine standing in asks the same pre-vote. All of it needs Hello `cluster.succession` on every member: an older agent would take an heir's epoch unasked, so a cluster with one has no line. **Change `PreVoteFor`, the removal time and `TAKEOVER_AFTER_MS` together**: Deplo's machine must stand in later than the last heir asks.
+The leader lives on a member and names its line in every renewal (`Order.Line`, then `Order.Last`, Deplo's machine): at most two heirs Deplo picked (`Roster.Heirs`), each running a leader that stands by (`leader.standby`) and holds the bundles. An heir's agent asks the leader beside it to lead (`leader.succeed`) once its lease went unrenewed for `lease.PreVoteFor` (10 s, the removal time) plus `lease.SucceedStagger` (5 s) per place down the line, never while the lease is extended. That leader asks a pre-vote (`Order.PreVote`: nothing is taken, so its tally is in once a quorum said yes, and a dead member is not waited out) and probes with `Order.Succeed` only after a quorum said yes, waiting for every member's answer since it says what each runs; a member refuses both while its leader renewed it within `PreVoteFor`, and gives each epoch to one leader only (`Order.From`). A leader that gets no quorum within `SucceedFor` (10 s of the last ask) stands by again. Deplo adopts an heir that leads (`adoptHeir`) at its epoch, and Deplo's machine standing in asks the same pre-vote. All of it needs Hello `cluster.succession` on every member: an older agent would take an heir's epoch unasked, so a cluster with one has no line. **Change `PreVoteFor`, the removal time and `TAKEOVER_AFTER_MS` together**: Deplo's machine must stand in later than the last heir asks. A failover starts a member's databases one at a time, then each App with data on its own and its Apps without data one after another, beside them: a slow start holds no App with data behind it, and a member that answers again mid-pass still keeps the stateless Apps not started yet.
 
 ### Two leaders at once: only one of them leads
 
@@ -165,19 +168,22 @@ newer one. So **a leader leads only while it is sure a quorum of its members tak
 one that is not sure renews nobody, extends nothing, moves nothing and refuses a person's move
 (`cluster.leads` in `internal/leader`).
 
-- **A quorum** is more than half of the members in its roster, or **exactly half while Deplo named
-  its epoch in the last 20 s** (`DeploFor`). Deplo's word is the **beat**: every 5 s
-  `beatClusterLeaders` (`lib/data/clusters/leader-beat.ts`) sends `leader.beat {epochs}` through the
-  agent to the leader each cluster is stored on (`leaderHost`), or, while that one is silent, to the first heir
-  that tries to lead, at the epoch it tries (`nameHeir`, ADR-0043), and to no other.
+- **A quorum** is more than half of the members in its roster, or **exactly half while Deplo's word holds**.
+  Deplo's word is the **beat**: every 2 s `beatClusterLeaders` (`lib/data/clusters/leader-beat.ts`) sends
+  `leader.beat {epochs, trustMs: 8000}` through the agent to the leader each cluster is stored on (`leaderHost`),
+  or, while that one is silent, to the first heir that tries to lead, at the epoch it tries (`nameHeir`, ADR-0043),
+  and to no other. The leader holds the word `trustMs`, never more than `DeploFor` (20 s, what an older panel
+  gets), and answers `holdsMs`: how much longer it holds the word, an earlier and longer one included. A beat the
+  stored leader does not take has Deplo check it at once (`leadersMissingBeats`), not at the 15 s watch tick.
 - **Sure** lasts 10 s (`SureFor`, two renewals) from the start of a round a quorum answered. A leader
   that is not sure sends a **probe** first (`lease.Order.Probe`): the member takes the epoch, refuses
   every older one from then on, and its lease is not renewed. With a quorum of answers the renewals
   follow in the same tick. A drain always asks again before it extends.
-- **Deplo waits before it lets another leader lead**: the two missed checks, and 25 s
-  (`TAKEOVER_AFTER_MS`) since the last beat that left for the old leader, answered or not. A Deplo
-  that just started counts from its start. That is longer than a leader trusts a beat, so two halves
-  never both hold Deplo's word. **Change `DeploFor` and `TAKEOVER_AFTER_MS` together.**
+- **Deplo waits before it lets another leader lead**: the two missed checks, and the last `holdsMs` that
+  leader answered plus 5 s since the last beat that left for it, answered or not: 13 s for a leader on
+  v0.1.0-canary.18 or newer, 25 s (`TAKEOVER_AFTER_MS`) for an older one or a Deplo that just started, which counts
+  from its start. That is longer than the leader holds the word, so two halves never both hold Deplo's word.
+  **Change `DeploFor`, `TRUST_MS` and the 5 s in transit together.**
 - **A leader Deplo can reach is told** it was replaced, on a hand-back and on a move
   (`tellLeaderReplaced`, the beat with the newer epoch): it stops at once and takes no older roster.
 - **A leader that becomes sure after it was not** presumes again that each member it never heard
@@ -254,7 +260,8 @@ stop is done (`stoppedWithin`): either side without the field keeps the 60 s fen
 a mixed fleet is never two writers. Also part of it is the leader's watch (`/watch`, the `ClusterWatch` RPC, `lib/data/clusters/watch.ts`).
 So is what a renewal tells the next leader (`Order.Heard`, the gone set) and what an heir's agent hands the leader beside it (`SucceedAsk.Gone`, `SucceedAsk.Heard`): either side without them hands nothing on, as before. So is the end of an extension (`Order.NoExtension`, leader v0.1.0-canary.17 and agent v0.5.3-canary.42): a member without it keeps an announcement its full 370 s, as before. **Every kind of order the leader sends is listed** in deplo-cluster's `internal/leader/testdata/orders.golden.json` (its tests record it, `UPDATE_ORDERS=1` rewrites it), kept in deplo-agent as `internal/server/testdata/leader-orders.golden.json`: the agent serves each through its own checks at the epoch it holds, and each CI runs the other repo's copy. The probe and the stacks a member still has (§5) are part of it: an agent that renewed on a probe
 would keep a replaced leader's members alive, so the agent ships first, as always. The beat is a
-third: `leader.beat`, 5 s apart, trusted for 20 s by the leader and waited out for 25 s by the panel.
+third: `leader.beat`, 2 s apart, asking `trustMs`; the leader holds it no longer than `DeploFor` (20 s) and answers
+`holdsMs`, which the panel waits out with 5 s more (25 s for a leader that answers no `holdsMs`).
 A member refuses an older epoch and keeps the one it holds across restarts, so never lower the epoch a
 leader sends; Deplo adopts a newer one the leader reports.
 
