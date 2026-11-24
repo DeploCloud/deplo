@@ -388,3 +388,20 @@ test("a member whose leader stops renewing it within its first minute stops the 
     /the leader of cluster eu stopped renewing it/,
   );
 });
+
+// eu, 24 Nov 2026: a Retry now on eu-4 was still in its minute when the pass updated eu-1.
+test("a pass updates nobody while another server's update is under way", async () => {
+  // srv_a already answers on the pin: it is in its minute, no longer behind.
+  await server("srv_a", AGENT_VERSION);
+  await server("srv_b", BEHIND);
+  await db.insert(serverAgentUpdates).values({
+    serverId: "srv_a",
+    status: "running",
+    failure: "no_return",
+    attempts: 1,
+    targetVersion: AGENT_VERSION,
+    updatedAt: new Date().toISOString(),
+  });
+  await runAgentRollout();
+  assert.deepEqual(order, [], "srv_b waits for srv_a's minute");
+});

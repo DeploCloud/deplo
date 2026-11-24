@@ -37,6 +37,7 @@ import {
   type AgentUpdateDTO,
   type AgentUpdateFailure,
   type AgentUpdateRow,
+  STALE_RUNNING_MS,
   claimAgentUpdate,
   clearAgentUpdate,
   dropStaleAgentUpdates,
@@ -451,7 +452,16 @@ async function rolloutPass(): Promise<void> {
   // GitHub down: nothing is claimed, so no server's 24 hours run on an outage.
   if (!(await resolveAgentRelease())) return;
 
-  const suspect = pausedBy(behind, await listAgentUpdates());
+  const updates = await listAgentUpdates();
+  // An update under way elsewhere (Retry now) is still in its minute: the next server waits for it (ADR-0043).
+  const stale = Date.now() - STALE_RUNNING_MS;
+  if (
+    [...updates.values()].some(
+      (r) => r.status === "running" && Date.parse(r.updatedAt) > stale,
+    )
+  )
+    return;
+  const suspect = pausedBy(behind, updates);
   if (suspect) {
     const row = await claimAgentUpdate(suspect.id, false);
     if (!row) return;
