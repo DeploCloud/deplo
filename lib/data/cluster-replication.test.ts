@@ -395,3 +395,25 @@ test("a copy a server already holds whole is never held back for room", async ()
     "still handed once its copy is known whole",
   );
 });
+
+// eu, 24 Nov 2026: lab-fit3's copy began while the App was small, grew with it and took eu-1 to 92%.
+test("a copy not whole yet stops once the disk would be under a tenth free, however much of it came", async () => {
+  const cluster = await replicated();
+  const GB = 1024 ** 3;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeUsage = async () =>
+    new Map([["deplo-web-data", 0.7 * GB]]);
+  host.srv_3.extra.metrics = disk(14 * GB, 13 * GB);
+  host.srv_3.replicaReports = [report({ synced: false, bytes: 0.7 * GB })];
+  await replicateCluster(cluster.id, true);
+  assert.deepEqual(
+    host.srv_3.replicaTables.at(-1)!.entries,
+    [],
+    "srv_3 drops the copy it was making",
+  );
+  const members = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.match(
+    members.find((m) => m.serverId === "srv_3")!.copyWarning,
+    /server-3 has 1\.0 GB free, too little for a copy of web \(about 716\.8 MB\)/,
+  );
+});
