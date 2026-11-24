@@ -88,12 +88,15 @@ export async function recordAgentUpdateFailure(
 ): Promise<{ row: AgentUpdateRow; firstFailure: boolean; gaveUp: boolean }> {
   const attempts = row.attempts + 1;
   const firstFailedAt = row.firstFailedAt ?? now.toISOString();
-  const gaveUp = now.getTime() - Date.parse(firstFailedAt) >= GIVE_UP_MS;
+  // A release that broke a server is never tried on it again on its own, and keeps the rest waiting (ADR-0043).
+  const broke = failure === "no_return" || row.failure === "no_return";
+  const gaveUp =
+    broke || now.getTime() - Date.parse(firstFailedAt) >= GIVE_UP_MS;
   const [next] = await getDb()
     .update(serverAgentUpdates)
     .set({
       status: "failed",
-      failure,
+      failure: broke ? "no_return" : failure,
       attempts,
       firstFailedAt,
       nextRetryAt: gaveUp ? null : nextRetryAt(attempts, now),

@@ -1564,6 +1564,11 @@ A server in a cluster. The cluster decides where its Apps and databases run, unl
 """
 type ClusterMember {
   """
+  One plain sentence while a copy of an App does not start on this server, because it would leave less than a tenth of its disk free: the App and the space it needs, to an instance admin; empty otherwise.
+  """
+  copyWarning: String
+
+  """
   Progress while the server is being removed; null otherwise. It takes no new work in the meantime.
   """
   emptying: ClusterEmptying

@@ -57,6 +57,7 @@ export const CLUSTERS: McpToolDef[] = [
             emptying { total left moving error }
             network { relayed unreachable }
             relayWarning
+            copyWarning
             nextInLine
           }
           teams { id name slug }

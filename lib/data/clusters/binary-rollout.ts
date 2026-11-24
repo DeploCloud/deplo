@@ -22,7 +22,9 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { nextRetryAt } from "../servers/agent-update-state";
 import { getServerById } from "../servers/roster";
 import { leaderHostOf } from "./host";
-import { forgetLeaderRoster } from "./leader-sync";
+import { forgetLeaderRoster, readLeaderSnapshot } from "./leader-sync";
+import { getClusterById } from "./roster";
+import { status as GrpcStatus } from "@grpc/grpc-js";
 import { messageOf } from "../../utils";
 
 // Deplo keeps every leader and relay on the cluster release it pins, forward only, one server at a time.
@@ -31,7 +33,14 @@ import { messageOf } from "../../utils";
 export type ClusterUpdateFailure = "busy" | "error" | "no_return";
 type UpdateRow = typeof clusterBinaryUpdates.$inferSelect;
 
-export const clusterRolloutTiming = { confirmTries: 10, confirmDelayMs: 1500 };
+export const clusterRolloutTiming = {
+  confirmTries: 10,
+  confirmDelayMs: 1500,
+  // An updated leader is held this long, renewing its members, before the next server's is updated (ADR-0043).
+  holdMs: 60_000,
+  holdEveryMs: 5000,
+  holdWait: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+};
 
 // ponytail: a fixed bound on how long a silent member's work may still be moving (the leader's longest start is
 // 35 minutes); read the leader's own in-flight moves if a restart ever has to wait less.
@@ -182,10 +191,11 @@ async function fail(
     .insert(clusterBinaryUpdates)
     .values({ serverId: host.server.id, ...next })
     .onConflictDoUpdate({ target: clusterBinaryUpdates.serverId, set: next });
-  if (!row)
+  const stopped = failure === "no_return";
+  if (!row || (stopped && row.failure !== "no_return"))
     await recordActivity(
       "server",
-      `Could not update the ${what(here)} on ${host.server.name} to v${version}: ${error} Deplo retries on its own.`,
+      `Could not update the ${what(here)} on ${host.server.name} to v${version}: ${error}${stopped ? "" : " Deplo retries on its own."}`,
       "Deplo",
       null,
       host.teamId,
@@ -205,21 +215,51 @@ async function confirm(serverId: string): Promise<ClusterHostStatus | null> {
   return null;
 }
 
+/** Why the leader on the server did not hold on the pin for its first minute, or null (ADR-0043). */
+async function heldOn(host: Host): Promise<string | null> {
+  const { version } = clusterPin();
+  const renewing = new Set<string>();
+  const end = Date.now() + clusterRolloutTiming.holdMs;
+  while (Date.now() < end) {
+    await clusterRolloutTiming.holdWait(clusterRolloutTiming.holdEveryMs);
+    const now = await clusterLeaderStatus(host.server.id).catch(() => null);
+    if (now && (!now.running || now.version !== version))
+      return now.running ? `it runs v${now.version}` : "it stopped running";
+    for (const c of host.leads) {
+      const cluster = await getClusterById(c.id);
+      const view = cluster
+        ? (await readLeaderSnapshot(cluster).catch(() => null))?.clusters[c.id]
+        : undefined;
+      if (!view) continue;
+      const lost = view.members.find(
+        (m) => m.heard !== false && m.state !== "ok",
+      );
+      if (lost) return `it stopped renewing ${lost.id} in cluster ${c.name}`;
+      renewing.add(c.id);
+    }
+  }
+  const unsure = host.leads.find((c) => !renewing.has(c.id));
+  return unsure ? `it did not answer for cluster ${unsure.name}` : null;
+}
+
 /** One server: updated when it is behind the pin and its retry is due. Answers false when the rest must wait for it. */
 async function updateHost(host: Host): Promise<boolean> {
   const { version } = clusterPin();
   const id = host.server.id;
   // A server that does not answer is not known to be behind: the card already says it is not reachable.
   const here = await clusterLeaderStatus(id).catch(() => null);
-  if (!here) return true;
+  const row = await failingClusterUpdate(id);
+  // A release that broke a leader is not tried on it again on its own, and the rest wait, until it runs on the pin.
+  const broke = row?.failure === "no_return";
+  if (!here) return !broke;
+  if (broke && !(here.running && here.version === version)) return false;
   // Forward only: one on the pin or ahead of it is left alone.
   if (!here.installed || !isNewer(version, here.version)) {
     await clearUpdate(id);
     return true;
   }
-  const row = await failingClusterUpdate(id);
-  if (row && Date.parse(row.nextRetryAt) > Date.now())
-    return row.failure !== "no_return";
+  if (broke) return false;
+  if (row && Date.parse(row.nextRetryAt) > Date.now()) return true;
   // Not a failure of this update: the agent rollout carries the server and says where it stands.
   if (await agentBehind(id).catch(() => true)) return true;
   const moving = await movingCluster(host);
@@ -237,22 +277,44 @@ async function updateHost(host: Host): Promise<boolean> {
   try {
     // The leader extends every lease before it stops, so no server of its clusters stops anything meanwhile.
     await installClusterLeader(id, { relay: here.relay });
-    const now = await confirm(id);
-    if (!now) {
+    if (!(await confirm(id))) {
       await fail(
         host,
         here,
         row,
         "no_return",
-        "It took the new version but did not start on it. The other servers wait until it does.",
+        "It took the new version but did not start on it. Deplo stopped updating the other servers.",
       );
       return false;
     }
   } catch (e) {
+    // The agent put the earlier leader back: it did not answer in time.
+    if ((e as { code?: unknown }).code === GrpcStatus.ABORTED) {
+      await fail(
+        host,
+        here,
+        row,
+        "no_return",
+        `${sentence(e)} Deplo stopped updating the other servers.`,
+      );
+      return false;
+    }
     await fail(host, here, row, "error", sentence(e));
     return true;
   } finally {
     updating.delete(id);
+  }
+  // Held while Deplo would stand in for it again, should it stop.
+  const why = await heldOn(host);
+  if (why) {
+    await fail(
+      host,
+      here,
+      row,
+      "no_return",
+      `It started on v${version}, but ${why} within its first minute. Deplo stopped updating the other servers.`,
+    );
+    return false;
   }
   await clearUpdate(id);
   // A restarted leader is told again who is in its clusters.

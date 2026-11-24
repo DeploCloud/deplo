@@ -77,9 +77,16 @@ process and can be taken back.
 apps.server_id)` - see §5) is a `busy` failure; **no Hello** is `unreachable`; a failed
   SelfUpdate, including `AgentUpdateUnsupportedError`, is `error`. Each is that server's own
   failure: the pass moves on.
-- **A host that took the binary and never came back** is `no_return`: the pass stops, and every
-  later pass tries only that server until it recovers. A release that breaks one agent must not
-  break four.
+- **A host that took the binary and did not stay on it** is `no_return`: it never came back, came
+  back on the version it had (its agent put the earlier binary back, §8), or stopped answering, or
+  its cluster's leader stopped renewing it, within the minute it is held on the new version. The
+  pass stops there, and nothing tries that server again on its own: an admin's **Retry now**, a Hello
+  on the pin or a new pin does. A release that breaks one agent must not break four. A later
+  failure of that server (unreachable, busy) keeps it `no_return` (eu, canary.47: a retry that found
+  the server unreachable wore the pause away, and the rollout went on).
+- **Every updated server is held a minute** (`rolloutTiming.holdMs`) before the next: it answers on
+  the new version every 5 s, and every cluster it is a member of keeps it `ok` in its leader's
+  snapshot (ADR-0043).
 - **A server that can never link** (its agent too old to link, or left behind at the first update
   stop on a version Deplo never read) is skipped: nothing reaches it, and only reinstalling its
   server agent brings it back. So is **one that has not linked yet**, which comes back once it
@@ -242,7 +249,15 @@ the caller passes them.
    flushes) - `syscall.Exec(exePath, argv, env)`.
 
 `syscall.Exec` means **same PID, same argv, same env**. The process is _replaced_, not exited, so
-systemd's `Restart=on-failure` is irrelevant - there is no exit for it to react to. The new binary
+there is no exit for systemd to react to. **Any exit does restart it**: the unit says `Restart=always`,
+`RestartSec=1` and no start limit (install-agent.sh), and an agent on a server installed before
+writes `deplo-agent.service.d/restart.conf` itself at start (ADR-0043).
+
+**The binary before stays beside the new one** (`deplo-agent.previous`, a hard link) and runs, in a
+transient unit of its own, as `deplo-agent update-guard`: once the new run answers its first Hello it
+removes the previous binary; if none comes within 30 s it puts the previous binary back and restarts
+the service. The panel sees the server back on the version it had, and the rollout stops (§3). CI
+runs this path in a container whose PID 1 is systemd (`TestSystemd_`). The new binary
 finds the same `--agent-dir`, reuses the existing `agent.crt` / `agent.key` / `ca.crt`, skips
 bootstrap and serves. **mTLS material is never touched**: no new CSR, no token, no re-bootstrap, so
 the pinned fingerprint still matches and the server stays "online" with the same identity. That is

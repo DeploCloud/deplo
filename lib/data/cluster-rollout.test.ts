@@ -41,6 +41,8 @@ beforeEach(() => {
   ({ db, hosts, leaders } = lab);
   clusterRolloutTiming.confirmDelayMs = 0;
   clusterRolloutTiming.confirmTries = 2;
+  clusterRolloutTiming.holdMs = 20;
+  clusterRolloutTiming.holdWait = () => new Promise((r) => setTimeout(r, 2));
 });
 
 function pin(version: string, min = "0.2.0") {
@@ -262,8 +264,64 @@ test("a leader that took the new binary and did not come back stops the rollout 
   // A release that breaks one leader must not break the one that stands in for it.
   assert.equal(hosts[SERVER_1].status.version, "0.2.0");
   assert.deepEqual(await byDeplo(), [
-    "Deplo: Could not update the cluster leader and relay on srv_4 to v0.3.0: It took the new version but did not start on it. The other servers wait until it does. Deplo retries on its own.",
+    "Deplo: Could not update the cluster leader and relay on srv_4 to v0.3.0: It took the new version but did not start on it. Deplo stopped updating the other servers.",
   ]);
+  // Never again on its own: the next pin is.
+  const installs = hosts.srv_4.installs.length;
+  await db
+    .update(clusterBinaryUpdates)
+    .set({ nextRetryAt: new Date(0).toISOString() });
+  await runClusterRollout();
+  assert.equal(hosts.srv_4.installs.length, installs);
+  assert.equal(hosts[SERVER_1].status.version, "0.2.0");
+});
+
+// ADR-0043: the agent put the leader before it back, since the new one did not answer within 30 s.
+test("a leader the agent put back stops the rollout before the next server", async () => {
+  await euLedFromSrv4();
+  hosts.srv_4.extra.installCluster = async () => {
+    throw Object.assign(
+      new Error(
+        "the cluster leader v0.3.0 did not answer within 30s, so v0.2.0 runs again",
+      ),
+      { code: 10 },
+    );
+  };
+  pin("0.3.0");
+
+  await runClusterRollout();
+
+  const [row] = await updateRows();
+  assert.equal(row.failure, "no_return");
+  assert.equal(hosts[SERVER_1].status.version, "0.2.0");
+  assert.deepEqual(await byDeplo(), [
+    "Deplo: Could not update the cluster leader and relay on srv_4 to v0.3.0: the cluster leader v0.3.0 did not answer within 30s, so v0.2.0 runs again. Deplo stopped updating the other servers.",
+  ]);
+});
+
+test("a leader that stops within its first minute stops the rollout before the next server", async () => {
+  await euLedFromSrv4();
+  let statuses = 0;
+  const h = hosts.srv_4;
+  h.extra.installCluster = async (version, _b, relay) => {
+    h.installs.push({ version, relay, urls: [] });
+    h.status = { ...h.status, version, relay };
+    return { version, running: true };
+  };
+  const real = h.extra.clusterStatus;
+  h.extra.clusterStatus = async () => {
+    if (h.status.version === "0.3.0" && ++statuses > 3)
+      h.status = { ...h.status, running: false };
+    return real ? real() : h.status;
+  };
+  pin("0.3.0");
+
+  await runClusterRollout();
+
+  const [row] = await updateRows();
+  assert.equal(row?.failure, "no_return");
+  assert.match(row.lastError, /but it stopped running within its first minute/);
+  assert.equal(hosts[SERVER_1].status.version, "0.2.0");
 });
 
 test("a leader is not restarted while a server of its cluster is not answering", async () => {

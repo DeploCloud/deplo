@@ -66,9 +66,11 @@ it. Nothing runs while `deplo.cluster` is empty or while the instance is frozen 
 - **`busy`**: a leader is not restarted while a server of a cluster it leads stopped answering in
   the last 45 minutes. A restart there starts the failover clock over and holds it for the 5
   minutes of §5's extension.
-- **`no_return`**: the leader took the binary and did not start on it. The pass stops, and later
-  passes try only that server: a release that breaks one leader must not reach the one that stands
-  in for it.
+- **`no_return`**: the leader took the binary and did not start on it, the agent put the one before
+  it back because it did not answer on its socket within 30 s (the install fails with `ABORTED`), or
+  within the minute it is held it stopped running or stopped renewing a member it heard. The pass
+  stops, and nothing installs that pin on that server again on its own until it runs on the pin: a
+  release that breaks one leader must not reach the one that stands in for it (ADR-0043).
 
 There is no manual path and no script. "Try again" on the cluster card installs the pin on a leader
 that is not running; a running one is the rollout's.

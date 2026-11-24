@@ -339,6 +339,14 @@ export function ClusterView({
                               />
                             </SimpleTooltip>
                           )}
+                          {s.member?.copyWarning && (
+                            <SimpleTooltip content={s.member.copyWarning}>
+                              <TriangleAlert
+                                className="size-3.5 text-[var(--warning)]"
+                                aria-label={s.member.copyWarning}
+                              />
+                            </SimpleTooltip>
+                          )}
                         </Link>
                         <div className="font-mono text-xs text-muted-foreground">
                           {s.ip}

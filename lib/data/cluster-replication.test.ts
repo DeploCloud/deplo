@@ -11,7 +11,12 @@ import {
   clusters as clustersTable,
 } from "../db/schema/control-plane/clusters";
 import type { ClusterReplicaReport } from "../infra/agent-client/connection";
-import { CLUSTER_REPLICAS_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_REPLICAS_CAPABILITY,
+  VOLUME_USAGE_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
+import type { HostMetrics } from "../agent/gen/agent";
+import { listClusterMembers } from "./clusters/members";
 import { seedDeployment } from "./app-graph-test-helpers";
 import { pushAppBundle, refreshAppBundle } from "./clusters/app-restore";
 import {
@@ -325,4 +330,68 @@ test("a refresh by replication waits for a push under way, and keeps what that p
   const b = await open("app/prj_web");
   assert.equal(b.restore?.backupId, "replica");
   assert.match(b.stack.composeYaml, /# routed/);
+});
+
+const disk = (total: number, used: number) =>
+  (async () => ({
+    diskTotal: total,
+    diskUsed: used,
+  })) as unknown as () => Promise<HostMetrics>;
+
+// ADR-0043, eu-1 at 99%: a member back with its dated copy took a whole new replica beside it.
+test("a copy that would leave less than a tenth of a server's disk does not start, and the server says why", async () => {
+  const cluster = await replicated();
+  const GB = 1024 ** 3;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeUsage = async () =>
+    new Map([["deplo-web-data", 2 * GB]]);
+  host.srv_3.extra.metrics = disk(14 * GB, 12 * GB);
+  host.srv_4.extra.metrics = disk(14 * GB, 5 * GB);
+  await replicateCluster(cluster.id, true);
+  assert.deepEqual(
+    host.srv_3.replicaTables.at(-1)!.entries,
+    [],
+    "srv_3 starts no copy",
+  );
+  assert.equal(host.srv_4.replicaTables.at(-1)!.entries.length, 1);
+  const [why] = await db
+    .select({ error: clusterAppReplicas.error })
+    .from(clusterAppReplicas)
+    .where(eq(clusterAppReplicas.serverId, "srv_3"));
+  assert.equal(
+    why.error,
+    "server-3 has 2.0 GB free, too little for a copy of web (about 2.0 GB) and a tenth of its disk free",
+  );
+  const members = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.match(
+    members.find((m) => m.serverId === "srv_3")!.copyWarning,
+    /too little for a copy of web \(about 2\.0 GB\).*Free some space on it/,
+  );
+  assert.equal(members.find((m) => m.serverId === "srv_4")!.copyWarning, "");
+
+  // Room again: the copy starts, and the warning goes.
+  host.srv_3.extra.metrics = disk(14 * GB, 4 * GB);
+  host.srv_3.replicaReports = [report({ synced: false, bytes: 0 })];
+  await replicateCluster(cluster.id, true);
+  assert.equal(host.srv_3.replicaTables.at(-1)!.entries.length, 1);
+  const after = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.equal(after.find((m) => m.serverId === "srv_3")!.copyWarning, "");
+});
+
+test("a copy a server already holds whole is never held back for room", async () => {
+  const cluster = await replicated();
+  const GB = 1024 ** 3;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeUsage = async () =>
+    new Map([["deplo-web-data", 2 * GB]]);
+  host.srv_3.extra.metrics = disk(14 * GB, 13 * GB);
+  host.srv_3.replicaReports = [report({ bytes: 2 * GB })];
+  await replicateCluster(cluster.id, true);
+  assert.equal(host.srv_3.replicaTables.at(-1)!.entries.length, 1);
+  await replicateCluster(cluster.id, true);
+  assert.equal(
+    host.srv_3.replicaTables.at(-1)!.entries.length,
+    1,
+    "still handed once its copy is known whole",
+  );
 });
