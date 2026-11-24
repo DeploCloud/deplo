@@ -3251,6 +3251,33 @@ export interface ExpectClusterBackupRequest {
 export interface ExpectClusterBackupResponse {
 }
 
+export interface ExpectClusterVolumeRequest {
+  volumeName: string;
+  /** Empty the volume before the first byte lands, as ImportVolume's wipe_first does. */
+  wipeFirst: boolean;
+  /** The sending member's certificate fingerprint (sha256 hex of its DER). */
+  sourceFingerprint: string;
+}
+
+export interface ExpectClusterVolumeResponse {
+}
+
+export interface SendClusterVolumeRequest {
+  volumeName: string;
+  /** The target member's certificate fingerprint (sha256 hex of its DER). */
+  targetFingerprint: string;
+}
+
+export interface SendClusterVolumeResponse {
+  /** The gzipped tar's size and sha256, as the target wrote it. */
+  bytes: number;
+  sha256: string;
+  /** "direct" or "relay", how it went; "none" when the target could not be reached and nothing was read. */
+  path: string;
+  /** This host holds no such volume. */
+  missing: boolean;
+}
+
 /** A cluster member's certificate, by the server id the leader's placement names it with. */
 export interface ClusterForwarderMember {
   serverId: string;
@@ -24882,6 +24909,381 @@ export const ExpectClusterBackupResponse: MessageFns<ExpectClusterBackupResponse
   },
 };
 
+function createBaseExpectClusterVolumeRequest(): ExpectClusterVolumeRequest {
+  return { volumeName: "", wipeFirst: false, sourceFingerprint: "" };
+}
+
+export const ExpectClusterVolumeRequest: MessageFns<ExpectClusterVolumeRequest> = {
+  encode(message: ExpectClusterVolumeRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.volumeName !== "") {
+      writer.uint32(10).string(message.volumeName);
+    }
+    if (message.wipeFirst !== false) {
+      writer.uint32(16).bool(message.wipeFirst);
+    }
+    if (message.sourceFingerprint !== "") {
+      writer.uint32(26).string(message.sourceFingerprint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterVolumeRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterVolumeRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.volumeName = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.wipeFirst = reader.bool();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.sourceFingerprint = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ExpectClusterVolumeRequest {
+    return {
+      volumeName: isSet(object.volumeName)
+        ? globalThis.String(object.volumeName)
+        : isSet(object.volume_name)
+        ? globalThis.String(object.volume_name)
+        : "",
+      wipeFirst: isSet(object.wipeFirst)
+        ? globalThis.Boolean(object.wipeFirst)
+        : isSet(object.wipe_first)
+        ? globalThis.Boolean(object.wipe_first)
+        : false,
+      sourceFingerprint: isSet(object.sourceFingerprint)
+        ? globalThis.String(object.sourceFingerprint)
+        : isSet(object.source_fingerprint)
+        ? globalThis.String(object.source_fingerprint)
+        : "",
+    };
+  },
+
+  toJSON(message: ExpectClusterVolumeRequest): unknown {
+    const obj: any = {};
+    if (message.volumeName !== "") {
+      obj.volumeName = message.volumeName;
+    }
+    if (message.wipeFirst !== false) {
+      obj.wipeFirst = message.wipeFirst;
+    }
+    if (message.sourceFingerprint !== "") {
+      obj.sourceFingerprint = message.sourceFingerprint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterVolumeRequest>, I>>(base?: I): ExpectClusterVolumeRequest {
+    return ExpectClusterVolumeRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterVolumeRequest>, I>>(object: I): ExpectClusterVolumeRequest {
+    const message = createBaseExpectClusterVolumeRequest();
+    message.volumeName = object.volumeName ?? "";
+    message.wipeFirst = object.wipeFirst ?? false;
+    message.sourceFingerprint = object.sourceFingerprint ?? "";
+    return message;
+  },
+};
+
+function createBaseExpectClusterVolumeResponse(): ExpectClusterVolumeResponse {
+  return {};
+}
+
+export const ExpectClusterVolumeResponse: MessageFns<ExpectClusterVolumeResponse> = {
+  encode(_: ExpectClusterVolumeResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterVolumeResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterVolumeResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ExpectClusterVolumeResponse {
+    return {};
+  },
+
+  toJSON(_: ExpectClusterVolumeResponse): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterVolumeResponse>, I>>(base?: I): ExpectClusterVolumeResponse {
+    return ExpectClusterVolumeResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterVolumeResponse>, I>>(_: I): ExpectClusterVolumeResponse {
+    const message = createBaseExpectClusterVolumeResponse();
+    return message;
+  },
+};
+
+function createBaseSendClusterVolumeRequest(): SendClusterVolumeRequest {
+  return { volumeName: "", targetFingerprint: "" };
+}
+
+export const SendClusterVolumeRequest: MessageFns<SendClusterVolumeRequest> = {
+  encode(message: SendClusterVolumeRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.volumeName !== "") {
+      writer.uint32(10).string(message.volumeName);
+    }
+    if (message.targetFingerprint !== "") {
+      writer.uint32(18).string(message.targetFingerprint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SendClusterVolumeRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSendClusterVolumeRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.volumeName = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.targetFingerprint = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SendClusterVolumeRequest {
+    return {
+      volumeName: isSet(object.volumeName)
+        ? globalThis.String(object.volumeName)
+        : isSet(object.volume_name)
+        ? globalThis.String(object.volume_name)
+        : "",
+      targetFingerprint: isSet(object.targetFingerprint)
+        ? globalThis.String(object.targetFingerprint)
+        : isSet(object.target_fingerprint)
+        ? globalThis.String(object.target_fingerprint)
+        : "",
+    };
+  },
+
+  toJSON(message: SendClusterVolumeRequest): unknown {
+    const obj: any = {};
+    if (message.volumeName !== "") {
+      obj.volumeName = message.volumeName;
+    }
+    if (message.targetFingerprint !== "") {
+      obj.targetFingerprint = message.targetFingerprint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SendClusterVolumeRequest>, I>>(base?: I): SendClusterVolumeRequest {
+    return SendClusterVolumeRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SendClusterVolumeRequest>, I>>(object: I): SendClusterVolumeRequest {
+    const message = createBaseSendClusterVolumeRequest();
+    message.volumeName = object.volumeName ?? "";
+    message.targetFingerprint = object.targetFingerprint ?? "";
+    return message;
+  },
+};
+
+function createBaseSendClusterVolumeResponse(): SendClusterVolumeResponse {
+  return { bytes: 0, sha256: "", path: "", missing: false };
+}
+
+export const SendClusterVolumeResponse: MessageFns<SendClusterVolumeResponse> = {
+  encode(message: SendClusterVolumeResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.bytes !== 0) {
+      writer.uint32(8).int64(message.bytes);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(18).string(message.sha256);
+    }
+    if (message.path !== "") {
+      writer.uint32(26).string(message.path);
+    }
+    if (message.missing !== false) {
+      writer.uint32(32).bool(message.missing);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SendClusterVolumeResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSendClusterVolumeResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.bytes = longToNumber(reader.int64());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.sha256 = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.path = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.missing = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SendClusterVolumeResponse {
+    return {
+      bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0,
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      missing: isSet(object.missing) ? globalThis.Boolean(object.missing) : false,
+    };
+  },
+
+  toJSON(message: SendClusterVolumeResponse): unknown {
+    const obj: any = {};
+    if (message.bytes !== 0) {
+      obj.bytes = Math.round(message.bytes);
+    }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.missing !== false) {
+      obj.missing = message.missing;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SendClusterVolumeResponse>, I>>(base?: I): SendClusterVolumeResponse {
+    return SendClusterVolumeResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SendClusterVolumeResponse>, I>>(object: I): SendClusterVolumeResponse {
+    const message = createBaseSendClusterVolumeResponse();
+    message.bytes = object.bytes ?? 0;
+    message.sha256 = object.sha256 ?? "";
+    message.path = object.path ?? "";
+    message.missing = object.missing ?? false;
+    return message;
+  },
+};
+
 function createBaseClusterForwarderMember(): ClusterForwarderMember {
   return { serverId: "", fingerprint: "" };
 }
@@ -30214,6 +30616,36 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): ExpectClusterBackupResponse => ExpectClusterBackupResponse.decode(value),
   },
   /**
+   * Tell this member to take one volume from one member, once, within the copy's time limit
+   * (capability "volume-copy.member"). A volume stream that matches no such entry is refused.
+   */
+  expectClusterVolume: {
+    path: "/deplo.agent.v1.Agent/ExpectClusterVolume" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ExpectClusterVolumeRequest): Buffer =>
+      Buffer.from(ExpectClusterVolumeRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExpectClusterVolumeRequest => ExpectClusterVolumeRequest.decode(value),
+    responseSerialize: (value: ExpectClusterVolumeResponse): Buffer =>
+      Buffer.from(ExpectClusterVolumeResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ExpectClusterVolumeResponse => ExpectClusterVolumeResponse.decode(value),
+  },
+  /**
+   * Copy one of this host's volumes into the same volume on another member, over the cluster's
+   * private network, which was told to expect it. path "none": no path joins them, nothing was read.
+   */
+  sendClusterVolume: {
+    path: "/deplo.agent.v1.Agent/SendClusterVolume" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SendClusterVolumeRequest): Buffer =>
+      Buffer.from(SendClusterVolumeRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SendClusterVolumeRequest => SendClusterVolumeRequest.decode(value),
+    responseSerialize: (value: SendClusterVolumeResponse): Buffer =>
+      Buffer.from(SendClusterVolumeResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SendClusterVolumeResponse => SendClusterVolumeResponse.decode(value),
+  },
+  /**
    * Hand this member the names it holds on its Environments' networks and the streams it accepts
    * for its own workloads. The full set each time; one not listed is removed. Never sent to a
    * member that is not in a cluster.
@@ -31121,6 +31553,16 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   expectClusterBackup: handleUnaryCall<ExpectClusterBackupRequest, ExpectClusterBackupResponse>;
   /**
+   * Tell this member to take one volume from one member, once, within the copy's time limit
+   * (capability "volume-copy.member"). A volume stream that matches no such entry is refused.
+   */
+  expectClusterVolume: handleUnaryCall<ExpectClusterVolumeRequest, ExpectClusterVolumeResponse>;
+  /**
+   * Copy one of this host's volumes into the same volume on another member, over the cluster's
+   * private network, which was told to expect it. path "none": no path joins them, nothing was read.
+   */
+  sendClusterVolume: handleUnaryCall<SendClusterVolumeRequest, SendClusterVolumeResponse>;
+  /**
    * Hand this member the names it holds on its Environments' networks and the streams it accepts
    * for its own workloads. The full set each time; one not listed is removed. Never sent to a
    * member that is not in a cluster.
@@ -31986,6 +32428,44 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ExpectClusterBackupResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Tell this member to take one volume from one member, once, within the copy's time limit
+   * (capability "volume-copy.member"). A volume stream that matches no such entry is refused.
+   */
+  expectClusterVolume(
+    request: ExpectClusterVolumeRequest,
+    callback: (error: ServiceError | null, response: ExpectClusterVolumeResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterVolume(
+    request: ExpectClusterVolumeRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ExpectClusterVolumeResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterVolume(
+    request: ExpectClusterVolumeRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ExpectClusterVolumeResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Copy one of this host's volumes into the same volume on another member, over the cluster's
+   * private network, which was told to expect it. path "none": no path joins them, nothing was read.
+   */
+  sendClusterVolume(
+    request: SendClusterVolumeRequest,
+    callback: (error: ServiceError | null, response: SendClusterVolumeResponse) => void,
+  ): ClientUnaryCall;
+  sendClusterVolume(
+    request: SendClusterVolumeRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SendClusterVolumeResponse) => void,
+  ): ClientUnaryCall;
+  sendClusterVolume(
+    request: SendClusterVolumeRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SendClusterVolumeResponse) => void,
   ): ClientUnaryCall;
   /**
    * Hand this member the names it holds on its Environments' networks and the streams it accepts

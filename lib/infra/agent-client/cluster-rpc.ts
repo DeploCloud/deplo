@@ -24,6 +24,8 @@ export function clusterRpc(
   | "copyClusterImage"
   | "expectClusterImage"
   | "expectClusterBackup"
+  | "expectClusterVolume"
+  | "sendClusterVolume"
   | "setClusterForwarders"
   | "readProxyCertificates"
   | "setClusterNetwork"
@@ -113,6 +115,27 @@ export function clusterRpc(
         { store, sourceFingerprint },
         HELLO_TIMEOUT_MS,
       );
+    },
+    async expectClusterVolume(volumeName, wipeFirst, sourceFingerprint) {
+      await unary(
+        client.expectClusterVolume.bind(client),
+        { volumeName, wipeFirst, sourceFingerprint },
+        HELLO_TIMEOUT_MS,
+      );
+    },
+    async sendClusterVolume(volumeName, targetFingerprint) {
+      // As long as the copy takes: a move's copy has no deadline but its own.
+      const r = await unary(
+        client.sendClusterVolume.bind(client),
+        { volumeName, targetFingerprint },
+        6 * 3600_000,
+      );
+      return {
+        bytes: Number(r.bytes),
+        sha256: r.sha256,
+        path: r.path,
+        missing: r.missing,
+      };
     },
     async setClusterForwarders(table) {
       const r = await unary(

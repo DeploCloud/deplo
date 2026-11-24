@@ -270,7 +270,7 @@ async function runMigration(
       );
     }
 
-  let moved: { missing: string[] };
+  let moved: { missing: string[]; path?: "direct" | "relay" };
   try {
     moved = await migrateWorkloadData(from, to, {
       volumeNames: names,
@@ -324,6 +324,11 @@ async function runMigration(
   await recordActivity(
     "app",
     `Moved ${app.name}'s data from ${fromName} to ${toName}` +
+      (moved.path === "direct"
+        ? ", server to server"
+        : moved.path
+          ? ", through Deplo"
+          : "") +
       (asideNote ? `.${asideNote}` : ""),
     "system",
     appId,

@@ -80,9 +80,11 @@ export interface Disk {
   stacks: Map<string, string>;
   volumes: Map<string, Buffer>;
   calls: string[];
-  fail: Partial<Record<"import", string>>;
+  fail: Partial<Record<"import" | "memberPath", string>>;
   /** When each stack last ran here, as ReadStack says it (none: never). */
   ran: Map<string, { lastRanMs: number; running: boolean }>;
+  /** The volumes Deplo told it to take from a member, as "name|fingerprint". */
+  expected: Set<string>;
 }
 export const disks = new Map<string, Disk>();
 /** Each member's fake agent, so a test can give it a capability. */
@@ -175,6 +177,30 @@ export function diskOps(d: Disk): Partial<AgentConnection> {
     },
     exportFiles: async function* () {
       yield gzipSync(Buffer.alloc(1024));
+    },
+    // Member to member, for a member whose agent has VOLUME_COPY_MEMBER_CAPABILITY: srv_N's certificate is "N" x 64.
+    expectClusterVolume: async (name: string, _wipe: boolean, from: string) => {
+      d.calls.push(`expect:${name}:${from[0]}`);
+      d.expected.add(`${name}|${from}`);
+    },
+    sendClusterVolume: async (name: string, to: string) => {
+      d.calls.push(`send:${name}`);
+      const target = disks.get(`srv_${to[0]}`)!;
+      if (d.fail.memberPath)
+        return { bytes: 0, sha256: "", path: "none", missing: false };
+      const v = d.volumes.get(name);
+      if (!v) return { bytes: 0, sha256: "", path: "", missing: true };
+      const mine = [...disks.entries()].find(([, x]) => x === d)![0];
+      if (!target.expected.delete(`${name}|${mine.slice(4).repeat(64)}`))
+        throw new Error("the server it moves to refused it");
+      target.calls.push(`member-import:${name}`);
+      target.volumes.set(name, v);
+      return {
+        bytes: v.length,
+        sha256: "ab".repeat(32),
+        path: "direct",
+        missing: false,
+      };
     },
     checkPort: async () => ({ available: true }),
     listInstances: async () => [],
@@ -289,6 +315,7 @@ export function emptyLab(): void {
         calls: [],
         fail: {},
         ran: new Map(),
+        expected: new Set(),
       };
       disks.set(id, d);
       hosts.set(id, fleet.host(id, { extra: diskOps(d) }));

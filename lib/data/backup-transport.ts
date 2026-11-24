@@ -7,10 +7,7 @@ import {
   BACKUP_STORE_MEMBER_CAPABILITY,
   BACKUP_STORE_SEALED_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
-import { and, eq } from "drizzle-orm";
-import { getDb } from "../db/client";
-import { clusterMembers } from "../db/schema/control-plane/clusters";
-import { servers as serversTable } from "../db/schema/control-plane/servers";
+import { memberPair } from "./clusters/member-path";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import {
   AgentOfflineError,
@@ -140,42 +137,6 @@ export async function backupToDestination(
   };
 }
 
-/** A server agent's certificate, as a member knows another by it; null before it enrolled. */
-async function fingerprintOf(serverId: string): Promise<string | null> {
-  const [row] = await getDb()
-    .select({ fp: serversTable.agentCertFingerprint })
-    .from(serversTable)
-    .where(eq(serversTable.id, serverId))
-    .limit(1);
-  const fp = row?.fp?.toLowerCase() ?? "";
-  return /^[0-9a-f]{64}$/.test(fp) ? fp : null;
-}
-
-/** Whether two servers are members of one cluster, so they share its private network. */
-async function sameCluster(a: string, b: string): Promise<boolean> {
-  const rows = await getDb()
-    .select({
-      clusterId: clusterMembers.clusterId,
-      serverId: clusterMembers.serverId,
-    })
-    .from(clusterMembers)
-    .where(eq(clusterMembers.serverId, a));
-  for (const r of rows) {
-    const [hit] = await getDb()
-      .select({ serverId: clusterMembers.serverId })
-      .from(clusterMembers)
-      .where(
-        and(
-          eq(clusterMembers.clusterId, r.clusterId),
-          eq(clusterMembers.serverId, b),
-        ),
-      )
-      .limit(1);
-    if (hit) return true;
-  }
-  return false;
-}
-
 /**
  * A backup from one cluster member to another's disk goes between them over the cluster's network (ADR-0047);
  * null when it cannot, before anything was read, and Deplo relays it instead.
@@ -188,13 +149,11 @@ async function memberBackup(
   req: BackupRequest,
   signal?: AbortSignal,
 ): Promise<BackupOutcome | null> {
-  if (target.archive || !(await sameCluster(target.serverId, destServer)))
-    return null;
-  const [from, to] = await Promise.all([
-    fingerprintOf(target.serverId),
-    fingerprintOf(destServer),
-  ]);
-  if (!from || !to) return null;
+  const pair = target.archive
+    ? null
+    : await memberPair(target.serverId, destServer);
+  if (!pair) return null;
+  const { from, to } = pair;
   const store = storeTargetFor(creds.destination, objectKey);
   const sink = await connectBackupAgent(destServer, { store: true });
   try {
