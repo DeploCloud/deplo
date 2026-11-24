@@ -597,3 +597,30 @@ test("a fresh copy writes each file once, so its biggest file is not counted twi
   await replicateCluster(cluster.id, true);
   assert.equal(host.srv_3.replicaTables.at(-1)!.entries.length, 1);
 });
+
+// c37: eu-2 (one core) took a backup and two replicas at once, and every App through it timed out.
+test("a server takes one new copy at a time: the next waits its turn and says so", async () => {
+  const cluster = await replicated();
+  await replicateCluster(cluster.id, true);
+  const handedTo = (id: string) =>
+    (host[id].replicaTables.at(-1)?.entries ?? []).map((e) => e.appId);
+  const [first, next] = handedTo("srv_3").length
+    ? ["srv_3", "srv_4"]
+    : ["srv_4", "srv_3"];
+  assert.deepEqual(handedTo(first), ["prj_web"]);
+  assert.deepEqual(handedTo(next), [], "server-2 already sends one copy");
+  const [queued] = await db
+    .select()
+    .from(clusterAppReplicas)
+    .where(eq(clusterAppReplicas.serverId, next));
+  assert.equal(queued.error, "Queued: server-2 is busy with a copy of web");
+
+  // Not whole yet: the next still waits.
+  host[first].replicaReports = [report({ synced: false })];
+  await replicateCluster(cluster.id);
+  assert.deepEqual(handedTo(next), []);
+  // Whole: the next starts.
+  host[first].replicaReports = [report()];
+  await replicateCluster(cluster.id);
+  assert.deepEqual(handedTo(next), ["prj_web"]);
+});

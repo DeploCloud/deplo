@@ -106,7 +106,7 @@ export function moveRefusal(reason: string, name: string): string {
 /** How one other server's copy of an App stands, as its page lists it under Advanced. */
 export interface CopyRow {
   server: string;
-  state: "Up to date" | "Copying" | "Behind" | "Not copied";
+  state: "Up to date" | "Copying" | "Behind" | "Queued" | "Not copied";
   /** When the newest change reached it; null before the first. */
   lastCopyAt: string | null;
   /** How long since the App's server last reached it, while it is behind. */

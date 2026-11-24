@@ -87,6 +87,8 @@ export interface BackupRun {
   leftOnServerId?: ID | null;
   /** That server's name; only the listing fills it in. */
   leftOnServer?: string | null;
+  /** While a running backup waits its turn: "eu-2 is busy with a copy of Fise". Only the listing fills it in. */
+  queued?: string | null;
   status: BackupRunStatus;
   error: string | null;
   startedAt: string;
