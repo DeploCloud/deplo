@@ -512,3 +512,29 @@ test("a backup refused for room on a server's disk shows on that server, naming 
   const later = await asAdmin(() => listClusterMembers(cluster.id));
   assert.equal(later.find((m) => m.serverId === "srv_3")!.copyWarning, "");
 });
+
+// eu-4, 24 Nov 2026 (canary.87): Deplo counted the blocks kept for root as free, so a copy that did not fit was
+// handed, written to the agent's stop at a tenth free, removed, and handed again every 80 s.
+test("a copy fits only in what the disk lets it write, not in the blocks kept for root", async () => {
+  const cluster = await replicated();
+  const GB = 1024 ** 3;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeUsage = async () =>
+    new Map([["deplo-web-data", 1.6 * GB]]);
+  // 14 GB, 11 GB used, 2.4 GB of the 3 GB left writable (80.9% of used and writable): no room for 1.6 GB.
+  host.srv_3.extra.metrics = (async () => ({
+    diskTotal: 14 * GB,
+    diskUsed: 11 * GB,
+    diskPct: (11 / 13.4) * 100,
+  })) as unknown as () => Promise<HostMetrics>;
+  await replicateCluster(cluster.id, true);
+  assert.deepEqual(host.srv_3.replicaTables.at(-1)!.entries, []);
+  const [why] = await db
+    .select({ error: clusterAppReplicas.error })
+    .from(clusterAppReplicas)
+    .where(eq(clusterAppReplicas.serverId, "srv_3"));
+  assert.match(
+    why!.error,
+    /^server-3 has 2\.4 GB free, too little for a copy of web/,
+  );
+});

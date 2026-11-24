@@ -26,6 +26,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
 import { refreshAppBundle, restoreDescriptor } from "./app-restore";
 import { __forgetSizes, volumeBytes } from "./data-size";
+import { writableBytes } from "./facts";
 import { inLine, storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
 import {
@@ -186,7 +187,14 @@ async function memberDisk(serverId: string) {
   const conn = await connectAgent(serverId);
   try {
     const m = await conn.metrics();
-    return { free: m.diskTotal - m.diskUsed, total: m.diskTotal };
+    return {
+      free: writableBytes({
+        diskTotal: Number(m.diskTotal),
+        diskUsed: Number(m.diskUsed),
+        diskPct: m.diskPct,
+      }),
+      total: Number(m.diskTotal),
+    };
   } finally {
     conn.close();
   }
