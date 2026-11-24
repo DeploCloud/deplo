@@ -38,6 +38,8 @@ export interface BackupOutcome {
   decryptedSizeBytes: number;
   // How long the App was paused for a consistent volume copy; 0 or absent when it was not.
   heldMs?: number;
+  // Why that pause lasted the whole copy, not only a copy on the App's own disk; empty when it did not.
+  heldWhy?: string;
   sha256: string;
 }
 
@@ -140,6 +142,7 @@ async function consumeBackup(
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
         decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
         heldMs: Number(ev.result.heldMs ?? 0),
+        heldWhy: ev.result.heldWhy ?? "",
         sha256: ev.result.sha256 ?? "",
       };
     }
@@ -208,6 +211,7 @@ async function relayBackup(
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
             decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
             heldMs: Number(ev.result.heldMs ?? 0),
+            heldWhy: ev.result.heldWhy ?? "",
             sha256: ev.result.sha256 ?? "",
           };
           if (!ev.result.ok) throw new RelayAborted();
@@ -241,9 +245,14 @@ async function relayBackup(
 
     const produced = source.result;
     if (!produced) {
+      // The destination stopped taking it first (eu, 23 Nov 2026: a full disk): the source's copy is ended now, and
+      // the App it paused runs again, rather than waiting for its stream to stall.
+      await bytes.return(undefined).catch(() => {});
       return {
         ok: false,
-        error: "the agent ended the backup without a result",
+        error: landed.ok
+          ? "the agent ended the backup without a result"
+          : `the destination server stopped taking the backup: ${landed.error || "it gave no reason"}`,
         objectKey,
         sizeBytes: 0,
         decryptedSizeBytes: 0,
@@ -293,6 +302,7 @@ async function relayBackup(
       sizeBytes: landed.bytesWritten,
       decryptedSizeBytes: produced.decryptedSizeBytes,
       heldMs: produced.heldMs ?? 0,
+      heldWhy: produced.heldWhy ?? "",
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
