@@ -378,6 +378,32 @@ test("an event at or below the stored sequence is skipped, whoever sends it", as
   assert.equal((await stored(cluster.id)).seq, 5);
 });
 
+// eu, 24 Nov 2026: "Moved lab-web to eu-3" was written twice at the same instant: when a new server led, a second
+// watch read the same event while the first still applied it, and a move moves the sequence only once it settles.
+test("one event read by two watches at once is said once", async () => {
+  const cluster = await eu();
+  const e = {
+    seq: 7,
+    type: "superseded",
+    cluster: cluster.id,
+    data: {},
+    at: new Date(Date.now() - 1000).toISOString(),
+  };
+  const both = await Promise.all([
+    applyLeaderEvent(cluster.id, e, { advance: false }),
+    applyLeaderEvent(cluster.id, e, { advance: false }),
+  ]);
+  assert.deepEqual(both.sort(), ["applied", "skipped"]);
+  assert.equal(
+    await applyLeaderEvent(cluster.id, e, { advance: false }),
+    "skipped",
+  );
+  const said = (await db.select().from(activities)).filter((a) =>
+    a.message.includes("leader stepped down"),
+  );
+  assert.equal(said.length, 1);
+});
+
 test("the stored epoch and sequence are in the database, so a restart keeps them", async () => {
   const cluster = await eu();
   await applyLeaderEvent(cluster.id, {
