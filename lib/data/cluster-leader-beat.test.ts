@@ -9,8 +9,16 @@ import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers
 import {
   __setLeaderBeatClockForTest,
   beatClusterLeaders,
+  leadersMissingBeats,
   TAKEOVER_AFTER_MS,
 } from "./clusters/leader-beat";
+import {
+  admitLink,
+  doorClosed,
+  doorOpened,
+  linkGeneration,
+  nextLinkId,
+} from "../infra/agent-link/registry";
 import { moveClusterLeader } from "./clusters/leader-move";
 import { superviseClusterLeader } from "./clusters/leader-standby";
 import { createCluster } from "./clusters/manage";
@@ -225,5 +233,32 @@ test("a leader that misses its beat is checked at once, not at the next watch ti
     __resetClusterWatchForTest();
     for (const h of Object.values(hosts)) h.watch.drop();
     await releaseClusterWatchLease();
+  }
+});
+
+test("a leader whose server was not heard for two of the link's pings misses its beat without waiting on it", async () => {
+  const cluster = await eu();
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  doorOpened();
+  admitLink(
+    {
+      id: nextLinkId(),
+      serverId: "srv_4",
+      pinnedFingerprint: "x",
+      client: {} as never,
+      hello: {} as never,
+      openedAt: Date.now() - 60_000,
+      heardAt: () => Date.now() - 6_000,
+      close() {},
+    },
+    linkGeneration("srv_4"),
+  );
+  try {
+    hosts.srv_4.calls.length = 0;
+    await beatClusterLeaders();
+    assert.deepEqual(beats(hosts.srv_4), [], "no beat was sent to wait on");
+    assert.deepEqual(leadersMissingBeats(), [cluster.id]);
+  } finally {
+    doorClosed();
   }
 });
