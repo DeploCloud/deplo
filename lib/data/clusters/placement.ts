@@ -263,6 +263,8 @@ export interface PlacementReport {
   /** One entry per replica in placement order; null is waiting for room. */
   members: (string | null)[];
   epoch: number;
+  /** The leader's word, which may be stale: it never takes the row back to an older epoch (c43). */
+  fromLeader?: boolean;
 }
 
 /**
@@ -281,10 +283,14 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
       .select({ id: table.id, serverId: table.serverId })
       .from(table)
       .where(and(eq(table.id, r.workloadId), eq(table.clusterId, r.clusterId)))
-      .limit(1);
+      .limit(1)
+      .for("update");
     if (owned.length === 0) return false;
     const before = await tx
-      .select({ m: workloadPlacements.memberServerId })
+      .select({
+        m: workloadPlacements.memberServerId,
+        epoch: workloadPlacements.epoch,
+      })
       .from(workloadPlacements)
       .where(
         and(
@@ -292,6 +298,7 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
           eq(workloadPlacements.workloadId, r.workloadId),
         ),
       );
+    if (r.fromLeader && before.some((b) => b.epoch > r.epoch)) return false;
     moved =
       r.kind === "app" &&
       homeOf(
@@ -382,7 +389,7 @@ export async function recordJoinedPlacements(
 /** A leader's report arriving in the background: ignored while a Deplo move freezes this instance. */
 export async function applyLeaderReport(r: PlacementReport): Promise<boolean> {
   if (await instanceFrozen()) return false;
-  const recorded = await recordPlacement(r);
+  const recorded = await recordPlacement({ ...r, fromLeader: true });
   // A member that now runs one of the Environment's workloads needs its names (#200).
   if (recorded) syncNameForwardersSoon(r.clusterId);
   return recorded;

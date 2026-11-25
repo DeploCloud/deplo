@@ -262,15 +262,113 @@ test("a placement that names a server that left does not hold up what follows", 
   );
 });
 
-test("a leader that lost its buffer makes the stored sequence start over", async () => {
+const placedRow = async (id: string) => {
+  const [row] = await db
+    .select()
+    .from(workloadPlacements)
+    .where(eq(workloadPlacements.workloadId, id));
+  const [app] = await db.select().from(appsTable).where(eq(appsTable.id, id));
+  return { member: row.memberServerId, epoch: row.epoch, app: app.serverId };
+};
+
+async function placedAt(id: string, member: string, epoch: number) {
+  await db.insert(workloadPlacements).values({
+    kind: "app",
+    workloadId: id,
+    replica: 0,
+    memberServerId: member,
+    epoch,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+}
+
+test("a leader whose buffer is below the stored sequence is watched from its newest event, nothing in it replayed", async () => {
   const cluster = await eu();
+  await inCluster(cluster.id, "prj_web", "srv_2");
+  await placedAt("prj_web", "srv_2", 1);
   await db
     .update(clustersTable)
-    .set({ eventSeq: 40 })
+    .set({ eventSeq: 40, leaderEpoch: 1 })
     .where(eq(clustersTable.id, cluster.id));
-  leader.watch.push("epoch", cluster.id, { epoch: 1 });
+  leader.watch.push("placement", cluster.id, {
+    kind: "app",
+    workloadId: "prj_web",
+    members: ["srv_3"],
+    epoch: 1,
+  });
+  leader.watch.push("superseded", cluster.id, {});
   assert.equal(await watchClusterOnce(cluster.id), "reset");
-  assert.equal((await stored(cluster.id)).seq, 0);
+  assert.equal((await stored(cluster.id)).seq, 2);
+  assert.deepEqual(await placedRow("prj_web"), {
+    member: "srv_2",
+    epoch: 1,
+    app: "srv_2",
+  });
+  assert.ok(rosterCalls.length > 0, "the leader is told the roster");
+});
+
+test("a watch on the leader Deplo left applies nothing more, so the new leader's place holds (c43)", async () => {
+  const cluster = await eu();
+  await inCluster(cluster.id, "prj_web", "srv_2");
+  await placedAt("prj_web", "srv_2", 1);
+  leader.watch.push("member_state", cluster.id, {
+    member: "srv_2",
+    state: "ok",
+  });
+  const done = watchClusterOnce(cluster.id);
+  for (let i = 0; i < 200 && rosterCalls.length === 0; i++)
+    await new Promise((r) => setTimeout(r, 10));
+  assert.equal((await stored(cluster.id)).seq, 1);
+  // Deplo hands the cluster to srv_2 and watches its buffer from its newest event.
+  const { epoch } = await stored(cluster.id);
+  await db
+    .update(clustersTable)
+    .set({ leaderServerId: "srv_2", leaderEpoch: epoch + 1, eventSeq: 0 })
+    .where(eq(clustersTable.id, cluster.id));
+  // What the leader it left still says.
+  leader.watch.push("failed_over", cluster.id, {
+    kind: "app",
+    workloadId: "prj_web",
+    from: "srv_2",
+    to: "srv_3",
+  });
+  leader.watch.push("superseded", cluster.id, {});
+  await Promise.race([done, new Promise((r) => setTimeout(r, 2000))]);
+  leader.watch.drop();
+  assert.equal(await done, "moved");
+  assert.deepEqual(await stored(cluster.id), { seq: 0, epoch: epoch + 1 });
+  assert.equal((await placedRow("prj_web")).app, "srv_2");
+  const said = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(!said.some((m) => /stepped down/.test(m)), said.join("\n"));
+});
+
+test("a placement decided at an older epoch never takes Deplo's table back (c43)", async () => {
+  const cluster = await eu();
+  await inCluster(cluster.id, "prj_web", "srv_3");
+  await placedAt("prj_web", "srv_3", 5);
+  await db
+    .update(clustersTable)
+    .set({ leaderEpoch: 5 })
+    .where(eq(clustersTable.id, cluster.id));
+  const place = (seq: number, epoch: number) =>
+    applyLeaderEvent(cluster.id, {
+      seq,
+      type: "placement",
+      cluster: cluster.id,
+      data: { kind: "app", workloadId: "prj_web", members: ["srv_2"], epoch },
+    });
+  assert.equal(await place(1, 4), "applied");
+  assert.deepEqual(await placedRow("prj_web"), {
+    member: "srv_3",
+    epoch: 5,
+    app: "srv_3",
+  });
+  assert.equal(await place(2, 5), "applied");
+  assert.deepEqual(await placedRow("prj_web"), {
+    member: "srv_2",
+    epoch: 5,
+    app: "srv_2",
+  });
 });
 
 test("nothing is applied, and the sequence does not move, while a Deplo move freezes this instance", async () => {
