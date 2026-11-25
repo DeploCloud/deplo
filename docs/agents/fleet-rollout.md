@@ -117,6 +117,8 @@ server links (its pinned image, ECDSA keys since canary.91) is applied right aft
 comes back from its own update, on the same server. On eu-2 (one core, the leader's, running fise and
 memos) that pair delayed a lease renewal 5.3 s and the agent fenced both Apps (fise down 100 s, c38).
 A release that changes the proxy should not also move the agent pin, or it pays that once per server.
+Since agent canary.54 a proxy recreated on the leader's server, with its agent restarted at once and
+visitors arriving, costs no renewal (c39); its Apps are still unreachable there for a few seconds.
 
 ## 4. Order: canary → the rest → the Deplo host LAST
 
