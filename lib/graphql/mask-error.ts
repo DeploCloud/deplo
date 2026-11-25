@@ -34,6 +34,8 @@ export function safeMessage(error: unknown): string {
 }
 
 export function maskError(error: unknown): GraphQLError {
+  // One raised on purpose keeps its extensions (a 403's status); its message was always shown as it is.
+  if (error instanceof GraphQLError && !error.originalError) return error;
   const cause = error instanceof GraphQLError ? error.originalError : error;
   if (cause instanceof TeamUnavailableError)
     return new GraphQLError(cause.message, {
