@@ -82,7 +82,13 @@ export async function takeTurn(
     await sleep(turnWait.pollMs, opts.signal);
   }
   if (opts.note) state.notes.delete(opts.note);
+  return holdTurn(ids, what);
+}
+
+/** Holds the servers' turn for `what` at once, whatever they copy now: for a copy whose App is down until it runs. */
+export function holdTurn(serverIds: string[], what: string): () => void {
   const turn: Turn = { what };
+  const ids = [...new Set(serverIds.filter(Boolean))];
   for (const id of ids) state.held.set(id, turn);
   return () => {
     for (const id of ids)

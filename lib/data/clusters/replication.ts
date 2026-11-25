@@ -30,6 +30,7 @@ import { writableBytes } from "./facts";
 import { inLine, storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
 import {
+  BEHIND_AFTER_MS,
   REPLICA_ID,
   promotable,
   replicaRows,
@@ -235,13 +236,18 @@ export async function queuedCopies(
     const b = heldBy(m.serverId);
     if (b) busy.set(m.serverId, b);
   }
-  // Under way: a copy a member holds that is not whole yet keeps both ends busy.
+  // Under way: a copy a member holds that is not whole yet, or is behind (catching up on what its App wrote since:
+  // c38, 300 MB written after lab-pb's copy first landed), keeps both ends busy.
+  const now = Date.now();
   for (const [serverId, reports] of held)
     for (const r of reports) {
       const a = app.get(r.appId);
       if (!a?.serverId || a.serverId === serverId || r.role === "sending")
         continue;
-      if (!r.synced) take([serverId, a.serverId], `a copy of ${a.name}`);
+      const behind =
+        !r.appliedAt || now - Date.parse(r.appliedAt) >= BEHIND_AFTER_MS;
+      if (!r.synced || behind)
+        take([serverId, a.serverId], `a copy of ${a.name}`);
     }
   for (const e of table.entries) {
     const a = app.get(e.appId);

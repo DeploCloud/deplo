@@ -28,6 +28,11 @@ import { removeClusterMember } from "./clusters/dissolve";
 import { VOLUME_COPY_MEMBER_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { runEmptyingPass } from "./clusters/empty";
 import {
+  __forgetTurns,
+  setReplicaTurns,
+  turnWait,
+} from "./clusters/copy-turns";
+import {
   activity,
   appRow,
   asAdmin,
@@ -425,4 +430,22 @@ test("a move whose copy breaks when a link drops runs the App where it was, then
   assert.deepEqual(disks.get("srv_3")!.volumes.get(VOL), OLD);
   moveRetry.waitMs = 5_000;
   __setRunnerForTest(async () => {});
+});
+
+// c38: two moves waited in the queue while the lease had already stopped their Apps on the old server.
+test("a move never waits its turn: its App is down until it runs, so it starts at once", async () => {
+  setReplicaTurns(
+    new Map([
+      ["srv_2", "a copy of shop"],
+      ["srv_3", "a copy of shop"],
+    ]),
+  );
+  turnWait.pollMs = 60_000;
+  try {
+    const { to } = await moveBetweenMembers(false);
+    assert.ok(to.calls.includes(`member-import:${VOL}`));
+  } finally {
+    turnWait.pollMs = 5_000;
+    __forgetTurns();
+  }
 });
