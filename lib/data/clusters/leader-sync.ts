@@ -414,17 +414,18 @@ export async function placeAtLeaderFirst(
   member: string,
   opts: { within?: number; every?: number } = {},
 ): Promise<boolean> {
+  // Decided at the epoch led now: a move outlives a hand-over, and an older epoch moves nothing on the leader.
+  const now = (await getClusterById(cluster.id)) ?? cluster;
   await recordPlacement({
     clusterId: cluster.id,
     kind,
     workloadId: id,
     members: [member],
-    epoch: cluster.leaderEpoch,
+    epoch: now.leaderEpoch,
   });
   const end = Date.now() + (opts.within ?? 15_000);
   let why = "it did not show the new placement in time";
   try {
-    const now = (await getClusterById(cluster.id)) ?? cluster;
     await pushLeaderRoster(now);
     for (;;) {
       const view = (await readLeaderSnapshot(now))?.clusters[cluster.id];

@@ -10,12 +10,13 @@ import { captureFetch } from "../notify/fetch-capture-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   clusterImageCopies,
+  clusters as clustersTable,
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
 import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { getClusterById } from "./clusters/roster";
 import { askLeaderToPlace, waitingForRoomNote } from "./clusters/placement";
-import { pushLeaderRoster } from "./clusters/leader-sync";
+import { placeAtLeaderFirst, pushLeaderRoster } from "./clusters/leader-sync";
 import { reconcileCluster } from "./clusters/watch";
 import {
   clearContainerHistory,
@@ -207,6 +208,24 @@ test("the roster names the epoch each placement was decided at, so a leader neve
     ]),
     [["prj_web", 114]],
   );
+});
+
+test("a move placed at the leader first is dated at the epoch led now, not the one the move began at", async () => {
+  const cluster = await eu();
+  await web(cluster.id);
+  // The leader changed hands while the move copied its data.
+  await lab.db
+    .update(clustersTable)
+    .set({ leaderEpoch: 7 })
+    .where(eq(clustersTable.id, cluster.id));
+
+  await placeAtLeaderFirst(cluster, "app", "prj_web", "srv_3", { within: 0 });
+
+  const [row] = await lab.db
+    .select()
+    .from(workloadPlacements)
+    .where(eq(workloadPlacements.workloadId, "prj_web"));
+  assert.deepEqual([row.memberServerId, row.epoch], ["srv_3", 7]);
 });
 
 test("after a reconnect the leader's own moves are read back before the roster goes out, so a stale mirror never undoes them", async () => {
