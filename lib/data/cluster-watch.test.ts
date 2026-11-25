@@ -563,6 +563,7 @@ test("after the replay the leader is told the roster and its answer corrects wha
       member: "srv_2",
       slug: "prj_web",
       singleWriter: false,
+      epoch: 1,
     },
   ]);
   assert.deepEqual(await states(cluster.id), {
