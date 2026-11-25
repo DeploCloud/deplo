@@ -13,12 +13,16 @@ import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import {
   BACKUP_CAPABILITY,
   BACKUP_STORE_CAPABILITY,
+  BACKUP_STORE_FETCH_CAPABILITY,
   BACKUP_STORE_MEMBER_CAPABILITY,
   BACKUP_STORE_SEALED_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import type { BackupDestination } from "../types/backup";
 import { AgentOfflineError } from "../infra/agent-client/errors";
-import { backupToDestination } from "./backup-transport";
+import {
+  backupToDestination,
+  restoreFromDestination,
+} from "./backup-transport";
 
 let db: TestDb;
 before(async () => {
@@ -433,6 +437,110 @@ test("a backup Deplo relays only when no path joins the two members, and it says
     toDst,
     { serverId: "srv_src", kind: "app", project: { slug: "lab-web" } as never },
     "lab-web/2.tar.gz",
+  );
+  assert.equal(out.ok, true, out.error);
+  assert.deepEqual(calls, ["member", "relay"]);
+  assert.equal(out.path, "relay");
+});
+
+const fetchHello = async () => ({
+  capabilities: [
+    BACKUP_CAPABILITY,
+    BACKUP_STORE_CAPABILITY,
+    BACKUP_STORE_FETCH_CAPABILITY,
+  ],
+});
+
+/** The two members, unless a test before seeded them. */
+async function seededMembers() {
+  const seeded = await db
+    .select()
+    .from(clusters)
+    .where(eq(clusters.id, "clu_eu"));
+  if (seeded.length === 0) await members();
+}
+
+// c38: lab-r's backup kept on eu-1 was restored onto eu-3 through Deplo: the file read from eu-1 and streamed to eu-3.
+test("a restore from a backup another member keeps reads it from that member, never through Deplo", async () => {
+  await seededMembers();
+  const expected: unknown[] = [];
+  let relayed = false;
+  let asked: { memberFingerprint?: string; store?: unknown } = {};
+  const workload = {
+    hello: fetchHello,
+    close() {},
+    restore: async function* (req: typeof asked) {
+      asked = req;
+      yield { result: { ok: true, error: "", path: "direct" } };
+    },
+    restoreFrom: async function* () {
+      relayed = true;
+      yield { result: { ok: true, error: "" } };
+    },
+  } as unknown as AgentConnection;
+  const holder = {
+    hello: fetchHello,
+    close() {},
+    expectClusterFetch: async (store: unknown, reader: string) =>
+      void expected.push({ store, reader }),
+    readStoreFile: () => {
+      relayed = true;
+      return (async function* () {})();
+    },
+  } as unknown as AgentConnection;
+  __setAgentConnectorForTest(async (id) =>
+    id === "srv_src" ? workload : id === "srv_dst" ? holder : null,
+  );
+  const out = await restoreFromDestination(
+    { ...toDst, ageIdentity: "AGE-SECRET-KEY-1X" },
+    { serverId: "srv_src", kind: "app", project: { slug: "lab-r" } as never },
+    "lab-r/1.tar.gz.age",
+    "ab12",
+  );
+  assert.equal(out.ok, true, out.error);
+  assert.equal(out.path, "direct");
+  assert.equal(relayed, false, "Deplo carried no byte of it");
+  assert.equal(asked.memberFingerprint, "b".repeat(64));
+  assert.deepEqual(expected, [
+    {
+      store: { root: "/backups", objectKey: "lab-r/1.tar.gz.age" },
+      reader: "a".repeat(64),
+    },
+  ]);
+});
+
+test("a restore Deplo relays only when no path joins the two members, and it says so", async () => {
+  await seededMembers();
+  const calls: string[] = [];
+  const workload = {
+    hello: fetchHello,
+    close() {},
+    restore: async function* () {
+      calls.push("member");
+      yield { result: { ok: false, error: "no path", path: "none" } };
+    },
+    restoreFrom: async function* (_h: unknown, chunks: AsyncIterable<Buffer>) {
+      calls.push("relay");
+      for await (const _ of chunks);
+      yield { result: { ok: true, error: "" } };
+    },
+  } as unknown as AgentConnection;
+  const holder = {
+    hello: fetchHello,
+    close() {},
+    expectClusterFetch: async () => {},
+    readStoreFile: () =>
+      (async function* () {
+        yield Buffer.from("age-encryption.org/v1");
+      })(),
+  } as unknown as AgentConnection;
+  __setAgentConnectorForTest(async (id) =>
+    id === "srv_src" ? workload : id === "srv_dst" ? holder : null,
+  );
+  const out = await restoreFromDestination(
+    { ...toDst, ageIdentity: "AGE-SECRET-KEY-1X" },
+    { serverId: "srv_src", kind: "app", project: { slug: "lab-r" } as never },
+    "lab-r/2.tar.gz.age",
   );
   assert.equal(out.ok, true, out.error);
   assert.deepEqual(calls, ["member", "relay"]);

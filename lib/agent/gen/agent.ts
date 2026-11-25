@@ -1985,6 +1985,11 @@ export interface RestoreRequest {
    * Files, instead of reading an artifact. Needs `cluster.replicas`; s3 and store are ignored.
    */
   fromReplica: boolean;
+  /**
+   * With store: the store is on that member, told to expect this server (ExpectClusterFetch), and
+   * the artifact is read from it over the cluster's private network. Capability "backup-store.fetch".
+   */
+  memberFingerprint: string;
 }
 
 export interface RestoreEvent {
@@ -1995,6 +2000,11 @@ export interface RestoreEvent {
 export interface RestoreResult {
   ok: boolean;
   error: string;
+  /**
+   * Under member_fingerprint: "direct", "relay", or "none" when that member answered nothing before
+   * a byte was read; empty otherwise.
+   */
+  path: string;
 }
 
 export interface S3CheckRequest {
@@ -3251,6 +3261,18 @@ export interface ExpectClusterBackupRequest {
 export interface ExpectClusterBackupResponse {
 }
 
+export interface ExpectClusterFetchRequest {
+  /** Where this member keeps it: its store's root and the artifact's key. */
+  store?:
+    | StoreTarget
+    | undefined;
+  /** The reading member's certificate fingerprint (sha256 hex of its DER). */
+  readerFingerprint: string;
+}
+
+export interface ExpectClusterFetchResponse {
+}
+
 export interface ExpectClusterVolumeRequest {
   volumeName: string;
   /** Empty the volume before the first byte lands, as ImportVolume's wipe_first does. */
@@ -3627,6 +3649,11 @@ export interface ClusterReplicaEntry {
   volumeNames: string[];
   /** Whether its Files (<stack-dir>/files/<slug>) are part of it. */
   includeFiles: boolean;
+  /**
+   * Why this member keeps its copy as it is and receives nothing now: it waits its turn (Deplo's
+   * queue). Its status says this as its error, and the copy stays whole on disk. Empty receives.
+   */
+  hold: string;
 }
 
 export interface SetClusterReplicasResponse {
@@ -12776,6 +12803,7 @@ function createBaseRestoreRequest(): RestoreRequest {
     expectedSha256: "",
     logPrefix: "",
     fromReplica: false,
+    memberFingerprint: "",
   };
 }
 
@@ -12807,6 +12835,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     }
     if (message.fromReplica !== false) {
       writer.uint32(72).bool(message.fromReplica);
+    }
+    if (message.memberFingerprint !== "") {
+      writer.uint32(82).string(message.memberFingerprint);
     }
     return writer;
   },
@@ -12896,6 +12927,14 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
             message.fromReplica = reader.bool();
             continue;
           }
+          case 10: {
+            if (tag !== 82) {
+              break;
+            }
+
+            message.memberFingerprint = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -12935,6 +12974,11 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
         : isSet(object.from_replica)
         ? globalThis.Boolean(object.from_replica)
         : false,
+      memberFingerprint: isSet(object.memberFingerprint)
+        ? globalThis.String(object.memberFingerprint)
+        : isSet(object.member_fingerprint)
+        ? globalThis.String(object.member_fingerprint)
+        : "",
     };
   },
 
@@ -12967,6 +13011,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     if (message.fromReplica !== false) {
       obj.fromReplica = message.fromReplica;
     }
+    if (message.memberFingerprint !== "") {
+      obj.memberFingerprint = message.memberFingerprint;
+    }
     return obj;
   },
 
@@ -12990,6 +13037,7 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     message.expectedSha256 = object.expectedSha256 ?? "";
     message.logPrefix = object.logPrefix ?? "";
     message.fromReplica = object.fromReplica ?? false;
+    message.memberFingerprint = object.memberFingerprint ?? "";
     return message;
   },
 };
@@ -13082,7 +13130,7 @@ export const RestoreEvent: MessageFns<RestoreEvent> = {
 };
 
 function createBaseRestoreResult(): RestoreResult {
-  return { ok: false, error: "" };
+  return { ok: false, error: "", path: "" };
 }
 
 export const RestoreResult: MessageFns<RestoreResult> = {
@@ -13092,6 +13140,9 @@ export const RestoreResult: MessageFns<RestoreResult> = {
     }
     if (message.error !== "") {
       writer.uint32(18).string(message.error);
+    }
+    if (message.path !== "") {
+      writer.uint32(26).string(message.path);
     }
     return writer;
   },
@@ -13125,6 +13176,14 @@ export const RestoreResult: MessageFns<RestoreResult> = {
             message.error = reader.string();
             continue;
           }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.path = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -13141,6 +13200,7 @@ export const RestoreResult: MessageFns<RestoreResult> = {
     return {
       ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
       error: isSet(object.error) ? globalThis.String(object.error) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
     };
   },
 
@@ -13152,6 +13212,9 @@ export const RestoreResult: MessageFns<RestoreResult> = {
     if (message.error !== "") {
       obj.error = message.error;
     }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
     return obj;
   },
 
@@ -13162,6 +13225,7 @@ export const RestoreResult: MessageFns<RestoreResult> = {
     const message = createBaseRestoreResult();
     message.ok = object.ok ?? false;
     message.error = object.error ?? "";
+    message.path = object.path ?? "";
     return message;
   },
 };
@@ -24909,6 +24973,149 @@ export const ExpectClusterBackupResponse: MessageFns<ExpectClusterBackupResponse
   },
 };
 
+function createBaseExpectClusterFetchRequest(): ExpectClusterFetchRequest {
+  return { store: undefined, readerFingerprint: "" };
+}
+
+export const ExpectClusterFetchRequest: MessageFns<ExpectClusterFetchRequest> = {
+  encode(message: ExpectClusterFetchRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.store !== undefined) {
+      StoreTarget.encode(message.store, writer.uint32(10).fork()).join();
+    }
+    if (message.readerFingerprint !== "") {
+      writer.uint32(18).string(message.readerFingerprint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterFetchRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterFetchRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.store = StoreTarget.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.readerFingerprint = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ExpectClusterFetchRequest {
+    return {
+      store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
+      readerFingerprint: isSet(object.readerFingerprint)
+        ? globalThis.String(object.readerFingerprint)
+        : isSet(object.reader_fingerprint)
+        ? globalThis.String(object.reader_fingerprint)
+        : "",
+    };
+  },
+
+  toJSON(message: ExpectClusterFetchRequest): unknown {
+    const obj: any = {};
+    if (message.store !== undefined) {
+      obj.store = StoreTarget.toJSON(message.store);
+    }
+    if (message.readerFingerprint !== "") {
+      obj.readerFingerprint = message.readerFingerprint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterFetchRequest>, I>>(base?: I): ExpectClusterFetchRequest {
+    return ExpectClusterFetchRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterFetchRequest>, I>>(object: I): ExpectClusterFetchRequest {
+    const message = createBaseExpectClusterFetchRequest();
+    message.store = (object.store !== undefined && object.store !== null)
+      ? StoreTarget.fromPartial(object.store)
+      : undefined;
+    message.readerFingerprint = object.readerFingerprint ?? "";
+    return message;
+  },
+};
+
+function createBaseExpectClusterFetchResponse(): ExpectClusterFetchResponse {
+  return {};
+}
+
+export const ExpectClusterFetchResponse: MessageFns<ExpectClusterFetchResponse> = {
+  encode(_: ExpectClusterFetchResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExpectClusterFetchResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseExpectClusterFetchResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ExpectClusterFetchResponse {
+    return {};
+  },
+
+  toJSON(_: ExpectClusterFetchResponse): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExpectClusterFetchResponse>, I>>(base?: I): ExpectClusterFetchResponse {
+    return ExpectClusterFetchResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExpectClusterFetchResponse>, I>>(_: I): ExpectClusterFetchResponse {
+    const message = createBaseExpectClusterFetchResponse();
+    return message;
+  },
+};
+
 function createBaseExpectClusterVolumeRequest(): ExpectClusterVolumeRequest {
   return { volumeName: "", wipeFirst: false, sourceFingerprint: "" };
 }
@@ -29212,7 +29419,7 @@ export const SetClusterReplicasRequest: MessageFns<SetClusterReplicasRequest> = 
 };
 
 function createBaseClusterReplicaEntry(): ClusterReplicaEntry {
-  return { appId: "", slug: "", volumeNames: [], includeFiles: false };
+  return { appId: "", slug: "", volumeNames: [], includeFiles: false, hold: "" };
 }
 
 export const ClusterReplicaEntry: MessageFns<ClusterReplicaEntry> = {
@@ -29228,6 +29435,9 @@ export const ClusterReplicaEntry: MessageFns<ClusterReplicaEntry> = {
     }
     if (message.includeFiles !== false) {
       writer.uint32(32).bool(message.includeFiles);
+    }
+    if (message.hold !== "") {
+      writer.uint32(42).string(message.hold);
     }
     return writer;
   },
@@ -29277,6 +29487,14 @@ export const ClusterReplicaEntry: MessageFns<ClusterReplicaEntry> = {
             message.includeFiles = reader.bool();
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.hold = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -29307,6 +29525,7 @@ export const ClusterReplicaEntry: MessageFns<ClusterReplicaEntry> = {
         : isSet(object.include_files)
         ? globalThis.Boolean(object.include_files)
         : false,
+      hold: isSet(object.hold) ? globalThis.String(object.hold) : "",
     };
   },
 
@@ -29324,6 +29543,9 @@ export const ClusterReplicaEntry: MessageFns<ClusterReplicaEntry> = {
     if (message.includeFiles !== false) {
       obj.includeFiles = message.includeFiles;
     }
+    if (message.hold !== "") {
+      obj.hold = message.hold;
+    }
     return obj;
   },
 
@@ -29336,6 +29558,7 @@ export const ClusterReplicaEntry: MessageFns<ClusterReplicaEntry> = {
     message.slug = object.slug ?? "";
     message.volumeNames = object.volumeNames?.map((e) => e) || [];
     message.includeFiles = object.includeFiles ?? false;
+    message.hold = object.hold ?? "";
     return message;
   },
 };
@@ -30616,6 +30839,21 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): ExpectClusterBackupResponse => ExpectClusterBackupResponse.decode(value),
   },
   /**
+   * Tell this member that one member reads one backup from its store, once, within the copy's time
+   * limit (capability "backup-store.fetch"). A read that matches no such entry gets no byte.
+   */
+  expectClusterFetch: {
+    path: "/deplo.agent.v1.Agent/ExpectClusterFetch" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ExpectClusterFetchRequest): Buffer =>
+      Buffer.from(ExpectClusterFetchRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExpectClusterFetchRequest => ExpectClusterFetchRequest.decode(value),
+    responseSerialize: (value: ExpectClusterFetchResponse): Buffer =>
+      Buffer.from(ExpectClusterFetchResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ExpectClusterFetchResponse => ExpectClusterFetchResponse.decode(value),
+  },
+  /**
    * Tell this member to take one volume from one member, once, within the copy's time limit
    * (capability "volume-copy.member"). A volume stream that matches no such entry is refused.
    */
@@ -31553,6 +31791,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   expectClusterBackup: handleUnaryCall<ExpectClusterBackupRequest, ExpectClusterBackupResponse>;
   /**
+   * Tell this member that one member reads one backup from its store, once, within the copy's time
+   * limit (capability "backup-store.fetch"). A read that matches no such entry gets no byte.
+   */
+  expectClusterFetch: handleUnaryCall<ExpectClusterFetchRequest, ExpectClusterFetchResponse>;
+  /**
    * Tell this member to take one volume from one member, once, within the copy's time limit
    * (capability "volume-copy.member"). A volume stream that matches no such entry is refused.
    */
@@ -32428,6 +32671,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ExpectClusterBackupResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Tell this member that one member reads one backup from its store, once, within the copy's time
+   * limit (capability "backup-store.fetch"). A read that matches no such entry gets no byte.
+   */
+  expectClusterFetch(
+    request: ExpectClusterFetchRequest,
+    callback: (error: ServiceError | null, response: ExpectClusterFetchResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterFetch(
+    request: ExpectClusterFetchRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ExpectClusterFetchResponse) => void,
+  ): ClientUnaryCall;
+  expectClusterFetch(
+    request: ExpectClusterFetchRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ExpectClusterFetchResponse) => void,
   ): ClientUnaryCall;
   /**
    * Tell this member to take one volume from one member, once, within the copy's time limit
