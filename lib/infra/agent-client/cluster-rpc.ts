@@ -107,7 +107,7 @@ export function clusterRpc(
     async holdFailoverImages(images) {
       const r = await unary(
         client.holdFailoverImages.bind(client),
-        { images },
+        { images: images.map((i) => ({ ...i, held: false, error: "" })) },
         HELLO_TIMEOUT_MS,
       );
       return r.images.map((i) => ({
