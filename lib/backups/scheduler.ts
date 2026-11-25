@@ -10,6 +10,7 @@ import { backups as backupsTable } from "../db/schema/control-plane/backups";
 import { assembleBackup } from "../data/backup-rows";
 import type { Backup } from "../types/backup";
 import { sweepOrphanedBackupArtifacts } from "../data/backups/orphan-sweep";
+import { failEmptyAppBackups } from "../data/backups/empty-archive";
 import { runScheduledBackup } from "../data/backups/run-now";
 import { cronMatchesInZone, dedupeKeyFor } from "../crons/cron-tz";
 import {
@@ -122,6 +123,11 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
           `[backups] orphan sweep failed: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
+      await failEmptyAppBackups().catch((e) =>
+        console.warn(
+          `[backups] empty archive check failed: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
     }
   } finally {
     state.lastTickAt = now;

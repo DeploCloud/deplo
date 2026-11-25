@@ -45,6 +45,12 @@ import { roomForBackup } from "./room";
 import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import { outOfReachFailure } from "../clusters/reach";
 import { takeTurn } from "../clusters/copy-turns";
+import { noLiveCopy, saySkippedOnce } from "./live-copy";
+import {
+  archiveHoldsData,
+  emptyArchiveMessage,
+  READ_BACK_MAX_BYTES,
+} from "./empty-archive";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
 // On globalThis: a scheduled run starts in the scheduler's bundle and is canceled from a request's (eu, 24 Nov
@@ -103,6 +109,15 @@ export async function executeBackup(
   const targetKey =
     (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "";
   if (targetKey) await assertNotAlreadyBackingUp(teamId, targetKey);
+  // Only the copy that runs is backed up: a stopped or stale one is skipped, never kept (c43: 398 B of memos).
+  const skipped =
+    opts.kind === "app" && opts.appId
+      ? await noLiveCopy(teamId, opts.appId)
+      : null;
+  if (skipped) {
+    await saySkippedOnce(teamId, opts.appId!, actor, skipped);
+    throw new Error(skipped);
+  }
   const run: BackupRun = {
     id: runId,
     teamId,
@@ -215,6 +230,23 @@ export async function executeBackup(
       }
     } finally {
       release();
+    }
+
+    if (
+      !failure &&
+      result?.ok &&
+      target.project?.volumeNames.length &&
+      result.sizeBytes <= READ_BACK_MAX_BYTES &&
+      !(await archiveHoldsData(
+        creds,
+        destinationServerId(creds.destination, target.serverId),
+        result.objectKey,
+        result.sha256,
+      ).catch(() => true))
+    ) {
+      failure = emptyArchiveMessage(label);
+      await removeLanded(creds, target.serverId, result.objectKey, runId);
+      result = null;
     }
 
     if (!failure) {
