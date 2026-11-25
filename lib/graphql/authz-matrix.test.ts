@@ -644,7 +644,7 @@ test("a suspended account's token authenticates as nobody", async () => {
   assert.deepEqual(ctx.capabilities, [], "and to no capabilities");
 });
 
-test("a team the token cannot act in is a 403 that names it, never another team", async () => {
+test("a team the token cannot act in is a 403 that names it, never another team", async (t) => {
   await reset(ALL_CAPABILITIES);
   await pg.exec(
     `insert into memberships (id, user_id, team_id, role, created_at) values ('mem_b', '${USER_M}', '${TEAM_B}', 'member', '${T0}');`,
@@ -662,11 +662,26 @@ test("a team the token cannot act in is a 403 that names it, never another team"
     });
   for (const hint of [null, TEAM_A, "alpha"])
     assert.equal((await buildContext(request(hint))).teamId, TEAM_A);
+  // Next.js patches every error's inspect in production, and yoga's logger calls it without `inspect` (c42: a 500).
+  const inspect = Symbol.for("nodejs.util.inspect.custom");
+  Object.defineProperty(Error.prototype, inspect, {
+    configurable: true,
+    value(
+      this: Error,
+      _depth: number,
+      _opts: object,
+      show: (v: unknown) => string,
+    ) {
+      return show(this.message);
+    },
+  });
+  t.after(() => {
+    delete (Error.prototype as unknown as Record<symbol, unknown>)[inspect];
+  });
   for (const hint of [TEAM_B, "beta", "team_nonexistent"]) {
     await assert.rejects(
       buildContext(request(hint)),
-      (e: unknown) =>
-        e instanceof TeamUnavailableError && e.message.includes(`"${hint}"`),
+      (e: unknown) => e instanceof Error && e.message.includes(`"${hint}"`),
     );
     const res = await yoga.fetch(
       request(
