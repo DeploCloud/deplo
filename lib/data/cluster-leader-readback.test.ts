@@ -8,7 +8,10 @@ import { seedApp } from "./app-graph-test-helpers";
 import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import { clusterImageCopies } from "../db/schema/control-plane/clusters";
+import {
+  clusterImageCopies,
+  workloadPlacements,
+} from "../db/schema/control-plane/clusters";
 import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { getClusterById } from "./clusters/roster";
 import { askLeaderToPlace, waitingForRoomNote } from "./clusters/placement";
@@ -183,6 +186,26 @@ test("a member that does not answer is not called too old", async () => {
   assert.deepEqual(
     (await messages()).filter((x) => /too old/.test(x.message)),
     [],
+  );
+});
+
+test("the roster names the epoch each placement was decided at, so a leader never takes an older one over its own", async () => {
+  const cluster = await eu();
+  await web(cluster.id);
+  await lab.db
+    .update(workloadPlacements)
+    .set({ epoch: 114 })
+    .where(eq(workloadPlacements.workloadId, "prj_web"));
+
+  await pushLeaderRoster((await getClusterById(cluster.id))!);
+
+  const roster = lab.calls.filter((c) => c.method === "leader.roster").at(-1)!;
+  assert.deepEqual(
+    (roster.body.placement as { id: string; epoch?: number }[]).map((e) => [
+      e.id,
+      e.epoch,
+    ]),
+    [["prj_web", 114]],
   );
 });
 

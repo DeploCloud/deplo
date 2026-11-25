@@ -75,6 +75,50 @@ test("moving the leader installs it on the picked server, which leads from the n
   );
 });
 
+test("the leader it leaves is told before the new one gets its roster, so no member waits past a second for a renewal", async () => {
+  const cluster = await eu();
+  const order: string[] = [];
+  for (const id of [SERVER_1, "srv_4"]) {
+    const answer = hosts[id].leader;
+    hosts[id].leader = (method, payload) => {
+      if (method === "leader.beat" || method === "leader.roster")
+        order.push(`${id} ${method}`);
+      return answer(method, payload);
+    };
+  }
+
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+
+  // c43: the roster went first and the old leader renewed on until a member refused it (1.49 s without a renewal).
+  assert.deepEqual(order.slice(0, 2), [
+    `${SERVER_1} leader.beat`,
+    "srv_4 leader.roster",
+  ]);
+});
+
+test("a leader that does not answer that it was replaced holds the new one's roster up two seconds at most", async () => {
+  const cluster = await eu();
+  const order: string[] = [];
+  hosts[SERVER_1].extra = {
+    clusterCall: async (method, payload) => {
+      if (method === "leader.beat") {
+        await new Promise((r) => setTimeout(r, 3_000));
+        order.push("beat answered");
+      }
+      return hosts[SERVER_1].leader(method, payload);
+    },
+  };
+  const answer = hosts.srv_4.leader;
+  hosts.srv_4.leader = (method, payload) => {
+    if (method === "leader.roster") order.push("roster");
+    return answer(method, payload);
+  };
+
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+
+  assert.deepEqual(order.slice(0, 2), ["roster", "beat answered"]);
+});
+
 test("only an instance admin moves a leader, whichever team asks", async () => {
   const cluster = await eu();
   await assert.rejects(
