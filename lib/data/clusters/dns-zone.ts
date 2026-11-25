@@ -37,6 +37,7 @@ import { recordClusterActivity } from "./cluster-activity";
 import { refreshAcmeCnames } from "./zone-cnames";
 import {
   applyCertModes,
+  lastPassModes,
   zoneCertificateViews,
   zoneCertPass,
   type ZoneCertDomainRow,
@@ -178,6 +179,26 @@ async function zoneDomains(
 }
 
 type ZoneDomain = ZoneCertDomainRow & { target: string };
+
+/**
+ * Marks the App's domains checked the way the zone's last pass checks them, before their first route: the pass then
+ * finds nothing to change, so a domain just added recreates its App once (c40: a second time 13 s later, one 502).
+ */
+export async function settleCertModes(
+  clusterId: string,
+  appId: string,
+): Promise<void> {
+  const cluster = await getClusterById(clusterId);
+  if (!cluster) return;
+  const rows = [
+    ...(await zoneDomains(clusterId, await zonesOf(clusterId))).values(),
+  ]
+    .flat()
+    .filter((d) => d.appId === appId);
+  const modes = lastPassModes(clusterId, cluster.dnsWildcard, rows);
+  // Marked only: the caller routes the App next.
+  if (modes) await applyCertModes(rows, modes, async () => {});
+}
 
 /** The zone that answers a domain: the deepest zone it is in, else the one its CNAME was pointed at. */
 export function nativeZoneOf<Z extends { id: string; name: string }>(

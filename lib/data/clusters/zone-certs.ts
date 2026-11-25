@@ -53,6 +53,13 @@ const g = globalThis as unknown as {
 const REPORTED = Symbol.for("deplo.cluster.zone-certs.reported");
 /** The zone certificate each member last said it holds, by `serverId zone`: its key goes only where it differs. */
 const reported = () => (g[REPORTED] ??= new Map()) as Map<string, string>;
+const CHECKS = Symbol.for("deplo.cluster.zone-certs.checks");
+/** How each cluster's servers could check certificates at its zone's last pass that heard one of them. */
+const lastChecks = () =>
+  (g[CHECKS] ??= new Map()) as Map<
+    string,
+    { eligible: boolean; shared: boolean }
+  >;
 
 function heldBy(serverId: string, key: string, sha256: string): void {
   if (sha256) reported().set(`${serverId} ${key}`, sha256);
@@ -61,6 +68,7 @@ function heldBy(serverId: string, key: string, sha256: string): void {
 /** Test seam: forget what the members said and what their proxies were seen to have. */
 export function __forgetZoneCerts(): void {
   reported().clear();
+  lastChecks().clear();
   __forgetZoneCertProxies();
 }
 
@@ -93,6 +101,44 @@ export type ZoneCertPass = {
   modes: Map<string, CertChallenge>;
 };
 
+const certDomainOf = (d: ZoneCertDomainRow): ZoneCertDomain => ({
+  id: d.domainId,
+  name: d.name,
+  zoneId: d.zoneId,
+  zone: d.zone,
+  inside: d.inside,
+  cnameSeen: d.acmeCnameSeenAt != null,
+  serverId: d.serverId,
+});
+
+/** How each domain is checked; without the servers' word (null) each keeps its way. Only Let's Encrypt's ever change. */
+function modesOf(
+  rows: ZoneCertDomainRow[],
+  opts: { wildcard: boolean; eligible: boolean; shared: boolean } | null,
+): Map<string, CertChallenge> {
+  const all = opts ? domainModes(rows.map(certDomainOf), opts) : null;
+  return new Map(
+    rows.map((d) => {
+      const m =
+        all?.get(d.domainId) ??
+        (d.certChallenge as CertChallenge | null) ??
+        "http";
+      const managed = (d.certProvider ?? "letsencrypt") === "letsencrypt";
+      return [d.domainId, managed ? m : "http"] as const;
+    }),
+  );
+}
+
+/** How the zone's last pass that heard a server would check these domains now; null before any pass did. */
+export function lastPassModes(
+  clusterId: string,
+  wildcard: boolean,
+  rows: ZoneCertDomainRow[],
+): Map<string, CertChallenge> | null {
+  const checks = lastChecks().get(clusterId);
+  return checks ? modesOf(rows, { wildcard, ...checks }) : null;
+}
+
 /** Decides modes, renewers, checks and what each member is told, for one pass of a cluster's zone. */
 export async function zoneCertPass(input: {
   clusterId: string;
@@ -106,34 +152,15 @@ export async function zoneCertPass(input: {
   const rows = await certRows(input.zones.map((z) => z.id));
   const eligible = clusterCanCheckOverDns(input.members);
   const shared = eligible && clusterCanShareCerts(input.members);
-  const domains: ZoneCertDomain[] = input.domains.map((d) => ({
-    id: d.domainId,
-    name: d.name,
-    zoneId: d.zoneId,
-    zone: d.zone,
-    inside: d.inside,
-    cnameSeen: d.acmeCnameSeenAt != null,
-    serverId: d.serverId,
-  }));
-  const managed = new Set(
-    input.domains
-      .filter((d) => (d.certProvider ?? "letsencrypt") === "letsencrypt")
-      .map((d) => d.domainId),
-  );
-  const all = domainModes(domains, {
-    wildcard: input.wildcard,
-    eligible,
-    shared,
-  });
+  const domains = input.domains.map(certDomainOf);
   // Hearing no server tells nothing of how they check: each name keeps its way, so no App is routed again.
-  const heardAny = input.members.some((m) => m.reachable);
-  const modes = new Map(
-    input.domains.map((d) => {
-      const m = heardAny
-        ? all.get(d.domainId)!
-        : ((d.certChallenge as CertChallenge | null) ?? "http");
-      return [d.domainId, managed.has(d.domainId) ? m : "http"] as const;
-    }),
+  const checks = input.members.some((m) => m.reachable)
+    ? { eligible, shared }
+    : null;
+  if (checks) lastChecks().set(input.clusterId, checks);
+  const modes = modesOf(
+    input.domains,
+    checks && { wildcard: input.wildcard, ...checks },
   );
   const zones: ZonePlanZone[] = [];
   for (const z of input.zones) {

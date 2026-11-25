@@ -32,7 +32,7 @@ import {
 } from "../cluster-dissolve-test-helpers";
 import { routableRoutes } from "../domains/routes";
 import { proxyRestartMessage } from "./answer-certs";
-import { clusterDnsView, syncClusterZone } from "./dns-zone";
+import { clusterDnsView, settleCertModes, syncClusterZone } from "./dns-zone";
 import { addClusterDnsZone, removeClusterDnsZone } from "./zone-settings";
 import { domainZoneTargets, setDomainDnsZone } from "./zone-domains";
 import { __setCnameLookupForTest } from "./zone-cnames";
@@ -583,6 +583,25 @@ test("a pass that heard no server keeps every name's check, and routes no App ag
   assert.equal(await modeOf("d1"), mode);
   assert.deepEqual(
     MEMBERS.map((id) => hosts[id].stack.slice(before[MEMBERS.indexOf(id)])),
+    MEMBERS.map(() => []),
+  );
+});
+
+// c40: a domain added to a zone was routed, then routed again by the zone's next pass, its App recreated twice.
+test("a domain added to a zone is checked as the last pass would, so that pass routes its App no more", async () => {
+  const { eu } = await zoneCluster(["d1", "shop.go.example.com"]);
+  // Before any pass heard a server, nothing is known: it keeps its way.
+  await settleCertModes(eu.id, "prj_web");
+  assert.equal(await modeOf("d1"), null);
+  await syncClusterZone(eu.id);
+  await domain(eu.id, "d2", "blog.go.example.com");
+  await settleCertModes(eu.id, "prj_web");
+  assert.equal(await modeOf("d2"), "zone");
+  const before = MEMBERS.map((id) => hosts[id].stack.length);
+  await syncClusterZone(eu.id);
+  assert.equal(await modeOf("d2"), "zone");
+  assert.deepEqual(
+    MEMBERS.map((id, i) => hosts[id].stack.slice(before[i])),
     MEMBERS.map(() => []),
   );
 });
