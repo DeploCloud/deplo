@@ -945,6 +945,11 @@ type BackupRun {
   "direct" when it went from the App's server straight to the server that keeps it, "relay" when it went through Deplo; null for a bucket or the App's own server.
   """
   path: String
+
+  """
+  While a running backup waits its turn: its place in line and what it waits for, like `2nd in line: eu-1 is busy with a copy of web`. Null once it copies.
+  """
+  queued: String
   sizeBytes: Float
   startedAt: String
   status: BackupRunStatus
