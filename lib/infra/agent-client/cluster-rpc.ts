@@ -24,6 +24,7 @@ export function clusterRpc(
   | "copyClusterImage"
   | "expectClusterImage"
   | "expectClusterBackup"
+  | "expectClusterFetch"
   | "expectClusterVolume"
   | "sendClusterVolume"
   | "setClusterForwarders"
@@ -113,6 +114,13 @@ export function clusterRpc(
       await unary(
         client.expectClusterBackup.bind(client),
         { store, sourceFingerprint },
+        HELLO_TIMEOUT_MS,
+      );
+    },
+    async expectClusterFetch(store, readerFingerprint) {
+      await unary(
+        client.expectClusterFetch.bind(client),
+        { store, readerFingerprint },
         HELLO_TIMEOUT_MS,
       );
     },
@@ -240,7 +248,10 @@ export function clusterRpc(
     async setClusterReplicas(table) {
       const r = await unary(
         client.setClusterReplicas.bind(client),
-        table,
+        {
+          ...table,
+          entries: table.entries.map((e) => ({ ...e, hold: e.hold ?? "" })),
+        },
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return { entries: r.entries };

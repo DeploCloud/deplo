@@ -4,6 +4,7 @@ import type { AgentConnection } from "../infra/agent-client/connection";
 import { mapBackupUnsupported } from "../infra/agent-client/errors";
 import { connectBackupAgent } from "../infra/agent-client/preflight";
 import {
+  BACKUP_STORE_FETCH_CAPABILITY,
   BACKUP_STORE_MEMBER_CAPABILITY,
   BACKUP_STORE_SEALED_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
@@ -455,7 +456,15 @@ export function restoreRequestFor(
     ageIdentity: creds.ageIdentity,
     expectedSha256,
     fromReplica: false,
+    memberFingerprint: "",
   };
+}
+
+export interface RestoreOutcome {
+  ok: boolean;
+  error: string;
+  /** How a backup kept on another server's disk reached it: "direct" (server to server) or "relay" (through Deplo). */
+  path?: "direct" | "relay";
 }
 
 export async function restoreFromDestination(
@@ -463,7 +472,7 @@ export async function restoreFromDestination(
   target: TransportTarget,
   objectKey: string,
   expectedSha256 = "",
-): Promise<{ ok: boolean; error: string }> {
+): Promise<RestoreOutcome> {
   const dest = creds.destination;
   const destServer = destinationServerId(dest, target.serverId);
 
@@ -483,6 +492,89 @@ export async function restoreFromDestination(
     }
   }
 
+  const direct = await memberRestore(
+    creds,
+    target,
+    objectKey,
+    expectedSha256,
+    destServer,
+  );
+  if (direct) return direct;
+  return {
+    ...(await relayRestore(
+      creds,
+      target,
+      objectKey,
+      expectedSha256,
+      destServer,
+    )),
+    path: "relay",
+  };
+}
+
+/**
+ * A restore on one cluster member from a backup another member keeps reads it from that member over the cluster's
+ * network (ADR-0043); null when it cannot, before anything was read, and Deplo relays it instead.
+ */
+async function memberRestore(
+  creds: DestinationWithSecrets,
+  target: TransportTarget,
+  objectKey: string,
+  expectedSha256: string,
+  destServer: string,
+): Promise<RestoreOutcome | null> {
+  const pair = isBaseBackupKey(objectKey)
+    ? null
+    : await memberPair(target.serverId, destServer);
+  if (!pair) return null;
+  const store = storeTargetFor(creds.destination, objectKey);
+  const holder = await connectBackupAgent(destServer, { store: true });
+  try {
+    if (
+      !(await holder.hello()).capabilities?.includes(
+        BACKUP_STORE_FETCH_CAPABILITY,
+      )
+    )
+      return null;
+    await holder.expectClusterFetch(store, pair.from);
+  } finally {
+    holder.close();
+  }
+  const workload = await connectBackupAgent(target.serverId, {
+    store: true,
+    redisAof: isRedis(target),
+  });
+  try {
+    if (
+      !(await workload.hello()).capabilities?.includes(
+        BACKUP_STORE_FETCH_CAPABILITY,
+      )
+    )
+      return null;
+    const req = restoreRequestFor(creds, target, objectKey, expectedSha256);
+    const out = await consumeRestore(
+      workload.restore({
+        ...req,
+        store,
+        s3: undefined,
+        memberFingerprint: pair.to,
+      }),
+    );
+    if (out.path === undefined) return null;
+    return out;
+  } finally {
+    workload.close();
+  }
+}
+
+async function relayRestore(
+  creds: DestinationWithSecrets,
+  target: TransportTarget,
+  objectKey: string,
+  expectedSha256: string,
+  destServer: string,
+): Promise<RestoreOutcome> {
+  const dest = creds.destination;
   const src = await connectBackupAgent(destServer, { store: true });
   let workload: AgentConnection | null = null;
   try {
@@ -542,14 +634,21 @@ export async function openUploadRestore(
 
 async function consumeRestore(
   events: AsyncGenerator<
-    { result?: { ok: boolean; error: string } },
+    { result?: { ok: boolean; error: string; path?: string } },
     void,
     unknown
   >,
-): Promise<{ ok: boolean; error: string }> {
-  let result: { ok: boolean; error: string } | null = null;
+): Promise<RestoreOutcome> {
+  let result: RestoreOutcome | null = null;
   for await (const ev of events) {
-    if (ev.result) result = { ok: ev.result.ok, error: ev.result.error };
+    if (ev.result)
+      result = {
+        ok: ev.result.ok,
+        error: ev.result.error,
+        ...(ev.result.path === "direct" || ev.result.path === "relay"
+          ? { path: ev.result.path }
+          : {}),
+      };
   }
   return (
     result ?? {

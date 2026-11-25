@@ -52,6 +52,7 @@ export async function restoreBackup(runId: string): Promise<void> {
     run.destinationId,
   );
   let failure: string | null = null;
+  let path: "direct" | "relay" | undefined;
   const withLifecycleLock = async <T>(fn: () => Promise<T>): Promise<T> =>
     run.targetKind === "app" && run.appId
       ? withKeyedLock(`app-lifecycle:${run.appId}`, fn)
@@ -96,6 +97,7 @@ export async function restoreBackup(runId: string): Promise<void> {
         (isBaseBackupKey(run.objectKey) || leftVolume)
       )
         await changeLogBroken(target.databaseId);
+      path = result.path;
       if (!result.ok)
         failure = result.error || "the agent reported a failed restore";
       else if (target.databaseId)
@@ -139,7 +141,7 @@ export async function restoreBackup(runId: string): Promise<void> {
     "backup",
     failure
       ? `Restore of ${target.label} failed: ${failure}`
-      : `Restored ${target.label} from a backup`,
+      : `Restored ${target.label} from a backup${restoredHow(path)}`,
     user.name,
     target.appId,
     teamId,
@@ -157,4 +159,11 @@ export async function restoreBackup(runId: string): Promise<void> {
     appId: target.appId,
   });
   if (failure) throw new Error(failure);
+}
+
+/** How a backup kept on another server reached its App, as the Activity line ends; empty for one read where it is. */
+export function restoredHow(path: "direct" | "relay" | undefined): string {
+  if (path === "direct") return ", server to server";
+  if (path === "relay") return ", through Deplo";
+  return "";
 }

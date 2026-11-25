@@ -55,6 +55,8 @@ export interface ClusterReplicaTable {
     slug: string;
     volumeNames: string[];
     includeFiles: boolean;
+    /** Why the member keeps its copy whole and idle for now (the copy queue); empty or absent receives. */
+    hold?: string;
   }[];
 }
 
@@ -454,6 +456,11 @@ export interface AgentConnection {
   expectClusterBackup(
     store: StoreTarget,
     sourceFingerprint: string,
+  ): Promise<void>;
+  /** Needs `backup-store.fetch`: tells this member that one member reads one backup from its store, once. */
+  expectClusterFetch(
+    store: StoreTarget,
+    readerFingerprint: string,
   ): Promise<void>;
   // Needs `cluster.images` (ADR-0044): send a built image to one member, which prunes older releases.
   copyClusterImage(

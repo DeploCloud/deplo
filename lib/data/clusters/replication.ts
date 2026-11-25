@@ -37,7 +37,13 @@ import {
   type ReplicaRow,
 } from "./replica-state";
 import { clusterOutOfReach } from "./reach";
-import { heldBy, QUEUED, setReplicaTurns } from "./copy-turns";
+import {
+  copyMemory,
+  heldBy,
+  QUEUED,
+  setReplicaTurns,
+  turnWait,
+} from "./copy-turns";
 import { getClusterById } from "./roster";
 
 // Replication (ADR-0046): each member's server agent is handed the cluster's replicated Apps. The one that runs an
@@ -207,16 +213,28 @@ async function memberDisk(serverId: string) {
   }
 }
 
+/** A copy that took this much since the last pass moves data now: a catch-up, or what an App empty at its first copy wrote since. */
+export const COPYING_BYTES = 8 * 1024 * 1024;
+
+/** The copies that wait their turn, by member and App: `queued` ones are new and are not handed yet, `holds` are kept whole and idle. */
+export interface CopyQueue {
+  queued: Map<string, Map<string, string>>;
+  holds: Map<string, Map<string, string>>;
+}
+
 /**
- * Which new copies wait their turn: a server takes one copy at a time, sent or received (ADR-0043). A copy a member
- * already holds goes on; one it holds none of starts only while neither end copies anything else.
+ * Which copies wait their turn: a server takes one copy at a time, sent or received (ADR-0043). Every copy that moves
+ * data counts, new or held: one not whole yet, one behind, one taking COPYING_BYTES since the last pass (c38: lab-pd,
+ * empty at its first copy, took 300 MB as followed changes beside a backup). A copy that held a turn keeps it while it
+ * copies; one a backup or move overtook, or that waits for a busy end, is held whole until its turn; none waits past
+ * the queue's limit.
  */
 export async function queuedCopies(
   table: ClusterReplicaTable,
   held: Map<string, ClusterReplicaReport[]>,
   refused: Map<string, Map<string, string>>,
-): Promise<Map<string, Map<string, string>>> {
-  const out = new Map<string, Map<string, string>>();
+): Promise<CopyQueue> {
+  const out: CopyQueue = { queued: new Map(), holds: new Map() };
   const ids = table.entries.map((e) => e.appId);
   if (ids.length === 0) return out;
   const apps = await getDb()
@@ -228,27 +246,77 @@ export async function queuedCopies(
     .from(appsTable)
     .where(inArray(appsTable.id, ids));
   const app = new Map(apps.map((a) => [a.id, a]));
+  const mem = copyMemory();
   const busy = new Map<string, string>();
-  const take = (ids: string[], what: string) => {
-    for (const id of ids) if (!busy.has(id)) busy.set(id, what);
+  const turns = new Set<string>();
+  const take = (key: string, ends: string[], what: string) => {
+    for (const id of ends) if (!busy.has(id)) busy.set(id, what);
+    turns.add(key);
+    mem.waiting.delete(key);
   };
+  const wait = async (
+    into: Map<string, Map<string, string>>,
+    key: string,
+    serverId: string,
+    appId: string,
+    at: string,
+  ) => {
+    const name = (await getServerById(at))?.name ?? "Another server";
+    const q = into.get(serverId) ?? new Map<string, string>();
+    q.set(appId, `${QUEUED} ${name} is busy with ${busy.get(at)}`);
+    into.set(serverId, q);
+    if (!mem.waiting.has(key)) mem.waiting.set(key, Date.now());
+  };
+  const waitedOut = (key: string) =>
+    Date.now() - (mem.waiting.get(key) ?? Date.now()) >= turnWait.maxMs;
   for (const m of table.members) {
     const b = heldBy(m.serverId);
     if (b) busy.set(m.serverId, b);
   }
-  // Under way: a copy a member holds that is not whole yet, or is behind (catching up on what its App wrote since:
-  // c38, 300 MB written after lab-pb's copy first landed), keeps both ends busy.
   const now = Date.now();
+  const moving: {
+    key: string;
+    serverId: string;
+    appId: string;
+    ends: string[];
+    what: string;
+  }[] = [];
   for (const [serverId, reports] of held)
     for (const r of reports) {
       const a = app.get(r.appId);
       if (!a?.serverId || a.serverId === serverId || r.role === "sending")
         continue;
+      const key = `${serverId}|${r.appId}`;
+      const last = mem.bytes.get(key);
+      mem.bytes.set(key, r.bytes);
+      const grew = last !== undefined && r.bytes - last >= COPYING_BYTES;
       const behind =
         !r.appliedAt || now - Date.parse(r.appliedAt) >= BEHIND_AFTER_MS;
-      if (!r.synced || behind)
-        take([serverId, a.serverId], `a copy of ${a.name}`);
+      const copying =
+        r.role === "receiving" ? !r.synced || behind || grew : false;
+      const holding = r.role === "idle" && r.error.startsWith(QUEUED);
+      if (copying || holding)
+        moving.push({
+          key,
+          serverId,
+          appId: r.appId,
+          ends: [serverId, a.serverId],
+          what: `a copy of ${a.name}`,
+        });
     }
+  // The copies that held a turn go first, then the rest in a stable order.
+  moving.sort(
+    (x, y) =>
+      Number(mem.turns.has(y.key)) - Number(mem.turns.has(x.key)) ||
+      x.key.localeCompare(y.key),
+  );
+  for (const c of moving) {
+    const at = c.ends.find(
+      (id) => busy.has(id) && !(mem.turns.has(c.key) && !heldBy(id)),
+    );
+    if (!at || waitedOut(c.key)) take(c.key, c.ends, c.what);
+    else await wait(out.holds, c.key, c.serverId, c.appId, at);
+  }
   for (const e of table.entries) {
     const a = app.get(e.appId);
     if (!a?.serverId) continue;
@@ -256,17 +324,14 @@ export async function queuedCopies(
       if (m.serverId === a.serverId || !held.has(m.serverId)) continue;
       if (refused.get(m.serverId)?.has(e.appId)) continue;
       if (held.get(m.serverId)!.some((r) => r.appId === e.appId)) continue;
+      const key = `${m.serverId}|${e.appId}`;
       const at = [m.serverId, a.serverId].find((id) => busy.has(id));
-      if (!at) {
-        take([m.serverId, a.serverId], `a copy of ${a.name}`);
-        continue;
-      }
-      const name = (await getServerById(at))?.name ?? "Another server";
-      const q = out.get(m.serverId) ?? new Map<string, string>();
-      q.set(e.appId, `${QUEUED} ${name} is busy with ${busy.get(at)}`);
-      out.set(m.serverId, q);
+      if (!at || waitedOut(key))
+        take(key, [m.serverId, a.serverId], `a copy of ${a.name}`);
+      else await wait(out.queued, key, m.serverId, e.appId, at);
     }
   }
+  mem.turns = turns;
   setReplicaTurns(busy);
   return out;
 }
@@ -304,7 +369,7 @@ export async function pushReplicaTables(
       out.set(m.serverId, `This server did not answer: ${messageOf(e)}`);
     }
   }
-  const queued = await queuedCopies(table, held, refused);
+  const { queued, holds } = await queuedCopies(table, held, refused);
   for (const m of table.members) {
     if (!held.has(m.serverId)) continue;
     const key = `${clusterId}|${m.serverId}`;
@@ -312,12 +377,15 @@ export async function pushReplicaTables(
       ...(refused.get(m.serverId) ?? []),
       ...(queued.get(m.serverId) ?? []),
     ]);
+    const hold = holds.get(m.serverId);
     try {
       const conn = await connectAgent(m.serverId);
       try {
         const mine = {
           ...table,
-          entries: table.entries.filter((e) => !notNow.has(e.appId)),
+          entries: table.entries
+            .filter((e) => !notNow.has(e.appId))
+            .map((e) => ({ ...e, hold: hold?.get(e.appId) ?? "" })),
         };
         const sum = JSON.stringify(mine);
         if (force || handed.get(key) !== sum) {

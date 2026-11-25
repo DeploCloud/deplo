@@ -315,7 +315,7 @@ export function fakeClusterHosts(): {
       },
       restore: async function* (req: RestoreRequest) {
         h.restores.push(req);
-        yield { result: { ok: true, error: "" } };
+        yield { result: { ok: true, error: "", path: "" } };
       },
       writeStoreFile: async (store, _overwrite, chunks) => {
         let bytesWritten = 0;
