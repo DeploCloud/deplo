@@ -124,12 +124,12 @@ export async function copyRows(
       ? "Not copied"
       : following(r, now)
         ? "Up to date"
-        : r.synced
-          ? "Behind"
-          : r.connected
-            ? "Copying"
-            : r.error.startsWith(QUEUED)
-              ? "Queued"
+        : r.error.startsWith(QUEUED)
+          ? "Queued"
+          : r.synced
+            ? "Behind"
+            : r.connected
+              ? "Copying"
               : "Not copied";
     out.push({
       server: (await getServerById(id))?.name ?? id,

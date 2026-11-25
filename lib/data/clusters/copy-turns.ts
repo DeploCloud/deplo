@@ -14,11 +14,25 @@ const state = ((globalThis as Record<symbol, unknown>)[KEY] ??= {
   held: new Map<string, Turn>(),
   replicas: new Map<string, string>(),
   notes: new Map<string, Wait>(),
+  copies: { bytes: new Map(), turns: new Set(), waiting: new Map() },
 }) as {
   held: Map<string, Turn>;
   replicas: Map<string, string>;
   notes: Map<string, Wait>;
+  copies: CopyMemory;
 };
+
+/** What the replication pass keeps of each copy ("<server>|<app>") from one pass to the next. */
+export interface CopyMemory {
+  /** The bytes it had received at the last pass. */
+  bytes: Map<string, number>;
+  /** The copies that held their servers' turn at the last pass: they keep it while they copy. */
+  turns: Set<string>;
+  /** Since when a copy the queue holds has waited. */
+  waiting: Map<string, number>;
+}
+
+export const copyMemory = (): CopyMemory => state.copies;
 
 type Wait = { serverId: string; what: string };
 
@@ -101,4 +115,5 @@ export function __forgetTurns(): void {
   state.held.clear();
   state.notes.clear();
   state.replicas = new Map();
+  state.copies = { bytes: new Map(), turns: new Set(), waiting: new Map() };
 }
