@@ -49,6 +49,7 @@ import {
 import { listAllServers } from "./roster";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { readLeaderSnapshot } from "../clusters/leader-sync";
+import { handLeadersOff } from "../clusters/leader-move";
 import { getClusterById } from "../clusters/roster";
 
 const TICK_MS = 60_000;
@@ -203,12 +204,13 @@ export async function unusableServers(): Promise<
 }
 
 /**
- * Remotes first, fewest Apps first, the Deplo host last: a bad release must break
- * a leaf before it breaks the machine that would tell you. See docs/agents/fleet-rollout.md.
+ * Remotes first, fewest Apps first, a cluster's leader after the servers in its line, the Deplo host last: a bad
+ * release must break a leaf before it breaks the machine that would tell you. See docs/agents/fleet-rollout.md.
  */
 export function rolloutOrder(
   servers: Server[],
   appsPerServer: ReadonlyMap<string, number>,
+  leaders: ReadonlySet<string> = new Set(),
 ): Server[] {
   const eligible = servers.filter(
     (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
@@ -216,10 +218,22 @@ export function rolloutOrder(
   const remotes = eligible
     .filter((s) => !isDeploHostServer(s))
     .sort(
-      (a, b) => (appsPerServer.get(a.id) ?? 0) - (appsPerServer.get(b.id) ?? 0),
+      (a, b) =>
+        Number(leaders.has(a.id)) - Number(leaders.has(b.id)) ||
+        (appsPerServer.get(a.id) ?? 0) - (appsPerServer.get(b.id) ?? 0),
     );
   return [...remotes, ...eligible.filter((s) => isDeploHostServer(s))];
 }
+
+async function clusterLeaders(): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ id: clustersTable.leaderServerId })
+    .from(clustersTable);
+  return new Set(rows.flatMap((r) => (r.id ? [r.id] : [])));
+}
+
+/** Seam: the leaders a server runs go to the next in line before its agent updates (ADR-0043). */
+export const leaderHandOff = { run: handLeadersOff };
 
 async function appsPerServer(): Promise<Map<string, number>> {
   const rows = await getDb()
@@ -394,6 +408,7 @@ export async function attemptAgentUpdate(
       await markServerSeen(server.id, before);
       return clearAgentUpdate(server.id);
     }
+    await leaderHandOff.run(server.id);
     try {
       await selfUpdateServerAgent(server.id);
     } catch (e) {
@@ -468,7 +483,11 @@ async function rolloutPass(): Promise<void> {
     await attemptAgentUpdate(suspect, row, actor ?? "Deplo");
     if (await getAgentUpdate(suspect.id)) return;
   }
-  for (const server of rolloutOrder(behind, await appsPerServer())) {
+  for (const server of rolloutOrder(
+    behind,
+    await appsPerServer(),
+    await clusterLeaders(),
+  )) {
     const row = await claimAgentUpdate(server.id, false);
     if (!row) continue;
     await attemptAgentUpdate(server, row, actor ?? "Deplo");

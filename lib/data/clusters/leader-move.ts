@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
@@ -35,6 +35,11 @@ import { clusterHeirs, keepHeirsReady, leadersToMove } from "./succession";
 import { recordClusterActivity } from "./cluster-activity";
 import type { Server } from "../../types/server";
 import { messageOf } from "../../utils";
+import {
+  AGENT_VERSION,
+  agentUpdateAvailable,
+  reportedAgentVersion,
+} from "../../version";
 import { syncClusterNetworkSoon } from "./network";
 
 // Running the leader on another server (spec #176).
@@ -288,6 +293,46 @@ export async function keepLeadersHome(ids: string[]): Promise<void> {
     for (const f of push?.failed ?? []) warn(id, f.message);
     await reconcileClusterBundles(id).catch((e) => warn(id, e));
   }
+}
+
+/**
+ * Before a server's agent updates, each cluster it leads moves to the first in line, one on the pin first: the leader
+ * restarts with its agent, and every renewal waited for it (c39: 2.4 s). Says which clusters moved; never throws.
+ */
+export async function handLeadersOff(serverId: string): Promise<string[]> {
+  const led = await getDb()
+    .select({ id: clustersTable.id })
+    .from(clustersTable)
+    .where(
+      and(
+        eq(clustersTable.leaderServerId, serverId),
+        isNull(clustersTable.leaderTakeoverAt),
+      ),
+    );
+  const moved: string[] = [];
+  for (const { id } of led) {
+    try {
+      const cluster = await getClusterById(id);
+      if (!cluster) continue;
+      const heirs = (
+        await Promise.all((await clusterHeirs(cluster)).map(getServerById))
+      ).filter((s): s is Server => !!s && s.id !== serverId);
+      const current = (s: Server) =>
+        !agentUpdateAvailable(reportedAgentVersion(s), AGENT_VERSION);
+      const to = heirs.find(current) ?? heirs[0];
+      if (!to) continue;
+      await leadOn(cluster, to, undefined);
+      const from = (await getServerById(serverId))?.name ?? "its server";
+      await recordClusterActivity(
+        id,
+        `The leader of cluster ${cluster.name} now runs on ${to.name}, next in line, while ${from} updates its server agent`,
+      );
+      moved.push(id);
+    } catch (e) {
+      warn(id, e);
+    }
+  }
+  return moved;
 }
 
 /** Installs the leader on the target and has it lead from the next epoch; the server it left is retired. */
