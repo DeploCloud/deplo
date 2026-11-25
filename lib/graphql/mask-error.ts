@@ -3,6 +3,7 @@ import "server-only";
 import { GraphQLError } from "graphql";
 
 import { unreachableMessage } from "../infra/server-health";
+import { TeamUnavailableError } from "../team-path";
 
 // A `.code` means Drizzle, pg or gRPC built it: those carry SQL, bound params or a dial address.
 function isInternalError(e: unknown): boolean {
@@ -33,5 +34,10 @@ export function safeMessage(error: unknown): string {
 }
 
 export function maskError(error: unknown): GraphQLError {
+  const cause = error instanceof GraphQLError ? error.originalError : error;
+  if (cause instanceof TeamUnavailableError)
+    return new GraphQLError(cause.message, {
+      extensions: { code: "FORBIDDEN", http: { status: 403 } },
+    });
   return new GraphQLError(safeMessage(error));
 }
