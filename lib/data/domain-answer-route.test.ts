@@ -41,10 +41,12 @@ test("a domain that does not answer everywhere keeps exactly the routers it had"
   assert.ok(!labels.some((l) => l.includes("answer")));
 });
 
-test("an HTTPS domain that answers everywhere is also routed on the internal entrypoint, with its certificate", () => {
+// c41: on websecure too, the App's own router won over its server's passthrough to the agent, so that server's
+// visitors reached the container straight: one 502 at each recreate, a stale copy answering after a hang.
+test("an HTTPS domain that answers everywhere is routed on the internal entrypoint only, with its certificate", () => {
   const labels = labelsOf(domain({ answersEverywhere: true }));
   const eps = labels.find((l) => /\.entrypoints=/.test(l));
-  assert.equal(eps?.split("=")[1], "websecure,answer");
+  assert.equal(eps?.split("=")[1], "answer");
   assert.ok(labels.some((l) => l.endsWith(".tls.certresolver=letsencrypt")));
 });
 
