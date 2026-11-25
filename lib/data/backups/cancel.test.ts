@@ -128,7 +128,10 @@ test("a running backup that waits its turn says for what", async () => {
     });
     await new Promise((r) => setTimeout(r, 20));
     const [run] = await listBackupRuns({ appId: "prj_1" });
-    assert.equal(run!.queued, "Another server is busy with a copy of web");
+    assert.equal(
+      run!.queued,
+      "1st in line: Another server is busy with a copy of web",
+    );
     stop.abort();
     (await waiting)();
     __forgetTurns();

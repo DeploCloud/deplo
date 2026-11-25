@@ -22,6 +22,7 @@ import { seedServerRow } from "../infra-test-helpers";
 import { retryServerAgentUpdate } from "./agent-maintenance";
 import {
   fleetAgentStatus,
+  leaderHandOff,
   rolloutTiming,
   runAgentRollout,
 } from "./agent-rollout";
@@ -404,4 +405,33 @@ test("a pass updates nobody while another server's update is under way", async (
   });
   await runAgentRollout();
   assert.deepEqual(order, [], "srv_b waits for srv_a's minute");
+});
+
+// c39: the leader restarted with its server's agent, and every member's renewal waited 2.4 s for it.
+test("a cluster's leader goes to the next in line before its server's agent updates, and that server updates last", async () => {
+  await server("srv_lead", BEHIND);
+  await server("srv_heir", BEHIND);
+  const at = new Date().toISOString();
+  await db.insert(clusters).values({
+    id: "clu_1",
+    name: "eu",
+    createdAt: at,
+    leaderServerId: "srv_lead",
+  });
+  const run = leaderHandOff.run;
+  leaderHandOff.run = async (id) => {
+    order.push(`hand-off:${id}`);
+    return [];
+  };
+  try {
+    await runAgentRollout();
+  } finally {
+    leaderHandOff.run = run;
+  }
+  assert.deepEqual(order, [
+    "hand-off:srv_heir",
+    "srv_heir",
+    "hand-off:srv_lead",
+    "srv_lead",
+  ]);
 });

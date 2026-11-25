@@ -153,7 +153,7 @@ export function RunRow({
         </p>
         {running && run.queued && (
           <p className="mt-1 text-xs text-muted-foreground">
-            Waits its turn: {run.queued}
+            Waits its turn, {run.queued}
           </p>
         )}
         {run.error && (

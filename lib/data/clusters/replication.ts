@@ -40,6 +40,13 @@ import { clusterOutOfReach } from "./reach";
 import {
   copyMemory,
   heldBy,
+  joinLine,
+  lineOf,
+  leaveLine,
+  leaveLineOn,
+  mayGo,
+  placeOf,
+  placeWords,
   QUEUED,
   setReplicaTurns,
   turnWait,
@@ -235,8 +242,16 @@ export async function queuedCopies(
   refused: Map<string, Map<string, string>>,
 ): Promise<CopyQueue> {
   const out: CopyQueue = { queued: new Map(), holds: new Map() };
+  const kind = `replica:${table.clusterId}`;
+  leaveLineOn(
+    table.members.map((m) => m.serverId),
+    kind,
+  );
   const ids = table.entries.map((e) => e.appId);
-  if (ids.length === 0) return out;
+  if (ids.length === 0) {
+    for (const key of lineOf(kind)) leaveLine(key);
+    return out;
+  }
   const apps = await getDb()
     .select({
       id: appsTable.id,
@@ -254,18 +269,14 @@ export async function queuedCopies(
     turns.add(key);
     mem.waiting.delete(key);
   };
-  const wait = async (
-    into: Map<string, Map<string, string>>,
-    key: string,
-    serverId: string,
-    appId: string,
-    at: string,
-  ) => {
-    const name = (await getServerById(at))?.name ?? "Another server";
-    const q = into.get(serverId) ?? new Map<string, string>();
-    q.set(appId, `${QUEUED} ${name} is busy with ${busy.get(at)}`);
-    into.set(serverId, q);
-    if (!mem.waiting.has(key)) mem.waiting.set(key, Date.now());
+  const isBusy = (id: string) => busy.get(id) ?? null;
+  const wait = async (into: Map<string, Map<string, string>>, c: Want) => {
+    const p = placeOf(c.key, isBusy)!;
+    const name = (await getServerById(p.serverId))?.name ?? "Another server";
+    const q = into.get(c.serverId) ?? new Map<string, string>();
+    q.set(c.appId, `${QUEUED} ${placeWords(p, name)}`);
+    into.set(c.serverId, q);
+    if (!mem.waiting.has(c.key)) mem.waiting.set(c.key, Date.now());
   };
   const waitedOut = (key: string) =>
     Date.now() - (mem.waiting.get(key) ?? Date.now()) >= turnWait.maxMs;
@@ -274,13 +285,15 @@ export async function queuedCopies(
     if (b) busy.set(m.serverId, b);
   }
   const now = Date.now();
-  const moving: {
+  type Want = {
     key: string;
     serverId: string;
     appId: string;
     ends: string[];
     what: string;
-  }[] = [];
+    into: Map<string, Map<string, string>>;
+  };
+  const wants: Want[] = [];
   for (const [serverId, reports] of held)
     for (const r of reports) {
       const a = app.get(r.appId);
@@ -296,27 +309,15 @@ export async function queuedCopies(
         r.role === "receiving" ? !r.synced || behind || grew : false;
       const holding = r.role === "idle" && r.error.startsWith(QUEUED);
       if (copying || holding)
-        moving.push({
+        wants.push({
           key,
           serverId,
           appId: r.appId,
           ends: [serverId, a.serverId],
           what: `a copy of ${a.name}`,
+          into: out.holds,
         });
     }
-  // The copies that held a turn go first, then the rest in a stable order.
-  moving.sort(
-    (x, y) =>
-      Number(mem.turns.has(y.key)) - Number(mem.turns.has(x.key)) ||
-      x.key.localeCompare(y.key),
-  );
-  for (const c of moving) {
-    const at = c.ends.find(
-      (id) => busy.has(id) && !(mem.turns.has(c.key) && !heldBy(id)),
-    );
-    if (!at || waitedOut(c.key)) take(c.key, c.ends, c.what);
-    else await wait(out.holds, c.key, c.serverId, c.appId, at);
-  }
   for (const e of table.entries) {
     const a = app.get(e.appId);
     if (!a?.serverId) continue;
@@ -324,13 +325,34 @@ export async function queuedCopies(
       if (m.serverId === a.serverId || !held.has(m.serverId)) continue;
       if (refused.get(m.serverId)?.has(e.appId)) continue;
       if (held.get(m.serverId)!.some((r) => r.appId === e.appId)) continue;
-      const key = `${m.serverId}|${e.appId}`;
-      const at = [m.serverId, a.serverId].find((id) => busy.has(id));
-      if (!at || waitedOut(key))
-        take(key, [m.serverId, a.serverId], `a copy of ${a.name}`);
-      else await wait(out.queued, key, m.serverId, e.appId, at);
+      wants.push({
+        key: `${m.serverId}|${e.appId}`,
+        serverId: m.serverId,
+        appId: e.appId,
+        ends: [m.serverId, a.serverId],
+        what: `a copy of ${a.name}`,
+        into: out.queued,
+      });
     }
   }
+  // A copy that holds a turn keeps it while it copies, unless a backup or a move holds one of its servers now.
+  const keeps = wants.filter(
+    (c) => mem.turns.has(c.key) && !c.ends.some((id) => heldBy(id)),
+  );
+  for (const c of keeps) take(c.key, c.ends, c.what);
+  // The others wait in the order they first asked, behind every backup that asked before them (ADR-0043).
+  const rest = wants.filter((c) => !keeps.includes(c));
+  for (const c of rest) joinLine(c.key, c.ends, c.what, kind);
+  const asked = lineOf(kind);
+  rest.sort((x, y) => asked.indexOf(x.key) - asked.indexOf(y.key));
+  for (const c of rest) {
+    if (waitedOut(c.key) || mayGo(c.key, isBusy)) {
+      leaveLine(c.key);
+      take(c.key, c.ends, c.what);
+    } else await wait(c.into, c);
+  }
+  const wanted = new Set(rest.map((c) => c.key));
+  for (const key of lineOf(kind)) if (!wanted.has(key)) leaveLine(key);
   mem.turns = turns;
   setReplicaTurns(busy);
   return out;

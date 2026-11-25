@@ -12,7 +12,7 @@ import { requireActiveTeamId } from "../../membership";
 import { notLeftBehind, withLeftServerNames } from "./left-behind";
 import { backupTargetInScope } from "./target-access";
 import type { Backup, BackupRun, BackupRunStatus } from "../../types/backup";
-import { queuedNote } from "../clusters/copy-turns";
+import { placeWords, queuedNote } from "../clusters/copy-turns";
 import { getServerById } from "../servers/roster";
 
 export async function listBackupRuns(filter: {
@@ -41,14 +41,14 @@ export async function listBackupRuns(filter: {
   return withQueued(await withLeftServerNames(rows.map(assembleBackupRun)));
 }
 
-/** A running backup that waits its turn says for which server, and what that one copies (ADR-0043). */
+/** A running backup that waits its turn says its place in line, and what holds it up (ADR-0043). */
 async function withQueued(runs: BackupRun[]): Promise<BackupRun[]> {
   return Promise.all(
     runs.map(async (r) => {
       const w = r.status === "running" ? queuedNote(r.id) : null;
       if (!w) return r;
       const name = (await getServerById(w.serverId))?.name ?? "Another server";
-      return { ...r, queued: `${name} is busy with ${w.what}` };
+      return { ...r, queued: placeWords(w, name) };
     }),
   );
 }
