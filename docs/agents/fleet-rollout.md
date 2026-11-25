@@ -119,6 +119,9 @@ memos) that pair delayed a lease renewal 5.3 s and the agent fenced both Apps (f
 A release that changes the proxy should not also move the agent pin, or it pays that once per server.
 Since agent canary.54 a proxy recreated on the leader's server, with its agent restarted at once and
 visitors arriving, costs no renewal (c39); its Apps are still unreachable there for a few seconds.
+Panel canary.95 did both (the routes-first flag, ADR-0043, and the agent canary.56 pin): the answer pass
+restarted each member's proxy one at a time ahead of the agent update, the worst renewal came 2.04 s
+after the one before (eu-1's own update), none fenced, and each App waited 8 to 10 s at its server's restart.
 
 ## 4. Order: canary → the rest → the Deplo host LAST
 
