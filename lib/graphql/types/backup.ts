@@ -126,6 +126,11 @@ export const BackupRunRef = builder
         resolve: (r) => r.status,
       }),
       error: t.exposeString("error", { nullable: true }),
+      queued: t.exposeString("queued", {
+        nullable: true,
+        description:
+          "While a running backup waits its turn: its place in line and what it waits for, like `2nd in line: eu-1 is busy with a copy of web`. Null once it copies.",
+      }),
       startedAt: t.exposeString("startedAt"),
       finishedAt: t.exposeString("finishedAt", { nullable: true }),
     }),
