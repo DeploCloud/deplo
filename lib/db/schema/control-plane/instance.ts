@@ -19,6 +19,8 @@ export const instanceSettings = pgTable("instance_settings", {
   // `deplo recover panel-address` leaves the move here for the running panel; null https keeps the route's scheme.
   panelMoveDomain: text("panel_move_domain"),
   panelMoveHttps: boolean("panel_move_https"),
+  // Nothing reads it since 0.8.2. 0.8.1 does, and a failed update rolls back onto this database: drop it next.
+  gravatarEnabled: boolean("gravatar_enabled").notNull().default(false),
   // The Cloudflare Tunnel the panel is served through; all null while it is off.
   panelTunnelHostname: text("panel_tunnel_hostname"),
   panelTunnelAccountId: text("panel_tunnel_account_id"),
