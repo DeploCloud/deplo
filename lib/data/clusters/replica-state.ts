@@ -77,6 +77,7 @@ export function replicaRestore(project: ProjectDescriptor): FailoverRestore {
       ageIdentity: "",
       expectedSha256: "",
       logPrefix: "",
+      memberFingerprint: "",
     }),
   };
 }

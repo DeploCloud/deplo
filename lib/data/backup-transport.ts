@@ -456,6 +456,7 @@ export function restoreRequestFor(
     ageIdentity: creds.ageIdentity,
     expectedSha256,
     fromReplica: false,
+    memberFingerprint: "",
   };
 }
 
