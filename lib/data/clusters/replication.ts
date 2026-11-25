@@ -169,7 +169,9 @@ async function copiesThatDoNotFit(
     if (!app?.serverId || app.serverId === serverId) continue;
     if (e.volumeNames.length === 0) continue;
     const copy = held.find((r) => r.appId === e.appId);
-    if (copy?.synced || copy?.role === "sending") continue;
+    if (copy?.role === "sending") continue;
+    // The agent's own word: it stopped the copy at a tenth free (a copy bigger than Deplo measured).
+    const stopped = !!copy?.error.includes(AGENT_NO_ROOM);
     const { bytes: size, largest } = await volumeSizes(
       app.serverId,
       e.volumeNames,
@@ -178,12 +180,13 @@ async function copiesThatDoNotFit(
     // only at its start (eu-1 reached 92% with the copy of an App that was small when its copy began). What it
     // holds is its size on disk; where it holds part of the data, the biggest file counts twice while it is rebuilt.
     const has = copy?.diskBytes || copy?.bytes || 0;
+    // A whole copy needs no room until its App outgrows it: c41's grew 1 GB past one, and its catch-up took eu-3
+    // to 89%, stopped there by the agent and started again.
+    if (copy?.synced && !stopped && size - has < COPYING_BYTES) continue;
     const peak = has > 0 ? largest : 0;
     const need =
       Math.max(size - has, 0) + peak + (before.has(e.appId) ? size / 5 : 0);
     disk ??= await memberDisk(serverId).catch(() => null);
-    // The agent's own word: it stopped the copy at a tenth free (a copy bigger than Deplo measured).
-    const stopped = !!copy?.error.includes(AGENT_NO_ROOM);
     if (
       !stopped &&
       (!disk || disk.total <= 0 || disk.free - need >= disk.total / 10)

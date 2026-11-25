@@ -409,6 +409,32 @@ test("a copy a server already holds whole is never held back for room", async ()
   );
 });
 
+// c41: lab-big's copy on eu-3 was whole at 660 MB; the App then wrote 1 GB, and the catch-up took eu-3 from 84 to 89%.
+test("a whole copy its App outgrew is held back like a new one, shown on the server and said once", async () => {
+  const cluster = await replicated();
+  const MB = 1024 ** 2;
+  const GB = 1024 * MB;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeUsage = async () =>
+    new Map([["deplo-web-data", 1700 * MB]]);
+  host.srv_4.replicaReports = [report({ bytes: 1700 * MB })];
+  host.srv_3.extra.metrics = disk(14 * GB, Math.round(11.9 * GB));
+  host.srv_3.replicaReports = [report({ bytes: 676 * MB })];
+  await replicateCluster(cluster.id, true);
+  assert.deepEqual(host.srv_3.replicaTables.at(-1)!.entries, []);
+  assert.equal(host.srv_4.replicaTables.at(-1)!.entries.length, 1);
+  const members = await asAdmin(() => listClusterMembers(cluster.id));
+  assert.match(
+    members.find((m) => m.serverId === "srv_3")!.copyWarning,
+    /server-3 has 2\.1 GB free, too little for a copy of web/,
+  );
+  await replicateCluster(cluster.id, true);
+  const lines = (await said()).filter((m) =>
+    m.includes("too little for a copy of web"),
+  );
+  assert.equal(lines.length, 1, "Activity says it once");
+});
+
 // eu, 24 Nov 2026: lab-fit3's copy began while the App was small, grew with it and took eu-1 to 92%.
 test("a copy not whole yet stops once the disk would be under a tenth free, however much of it came", async () => {
   const cluster = await replicated();
