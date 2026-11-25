@@ -497,7 +497,7 @@ function nextTry(appId: string, to: string): number | null {
 }
 
 const LINK_WORDS =
-  /cut short|did not confirm|connection (reset|closed|ended)|broken pipe|\bEOF\b|ENOENT|UNAVAILABLE|is offline/i;
+  /cut short|did not confirm|connection (reset|closed|ended)|broken pipe|\bEOF\b|ENOENT|UNAVAILABLE|is offline|channel has been shut down/i;
 
 /** The copy broke because a link did: Deplo's to a server, or the one between the two servers. */
 export function linkDropped(e: unknown): boolean {
@@ -514,8 +514,17 @@ async function answers(serverId: string): Promise<boolean> {
   }
 }
 
-/** Moves the App again once both servers answer, as Deplo's own move. */
-function moveAgain(app: App, from: string, to: string, n: number): void {
+/**
+ * Moves the App again once both servers answer, as Deplo's own move. One its old server could not start again (the
+ * link that dropped was that server's: c38) starts there first, so it runs where it is until the next try.
+ */
+function moveAgain(
+  app: App,
+  from: string,
+  to: string,
+  n: number,
+  startFirst: boolean,
+): void {
   setTimeout(async () => {
     const until = Date.now() + moveRetry.answerMs;
     while (
@@ -523,6 +532,7 @@ function moveAgain(app: App, from: string, to: string, n: number): void {
       !((await answers(from)) && (await answers(to)))
     )
       await new Promise((r) => setTimeout(r, moveRetry.waitMs));
+    if (startFirst) await startStackOn(from, app.slug).catch(() => {});
     try {
       const cluster = app.clusterId
         ? await getClusterById(app.clusterId)
@@ -577,20 +587,23 @@ async function rollback(
     }).catch(() => false);
   await teardownOrQueue(strayEntry(app, to)).catch(() => {});
   publishAppChanged(app.id);
-  if (ctx.again && oldUp) {
+  if (ctx.again) {
+    const where = oldUp
+      ? `it runs on ${ctx.fromName} again`
+      : `it starts on ${ctx.fromName} again once that server answers`;
     emit(
       "warn",
-      `The copy of ${app.name}'s data to ${ctx.toName} broke when a link dropped (${errMsg(ctx.error)}). ` +
-        `It runs on ${ctx.fromName} again, and the move goes again by itself once both servers answer ` +
+      `The copy of ${app.name}'s data to ${ctx.toName} broke when a link dropped (${errMsg(ctx.error)}): ` +
+        `${where}, and the move goes again by itself once both servers answer ` +
         `(try ${ctx.again + 1} of ${MOVE_RETRIES + 1}).`,
     );
     await recordActivity(
       "app",
-      `Moving ${app.name} to ${ctx.toName} broke when a link dropped - it runs on ${ctx.fromName} again, and the move goes again by itself`,
+      `Moving ${app.name} to ${ctx.toName} broke when a link dropped - ${where}, and the move goes again by itself`,
       "system",
       app.id,
     );
-    moveAgain(app, from, to, ctx.again);
+    moveAgain(app, from, to, ctx.again, !oldUp);
     return "rolled-back";
   }
   const tries = moveTries.get(app.id);

@@ -449,3 +449,97 @@ test("a move never waits its turn: its App is down until it runs, so it starts a
     __forgetTurns();
   }
 });
+
+// c38: eu-3's own link was cut mid-move, so it could not be told to start lab-pc again, and the move gave up.
+test("a move whose old server dropped its link starts the App there once it answers, then goes again", async () => {
+  __forgetMoveTries();
+  await fise("srv_2");
+  for (const id of ["srv_2", "srv_3"])
+    hosts.get(id)!.capabilities.push(VOLUME_COPY_MEMBER_CAPABILITY);
+  const old = disks.get("srv_2")!;
+  old.volumes.set(VOL, OLD);
+  old.ran.set("fise", { lastRanMs: Date.now() - 2_000, running: true });
+  const cluster = await eu();
+  __setRunnerForTest(async (depId) => {
+    await db
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(eq(deploymentsTable.id, depId));
+  });
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  const ops = hosts.get("srv_2")!.extra as Partial<AgentConnection>;
+  const [send, start] = [ops.sendClusterVolume, ops.startStack];
+  const link = (e: string) => () => {
+    throw new AgentUnreachableError(e);
+  };
+  ops.sendClusterVolume = link("14 UNAVAILABLE: Connection dropped");
+  ops.startStack = link("14 UNAVAILABLE: Connection dropped");
+  moveRetry.waitMs = 10;
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "rolled-back",
+  );
+  await said(
+    /Moving fise to srv_3 broke when a link dropped - it starts on srv_2 again once that server answers, and the move goes again by itself/,
+  );
+  [ops.sendClusterVolume, ops.startStack] = [send, start];
+  for (let i = 0; i < 300; i++) {
+    if ((await appRow("fise")).serverId === "srv_3") break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.ok(old.calls.includes("start:fise"), "it ran where it was first");
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "done",
+  );
+  moveRetry.waitMs = 5_000;
+  __setRunnerForTest(async () => {});
+});
+
+// c38: the copy landed on eu-1, but the next call went over the link the cut had closed (`Channel has been shut
+// down`): each volume now goes on connections of its own.
+test("a move's next volume goes on a fresh connection, never one a dropped link left behind", async () => {
+  __forgetMoveTries();
+  await fise("srv_2");
+  const VOL2 = "deplo-fise-cache";
+  await pg.exec(
+    `insert into app_volumes (volume_id, app_id, position, type, name, mount_path, read_only)
+       values ('vol_2', 'fise', 1, 'named', 'cache', '/cache', false)`,
+  );
+  const old = disks.get("srv_2")!;
+  old.stacks.set(
+    "fise",
+    `services:\n  app:\n    image: nginx:1\n    volumes:\n      - ${VOL}:/data\n      - ${VOL2}:/cache\nvolumes:\n  ${VOL}:\n    name: ${VOL}\n  ${VOL2}:\n    name: ${VOL2}\n`,
+  );
+  old.volumes.set(VOL, OLD);
+  old.volumes.set(VOL2, NEW);
+  old.ran.set("fise", { lastRanMs: Date.now() - 2_000, running: false });
+  for (const id of ["srv_2", "srv_3"])
+    hosts.get(id)!.capabilities.push(VOLUME_COPY_MEMBER_CAPABILITY);
+  const ops = hosts.get("srv_3")!.extra as Partial<AgentConnection>;
+  const expect = ops.expectClusterVolume!;
+  const used = new WeakSet<object>();
+  ops.expectClusterVolume = async function (this: object, ...a) {
+    if (used.has(this)) throw new Error("Channel has been shut down");
+    used.add(this);
+    return expect.apply(this, a);
+  };
+  const cluster = await eu();
+  __setRunnerForTest(async (depId) => {
+    await db
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(eq(deploymentsTable.id, depId));
+  });
+  try {
+    await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+    assert.equal(
+      await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+      "done",
+    );
+    assert.deepEqual(disks.get("srv_3")!.volumes.get(VOL2), NEW);
+  } finally {
+    ops.expectClusterVolume = expect;
+    __setRunnerForTest(async () => {});
+  }
+});

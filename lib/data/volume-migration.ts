@@ -503,28 +503,45 @@ export async function migrateWorkloadData(
 ): Promise<{ missing: string[]; path?: "direct" | "relay" }> {
   const missing: string[] = [];
   let path: "direct" | "relay" | undefined;
+  const pair = await memberPair(fromServerId, toServerId);
+  // Each step on connections of its own: a long copy outlives a link, and a connection opened before it would
+  // call the closed one (c37 `connect ENOENT`, c38 `Channel has been shut down`) though the copy landed.
+  for (const volume of opts.volumeNames) {
+    const res = await both(
+      fromServerId,
+      toServerId,
+      async (source, dest) =>
+        (pair && (await memberVolumeCopy(source, dest, volume, pair))) ??
+        (await copyVolumeBetween(source, dest, volume)),
+    );
+    if (res.missing) missing.push(volume);
+    // Between two members, any volume Deplo or a relay carried makes the move one that went through Deplo.
+    if (pair && !res.missing)
+      path = res.path === "direct" && path !== "relay" ? "direct" : "relay";
+  }
+  if (opts.filesSlug) {
+    const slug = opts.filesSlug;
+    await both(fromServerId, toServerId, (source, dest) =>
+      copyFilesBetween(source, dest, slug),
+    );
+  }
+  return { missing, ...(path ? { path } : {}) };
+}
+
+async function both<T>(
+  fromServerId: string,
+  toServerId: string,
+  fn: (source: AgentConnection, dest: AgentConnection) => Promise<T>,
+): Promise<T> {
   const source = await connectAgent(fromServerId);
   try {
     const dest = await connectAgent(toServerId);
     try {
-      const pair = await memberPair(fromServerId, toServerId);
-      for (const volume of opts.volumeNames) {
-        const res =
-          (pair && (await memberVolumeCopy(source, dest, volume, pair))) ??
-          (await copyVolumeBetween(source, dest, volume));
-        if (res.missing) missing.push(volume);
-        // Between two members, any volume Deplo or a relay carried makes the move one that went through Deplo.
-        if (pair && !res.missing)
-          path = res.path === "direct" && path !== "relay" ? "direct" : "relay";
-      }
-      if (opts.filesSlug) {
-        await copyFilesBetween(source, dest, opts.filesSlug);
-      }
+      return await fn(source, dest);
     } finally {
       dest.close();
     }
   } finally {
     source.close();
   }
-  return { missing, ...(path ? { path } : {}) };
 }
