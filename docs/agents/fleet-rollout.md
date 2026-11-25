@@ -122,6 +122,9 @@ visitors arriving, costs no renewal (c39); its Apps are still unreachable there 
 Panel canary.95 did both (the routes-first flag, ADR-0043, and the agent canary.56 pin): the answer pass
 restarted each member's proxy one at a time ahead of the agent update, the worst renewal came 2.04 s
 after the one before (eu-1's own update), none fenced, and each App waited 8 to 10 s at its server's restart.
+Since agent canary.57 a server whose proxy restarts holds its own visitors meanwhile (ADR-0043, c42): an App
+another server runs is passed there at once, one this server alone runs waits for the restart (3 to 8 s on a
+one-core member) and is answered; a release that restarts proxies still costs those waits.
 
 ## 4. Order: canary → the rest → the Deplo host LAST
 
