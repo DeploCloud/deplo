@@ -36,7 +36,7 @@ import {
 export { TRAEFIK_CONTAINER };
 
 /** Every server's Traefik: install scripts write it, and a stack behind it on the same line is moved up when its server links. */
-export const TRAEFIK_IMAGE = "traefik:v3.7.17";
+export const TRAEFIK_IMAGE = "traefik:v3.7.20";
 
 const TRAEFIK_TAG = /^traefik:(v\d+\.\d+)(?:\.(\d+))?$/;
 
