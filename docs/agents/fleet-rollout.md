@@ -156,6 +156,13 @@ forward. Break a leaf server and you have a healthy control plane and two good a
 against; break agent 0 first and you are debugging blind, on the box, over SSH - the exact failure
 mode the platform exists to avoid. It is also the biggest blast radius here (10 Apps).
 
+**A cluster's leader goes after the servers of its line, and steps aside first.** The rollout updates a
+server that leads a cluster after the other remotes, and right before that server's agent updates it
+hands each cluster it leads to the first in line, one already on the pin first (`handLeadersOff`,
+`lib/data/clusters/leader-move.ts`): the leader runs beside its agent and restarts with it, which held
+every member's renewal 2.4 s (c39). The hand-over itself cost none on eu: every member's renewal across
+the new epoch came 0.94 to 0.96 s after the one before (c40).
+
 **Why a canary at all.** `go test ./...` gates the release but proves nothing about _this_ fleet's
 kernels, Docker versions and install layouts. The canary is the smallest real host that can
 disprove the release. Let it sit long enough to Hello, serve a deploy and stream logs before moving on.
