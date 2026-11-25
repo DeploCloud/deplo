@@ -7,12 +7,15 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
-import { backupRuns } from "../../db/schema/control-plane/backups";
+import {
+  backupRuns,
+  backups as backupsTable,
+} from "../../db/schema/control-plane/backups";
 import { appVolumes } from "../../db/schema/control-plane/apps";
 import { activities } from "../../db/schema/control-plane/activity";
-import { seedRun } from "../backup-test-helpers";
+import { seedBackup, seedRun } from "../backup-test-helpers";
 import { asUser1, seedBase } from "./backups-test-helpers";
-import { runAppBackup } from "./run-now";
+import { runAppBackup, runBackup, runDatabaseBackup } from "./run-now";
 import { failEmptyAppBackups } from "./empty-archive";
 import { buildTar } from "../../infra/tar-test-helpers";
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
@@ -57,7 +60,16 @@ const FULL = buildTar([
   ["snapshot/compose.yml", "services: {}\n"],
 ]);
 
-function agent(a: { running: boolean; archive: Buffer; deleted?: string[] }) {
+// The agent's errNoVolumeFiles.
+const NO_FILE =
+  "the App's data holds no file on this server, so its archive is not a backup";
+
+function agent(a: {
+  running: boolean | "silent";
+  archive: Buffer;
+  deleted?: string[];
+  error?: string;
+}) {
   __setAgentConnectorForTest(async () => {
     const conn = {
       hello: async () => ({
@@ -67,10 +79,17 @@ function agent(a: { running: boolean; archive: Buffer; deleted?: string[] }) {
           BACKUP_S3_READ_CAPABILITY,
         ],
       }),
-      listInstances: async () => [{ name: "prj_1-web-1", running: a.running }],
+      listInstances: async () => {
+        if (a.running === "silent") throw new Error("connection refused");
+        return [{ name: "prj_1-web-1", running: a.running }];
+      },
       readStack: async () => ({ exists: false, yaml: "" }),
       async *backup() {
-        yield { result: { ok: true, error: "", sizeBytes: 398, sha256: "" } };
+        yield {
+          result: a.error
+            ? { ok: false, error: a.error, sizeBytes: 0, sha256: "" }
+            : { ok: true, error: "", sizeBytes: 398, sha256: "" },
+        };
       },
       async *readStoreFile() {
         yield gzipSync(a.archive);
@@ -107,9 +126,9 @@ test("an App that does not run on its server is skipped, said once, and leaves n
   assert.match(lines[0]!, /it is not running on .* right now/);
 });
 
-test("an archive with no file of the App's data fails and is removed, never kept", async () => {
+test("an empty archive from a server that did not say the App runs there fails and is removed", async () => {
   const deleted: string[] = [];
-  agent({ running: true, archive: EMPTY, deleted });
+  agent({ running: "silent", archive: EMPTY, deleted });
   await asUser1(() =>
     assert.rejects(() => runAppBackup("prj_1", "s3_1"), /holds no file/),
   );
@@ -185,4 +204,65 @@ test("a kept backup with an empty archive turns failed, once, and a full one sta
     .from(backupRuns)
     .where(eq(backupRuns.id, "brun_full"));
   assert.equal(full!.status, "success");
+});
+
+test("a running App whose data holds no file yet is skipped, said once, with no run and no failure", async () => {
+  for (const a of [
+    { running: true, archive: FULL, error: NO_FILE },
+    { running: true, archive: EMPTY, deleted: [] as string[] },
+  ]) {
+    await pg.exec("truncate table activities");
+    agent(a);
+    await asUser1(async () => {
+      for (let i = 0; i < 2; i++)
+        await assert.rejects(
+          () => runAppBackup("prj_1", "s3_1"),
+          /^Error: Nothing to back up yet for prj_1/,
+        );
+    });
+    assert.equal((await db.select().from(backupRuns)).length, 0);
+    const lines = await said();
+    assert.equal(lines.length, 1, lines.join("\n"));
+    assert.doesNotMatch(lines[0]!, /failed/);
+    if (a.deleted) assert.equal(a.deleted.length, 2);
+  }
+});
+
+test("a scheduled run with nothing to back up yet leaves its schedule as it was", async () => {
+  await seedBackup(db, {
+    id: "bk_1",
+    targetKind: "app",
+    appId: "prj_1",
+    destinationId: "s3_1",
+  });
+  agent({ running: true, archive: FULL, error: NO_FILE });
+  await asUser1(() => runBackup("bk_1").catch(() => {}));
+  const [b] = await db.select().from(backupsTable);
+  assert.equal(b!.lastStatus, "never");
+  assert.equal(b!.lastRunAt, null);
+});
+
+test("an agent failure that is not an empty volume still fails the run", async () => {
+  agent({ running: true, archive: FULL, error: "disk full" });
+  await asUser1(() =>
+    assert.rejects(() => runAppBackup("prj_1", "s3_1"), /disk full/),
+  );
+  const [run] = await db.select().from(backupRuns);
+  assert.equal(run!.status, "failed");
+});
+
+test("a database that does not run on its server is skipped, said once, and leaves no run", async () => {
+  agent({ running: false, archive: FULL });
+  await asUser1(async () => {
+    for (let i = 0; i < 2; i++)
+      await assert.rejects(
+        () => runDatabaseBackup("db_1", "s3_1"),
+        /^Error: Skipped a backup of database main: it is not running on/,
+      );
+  });
+  assert.equal((await db.select().from(backupRuns)).length, 0);
+  const rows = await db
+    .select({ databaseId: activities.databaseId })
+    .from(activities);
+  assert.deepEqual(rows, [{ databaseId: "db_1" }]);
 });
