@@ -1,5 +1,5 @@
 import { runWithIdentity } from "@/lib/auth/request-context";
-import { TEAM_HEADER } from "@/lib/team-path";
+import { TEAM_HEADER, TeamUnavailableError } from "@/lib/team-path";
 import {
   ExportRefusedError,
   checkWorkloadData,
@@ -64,11 +64,15 @@ function streamOf(
 export async function POST(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
-  const principal = raw
-    ? await authenticateToken(raw, request.headers.get(TEAM_HEADER)).catch(
-        () => null,
-      )
-    : null;
+  let principal;
+  try {
+    principal = raw
+      ? await authenticateToken(raw, request.headers.get(TEAM_HEADER))
+      : null;
+  } catch (e) {
+    if (e instanceof TeamUnavailableError) return refused(e.message, 403);
+    principal = null;
+  }
   if (!principal)
     return refused(
       "Missing or invalid API token. Send an `Authorization: Bearer deplo_…` header.",

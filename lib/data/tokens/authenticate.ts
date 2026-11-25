@@ -15,7 +15,8 @@ import {
 import { oauthAccessToken, oauthClient } from "../../db/schema/auth";
 import { OAUTH_ACCESS_TOKEN_PREFIX } from "../../auth/oauth-metadata";
 import { nowIso } from "../../ids";
-import { membershipFor } from "../../membership";
+import { membershipFor, teamsForUser } from "../../membership";
+import { TeamUnavailableError } from "../../team-path";
 import { sha256Hex } from "../../crypto";
 import { sweepStale } from "../../stale-sweep";
 import type { Capability } from "../../types/identity";
@@ -78,7 +79,12 @@ export async function identityForTokenId(
     .innerJoin(usersTable, eq(usersTable.id, apiTokens.userId))
     .where(eq(apiTokens.id, tokenId))
     .limit(1);
-  const identity = row ? await identityForTokenRow(row, teamId) : null;
+  const identity = row
+    ? await identityForTokenRow(row, teamId).catch((e: unknown) => {
+        if (e instanceof TeamUnavailableError) return null;
+        throw e;
+      })
+    : null;
   return identity?.teamId === teamId ? identity : null;
 }
 
@@ -150,10 +156,15 @@ async function identityForTokenRow(
     reachable = reachable.filter((t) => !off.has(t.id));
   }
   if (reachable.length === 0) return null;
-  const picked =
-    (teamHint &&
-      reachable.find((t) => t.id === teamHint || t.slug === teamHint)) ||
-    reachable[0];
+  const named = (t: { id: string; slug: string }) =>
+    t.id === teamHint || t.slug === teamHint;
+  const picked = teamHint ? reachable.find(named) : reachable[0];
+  if (!picked)
+    throw new TeamUnavailableError(
+      (await teamsForUser(match.userId)).some(named)
+        ? `This token cannot act in team "${teamHint}": it was not given that team, its user cannot manage API tokens there, or the team turned AI agents off.`
+        : `This token's user is not a member of team "${teamHint}". Ask an admin of that team to add them, or leave the team out to act in the token's own team.`,
+    );
 
   if (!(await membershipFor(match.userId, picked.id))) return null;
 

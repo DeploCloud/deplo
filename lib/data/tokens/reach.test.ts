@@ -11,6 +11,7 @@ import { runWithIdentity } from "../../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "../leaf-test-helpers";
 import { listActivity } from "../activity";
 import { authenticateToken } from "./authenticate";
+import { TeamUnavailableError } from "../../team-path";
 import { createToken, updateToken } from "./mint";
 import { tokenCountsByUser } from "./reach";
 import { revokeToken } from "./revoke";
@@ -49,7 +50,7 @@ test("a token reaches only the teams where its owner may use API tokens", async 
     [TEAM_A],
     "the DTO names only the teams the token can act in",
   );
-  assert.equal((await authenticateToken(raw, TEAM_B))?.teamId, TEAM_A);
+  await assert.rejects(authenticateToken(raw, TEAM_B), TeamUnavailableError);
   assert.equal((await tokenCountsByUser(TEAM_B)).get("u_creator"), undefined);
 
   await db.insert(membershipCapabilities).values({

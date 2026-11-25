@@ -5,6 +5,7 @@ import { redeploy } from "@/lib/data/deployments/stack-actions";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { owningTeamId } from "@/lib/data/deploy-hook";
 import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
+import { TeamUnavailableError } from "@/lib/team-path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,9 @@ export async function POST(
       ? await authenticateToken(raw, await owningTeamId(hookAppId))
       : null;
   } catch (e) {
+    // Another team's App is "not found", exactly as a missing one, so the URL is no existence oracle.
+    if (e instanceof TeamUnavailableError)
+      return Response.json({ error: "Deploy hook not found" }, { status: 404 });
     refusal = (e as Error).message;
   }
   if (!principal)

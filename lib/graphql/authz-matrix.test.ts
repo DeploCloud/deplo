@@ -22,9 +22,14 @@ import {
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { membershipCapabilities as membershipCapabilitiesTable } from "../db/schema/control-plane/access-control";
-import { projects as projectsTable } from "../db/schema/control-plane/projects";
+import {
+  folders as foldersTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane/projects";
 import { schema } from "./schema";
 import { buildContext, type GraphQLContext } from "./context";
+import { yoga } from "./yoga";
+import { TeamUnavailableError } from "../team-path";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
 import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
@@ -639,25 +644,41 @@ test("a suspended account's token authenticates as nobody", async () => {
   assert.deepEqual(ctx.capabilities, [], "and to no capabilities");
 });
 
-test("the team hint can pick a team the token holds, and never one it doesn't", async () => {
+test("a team the token cannot act in is a 403 that names it, never another team", async () => {
   await reset(ALL_CAPABILITIES);
   await pg.exec(
     `insert into memberships (id, user_id, team_id, role, created_at) values ('mem_b', '${USER_M}', '${TEAM_B}', 'member', '${T0}');`,
   );
   const raw = await mintToken(ALL_CAPABILITIES, USER_M, { teamIds: [TEAM_A] });
-  for (const hint of [TEAM_B, "beta", "team_nonexistent", null]) {
-    const ctx = await buildContext(
-      new Request("http://localhost/api/graphql", {
-        headers: {
-          authorization: `Bearer ${raw}`,
-          ...(hint ? { "x-deplo-team": hint } : {}),
-        },
-      }),
+  const request = (hint: string | null, body?: string) =>
+    new Request("http://localhost/api/graphql", {
+      method: body ? "POST" : "GET",
+      headers: {
+        authorization: `Bearer ${raw}`,
+        "content-type": "application/json",
+        ...(hint ? { "x-deplo-team": hint } : {}),
+      },
+      body,
+    });
+  for (const hint of [null, TEAM_A, "alpha"])
+    assert.equal((await buildContext(request(hint))).teamId, TEAM_A);
+  for (const hint of [TEAM_B, "beta", "team_nonexistent"]) {
+    await assert.rejects(
+      buildContext(request(hint)),
+      (e: unknown) =>
+        e instanceof TeamUnavailableError && e.message.includes(`"${hint}"`),
     );
-    assert.equal(
-      ctx.teamId,
-      TEAM_A,
-      `the hint "${hint}" must not move the token outside its scope`,
+    const res = await yoga.fetch(
+      request(
+        hint,
+        JSON.stringify({
+          query: 'mutation { createFolder(name: "lab") { id } }',
+        }),
+      ),
     );
+    assert.equal(res.status, 403, `the hint "${hint}" must be refused`);
+    const body = (await res.json()) as { errors: { message: string }[] };
+    assert.match(body.errors[0].message, new RegExp(`"${hint}"`));
   }
+  assert.equal((await db.select().from(foldersTable)).length, 0);
 });
