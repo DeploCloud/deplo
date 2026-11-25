@@ -449,3 +449,49 @@ test("a move never waits its turn: its App is down until it runs, so it starts a
     __forgetTurns();
   }
 });
+
+// c38: eu-3's own link was cut mid-move, so it could not be told to start lab-pc again, and the move gave up.
+test("a move whose old server dropped its link starts the App there once it answers, then goes again", async () => {
+  __forgetMoveTries();
+  await fise("srv_2");
+  for (const id of ["srv_2", "srv_3"])
+    hosts.get(id)!.capabilities.push(VOLUME_COPY_MEMBER_CAPABILITY);
+  const old = disks.get("srv_2")!;
+  old.volumes.set(VOL, OLD);
+  old.ran.set("fise", { lastRanMs: Date.now() - 2_000, running: true });
+  const cluster = await eu();
+  __setRunnerForTest(async (depId) => {
+    await db
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(eq(deploymentsTable.id, depId));
+  });
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  const ops = hosts.get("srv_2")!.extra as Partial<AgentConnection>;
+  const [send, start] = [ops.sendClusterVolume, ops.startStack];
+  const link = (e: string) => () => {
+    throw new AgentUnreachableError(e);
+  };
+  ops.sendClusterVolume = link("14 UNAVAILABLE: Connection dropped");
+  ops.startStack = link("14 UNAVAILABLE: Connection dropped");
+  moveRetry.waitMs = 10;
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "rolled-back",
+  );
+  await said(
+    /Moving fise to srv_3 broke when a link dropped - it starts on srv_2 again once that server answers, and the move goes again by itself/,
+  );
+  [ops.sendClusterVolume, ops.startStack] = [send, start];
+  for (let i = 0; i < 300; i++) {
+    if ((await appRow("fise")).serverId === "srv_3") break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.ok(old.calls.includes("start:fise"), "it ran where it was first");
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "done",
+  );
+  moveRetry.waitMs = 5_000;
+  __setRunnerForTest(async () => {});
+});
