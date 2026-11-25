@@ -45,13 +45,17 @@ import { roomForBackup } from "./room";
 import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import { outOfReachFailure } from "../clusters/reach";
 import { takeTurn } from "../clusters/copy-turns";
-import { noLiveCopy, saySkippedOnce } from "./live-copy";
+import { liveCopy, nothingYetMessage, saySkippedOnce } from "./live-copy";
 import {
   archiveHoldsData,
   emptyArchiveMessage,
   READ_BACK_MAX_BYTES,
 } from "./empty-archive";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
+
+// The agent's errNoVolumeFiles, word for word (deplo-agent internal/server/backup_project.go).
+const AGENT_NO_VOLUME_FILE =
+  "the App's data holds no file on this server, so its archive is not a backup";
 
 // On globalThis: a scheduled run starts in the scheduler's bundle and is canceled from a request's (eu, 24 Nov
 // 2026: a canceled scheduled backup went on copying, the cancel never reached it).
@@ -110,13 +114,14 @@ export async function executeBackup(
     (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "";
   if (targetKey) await assertNotAlreadyBackingUp(teamId, targetKey);
   // Only the copy that runs is backed up: a stopped or stale one is skipped, never kept (c43: 398 B of memos).
-  const skipped =
-    opts.kind === "app" && opts.appId
-      ? await noLiveCopy(teamId, opts.appId)
-      : null;
-  if (skipped) {
-    await saySkippedOnce(teamId, opts.appId!, actor, skipped);
-    throw new Error(skipped);
+  const said = {
+    appId: opts.kind === "app" ? opts.appId : null,
+    databaseId: opts.kind === "database" ? opts.databaseId : null,
+  };
+  const live = targetKey ? await liveCopy(teamId, opts.kind, targetKey) : null;
+  if (live?.skip) {
+    await saySkippedOnce(teamId, said, actor, live.skip);
+    throw new Error(live.skip);
   }
   const run: BackupRun = {
     id: runId,
@@ -140,13 +145,21 @@ export async function executeBackup(
     startedAt,
     finishedAt: null,
   };
-  await getDb().transaction(async (tx) => {
+  const before = await getDb().transaction(async (tx) => {
     await tx.insert(backupRunsTable).values(backupRunToRow(run));
     if (opts.backupId) {
+      const [prev] = await tx
+        .select({
+          lastRunAt: backupsTable.lastRunAt,
+          lastStatus: backupsTable.lastStatus,
+        })
+        .from(backupsTable)
+        .where(eq(backupsTable.id, opts.backupId));
       await tx
         .update(backupsTable)
         .set({ lastRunAt: startedAt, lastStatus: "running" })
         .where(eq(backupsTable.id, opts.backupId));
+      return prev;
     }
   });
 
@@ -157,6 +170,8 @@ export async function executeBackup(
   let targetServerId = "";
   let result: BackupOutcome | null = null;
   let failure: string | null = null;
+  // A live copy whose data holds no file yet is no backup and no failure: nothing is kept or alerted.
+  let nothingYet = false;
   let objectKey = "";
   const abort = new AbortController();
   backupRunsInFlight.set(runId, abort);
@@ -227,6 +242,7 @@ export async function executeBackup(
         );
         if (!result.ok)
           failure = result.error || "the agent reported a failed backup";
+        nothingYet = !!live?.runs && result.error === AGENT_NO_VOLUME_FILE;
       }
     } finally {
       release();
@@ -245,6 +261,7 @@ export async function executeBackup(
       ).catch(() => true))
     ) {
       failure = emptyArchiveMessage(label);
+      nothingYet = !!live?.runs;
       await removeLanded(creds, target.serverId, result.objectKey, runId);
       result = null;
     }
@@ -277,6 +294,27 @@ export async function executeBackup(
       (mapBackupUnsupported(e) as Error).message;
   } finally {
     backupRunsInFlight.delete(runId);
+  }
+
+  if (nothingYet && live) {
+    const message = await nothingYetMessage(label, live.server);
+    const dropped = await getDb()
+      .delete(backupRunsTable)
+      .where(
+        and(
+          eq(backupRunsTable.id, runId),
+          eq(backupRunsTable.status, "running"),
+        ),
+      )
+      .returning({ id: backupRunsTable.id });
+    if (dropped.length === 0) throw new Error("This backup was canceled");
+    if (opts.backupId && before)
+      await getDb()
+        .update(backupsTable)
+        .set(before)
+        .where(eq(backupsTable.id, opts.backupId));
+    await saySkippedOnce(teamId, said, actor, message);
+    throw new Error(message);
   }
 
   const finishedAt = nowIso();
