@@ -2267,6 +2267,7 @@ $TRAEFIK_FILE_PROVIDER
       # was displayed literally.
       - --certificatesresolvers.letsencrypt.acme.email=$ACME_EMAIL
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.keytype=EC256
     ports:
       - "$PROXY_BIND$HTTP_PORT:80"
       - "$PROXY_BIND$HTTPS_PORT:443"
