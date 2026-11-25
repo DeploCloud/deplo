@@ -27,6 +27,9 @@ export const isReplicaId = (id: unknown): boolean => id === REPLICA_ID;
 /** A copy that heard nothing from the App's server for this long has fallen behind. */
 export const BEHIND_AFTER_MS = 30_000;
 
+/** A copy's status Deplo read longer ago than this says nothing of now: it is judged by its age at Deplo's clock. */
+export const REPORT_FRESH_MS = 2 * 60_000;
+
 export type ReplicaRow = typeof clusterAppReplicas.$inferSelect;
 
 export async function replicaRows(appIds: string[]): Promise<ReplicaRow[]> {
@@ -47,15 +50,16 @@ export function promotable(
   );
 }
 
-/** A copy that is whole and hears from the App's server now. */
+/**
+ * A copy that is whole and heard from the App's server, as its own server said when Deplo last asked: a pass that
+ * comes late is not a copy behind (c38: every copy read Behind for about 35 s while each pass took longer under load).
+ */
 export function following(r: ReplicaRow, now = Date.now()): boolean {
-  return (
-    r.role === "receiving" &&
-    r.synced &&
-    r.connected &&
-    !!r.appliedAt &&
-    now - Date.parse(r.appliedAt) < BEHIND_AFTER_MS
-  );
+  if (r.role !== "receiving" || !r.synced || !r.connected || !r.appliedAt)
+    return false;
+  const read = Date.parse(r.checkedAt);
+  const at = now - read < REPORT_FRESH_MS ? read : now;
+  return at - Date.parse(r.appliedAt) < BEHIND_AFTER_MS;
 }
 
 /**

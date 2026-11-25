@@ -37,7 +37,8 @@ import {
   refreshVolumeAppBundles,
   replicateCluster,
 } from "./clusters/replication";
-import { listClusterReplication } from "./clusters/replica-state";
+import { following, listClusterReplication } from "./clusters/replica-state";
+import { holdTurn } from "./clusters/copy-turns";
 import { __forgetClusterStandbyTries } from "./databases/standby";
 import {
   asAdmin,
@@ -629,4 +630,66 @@ test("a server takes one new copy at a time: the next waits its turn and says so
   host[first].replicaReports = [report()];
   await replicateCluster(cluster.id);
   assert.deepEqual(handedTo(next), ["prj_web"]);
+});
+
+// c38: lab-pd's copy on eu-4, handed while lab-pd was still empty, took its 300 MB as followed changes beside a
+// backup into eu-4, and the queue did not count it. A copy that moves data counts, and waits whole while it cannot.
+test("a copy that moves data while its server copies something else waits its turn, kept whole", async () => {
+  const cluster = await replicated();
+  host.srv_3.replicaReports = [report()];
+  host.srv_4.replicaReports = [report()];
+  await replicateCluster(cluster.id, true);
+  const handed = (id: string) => host[id].replicaTables.at(-1)!.entries;
+  assert.deepEqual(
+    handed("srv_4").map((e) => [e.appId, e.hold ?? ""]),
+    [["prj_web", ""]],
+  );
+  const release = holdTurn(["srv_4"], "a backup of shop");
+  try {
+    host.srv_4.replicaReports = [report({ bytes: 4096 + 20 * 1024 * 1024 })];
+    await replicateCluster(cluster.id);
+    assert.match(
+      handed("srv_4")[0].hold ?? "",
+      /^Queued: .+ is busy with a backup of shop$/,
+    );
+    assert.equal(handed("srv_3")[0].hold ?? "", "", "srv_3's copy follows");
+  } finally {
+    release();
+  }
+  // The agent keeps it whole and idle; once the backup is done its turn comes.
+  host.srv_4.replicaReports = [
+    report({
+      role: "idle",
+      connected: false,
+      appliedAt: "",
+      error: "Queued: server-4 is busy with a backup of shop",
+    }),
+  ];
+  await replicateCluster(cluster.id);
+  assert.equal(handed("srv_4")[0].hold ?? "", "");
+});
+
+// c38: every copy read Behind together for about 35 s: Deplo's pass came late under load, not the copies.
+test("a copy is behind by what its server said, never by how late Deplo asked", () => {
+  const now = Date.parse("2026-11-25T01:00:00.000Z");
+  const at = (ago: number) => new Date(now - ago).toISOString();
+  const row = (checked: number, applied: number) => ({
+    appId: "prj_web",
+    serverId: "srv_3",
+    role: "receiving",
+    connected: true,
+    synced: true,
+    appliedAt: at(applied),
+    bytes: 0,
+    relayed: false,
+    error: "",
+    checkedAt: at(checked),
+  });
+  assert.equal(following(row(40_000, 41_000), now), true);
+  assert.equal(following(row(5_000, 40_000), now), false);
+  assert.equal(
+    following(row(3 * 60_000, 3 * 60_000 + 1_000), now),
+    false,
+    "a status read three minutes ago says nothing of now",
+  );
 });
