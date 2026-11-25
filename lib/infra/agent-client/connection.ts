@@ -430,6 +430,8 @@ export interface AgentConnection {
     relays: string[],
     pins?: ClusterLeaderPins,
   ): Promise<{ member: boolean; relayLinks: number }>;
+  /** Needs `cluster.failover.images`: the registry images this member keeps ready for a failover; replaces the list. */
+  holdFailoverImages(images: FailoverImageHold[]): Promise<FailoverImageHeld[]>;
   /** Tells this member to accept one image from one member's certificate; it refuses any other image stream. */
   expectClusterImage(
     imageRef: string,
@@ -631,4 +633,15 @@ export interface SetAsideCopy {
   of: string;
   atMs: number;
   bytes: number;
+}
+
+/** A registry image a member keeps for a failover, and its size where it is held (0 unknown). */
+export interface FailoverImageHold {
+  imageRef: string;
+  bytes: number;
+}
+
+export interface FailoverImageHeld extends FailoverImageHold {
+  held: boolean;
+  error: string;
 }

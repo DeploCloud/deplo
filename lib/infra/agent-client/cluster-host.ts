@@ -18,6 +18,8 @@ import type {
   ClusterNetworkReport,
   ClusterNetworkTable,
   ClusterZoneReport,
+  FailoverImageHeld,
+  FailoverImageHold,
   ProxyCertificateReport,
   ProxyRestartReport,
 } from "./connection";
@@ -566,6 +568,14 @@ export function copyClusterImage(
   return onImages(sourceServerId, (conn) =>
     conn.copyClusterImage(imageRef, targetFingerprint, keep),
   );
+}
+
+/** The registry images a member keeps ready for a failover; it pulls what it lacks, one at a time (`cluster.failover.images`). */
+export function holdFailoverImages(
+  serverId: string,
+  images: FailoverImageHold[],
+): Promise<FailoverImageHeld[]> {
+  return onImages(serverId, (conn) => conn.holdFailoverImages(images));
 }
 
 /** Tells the target to accept that one image from the source's certificate: a member takes no image it was not told of. */

@@ -23,6 +23,7 @@ export function clusterRpc(
   | "clusterWatch"
   | "copyClusterImage"
   | "expectClusterImage"
+  | "holdFailoverImages"
   | "expectClusterBackup"
   | "expectClusterFetch"
   | "expectClusterVolume"
@@ -102,6 +103,19 @@ export function clusterRpc(
         bytes: Number(r.bytes),
         pruned: r.pruned,
       };
+    },
+    async holdFailoverImages(images) {
+      const r = await unary(
+        client.holdFailoverImages.bind(client),
+        { images: images.map((i) => ({ ...i, held: false, error: "" })) },
+        HELLO_TIMEOUT_MS,
+      );
+      return r.images.map((i) => ({
+        imageRef: i.imageRef,
+        bytes: Number(i.bytes),
+        held: i.held,
+        error: i.error,
+      }));
     },
     async expectClusterImage(imageRef, sourceFingerprint, keep) {
       await unary(

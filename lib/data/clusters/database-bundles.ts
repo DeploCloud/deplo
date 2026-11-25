@@ -53,7 +53,11 @@ import {
   refreshLeaderKeys,
   sayCannotFailOver,
 } from "./bundles";
-import { copyImagesToMembers, stackImages } from "./images";
+import {
+  copyImagesToMembers,
+  holdClusterFailoverImages,
+  stackImages,
+} from "./images";
 import { standbyMemberOf } from "./placement";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import {
@@ -291,6 +295,8 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
             createdAt: db.createdAt,
           },
         );
+  if (lacking.length > 0)
+    void holdClusterFailoverImages(cluster.id).catch(() => undefined);
   await getDb()
     .delete(pushes)
     .where(
