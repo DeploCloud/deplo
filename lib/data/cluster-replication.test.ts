@@ -619,6 +619,12 @@ test("a server takes one new copy at a time: the next waits its turn and says so
   host[first].replicaReports = [report({ synced: false })];
   await replicateCluster(cluster.id);
   assert.deepEqual(handedTo(next), []);
+  // Whole but behind, catching up on what the App wrote since: still under way.
+  host[first].replicaReports = [
+    report({ appliedAt: new Date(Date.now() - 60_000).toISOString() }),
+  ];
+  await replicateCluster(cluster.id);
+  assert.deepEqual(handedTo(next), []);
   // Whole: the next starts.
   host[first].replicaReports = [report()];
   await replicateCluster(cluster.id);
