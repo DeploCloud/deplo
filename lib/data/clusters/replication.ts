@@ -43,6 +43,7 @@ import {
   joinLine,
   lineOf,
   leaveLine,
+  leaveLineOn,
   mayGo,
   placeOf,
   placeWords,
@@ -242,6 +243,10 @@ export async function queuedCopies(
 ): Promise<CopyQueue> {
   const out: CopyQueue = { queued: new Map(), holds: new Map() };
   const kind = `replica:${table.clusterId}`;
+  leaveLineOn(
+    table.members.map((m) => m.serverId),
+    kind,
+  );
   const ids = table.entries.map((e) => e.appId);
   if (ids.length === 0) {
     for (const key of lineOf(kind)) leaveLine(key);

@@ -74,6 +74,8 @@ const STACK: FailoverStack = {
 /** "web" on srv_2 of a cluster of three that replicates, keeping a Volume, deployed once; every agent can replicate. */
 async function replicated(able = ["srv_2", "srv_3", "srv_4"]) {
   __forgetHandedTables();
+  // Each test's copies ask anew: the turns and the line of the one before are not theirs.
+  __forgetTurns();
   __forgetClusterStandbyTries();
   const cluster = await eu(["srv_2", "srv_3", "srv_4"]);
   await db
@@ -436,7 +438,8 @@ test("a copy its server stopped for room is held back, shown on the server and s
   host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
   host.srv_2.extra.volumeUsage = async () =>
     new Map([["deplo-web-data", 2 * GB]]);
-  // Deplo's measure says it fits; the copy turned out bigger, and the agent stopped it.
+  // Deplo's measure says it fits; the copy turned out bigger, and the agent stopped it. srv_4's copy is whole.
+  host.srv_4.replicaReports = [report()];
   host.srv_3.extra.metrics = disk(14 * GB, 10 * GB);
   host.srv_3.replicaReports = [
     report({

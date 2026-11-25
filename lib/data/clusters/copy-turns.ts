@@ -76,6 +76,17 @@ export function leaveLine(key: string): void {
   state.line.delete(key);
 }
 
+/** Drops every copy of another kind in line on these servers: a server is in one cluster, so what another one left is stale. */
+export function leaveLineOn(servers: string[], keep: string): void {
+  for (const [k, t] of state.line)
+    if (
+      t.kind.startsWith("replica:") &&
+      t.kind !== keep &&
+      t.servers.some((id) => servers.includes(id))
+    )
+      state.line.delete(k);
+}
+
 /** The keys of one kind of copy in line, first asked first. */
 export function lineOf(kind: string): string[] {
   return [...state.line]
