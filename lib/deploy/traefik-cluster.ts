@@ -40,11 +40,19 @@ export const ANSWER_ROUTES_FILE = "answers.yml";
 
 const ANSWER_ROUTES_TARGET = "deplo-answers.yml";
 
+// Traefik applies its first configuration once its `internal` one is in; a throttled file provider lands a moment
+// later, and until then every cluster domain answered 404 (c40: 50 to 100 ms at five starts in six).
+const UNTHROTTLED = "--providers.providersthrottleduration=0";
+
 const answerFlags = (web: string) => [
   `--entrypoints.${web}.allowacmebypass=true`,
   `--entrypoints.${ANSWER_ENTRYPOINT}.address=127.0.0.1:${ANSWER_PORT}`,
   `--entrypoints.${ANSWER_ENTRYPOINT}.proxyprotocol.trustedips=127.0.0.1/32`,
+  UNTHROTTLED,
 ];
+
+// Traefik reads its flags whatever their case.
+const flagName = (flag: string) => entryName(flag).toLowerCase();
 
 // The entrypoint the certificate checks arrive on: the installer's `web`, unless the proxy names its own.
 function challengeEntrypoint(command: string[]): string {
@@ -66,11 +74,13 @@ function isAnswerMount(entry: unknown): boolean {
 export function hasAnswerSupport(currentYaml: string): boolean {
   try {
     const doc = parseCompose(currentYaml);
+    const command = listOf(traefikService(doc).get("command", true));
     return (
       doc.getIn(["configs", ANSWER_CONFIG, "content"]) !== undefined &&
-      listOf(traefikService(doc).get("command", true)).some((c) =>
+      command.some((c) =>
         c.startsWith(`--entrypoints.${ANSWER_ENTRYPOINT}.address=`),
-      )
+      ) &&
+      command.some((c) => c.toLowerCase() === UNTHROTTLED)
     );
   } catch {
     return false;
@@ -87,9 +97,9 @@ export function withAnswerSupport(currentYaml: string, on: boolean): string {
   const service = traefikService(doc);
   const command = listOf(service.get("command", true));
   const web = challengeEntrypoint(command);
-  const ours = new Set(answerFlags(web).map(entryName));
+  const ours = new Set(answerFlags(web).map(flagName));
   setList(doc, service, "command", [
-    ...command.filter((c) => !ours.has(entryName(c))),
+    ...command.filter((c) => !ours.has(flagName(c))),
     ...(on ? answerFlags(web) : []),
   ]);
   const volumes = service.get("volumes", true);
