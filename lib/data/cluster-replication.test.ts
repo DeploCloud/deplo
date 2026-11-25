@@ -137,6 +137,7 @@ test("every server is handed the cluster's replicated Apps under the names their
       slug: "web",
       volumeNames: ["deplo-web-data"],
       includeFiles: false,
+      hold: "",
     },
   ]);
   assert.deepEqual(
