@@ -61,6 +61,7 @@ test("the change adds the loopback entrypoint, the bypass on web, Deplo's file a
     "--entrypoints.answer.proxyprotocol.trustedips=127.0.0.1/32",
     "--providers.file.directory=/deplo-dynamic",
     "--providers.file.watch=true",
+    "--providers.providersthrottleduration=0",
   ])
     assert.ok(proxy.command.includes(flag), flag);
   // Nothing new is published, and websecure trusts no PROXY header.
@@ -95,6 +96,24 @@ test("the change adds the loopback entrypoint, the bypass on web, Deplo's file a
   });
   assert.ok(hasAnswerSupport(on));
   assert.equal(withAnswerSupport(on, true), on);
+});
+
+// c40: throttled, the routes file landed after Traefik's first configuration, and a just-started proxy answered 404.
+test("a proxy that passes cluster domains on applies its routes file with its first configuration", () => {
+  const before = withAnswerSupport(INSTALLED, true).replace(
+    "      - --providers.providersthrottleduration=0\n",
+    "",
+  );
+  assert.ok(!hasAnswerSupport(before), "an older change is done again");
+  const own = INSTALLED.replace(
+    "      - --providers.docker=true\n",
+    "      - --providers.docker=true\n      - --providers.providersThrottleDuration=5s\n",
+  );
+  const on = proxyOf(withAnswerSupport(own, true)).command;
+  assert.deepEqual(
+    on.filter((c) => /throttleduration/i.test(c)),
+    ["--providers.providersthrottleduration=0"],
+  );
 });
 
 // A server that stops using it is left exactly as it was, so it is as if it never had it.

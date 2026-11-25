@@ -236,17 +236,25 @@ export async function routeAfterAnswers(
   appId: string,
   deps: {
     sync?: (clusterId: string) => Promise<unknown>;
+    settle?: (clusterId: string, appId: string) => Promise<void>;
     reroute?: (appId: string) => Promise<unknown>;
     tail?: (clusterId: string) => Promise<void>;
   } = {},
 ): Promise<void> {
   const sync = deps.sync ?? handForwarderTables;
+  const settle =
+    deps.settle ??
+    (async (c: string, a: string) =>
+      (await import("./dns-zone")).settleCertModes(c, a));
   const reroute =
     deps.reroute ??
     (async (id: string) =>
       (await import("../../deploy/build/reroute")).rerouteApp(id));
   const tail = deps.tail ?? ((id: string) => syncAnswerTail(id, true));
   await sync(clusterId);
+  await settle(clusterId, appId).catch((e) =>
+    console.warn(`[answer-switch] ${appId}: ${message(e)}`),
+  );
   // The route before the proxies and certificates: they took 15 s, every server answering 404 meanwhile (c39).
   await reroute(appId);
   await tail(clusterId);
