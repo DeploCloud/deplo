@@ -497,7 +497,7 @@ function nextTry(appId: string, to: string): number | null {
 }
 
 const LINK_WORDS =
-  /cut short|did not confirm|connection (reset|closed|ended)|broken pipe|\bEOF\b|ENOENT|UNAVAILABLE|is offline/i;
+  /cut short|did not confirm|connection (reset|closed|ended)|broken pipe|\bEOF\b|ENOENT|UNAVAILABLE|is offline|channel has been shut down/i;
 
 /** The copy broke because a link did: Deplo's to a server, or the one between the two servers. */
 export function linkDropped(e: unknown): boolean {

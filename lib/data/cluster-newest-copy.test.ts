@@ -495,3 +495,51 @@ test("a move whose old server dropped its link starts the App there once it answ
   moveRetry.waitMs = 5_000;
   __setRunnerForTest(async () => {});
 });
+
+// c38: the copy landed on eu-1, but the next call went over the link the cut had closed (`Channel has been shut
+// down`): each volume now goes on connections of its own.
+test("a move's next volume goes on a fresh connection, never one a dropped link left behind", async () => {
+  __forgetMoveTries();
+  await fise("srv_2");
+  const VOL2 = "deplo-fise-cache";
+  await pg.exec(
+    `insert into app_volumes (volume_id, app_id, position, type, name, mount_path, read_only)
+       values ('vol_2', 'fise', 1, 'named', 'cache', '/cache', false)`,
+  );
+  const old = disks.get("srv_2")!;
+  old.stacks.set(
+    "fise",
+    `services:\n  app:\n    image: nginx:1\n    volumes:\n      - ${VOL}:/data\n      - ${VOL2}:/cache\nvolumes:\n  ${VOL}:\n    name: ${VOL}\n  ${VOL2}:\n    name: ${VOL2}\n`,
+  );
+  old.volumes.set(VOL, OLD);
+  old.volumes.set(VOL2, NEW);
+  old.ran.set("fise", { lastRanMs: Date.now() - 2_000, running: false });
+  for (const id of ["srv_2", "srv_3"])
+    hosts.get(id)!.capabilities.push(VOLUME_COPY_MEMBER_CAPABILITY);
+  const ops = hosts.get("srv_3")!.extra as Partial<AgentConnection>;
+  const expect = ops.expectClusterVolume!;
+  const used = new WeakSet<object>();
+  ops.expectClusterVolume = async function (this: object, ...a) {
+    if (used.has(this)) throw new Error("Channel has been shut down");
+    used.add(this);
+    return expect.apply(this, a);
+  };
+  const cluster = await eu();
+  __setRunnerForTest(async (depId) => {
+    await db
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(eq(deploymentsTable.id, depId));
+  });
+  try {
+    await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+    assert.equal(
+      await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+      "done",
+    );
+    assert.deepEqual(disks.get("srv_3")!.volumes.get(VOL2), NEW);
+  } finally {
+    ops.expectClusterVolume = expect;
+    __setRunnerForTest(async () => {});
+  }
+});
