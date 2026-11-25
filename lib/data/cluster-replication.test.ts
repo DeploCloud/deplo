@@ -38,7 +38,12 @@ import {
   replicateCluster,
 } from "./clusters/replication";
 import { following, listClusterReplication } from "./clusters/replica-state";
-import { holdTurn } from "./clusters/copy-turns";
+import {
+  __forgetTurns,
+  holdTurn,
+  takeTurn,
+  turnWait,
+} from "./clusters/copy-turns";
 import { __forgetClusterStandbyTries } from "./databases/standby";
 import {
   asAdmin,
@@ -615,7 +620,10 @@ test("a server takes one new copy at a time: the next waits its turn and says so
     .select()
     .from(clusterAppReplicas)
     .where(eq(clusterAppReplicas.serverId, next));
-  assert.equal(queued.error, "Queued: server-2 is busy with a copy of web");
+  assert.equal(
+    queued.error,
+    "Queued: 1st in line: server-2 is busy with a copy of web",
+  );
 
   // Not whole yet: the next still waits.
   host[first].replicaReports = [report({ synced: false })];
@@ -668,6 +676,45 @@ test("a copy that moves data while its server copies something else waits its tu
   ];
   await replicateCluster(cluster.id);
   assert.equal(handed("srv_4")[0].hold ?? "", "");
+});
+
+// c39: lab-r's backup waited 12 minutes: each time a copy ended, the pass gave its server to a copy that asked later.
+test("a backup that asked before a copy keeps its turn when the server is free again", async () => {
+  const cluster = await replicated();
+  __forgetTurns();
+  const move = holdTurn(["srv_2"], "the move of blog");
+  const stop = new AbortController();
+  const poll = turnWait.pollMs;
+  turnWait.pollMs = 60_000;
+  const backup = takeTurn(["srv_2"], "a backup of shop", {
+    signal: stop.signal,
+  });
+  try {
+    await replicateCluster(cluster.id, true);
+    move();
+    // The move is done, and the backup has not looked again yet: the pass must still leave server-2 to it.
+    await replicateCluster(cluster.id);
+    for (const id of ["srv_3", "srv_4"])
+      assert.deepEqual(
+        (host[id].replicaTables.at(-1)?.entries ?? []).map((e) => e.appId),
+        [],
+        `${id} got a copy that asked after the backup`,
+      );
+    const rows = await db.select().from(clusterAppReplicas);
+    assert.ok(
+      rows.some(
+        (r) =>
+          r.error ===
+          "Queued: 2nd in line: server-2 takes a backup of shop first",
+      ),
+      rows.map((r) => r.error).join(" | "),
+    );
+  } finally {
+    stop.abort();
+    (await backup)();
+    turnWait.pollMs = poll;
+    __forgetTurns();
+  }
 });
 
 // c38: every copy read Behind together for about 35 s: Deplo's pass came late under load, not the copies.
