@@ -33,7 +33,7 @@ import {
   putLeaderBundle,
 } from "./bundle-calls";
 import { leaderHostOf } from "./host";
-import { isBuiltImage } from "./images";
+import { holdClusterFailoverImages, isBuiltImage } from "./images";
 import { clusterOutOfReach } from "./reach";
 import { clusterHeirs, silentMembers } from "./succession";
 import { getClusterById } from "./roster";
@@ -466,6 +466,8 @@ export async function pushFailoverBundle(input: {
     keys,
     await bundleMeta(app.id, bundle.stack.imageRef),
   );
+  // Every member that may take it over pulls its registry images now, not at the failover.
+  void holdClusterFailoverImages(cluster.id).catch(() => undefined);
   await db.delete(pushes).where(
     and(
       eq(pushes.workloadKind, KIND),

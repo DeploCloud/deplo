@@ -67,6 +67,13 @@ export interface FakeClusterHost {
   imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
   /** Every image this host's agent was told to expect from another member, in order. */
   imageExpects: { imageRef: string; sourceFingerprint: string; keep: number }[];
+  /** Every list of failover images this host's agent was handed, in order, and what it says it holds. */
+  failoverHolds: { imageRef: string; bytes: number }[][];
+  failoverHeld: (ref: string) => {
+    held: boolean;
+    bytes: number;
+    error: string;
+  };
   /** Every name-forwarder table this host's agent was handed, in order (#200). */
   forwarders: ClusterForwarderTable[];
   /** What this host's agent says it turned away, with the next table; handed once (ADR-0048). */
@@ -400,6 +407,14 @@ export function fakeClusterHosts(): {
         guard(() => {
           h.imageExpects.push({ imageRef, sourceFingerprint, keep });
         }),
+      holdFailoverImages: (images) =>
+        guard(() => {
+          h.failoverHolds.push(images);
+          return images.map((i) => ({
+            imageRef: i.imageRef,
+            ...h.failoverHeld(i.imageRef),
+          }));
+        }),
       setClusterForwarders: (table) =>
         guard(() => {
           h.forwarders.push(table);
@@ -515,6 +530,8 @@ export function fakeClusterHosts(): {
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],
         imageExpects: [],
+        failoverHolds: [],
+        failoverHeld: () => ({ held: false, bytes: 0, error: "" }),
         forwarders: [],
         networkTables: [],
         rotationTables: [],

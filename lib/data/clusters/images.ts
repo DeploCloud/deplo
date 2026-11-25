@@ -6,17 +6,24 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   clusterImageCopies,
   clusterMembers as clusterMembersTable,
+  failoverBundlePushes,
 } from "../../db/schema/control-plane/clusters";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { decryptSecretOrThrow } from "../../crypto";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
 import {
   copyClusterImage,
   expectClusterImage,
+  holdFailoverImages,
 } from "../../infra/agent-client/cluster-host";
 import { requireActiveTeamId } from "../../membership";
 import type { ClusterImageProgress } from "../../types/cluster";
-import { CLUSTER_REGISTRY_IMAGES_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_FAILOVER_IMAGES_CAPABILITY,
+  CLUSTER_REGISTRY_IMAGES_CAPABILITY,
+} from "../../infra/agent-client/hello-capabilities";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { serversReporting } from "../servers/agent-capabilities";
 import { withKeyedLock } from "../keyed-mutex";
@@ -271,6 +278,8 @@ export async function copyImagesToMembers(
   clusterId: string,
   sourceServerId: string,
   refs: string[],
+  // A member that pulls its failover images itself is sent only those behind registry credentials.
+  toPullers = false,
 ): Promise<void> {
   const wanted = [...new Set(refs.filter((r) => r && !isBuiltImage(r)))];
   if (wanted.length === 0 || (await instanceFrozen())) return;
@@ -285,9 +294,17 @@ export async function copyImagesToMembers(
     CLUSTER_REGISTRY_IMAGES_CAPABILITY,
   );
   if (!able.has(source.serverId)) return;
+  const pullers = toPullers
+    ? new Set<string>()
+    : await serversReporting(
+        others.map((m) => m.serverId),
+        CLUSTER_FAILOVER_IMAGES_CAPABILITY,
+      );
   const from = await fingerprintOf(source.serverId);
   if (!from) return;
-  for (const t of others.filter((m) => able.has(m.serverId)))
+  for (const t of others.filter(
+    (m) => able.has(m.serverId) && !pullers.has(m.serverId),
+  ))
     for (const ref of wanted) {
       const key = `${t.serverId} ${ref}`;
       if (registryHeld.has(key)) continue;
@@ -318,9 +335,114 @@ export function stackImages(composeYaml: string): string[] {
   return out;
 }
 
+type BundleStack = {
+  stack?: {
+    imageRef?: string;
+    composeYaml?: string;
+    registryAuth?: unknown[];
+  };
+};
+
+/** Each cluster workload's failover stack: the server that runs it, the registry images it names, and whether they need credentials. */
+async function failoverStacks(clusterId: string) {
+  const db = getDb();
+  const workloads = [
+    ...(
+      await db
+        .select({ id: appsTable.id, serverId: appsTable.serverId })
+        .from(appsTable)
+        .where(eq(appsTable.clusterId, clusterId))
+    ).map((w) => ({ ...w, kind: "app" })),
+    ...(
+      await db
+        .select({ id: databasesTable.id, serverId: databasesTable.serverId })
+        .from(databasesTable)
+        .where(eq(databasesTable.clusterId, clusterId))
+    ).map((w) => ({ ...w, kind: "database" })),
+  ];
+  const out: { serverId: string; refs: string[]; private: boolean }[] = [];
+  for (const w of workloads) {
+    const [row] = await db
+      .select({ bundleEnc: failoverBundlePushes.bundleEnc })
+      .from(failoverBundlePushes)
+      .where(
+        and(
+          eq(failoverBundlePushes.workloadKind, w.kind),
+          eq(failoverBundlePushes.workloadId, w.id),
+        ),
+      )
+      .limit(1);
+    if (!row || !w.serverId) continue;
+    let bundle: BundleStack;
+    try {
+      bundle = JSON.parse(
+        decryptSecretOrThrow(row.bundleEnc, "a failover bundle"),
+      ) as BundleStack;
+    } catch {
+      continue;
+    }
+    const refs = [
+      ...stackImages(bundle.stack?.composeYaml ?? ""),
+      bundle.stack?.imageRef ?? "",
+    ].filter((r) => r && !isBuiltImage(r));
+    if (refs.length > 0)
+      out.push({
+        serverId: w.serverId,
+        refs: [...new Set(refs)],
+        private: (bundle.stack?.registryAuth?.length ?? 0) > 0,
+      });
+  }
+  return out;
+}
+
+// The size of each registry image where a member holds it: a pull elsewhere must leave a tenth of that disk free.
+const BYTES_KEY = Symbol.for("deplo.cluster-images.failover-bytes");
+const bytesSlot = globalThis as unknown as {
+  [BYTES_KEY]?: Map<string, number>;
+};
+const failoverBytes: Map<string, number> = (bytesSlot[BYTES_KEY] ??= new Map());
+
+/**
+ * Every member that may take a cluster's workloads over holds the registry images they run, pulled ahead (c41: fise's
+ * 3.3 GB were pulled at its failover, 76 s). An image behind registry credentials is copied from the server that runs it.
+ */
+export async function holdClusterFailoverImages(
+  clusterId: string,
+): Promise<void> {
+  if (await instanceFrozen()) return;
+  const stacks = await failoverStacks(clusterId);
+  const all = await members(clusterId);
+  const able = await serversReporting(
+    all.map((m) => m.serverId),
+    CLUSTER_FAILOVER_IMAGES_CAPABILITY,
+  );
+  const images = [...new Set(stacks.flatMap((s) => s.refs))]
+    .sort()
+    .map((imageRef) => ({
+      imageRef,
+      bytes: failoverBytes.get(imageRef) ?? 0,
+    }));
+  for (const m of all.filter((m) => able.has(m.serverId))) {
+    try {
+      for (const got of await holdFailoverImages(m.serverId, images))
+        if (got.held && got.bytes > (failoverBytes.get(got.imageRef) ?? 0))
+          failoverBytes.set(got.imageRef, got.bytes);
+    } catch (e) {
+      console.warn(
+        `[cluster-images] failover images -> ${m.serverId}: ${message(e)}`,
+      );
+    }
+  }
+  for (const s of stacks.filter((s) => s.private))
+    await copyImagesToMembers(clusterId, s.serverId, s.refs, true).catch(
+      () => undefined,
+    );
+}
+
 /** Test seam: forget which registry images were copied. */
 export function __forgetRegistryCopies(): void {
   registryHeld.clear();
+  failoverBytes.clear();
 }
 
 /** Members that hold a release, for the placement rule: a member still copying is not a target. */
@@ -440,6 +562,14 @@ export async function listClusterImageProgress(
 
 /** The sweep's job: a member that was offline, a failed copy or a server that joined later gets the image now. */
 export async function reconcileClusterImages(): Promise<void> {
+  const clusters = new Set(
+    (
+      await getDb()
+        .selectDistinct({ id: clusterMembersTable.clusterId })
+        .from(clusterMembersTable)
+    ).map((r) => r.id),
+  );
+  for (const id of clusters) await holdClusterFailoverImages(id);
   for (const l of await latestReleases()) {
     if (await instanceFrozen()) return;
     const p = await progressOf(l);

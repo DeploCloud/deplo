@@ -3249,6 +3249,23 @@ export interface ExpectClusterImageRequest {
 export interface ExpectClusterImageResponse {
 }
 
+export interface FailoverImage {
+  imageRef: string;
+  /** Its size where it is held, 0 when unknown: what a pull must leave room for. */
+  bytes: number;
+  /** In the response: whether this server holds it now, and why its last pull failed. */
+  held: boolean;
+  error: string;
+}
+
+export interface HoldFailoverImagesRequest {
+  images: FailoverImage[];
+}
+
+export interface HoldFailoverImagesResponse {
+  images: FailoverImage[];
+}
+
 export interface ExpectClusterBackupRequest {
   /** Where this member keeps it: its store's root and the artifact's key. */
   store?:
@@ -24830,6 +24847,265 @@ export const ExpectClusterImageResponse: MessageFns<ExpectClusterImageResponse> 
   },
 };
 
+function createBaseFailoverImage(): FailoverImage {
+  return { imageRef: "", bytes: 0, held: false, error: "" };
+}
+
+export const FailoverImage: MessageFns<FailoverImage> = {
+  encode(message: FailoverImage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.bytes !== 0) {
+      writer.uint32(16).int64(message.bytes);
+    }
+    if (message.held !== false) {
+      writer.uint32(24).bool(message.held);
+    }
+    if (message.error !== "") {
+      writer.uint32(34).string(message.error);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FailoverImage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseFailoverImage();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.bytes = longToNumber(reader.int64());
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.held = reader.bool();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.error = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): FailoverImage {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0,
+      held: isSet(object.held) ? globalThis.Boolean(object.held) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+    };
+  },
+
+  toJSON(message: FailoverImage): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.bytes !== 0) {
+      obj.bytes = Math.round(message.bytes);
+    }
+    if (message.held !== false) {
+      obj.held = message.held;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FailoverImage>, I>>(base?: I): FailoverImage {
+    return FailoverImage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FailoverImage>, I>>(object: I): FailoverImage {
+    const message = createBaseFailoverImage();
+    message.imageRef = object.imageRef ?? "";
+    message.bytes = object.bytes ?? 0;
+    message.held = object.held ?? false;
+    message.error = object.error ?? "";
+    return message;
+  },
+};
+
+function createBaseHoldFailoverImagesRequest(): HoldFailoverImagesRequest {
+  return { images: [] };
+}
+
+export const HoldFailoverImagesRequest: MessageFns<HoldFailoverImagesRequest> = {
+  encode(message: HoldFailoverImagesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.images) {
+      FailoverImage.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HoldFailoverImagesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseHoldFailoverImagesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.images.push(FailoverImage.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): HoldFailoverImagesRequest {
+    return {
+      images: globalThis.Array.isArray(object?.images) ? object.images.map((e: any) => FailoverImage.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: HoldFailoverImagesRequest): unknown {
+    const obj: any = {};
+    if (message.images?.length) {
+      obj.images = message.images.map((e) => FailoverImage.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HoldFailoverImagesRequest>, I>>(base?: I): HoldFailoverImagesRequest {
+    return HoldFailoverImagesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HoldFailoverImagesRequest>, I>>(object: I): HoldFailoverImagesRequest {
+    const message = createBaseHoldFailoverImagesRequest();
+    message.images = object.images?.map((e) => FailoverImage.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseHoldFailoverImagesResponse(): HoldFailoverImagesResponse {
+  return { images: [] };
+}
+
+export const HoldFailoverImagesResponse: MessageFns<HoldFailoverImagesResponse> = {
+  encode(message: HoldFailoverImagesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.images) {
+      FailoverImage.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HoldFailoverImagesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseHoldFailoverImagesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.images.push(FailoverImage.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): HoldFailoverImagesResponse {
+    return {
+      images: globalThis.Array.isArray(object?.images) ? object.images.map((e: any) => FailoverImage.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: HoldFailoverImagesResponse): unknown {
+    const obj: any = {};
+    if (message.images?.length) {
+      obj.images = message.images.map((e) => FailoverImage.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HoldFailoverImagesResponse>, I>>(base?: I): HoldFailoverImagesResponse {
+    return HoldFailoverImagesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HoldFailoverImagesResponse>, I>>(object: I): HoldFailoverImagesResponse {
+    const message = createBaseHoldFailoverImagesResponse();
+    message.images = object.images?.map((e) => FailoverImage.fromPartial(e)) || [];
+    return message;
+  },
+};
+
 function createBaseExpectClusterBackupRequest(): ExpectClusterBackupRequest {
   return { store: undefined, sourceFingerprint: "" };
 }
@@ -30824,6 +31100,22 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): ExpectClusterImageResponse => ExpectClusterImageResponse.decode(value),
   },
   /**
+   * The registry images this member keeps ready to take over its cluster's workloads (capability
+   * "cluster.failover.images"): it pulls the missing ones one at a time while a tenth of its disk stays
+   * free, and cleanup spares every one listed. Each call replaces the list.
+   */
+  holdFailoverImages: {
+    path: "/deplo.agent.v1.Agent/HoldFailoverImages" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: HoldFailoverImagesRequest): Buffer =>
+      Buffer.from(HoldFailoverImagesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): HoldFailoverImagesRequest => HoldFailoverImagesRequest.decode(value),
+    responseSerialize: (value: HoldFailoverImagesResponse): Buffer =>
+      Buffer.from(HoldFailoverImagesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): HoldFailoverImagesResponse => HoldFailoverImagesResponse.decode(value),
+  },
+  /**
    * Tell this member to keep one backup from one member in its store, once, within the copy's time
    * limit (capability "backup-store.member"). A backup stream that matches no such entry is refused.
    */
@@ -31786,6 +32078,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   expectClusterImage: handleUnaryCall<ExpectClusterImageRequest, ExpectClusterImageResponse>;
   /**
+   * The registry images this member keeps ready to take over its cluster's workloads (capability
+   * "cluster.failover.images"): it pulls the missing ones one at a time while a tenth of its disk stays
+   * free, and cleanup spares every one listed. Each call replaces the list.
+   */
+  holdFailoverImages: handleUnaryCall<HoldFailoverImagesRequest, HoldFailoverImagesResponse>;
+  /**
    * Tell this member to keep one backup from one member in its store, once, within the copy's time
    * limit (capability "backup-store.member"). A backup stream that matches no such entry is refused.
    */
@@ -32652,6 +32950,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ExpectClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * The registry images this member keeps ready to take over its cluster's workloads (capability
+   * "cluster.failover.images"): it pulls the missing ones one at a time while a tenth of its disk stays
+   * free, and cleanup spares every one listed. Each call replaces the list.
+   */
+  holdFailoverImages(
+    request: HoldFailoverImagesRequest,
+    callback: (error: ServiceError | null, response: HoldFailoverImagesResponse) => void,
+  ): ClientUnaryCall;
+  holdFailoverImages(
+    request: HoldFailoverImagesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: HoldFailoverImagesResponse) => void,
+  ): ClientUnaryCall;
+  holdFailoverImages(
+    request: HoldFailoverImagesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: HoldFailoverImagesResponse) => void,
   ): ClientUnaryCall;
   /**
    * Tell this member to keep one backup from one member in its store, once, within the copy's time
