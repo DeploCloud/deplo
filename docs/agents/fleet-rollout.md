@@ -112,6 +112,12 @@ inside. The automatic pass runs with no identity, so it calls the infra seam dir
 **There is no scripted rollout any more**: a script runs in its own process, which no server links
 to, so it reaches none (§6). The panel's rollout and Retry now are the only paths.
 
+**A proxy change lands with the agent's update.** What Deplo changes in a server's Traefik when the
+server links (its pinned image, ECDSA keys since canary.91) is applied right after that server's agent
+comes back from its own update, on the same server. On eu-2 (one core, the leader's, running fise and
+memos) that pair delayed a lease renewal 5.3 s and the agent fenced both Apps (fise down 100 s, c38).
+A release that changes the proxy should not also move the agent pin, or it pays that once per server.
+
 ## 4. Order: canary → the rest → the Deplo host LAST
 
 **Identify the Deplo host (agent 0) first.** It is stored as `type = "remote"` like every other
