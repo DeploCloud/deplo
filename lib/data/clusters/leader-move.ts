@@ -22,7 +22,7 @@ import { leaderHost, leaderHostOf } from "./host";
 import { tellLeaderReplaced } from "./leader-beat";
 import {
   forgetLeaderRoster,
-  pushLeaderRoster,
+  prepareLeaderRoster,
   readLeaderSnapshot,
 } from "./leader-sync";
 import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
@@ -47,6 +47,9 @@ import { syncClusterNetworkSoon } from "./network";
 
 const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so the leader cannot run on it.";
+
+// How long a hand-over waits for the leader it leaves to renew once more: one that does not answer is not waited out.
+const HAND_OVER_WAIT_MS = 2_000;
 
 const warn = (clusterId: string, e: unknown) =>
   console.warn(`[cluster-leader] ${clusterId}: ${messageOf(e)}`);
@@ -104,15 +107,29 @@ export async function leadFrom(
   forgetLeaderRoster(cluster.id);
   // The watch's next pass repeats a roster this leader did not take.
   const led = (await getClusterById(cluster.id))!;
-  await pushLeaderRoster(led).catch((e) => warn(cluster.id, e));
+  const send = await prepareLeaderRoster(led).catch((e) => {
+    warn(cluster.id, e);
+    return null;
+  });
+  // A takeover is from a leader that does not answer. Any other one renews once more and stops when told, and the
+  // roster built above goes out right after, so no member waits past a second for a renewal (c43: 1.49 s).
+  const told =
+    before && before.id !== next.id && !to.leaderTakeoverAt
+      ? tellLeaderReplaced(before.id, cluster.id, led.leaderEpoch).catch(
+          () => {},
+        )
+      : Promise.resolve();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    told,
+    new Promise((r) => (timer = setTimeout(r, HAND_OVER_WAIT_MS))),
+  ]);
+  clearTimeout(timer);
+  await send?.().catch((e) => warn(cluster.id, e));
+  await told;
   // The leader's new server joins the cluster's network, and one it left goes off it.
   if (to.leaderServerId !== cluster.leaderServerId)
     syncClusterNetworkSoon(cluster.id);
-  // A takeover is from a leader that does not answer; any other one hears it was replaced and stops at once.
-  if (before && before.id !== next.id && !to.leaderTakeoverAt)
-    await tellLeaderReplaced(before.id, cluster.id, led.leaderEpoch).catch(
-      () => {},
-    );
   return led;
 }
 
