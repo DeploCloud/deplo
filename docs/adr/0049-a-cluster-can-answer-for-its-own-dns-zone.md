@@ -70,13 +70,17 @@ How a check is set:
 
 ### Times
 
-| What                                  | Default | Range         | Why                                                              |
-| ------------------------------------- | ------- | ------------- | ---------------------------------------------------------------- |
-| A / AAAA of an App's name             | 30 s    | 10 s to 300 s | How long a resolver keeps naming a server that stopped.          |
-| A stopped server leaves the answer    | 10 s    | 5 s to 60 s   | Five missed "alive" messages on the private network.             |
-| Negative answers (SOA minimum)        | 30 s    | fixed         | A name added a moment ago appears quickly.                       |
-| NS and glue                           | 1 day   | fixed         | The registrar's side; it changes only when a name server leaves. |
-| NS and glue Deplo keeps in Cloudflare | 1 hour  | fixed         | Deplo rewrites them itself when a name server leaves.            |
+| What                                  | Default | Range         | Why                                                                     |
+| ------------------------------------- | ------- | ------------- | ----------------------------------------------------------------------- |
+| A / AAAA of an App's name             | 30 s    | 10 s to 300 s | How long a resolver keeps naming a server that stopped.                 |
+| A stopped server leaves the answer    | 10 s    | 5 s to 60 s   | Five missed "alive" messages on the private network.                    |
+| A member's lease without a renewal    | 20 s    | fixed         | Past the second heir's takeover, so losing the leader fences no member. |
+| The heir asks to lead                 | 10 s    | fixed         | The removal time after its last renewal; each next in line 5 s later.   |
+| Negative answers (SOA minimum)        | 30 s    | fixed         | A name added a moment ago appears quickly.                              |
+| NS and glue                           | 1 day   | fixed         | The registrar's side; it changes only when a name server leaves.        |
+| NS and glue Deplo keeps in Cloudflare | 1 hour  | fixed         | Deplo rewrites them itself when a name server leaves.                   |
+
+**The lease and the takeover** (owner's decision of 25 Nov 2026, c42): a member keeps its lease 20 s without a renewal (`lease.FenceFor` in deplo-cluster, carried in every renewal as `fenceSeconds`), and the heir asks to lead once its own lease went 10 s unrenewed (`lease.PreVoteFor`, the removal time), the next in line 5 s later. The first heir leads and renews every member about 11 s after the leader's last renewal, the second about 16 s: both before any lease runs out, so a healthy member never stops its Apps when the leader's server goes. A dead member's Apps with data still move once its own fence is over, 20 s plus the 11 s its agent takes to stop them, and are answered again within 60 s. Agents from canary.11 keep to the fence a renewal gives, so `agentMin` stays.
 
 So a server that stops leaves the answers within 10 s, and leaves every resolver within 40 s; meanwhile a browser that tries it falls back to the next address after a few seconds (ADR-0048, "Deplo down is a degradation"). Both values are per cluster, in the cluster's settings, behind Advanced.
 
