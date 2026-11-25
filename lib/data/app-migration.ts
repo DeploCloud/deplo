@@ -38,7 +38,7 @@ import type { SetAsideCopy } from "../infra/agent-client/connection";
 import { formatBytes } from "../utils";
 import { placeAtLeaderFirst } from "./clusters/leader-sync";
 import { getClusterById } from "./clusters/roster";
-import { takeTurn } from "./clusters/copy-turns";
+import { holdTurn } from "./clusters/copy-turns";
 import {
   dropTeardown,
   enqueueTeardowns,
@@ -340,14 +340,9 @@ async function runMigration(
     );
     return "done";
   };
-  // One copy at a time on each end (ADR-0043): it waits its turn before anything stops.
-  const release = await takeTurn([from, to], `the move of ${app.name}`, {
-    queued: async (id, what) =>
-      emit(
-        "info",
-        `Waiting for ${await serverName(id)} to finish ${what} before copying.`,
-      ),
-  });
+  // A move never waits its turn: on a cluster the App is down once the leader holds its new server (c38: two
+  // Apps stopped 4 minutes in the queue). It holds both servers, and every other copy there waits for it.
+  const release = holdTurn([from, to], `the move of ${app.name}`);
   try {
     return await copyAndSwitch();
   } finally {
