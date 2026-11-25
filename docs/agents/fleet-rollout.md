@@ -169,6 +169,11 @@ hands each cluster it leads to the first in line, one already on the pin first (
 every member's renewal 2.4 s (c39). The hand-over itself cost none on eu: every member's renewal across
 the new epoch came 0.94 to 0.96 s after the one before (c40).
 
+**A new proxy image is not in this order.** A panel that moves Traefik recreates each server's proxy when that server
+links, so a panel restart updates them all within minutes, Deplo's machine first (canary.99, Traefik v3.7.20: four
+servers in 2 min 20 s, beside the agent rollout). Each recreate goes through the standby proxy; fise answered in 1.6 s
+once, at its own server's.
+
 **Why a canary at all.** `go test ./...` gates the release but proves nothing about _this_ fleet's
 kernels, Docker versions and install layouts. The canary is the smallest real host that can
 disprove the release. Let it sit long enough to Hello, serve a deploy and stream logs before moving on.
