@@ -37,12 +37,11 @@ import { recordClusterActivity } from "./cluster-activity";
 import { refreshAcmeCnames } from "./zone-cnames";
 import {
   applyCertModes,
-  dropDnsChallengeProxy,
   zoneCertificateViews,
-  zoneCertMembers,
   zoneCertPass,
   type ZoneCertDomainRow,
 } from "./zone-certs";
+import { dropDnsChallengeProxy, zoneCertMembers } from "./zone-cert-proxies";
 import { placeOf, placeRows, type ServerPlace } from "./server-place";
 import { keepZoneTables, rememberZoneTable, withDrained } from "./proxy-roll";
 import { listWorkloadPlacements } from "./placement";
