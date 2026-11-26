@@ -225,6 +225,8 @@ async function memberDisk(serverId: string) {
 
 /** A copy that took this much since the last pass moves data now: a catch-up, or what an App empty at its first copy wrote since. */
 export const COPYING_BYTES = 8 * 1024 * 1024;
+/** A copy holding its turn keeps it while it takes this much a second: an eighth of the agent's 2 MB/s floor. */
+export const STILL_COPYING_RATE = 256 * 1024;
 
 /** The copies that wait their turn, by member and App: `queued` ones are new and are not handed yet, `holds` are kept whole and idle. */
 export interface CopyQueue {
@@ -236,8 +238,7 @@ export interface CopyQueue {
  * Which copies wait their turn: a server takes one copy at a time, sent or received (ADR-0043). Every copy that moves
  * data counts, new or held: one not whole yet, one behind, one taking COPYING_BYTES since the last pass (c38: lab-pd,
  * empty at its first copy, took 300 MB as followed changes beside a backup). A copy that held a turn keeps it while it
- * copies; one a backup or move overtook, or that waits for a busy end, is held whole until its turn; none waits past
- * the queue's limit.
+ * copies; one that waits for a busy end is held whole until its turn; none waits past the queue's limit.
  */
 export async function queuedCopies(
   table: ClusterReplicaTable,
@@ -295,6 +296,8 @@ export async function queuedCopies(
     ends: string[];
     what: string;
     into: Map<string, Map<string, string>>;
+    /** Bytes taken since the last pass: of two copies first seen together, the one further on started first. */
+    moved: number;
   };
   const wants: Want[] = [];
   for (const [serverId, reports] of held)
@@ -304,8 +307,13 @@ export async function queuedCopies(
         continue;
       const key = `${serverId}|${r.appId}`;
       const last = mem.bytes.get(key);
-      mem.bytes.set(key, r.bytes);
-      const grew = last !== undefined && r.bytes - last >= COPYING_BYTES;
+      mem.bytes.set(key, { bytes: r.bytes, at: now });
+      const moved = last ? Math.abs(r.bytes - last.bytes) : 0;
+      // A copy with its turn keeps it while it still moves data, however close two passes come (c44).
+      const rate = last ? moved / Math.max((now - last.at) / 1000, 1) : 0;
+      const grew =
+        moved >= COPYING_BYTES ||
+        (mem.turns.has(key) && rate >= STILL_COPYING_RATE);
       const behind =
         !r.appliedAt || now - Date.parse(r.appliedAt) >= BEHIND_AFTER_MS;
       const copying =
@@ -319,6 +327,7 @@ export async function queuedCopies(
           ends: [serverId, a.serverId],
           what: `a copy of ${a.name}`,
           into: out.holds,
+          moved,
         });
     }
   for (const e of table.entries) {
@@ -335,17 +344,17 @@ export async function queuedCopies(
         ends: [m.serverId, a.serverId],
         what: `a copy of ${a.name}`,
         into: out.queued,
+        moved: 0,
       });
     }
   }
-  // A copy that holds a turn keeps it while it copies, unless a backup or a move holds one of its servers now.
-  const keeps = wants.filter(
-    (c) => mem.turns.has(c.key) && !c.ends.some((id) => heldBy(id)),
-  );
+  // A copy that holds a turn keeps it while it copies: a backup or a move that asked since never sends it back (c44).
+  const keeps = wants.filter((c) => mem.turns.has(c.key));
   for (const c of keeps) take(c.key, c.ends, c.what);
   // The others wait in the order they first asked, behind every backup that asked before them (ADR-0043).
   const rest = wants.filter((c) => !keeps.includes(c));
-  for (const c of rest) joinLine(c.key, c.ends, c.what, kind);
+  for (const c of [...rest].sort((x, y) => y.moved - x.moved))
+    joinLine(c.key, c.ends, c.what, kind);
   const asked = lineOf(kind);
   rest.sort((x, y) => asked.indexOf(x.key) - asked.indexOf(y.key));
   for (const c of rest) {

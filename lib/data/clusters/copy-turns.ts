@@ -31,8 +31,8 @@ const state = ((globalThis as Record<symbol, unknown>)[KEY] ??= {
 
 /** What the replication pass keeps of each copy ("<server>|<app>") from one pass to the next. */
 export interface CopyMemory {
-  /** The bytes it had received at the last pass. */
-  bytes: Map<string, number>;
+  /** The bytes it had received at the last pass, and when. */
+  bytes: Map<string, { bytes: number; at: number }>;
   /** The copies that held their servers' turn at the last pass: they keep it while they copy. */
   turns: Set<string>;
   /** Since when a copy the queue holds has waited. */
