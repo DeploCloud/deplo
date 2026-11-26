@@ -14,6 +14,7 @@ import { databases } from "../../db/schema/control-plane/databases";
 import { seedBackup } from "../backup-test-helpers";
 import { asUser1, seedBase } from "./backups-test-helpers";
 import { runAppBackup, runBackup, runDatabaseBackup } from "./run-now";
+import { cancelBackupsOfDeleted } from "./execute-backup";
 import { activities } from "../../db/schema/control-plane/activity";
 import { listBackupRuns } from "./run-listing";
 import { status as GrpcStatus } from "@grpc/grpc-js";
@@ -307,4 +308,35 @@ test("a backup that lands after its database was deleted is removed, not kept", 
     !lines.some((m) => /Backed up|Backup of .* failed/.test(m)),
     lines.join("\n"),
   );
+});
+
+// c36: a delete canceled a run whose file had landed but whose answer had not; the file outlived its App.
+test("a run its target's delete cuts off removes the file it may have landed", async (t) => {
+  const deleted: string[] = [];
+  let key = "";
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup(req: { s3?: { objectKey?: string } }) {
+        key = req.s3?.objectKey ?? "";
+        await cancelBackupsOfDeleted("db_1");
+        await db.delete(backupRuns);
+        throw new Error("the call was canceled");
+      },
+      s3Delete: async (target: { objectKey: string }) => {
+        deleted.push(target.objectKey);
+        return { ok: true, error: "", deleted: 1 };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await assert.rejects(() => runDatabaseBackup("db_1", "s3_1"), /canceled/);
+  });
+  assert.ok(key);
+  assert.deepEqual(deleted, [key]);
 });
