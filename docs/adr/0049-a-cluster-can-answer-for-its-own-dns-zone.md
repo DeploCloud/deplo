@@ -432,6 +432,19 @@ Released this round: agent v0.5.3-canary.47 and .48, leader v0.1.0-canary.19, pa
 - **A member comes back**: eu-3's 2.94 GB copy of lab-load set aside by a rename in 300 ms, fise's in 227 ms; the member then took a whole new replica of lab-load beside its dated copy.
 - **Leader at the end**: eu-2, epoch 89, line eu-3 then eu-1.
 
+## What cluster eu showed (26 Nov 2026, agent v0.5.3-canary.60, leader v0.1.0-canary.25, panel v0.8.2-canary.100 released, canary.99 still live)
+
+Released this round: agent v0.5.3-canary.60, leader v0.1.0-canary.25 and panel v0.8.2-canary.100, which pins both. **canary.100 is not live**: building it on this server needs 7 GB available and none came in 82 minutes of looking every 5 s, with the App that leaks restarted five times (the most seen was 7.03 GB). The live panel stays on canary.99, so the fleet stays on agent canary.59 and leader canary.24, and the sweep of these fixes waits for the next round.
+
+Before the release, on a clone of eu-3 (107):
+
+- **The real self-update** under systemd from the canary.59 release binary to the canary.60 release binary passed (36.6 s). The installer run right after it said the agent ran canary.59 while the test's canary.60 was still running on 127.0.0.1 (the version on disk, not the one running); a restart of the service put the right one up.
+- **As the leader's server** (eu-4, epoch 142, with lab-kit-a and lab-kit-b): its agent went canary.59 to canary.60 by hand under 10 new visitors a second for 380 s: 3785 answered, 5 reset at the agent's own restart (inside the stopped agent, the known limit), slowest 2.04 s; the other members' renewals at most 1.08 s apart, eu-4's own lease 3.01 s across its restart (c44: 3.33 s).
+- **Its power cut while leading**: eu-1 led epoch 143 10.6 s after, no member fenced; lab-kit-a and lab-kit-b answered by name again within 47 and 50 s; fise, memos and the other kit Apps never went unanswered.
+- **The first move onto it** (canary.99): lab-kit-a and lab-kit-b unanswered by name 85 to 89 s, the case canary.100 fixes.
+
+eu-1's disk was at 86% at the start and back at 85% two hours later: canary.99 still sends every kit App's failover backup there every 15 minutes. Removing the kit's older backups brought it to 75% and 74%. No home-line drop was seen; the name servers never answered SERVFAIL, and two were silent together once, for 1 s. Leader at the end: eu-1, epoch 143, line eu-2 then eu-3.
+
 ## What cluster eu showed (25-26 Nov 2026, panel v0.8.2-canary.99 live, agent v0.5.3-canary.59, leader v0.1.0-canary.24)
 
 Released this round, by the owner: agent v0.5.3-canary.59, leader v0.1.0-canary.24 and panel v0.8.2-canary.99, which pins both and moves every server's proxy to Traefik v3.7.20 (ADR-0043, "Placement never goes back, empty backups, a netstack of its own"). canary.99 is live, built on this server under a 6 GB cap (peak 4.93 GiB, no kill; the App that leaks was restarted twice for the 7 GB the build needs). Lab Apps were the kit (`lab-kit-a` to `-d`, `lab-kit-big`) in the owner's team. The home line did not drop once in the 2 h 40 min watched.
