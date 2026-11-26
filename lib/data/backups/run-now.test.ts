@@ -147,6 +147,39 @@ test("a run records how long the agent held the App, and nothing when it held no
   });
 });
 
+// c46: lab-room's backup failed for the 1 s pause and its run kept no held_ms.
+test("a failed run records how long the agent held the App too", async (t) => {
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        yield {
+          result: {
+            ok: false,
+            error: "its data could not be copied within 1s of pausing it",
+            sizeBytes: 0,
+            sha256: "",
+            heldMs: 1004,
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await assert.rejects(() => runDatabaseBackup("db_1", "s3_1"));
+    const runs = await listBackupRuns({ databaseId: "db_1" });
+    assert.deepEqual(
+      runs.map((r) => [r.status, r.heldMs]),
+      [["failed", 1004]],
+    );
+  });
+});
+
 // eu, 24 Nov 2026: nothing said that a backup between two members went through Deplo.
 test("a run records whether it went server to server or through Deplo", async (t) => {
   __setAgentConnectorForTest(async () => {

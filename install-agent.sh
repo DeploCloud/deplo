@@ -1624,8 +1624,31 @@ else
   ok "Backup store ready" "/data/backups"
 fi
 
+# A service an earlier run left up keeps the binary it started from (c46): it is restarted onto the one installed.
+agent_pid() { systemctl show -p MainPID --value deplo-agent 2>/dev/null || true; }
+sha_of() { sha256sum "$1" 2>/dev/null | awk '{print $1}'; }
+run_installed_agent() {
+  local pid
+  pid="$(agent_pid)"
+  if [ -n "$pid" ] && [ "$pid" != 0 ] && [ "$(sha_of "/proc/$pid/exe")" != "$(sha_of "$AGENT_BIN")" ]; then
+    systemctl restart deplo-agent >&9 2>&9 || true
+  fi
+}
+# The version the service runs: the one installed, or a newer one Deplo updated it to meanwhile.
+agent_version_label() {
+  local pid
+  pid="$(agent_pid)"
+  if [ -n "$pid" ] && [ "$pid" != 0 ] &&
+    [ "$(sha_of "/proc/$pid/exe")" != "$AGENT_SHA256" ]; then
+    printf 'updated by Deplo since v%s' "$AGENT_VERSION"
+  else
+    printf 'v%s' "$AGENT_VERSION"
+  fi
+}
+
 spin_run "Starting the agent" systemctl daemon-reload
 systemctl enable --now deplo-agent >&9 2>&9
+run_installed_agent
 
 # Provisioning is the agent's own round trip to the control plane, and its result
 # is a signed certificate on disk. Waiting for that file turns "watch the
@@ -1651,7 +1674,8 @@ AGENT_STATE="starting"
 systemctl is-active --quiet deplo-agent && AGENT_STATE="running"
 
 print_summary() {
-  local agent="v$AGENT_VERSION, $AGENT_STATE"
+  local agent
+  agent="$(agent_version_label), $AGENT_STATE"
   card_open "This host is a Deplo $HOST_ROLE"
   card_kv "Agent" "$agent"
   card_kv "Panel" "$URL"

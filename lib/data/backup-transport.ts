@@ -399,6 +399,7 @@ async function relayBackup(
         sizeBytes: 0,
         decryptedSizeBytes: 0,
         sha256: "",
+        heldMs: produced.heldMs,
       };
     }
     const mismatch = digestMismatch(produced, landed);
@@ -419,6 +420,7 @@ async function relayBackup(
         sizeBytes: 0,
         decryptedSizeBytes: 0,
         sha256: "",
+        heldMs: produced.heldMs,
       };
     }
     return {
@@ -527,9 +529,7 @@ async function memberRestore(
   expectedSha256: string,
   destServer: string,
 ): Promise<RestoreOutcome | null> {
-  const pair = isBaseBackupKey(objectKey)
-    ? null
-    : await memberPair(target.serverId, destServer);
+  const pair = await memberPair(target.serverId, destServer);
   if (!pair) return null;
   const store = storeTargetFor(creds.destination, objectKey);
   const holder = await connectBackupAgent(destServer, { store: true });
@@ -547,6 +547,7 @@ async function memberRestore(
   const workload = await connectBackupAgent(target.serverId, {
     store: true,
     redisAof: isRedis(target),
+    postgresArchive: isBaseBackupKey(objectKey),
   });
   try {
     if (
