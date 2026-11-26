@@ -225,3 +225,14 @@ On canary.98 a leader moved onto a member back from power cuts led on a placemen
 3. **The cluster network runs on Deplo's own TUN netstack** (deplo-agent#135), so closing it while packets leave cannot panic.
 
 Released this round by the owner, with Traefik v3.7.20 on every server: agent v0.5.3-canary.59, leader v0.1.0-canary.24, panel v0.8.2-canary.99. Measured (ADR-0049, "What cluster eu showed"): the rollout left no SERVFAIL and no two name servers silent; the empty memos backup turned failed 33 s after the panel started; a leader moved A to B and back kept `event_seq` on each head and replayed nothing; fise and memos came back 48.5 s and 36.4 s after their server's power cut, with their data. **Not fixed**: a member thawed after a hang promises itself an epoch it never leads, and a leader moved there later is recorded by Deplo while nobody leads (10.6 s without renewals, then a second leader at the same epoch); a move stops the App and copies all its data again though its copy there is current; the copy queue served three copies in reverse order; a member at its disk floor makes backups pause running Apps and moves fail as "a link dropped".
+
+## A move takes the last changes, backups spread by free disk, no promised epoch (26 Nov 2026)
+
+c44 left a thawed member promising itself an epoch, moves that copied all of an App's data again, every kit backup on one member and a copy queue out of order. Done (agent v0.5.3-canary.60, leader v0.1.0-canary.25, panel v0.8.2-canary.100):
+
+1. **A move promotes the copy its new member already keeps** and takes only the last changes (deplo-agent#136, deplo#407); a move towards a member without room is refused before anything stops.
+2. **Failover backups go to the member with the most free disk, never the App's own**, and leave a member past 80% for the roomiest one; set-aside copies expire after 7 days (1 day on a disk past 80%), the newest kept; a backup pauses its App for 1 s at most (deplo#405, deplo-agent#137).
+3. **A member that ran again after a freeze asks to lead only once it heard its leader's silence itself**, and keeps the epoch it held (deplo-cluster#31); Deplo moves the leader only once the new one leads (deplo#406).
+4. **A started copy keeps its turn**, a removed member leaves every peer's network at once, a standby proxy starts at a low CPU weight, a new member takes images from a member (deplo#404, deplo#408, deplo-agent#138).
+
+Live from 03:47 UTC on 26 Nov (ADR-0049, "What cluster eu showed", c46). **Not fixed**: a move falls back to copying the whole volume, with no word why, in 2 of 18 moves; the second of two moves onto one member stays stopped while the first one's copy is promoted (10 to 17 s); a member that just joined refuses every move as "0 MB free" until its first metrics; a copy refused for room may first write most of the App's data; copies from one member to a member back from a power cut stay on Deplo's relay until the sender restarts.
