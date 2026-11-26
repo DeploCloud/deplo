@@ -22,6 +22,7 @@ import { syncClusterNetworkSoon } from "../clusters/network";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById, serverRole } from "./roster";
 import { blockingRows } from "./removal-blockers";
+import { dropDestination, removalImpactIn } from "../destinations/removal";
 
 export interface ServerRemoval {
   uninstallCommand: string;
@@ -80,9 +81,21 @@ export async function assertNoWorkloads(id: string): Promise<void> {
   if (why) throw new Error(why);
 }
 
-async function assertServerRemovable(id: string): Promise<void> {
-  const why = refusal(await blockingRows(id));
+/** Refuses while something still holds the server; a backup destination left empty is removed with it. */
+async function clearForRemoval(id: string, actorName: string): Promise<void> {
+  const b = await blockingRows(id);
+  // c49: after a member left its cluster, its destination, emptied by the move of its backups, still refused it.
+  const empty: typeof b.destinations = [];
+  for (const d of b.destinations) {
+    const i = await removalImpactIn(d.teamId, d.id);
+    if (i.schedules === 0 && i.artifacts === 0) empty.push(d);
+  }
+  const why = refusal({
+    ...b,
+    destinations: b.destinations.filter((d) => !empty.includes(d)),
+  });
   if (why) throw new Error(why);
+  for (const d of empty) await dropDestination(d.teamId, d.id, actorName);
 }
 
 // Removing its destination would delete them, as c48 lost 4 restore points of fise and memos with eu-4.
@@ -124,7 +137,7 @@ async function removeServerRow(
 
   await assertNoWorkloads(id);
   await assertNoClusterBackups(id, server.name);
-  await assertServerRemovable(id);
+  await clearForRemoval(id, actorName);
 
   const stranded = await getDb()
     .select({ slug: appsTable.slug })
@@ -221,7 +234,7 @@ export async function uninstallMigrationSource(
         `Remove it from its own page if you want it gone.`,
     );
 
-  await assertServerRemovable(id);
+  await clearForRemoval(id, actorName);
 
   if (server.agent?.certFingerprint) {
     try {
