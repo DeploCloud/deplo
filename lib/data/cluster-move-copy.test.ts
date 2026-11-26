@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
+  clusterMembers,
   clusters as clustersTable,
   failoverBundlePushes,
 } from "../db/schema/control-plane/clusters";
@@ -238,6 +239,28 @@ test("a move waits, its App running, until its new member's copy follows, then g
       await sleep(10);
     }
     assert.equal((await appRow("fise")).serverId, "srv_3");
+  } finally {
+    copyAheadWait.everyMs = 2_000;
+  }
+});
+
+// c47: lab-kit-a's move towards eu-4 waited on its copy for 24 minutes after eu-4 was removed.
+test("a move whose new member leaves the cluster fails at once and says why, its App where it runs", async () => {
+  copyAheadWait.everyMs = 5;
+  try {
+    const cluster = await fiseOnCluster();
+    copyOnSrv3({ synced: false });
+    await replicateCluster(cluster.id);
+    await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+    await db.delete(clusterMembers).where(eq(clusterMembers.serverId, "srv_3"));
+    const why = `Moving fise did not start: srv_3 left cluster ${cluster.name}, so fise stays on srv_2.`;
+    const said = async () => (await activity()).some((m) => m.endsWith(why));
+    for (let i = 0; i < 200 && !(await said()); i++) await sleep(10);
+    assert.ok(await said(), (await activity()).join("\n"));
+    const app = await appRow("fise");
+    assert.equal(app.serverId, "srv_2");
+    assert.equal(app.migrateFromServerId, null);
+    assert.ok(!disks.get("srv_2")!.calls.includes("stop:fise"));
   } finally {
     copyAheadWait.everyMs = 2_000;
   }

@@ -1,6 +1,10 @@
 import "server-only";
 
+import { and, eq } from "drizzle-orm";
+
 import { appDisk } from "../../apps/failover-copy";
+import { getDb } from "../../db/client";
+import { clusterMembers as membersTable } from "../../db/schema/control-plane/clusters";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { CLUSTER_REPLICAS_MOVE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import type { App } from "../../types/app";
@@ -59,6 +63,27 @@ async function cannotHandOver(
     : null;
 }
 
+/** How `to` stopped being a place for the move: it left the cluster, or is being removed from it; null while a member. */
+async function leftCluster(
+  cluster: Cluster,
+  to: string,
+): Promise<string | null> {
+  const [m] = await getDb()
+    .select({ removing: membersTable.emptyingSince })
+    .from(membersTable)
+    .where(
+      and(
+        eq(membersTable.clusterId, cluster.id),
+        eq(membersTable.serverId, to),
+      ),
+    )
+    .limit(1);
+  if (m && !m.removing) return null;
+  return m
+    ? `is being removed from cluster ${cluster.name}`
+    : `left cluster ${cluster.name}`;
+}
+
 /**
  * Readies a cluster App's move onto `to` while it still runs: its images there, and a copy of its data there that is
  * whole and follows it. True once the move may go, false when `within` passed first. Throws, before anything
@@ -98,7 +123,14 @@ export async function copyAhead(
   }
   if (!quick) await holdClusterFailoverImages(cluster.id).catch(() => {});
   const until = Date.now() + (opts.within ?? copyAheadWait.maxMs);
+  const toName = await serverName(to);
   for (;;) {
+    // c47: a move towards a member removed meanwhile waited on its copy for 24 minutes.
+    const gone = await leftCluster(cluster, to);
+    if (gone)
+      throw new Error(
+        `${toName} ${gone}, so ${app.name} stays on ${await serverName(from)}.`,
+      );
     const row = (await replicaRows([app.id])).find((r) => r.serverId === to);
     if (row && following(row)) return true;
     if (
