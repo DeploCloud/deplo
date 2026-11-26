@@ -17,6 +17,7 @@ import { markServerSeen } from "../servers/agent-handshake";
 import { appDataBytes } from "./data-size";
 import { clusterMemberFacts, neededMb } from "./facts";
 import { listClustersForTeam } from "./roster";
+import { messageOf } from "../../utils";
 
 // Moving an App or database onto one server of its cluster by hand.
 // https://deplo.build/docs/operations/clusters/manage-servers#move-to-one-server
@@ -159,9 +160,30 @@ export async function assertMemberTakes(
   serverId: string,
   w: MemberMove,
 ): Promise<void> {
+  const said = { waits: false };
+  try {
+    await memberTakes(cluster, serverId, w, said);
+  } catch (e) {
+    // c49: past a wait Activity said, the refusal reached only the API.
+    if (said.waits)
+      await recordActivity(
+        "app",
+        `Moving ${w.name} did not start: ${messageOf(e)}`,
+        "Deplo",
+        w.id,
+      );
+    throw e;
+  }
+}
+
+async function memberTakes(
+  cluster: Cluster,
+  serverId: string,
+  w: MemberMove,
+  said: { waits: boolean },
+): Promise<void> {
   const since = Date.now();
   let until = 0;
-  let said = false;
   for (;;) {
     const mine = (await refusals(cluster, w)).find(
       (r) => r.row.id === serverId,
@@ -174,14 +196,14 @@ export async function assertMemberTakes(
           `${j.name} has not joined cluster ${cluster.name} within ${Math.round(joinWait.maxMs / 1000)} s, so ${w.name} stays where it runs.` +
             (j.error ? ` ${j.error}` : ""),
         );
-      if (!said)
+      if (!said.waits)
         await recordActivity(
           "app",
           `Moving ${w.name} waits for ${j.name} to join cluster ${cluster.name}.`,
           "Deplo",
           w.id,
         );
-      said = true;
+      said.waits = true;
       await new Promise((r) => setTimeout(r, factsWait.everyMs));
       continue;
     }
