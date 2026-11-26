@@ -342,10 +342,13 @@ export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
             name: appsTable.name,
             serverId: appsTable.serverId,
             clusterId: appsTable.clusterId,
+            moving: appsTable.migrateFromServerId,
           })
           .from(appsTable)
           .where(eq(appsTable.id, b.appId ?? ""));
     if (!w || w.clusterId !== clusterId || w.teamId !== b.teamId) continue;
+    // Its serverId is only where a move goes: one rolled back would have moved its backups for nothing.
+    if ("moving" in w && w.moving) continue;
     const kept = { kind: b.destKind, serverId: b.destServerId };
     const full = b.destKind === "server" && diskFull(b.destServerId);
     if (readableByFailover(kept, w.serverId, members) && !full) continue;

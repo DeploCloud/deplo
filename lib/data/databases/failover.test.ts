@@ -160,3 +160,25 @@ test("a member past 80% used hands Deplo's backups to the one with the most room
   await rehomeFailoverBackups("cl_eu");
   assert.equal(await keptOn("prj_c"), "srv_2");
 });
+
+// c45: an aborted move of the old path moved an App's backups once, onto a member it never ran on.
+test("an App's backups stay where they are kept while a move of it is under way", async () => {
+  disk("srv_1", 6);
+  disk("srv_2", 4);
+  disk("srv_3", 3);
+  await app("prj_c", "srv_3");
+  assert.equal(await keptOn("prj_c"), "srv_1");
+  const moving = (from: string | null) =>
+    db
+      .update(appsTable)
+      .set({ serverId: "srv_1", migrateFromServerId: from })
+      .where(eq(appsTable.id, "prj_c"));
+
+  await moving("srv_3");
+  await rehomeFailoverBackups("cl_eu");
+  assert.equal(await keptOn("prj_c"), "srv_1");
+
+  await moving(null);
+  await rehomeFailoverBackups("cl_eu");
+  assert.equal(await keptOn("prj_c"), "srv_2");
+});
