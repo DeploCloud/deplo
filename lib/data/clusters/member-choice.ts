@@ -91,12 +91,21 @@ async function refusals(
             ? `${name} is offline, so ${w.name} cannot move there now.`
             : w.archs.length > 0 && !w.archs.includes(row.server.hostArch)
               ? `${w.name} runs on ${archWords(w.archs)} servers only, and ${name} is not one.`
-              : w.on !== row.id && (free.get(row.id) ?? 0) < need
-                ? `${name} has ${free.get(row.id) ?? 0} MB free and ${w.name} needs ${need} MB.`
-                : noDisk(row.id, name);
+              : w.on !== row.id && row.server.memoryMb <= 0
+                ? waitingFor(name, w.name)
+                : w.on !== row.id && (free.get(row.id) ?? 0) < need
+                  ? `${name} has ${free.get(row.id) ?? 0} MB free and ${w.name} needs ${need} MB.`
+                  : noDisk(row.id, name);
     return { row, refusal };
   });
 }
+
+// A member that just joined has sent no metrics yet: its memory is unknown, never none (c46: "eu-4 has 0 MB free").
+const waitingFor = (name: string, what: string) =>
+  `Waiting for ${name}'s first metrics, to know whether ${what} fits there.`;
+
+/** Vars so tests hurry them: a move onto a member without metrics yet waits this long for them. */
+export const factsWait = { everyMs: 1_000, maxMs: 20_000 };
 
 /** Refuses, before anything stops, unless `serverId` of the cluster can take the workload now. */
 export async function assertMemberTakes(
@@ -104,9 +113,21 @@ export async function assertMemberTakes(
   serverId: string,
   w: MemberMove,
 ): Promise<void> {
-  const mine = (await refusals(cluster, w)).find((r) => r.row.id === serverId);
-  if (!mine) throw new Error(`That server is not in cluster ${cluster.name}.`);
-  if (mine.refusal) throw new Error(mine.refusal);
+  const until = Date.now() + factsWait.maxMs;
+  for (;;) {
+    const mine = (await refusals(cluster, w)).find(
+      (r) => r.row.id === serverId,
+    );
+    if (!mine)
+      throw new Error(`That server is not in cluster ${cluster.name}.`);
+    if (!mine.refusal) return;
+    if (
+      mine.refusal !== waitingFor(mine.row.server.name, w.name) ||
+      Date.now() >= until
+    )
+      throw new Error(mine.refusal);
+    await new Promise((r) => setTimeout(r, factsWait.everyMs));
+  }
 }
 
 /** The Move picker's cluster groups: every cluster the active team may use, each server with what stops it. */
