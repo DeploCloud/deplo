@@ -32,22 +32,31 @@ import { getClusterById } from "./roster";
 /** Vars so tests hurry them: how often a move looks at its new member's copy, and how long it waits at most. */
 export const copyAheadWait = { everyMs: 2_000, maxMs: 30 * 60_000 };
 
-/** The volumes a move may hand over as the new member's copy: both members can, and the copy holds them all. */
-export async function copyHolds(
+const serverName = async (id: string) => (await getServerById(id))?.name ?? id;
+
+/** Why the new member's copy cannot become the App's data on a move; null when both members can and it holds them all. */
+async function cannotHandOver(
   app: App,
   from: string,
   to: string,
   names: string[],
-): Promise<boolean> {
+): Promise<string | null> {
   const able = await serversReporting(
     [from, to],
     CLUSTER_REPLICAS_MOVE_CAPABILITY,
   );
-  if (!able.has(from) || !able.has(to)) return false;
+  const old = [from, to].filter((id) => !able.has(id));
+  if (old.length > 0) {
+    const who = await Promise.all(old.map(serverName));
+    return `the server agent of ${who.join(" and ")} cannot hand a copy over yet`;
+  }
   const held = await storedBundle(app.id);
-  if (!held) return false;
+  if (!held) return "Deplo keeps no copy of it yet";
   const copied = restoreDescriptor(app, held.stack).volumeNames;
-  return names.every((n) => copied.includes(n));
+  const missing = names.filter((n) => !copied.includes(n));
+  return missing.length > 0
+    ? `its copy on ${await serverName(to)} does not hold ${missing.join(", ")}`
+    : null;
 }
 
 /**
@@ -76,7 +85,7 @@ export async function copyAhead(
   )
     return true;
   const held = await storedBundle(app.id);
-  if (!held || !(await copyHolds(app, from, to, []))) return true;
+  if (!held || (await cannotHandOver(app, from, to, []))) return true;
   // One look, while a person waits: an image still to copy is copied in the background.
   const quick = opts.within === 0;
   const ref = held.stack.imageRef;
@@ -114,35 +123,35 @@ export async function notCopiedAhead(app: App, to: string): Promise<string> {
 
 /**
  * The new member's copy, made while the App ran, takes only what changed since and becomes its data (c44: all 64 MB
- * copied again in 8 s). Null when it cannot, and the data is copied whole.
+ * copied again in 8 s). Otherwise `whole` says why the data is copied whole; null where no copy is kept.
  */
 export async function lastChangesOnly(
   app: App,
   names: string[],
   toName: string,
-  emit: (level: "warn", text: string) => void,
-): Promise<{ missing: string[]; last: number } | null> {
+): Promise<
+  { moved: { missing: string[]; last: number } } | { whole: string | null }
+> {
   const from = app.migrateFromServerId!;
   const to = app.serverId;
   const cluster = app.clusterId ? await getClusterById(app.clusterId) : null;
-  if (!cluster?.replicationEnabled || names.length === 0) return null;
-  const rows = await replicaRows([app.id]);
-  if (!rows.some((r) => r.serverId === to && r.synced)) return null;
-  if (!(await copyHolds(app, from, to, names))) return null;
+  if (!cluster?.replicationEnabled || names.length === 0)
+    return { whole: null };
+  // Never the copy's last row: once the leader places the App there, its agent reports it sending, not synced (c46).
+  const why = await cannotHandOver(app, from, to, names);
+  if (why) return { whole: why };
   try {
     const conn = await connectAgent(to);
     try {
       const r = await conn.promoteClusterReplica(app.id, from);
-      return { missing: [], last: r.bytes };
+      return { moved: { missing: [], last: r.bytes } };
     } finally {
       conn.close();
     }
   } catch (e) {
-    emit(
-      "warn",
-      `${app.name}'s copy on ${toName} could not take its last changes (${messageOf(e)}), so its data is copied whole.`,
-    );
-    return null;
+    return {
+      whole: `its copy on ${toName} could not take its last changes (${messageOf(e)})`,
+    };
   }
 }
 

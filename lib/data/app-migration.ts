@@ -274,13 +274,21 @@ async function runMigration(
       }
 
     let moved: { missing: string[]; path?: "direct" | "relay"; last?: number };
+    let whole: string | null = null;
     try {
+      const last = await lastChangesOnly(app, names, toName);
+      if ("whole" in last) {
+        whole = last.whole;
+        if (whole)
+          emit("warn", `${app.name}'s data is copied whole: ${whole}.`);
+      }
       moved =
-        (await lastChangesOnly(app, names, toName, emit)) ??
-        (await migrateWorkloadData(from, to, {
-          volumeNames: names,
-          filesSlug: includeFiles ? slug : undefined,
-        }));
+        "moved" in last
+          ? last.moved
+          : await migrateWorkloadData(from, to, {
+              volumeNames: names,
+              filesSlug: includeFiles ? slug : undefined,
+            });
     } catch (e) {
       // A copy its new server stopped for room breaks its link too: it is no link that dropped, and goes no again.
       const room = app.clusterId ? await noRoomFor(app, from, to, names) : null;
@@ -348,6 +356,7 @@ async function runMigration(
             : moved.path
               ? ", through Deplo"
               : "") +
+        (whole ? `. All of it was copied: ${whole}` : "") +
         (asideNote ? `.${asideNote}` : ""),
       "system",
       appId,

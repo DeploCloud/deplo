@@ -22,7 +22,7 @@ import { deployments } from "../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { moveAppToCluster } from "./apps/source";
 import { moveDatabaseToCluster } from "./databases/server-move";
-import { listClusterServerChoices } from "./clusters/member-choice";
+import { factsWait, listClusterServerChoices } from "./clusters/member-choice";
 import { __setRunnerForTest } from "../deploy/deploy-queue";
 import {
   DATA,
@@ -137,6 +137,49 @@ test("a server that cannot take it is refused in words before anything moves", a
     asAdmin(() => moveAppToCluster("web", cluster.id, "srv_4")),
     { message: "That server is not in cluster eu." },
   );
+});
+
+// c46: the first move onto eu-4, 8 s after it joined, was refused as "eu-4 has 0 MB free" (its memory, unknown yet).
+test("a move onto a member without metrics yet waits for them, and the picker says so", async () => {
+  await runningApp("web", "srv_2");
+  const cluster = await eu();
+  const memory = (memoryMb: number) =>
+    db
+      .update(serversTable)
+      .set({ memoryMb })
+      .where(eq(serversTable.id, "srv_3"));
+  await memory(0);
+  const waiting =
+    "Waiting for srv_3's first metrics, to know whether web fits there.";
+  const [choice] = await asAdmin(() =>
+    listClusterServerChoices({
+      id: "web",
+      name: "web",
+      limitMb: 0,
+      archs: [],
+      clusterId: cluster.id,
+      serverId: "srv_2",
+    }),
+  );
+  assert.equal(choice?.servers.find((s) => s.id === "srv_3")?.refusal, waiting);
+
+  Object.assign(factsWait, { everyMs: 5, maxMs: 30 });
+  try {
+    await assert.rejects(
+      asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3")),
+      { message: waiting },
+    );
+    assert.equal((await appRow("web")).serverId, "srv_2");
+
+    factsWait.maxMs = 2_000;
+    const moved = asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3"));
+    await new Promise((r) => setTimeout(r, 50));
+    await memory(8192);
+    await moved;
+    assert.equal((await appRow("web")).serverId, "srv_3");
+  } finally {
+    Object.assign(factsWait, { everyMs: 1_000, maxMs: 20_000 });
+  }
 });
 
 test("the Move picker names each server of the cluster, the one it runs on and why another cannot take it", async () => {
