@@ -236,3 +236,13 @@ c44 left a thawed member promising itself an epoch, moves that copied all of an 
 4. **A started copy keeps its turn**, a removed member leaves every peer's network at once, a standby proxy starts at a low CPU weight, a new member takes images from a member (deplo#404, deplo#408, deplo-agent#138).
 
 Live from 03:47 UTC on 26 Nov (ADR-0049, "What cluster eu showed", c46). **Not fixed**: a move falls back to copying the whole volume, with no word why, in 2 of 18 moves; the second of two moves onto one member stays stopped while the first one's copy is promoted (10 to 17 s); a member that just joined refuses every move as "0 MB free" until its first metrics; a copy refused for room may first write most of the App's data; copies from one member to a member back from a power cut stay on Deplo's relay until the sender restarts.
+
+## Moves say why, new members wait for metrics, network keys rotate (26 Nov 2026)
+
+c46 left six open failures. Done (agent v0.5.3-canary.61, panel v0.8.2-canary.101):
+
+1. **A move never copies the whole volume in silence**: Activity and the deploy log say `All of it was copied: <reason>`, a new member's move waits for its first metrics, and failover backups move once, after a move completes (deplo#411).
+2. **A move's last changes jump the copy queue**, a copy with no room is refused before it writes, and copies leave Deplo's relay once a direct path answers (deplo-agent#140).
+3. **A cluster server's network key rotates with its tunnels up** (`rotateClusterNetworkKey`, deplo#414, deplo-agent#140); a Postgres base restores server to server and a failed backup keeps `held_ms` (deplo#412); the old proxy stops once the standby carries its visitors (deplo-agent#139).
+
+Live from 08:20 UTC on 26 Nov (ADR-0049, "What cluster eu showed", c47): moves, copies refused for room, the relay after a power cut, proxy recreates, the key rotation, hangs and power cuts passed. **Not fixed**: the second of two moves onto one member waits for the first one's deploy (`deploy_concurrency` 1: 21.8 s); a new member's first metrics come after 27 s, past the 20 s a move waits for them; visitors carried to a member whose agent was killed wait about 4 s past its return; each member's own lease is 2 s apart across its own agent update.
