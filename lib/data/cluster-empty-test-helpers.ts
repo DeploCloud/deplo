@@ -30,7 +30,9 @@ import {
 } from "../deploy/deploy-queue";
 import { completePendingAppMigration } from "./app-migration";
 import { createCluster } from "./clusters/manage";
+import { placeAtLeaderFirst } from "./clusters/leader-sync";
 import { addClusterMember, listClusterMembers } from "./clusters/members";
+import { getClusterById } from "./clusters/roster";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { turnOnExperiments } from "./experiments-test-helpers";
 
@@ -411,9 +413,13 @@ export async function card(clusterId: string, serverId: string) {
   return all.find((m) => m.serverId === serverId)!;
 }
 
-/** What the deploy on the new member does when it ends well: marks it ready and carries the data over. */
+/** What the deploy on the new member does when it ends well: places it there, marks it ready, carries the data over. */
 export async function deployLands(appId: string) {
   const app = await appRow(appId);
+  // As the move's deploy does once its start has a lane (c48).
+  const cluster = app.clusterId && (await getClusterById(app.clusterId));
+  if (cluster && app.migrateFromServerId)
+    await placeAtLeaderFirst(cluster, "app", appId, app.serverId);
   const [dep] = await db
     .select({ id: deploymentsTable.id })
     .from(deploymentsTable)

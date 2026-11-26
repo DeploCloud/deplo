@@ -332,7 +332,8 @@ async function move(
       .select({ serverId: appsTable.serverId })
       .from(appsTable)
       .where(eq(appsTable.id, w.id));
-    if (now?.serverId === to) await placed();
+    // A deploy that follows places it once its start has a lane: until then it runs here (c48).
+    if (now?.serverId === to && !deployed) await placed();
   }
   // Never deployed, so the old server holds no stack and no data to wait for.
   if (!deployed)
