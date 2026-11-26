@@ -2,6 +2,7 @@ import "server-only";
 
 import { count, eq, inArray, sql } from "drizzle-orm";
 
+import { plural } from "../../utils";
 import { resolveAgentRelease } from "../../agent/release";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -58,6 +59,8 @@ export const rolloutTiming = {
   // Longer than the 30 s an agent gives a new binary before it goes back to the one before (ADR-0043).
   confirmTries: 30,
   confirmDelayMs: 1500,
+  // Answers of the old version still expected: it execs only right after a renewal (agent #142).
+  oldTries: 6,
   nameServerMarginMs: 5000,
   // A server is held this long on the new version, its renewals included, before the next one updates.
   holdMs: 60_000,
@@ -271,19 +274,30 @@ async function helloVersion(serverId: string): Promise<string> {
 async function confirmUpdated(
   serverId: string,
   before: string,
-): Promise<{ version: string | null; back: boolean }> {
+): Promise<{ version: string | null; back: boolean; seconds: string }> {
+  const start = Date.now();
+  const seconds = () =>
+    plural(
+      Math.max(1, Math.round((Date.now() - start) / 1000)),
+      "second",
+      "seconds",
+    );
+  let down = false;
   for (let i = 0; i < rolloutTiming.confirmTries; i++) {
     await sleep(rolloutTiming.confirmDelayMs);
     try {
       const version = await helloVersion(serverId);
       if (version !== before) {
         await markServerSeen(serverId, version);
-        return { version, back: false };
+        return { version, back: false, seconds: seconds() };
       }
-      return { version: null, back: true };
-    } catch {}
+      if (down || i >= rolloutTiming.oldTries)
+        return { version: null, back: true, seconds: seconds() };
+    } catch {
+      down = true;
+    }
   }
-  return { version: null, back: false };
+  return { version: null, back: false, seconds: seconds() };
 }
 
 function within<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -414,13 +428,13 @@ export async function attemptAgentUpdate(
     } catch (e) {
       return fail("error", errorText(e));
     }
-    const { version, back } = await confirmUpdated(server.id, before);
+    const { version, back, seconds } = await confirmUpdated(server.id, before);
     if (!version)
       return fail(
         "no_return",
         back
-          ? `Its new server agent v${AGENT_VERSION} did not answer within 30 seconds, so it runs v${before} again. Deplo stopped updating the other servers.`
-          : "It took the new server agent but did not come back on it. Deplo stopped updating the other servers.",
+          ? `It still ran v${before} ${seconds} after taking v${AGENT_VERSION}, so the new server agent did not start or went back. Deplo stopped updating the other servers.`
+          : `It took the new server agent but did not answer on it within ${seconds}. Deplo stopped updating the other servers.`,
       );
     if (agentUpdateAvailable(version, AGENT_VERSION))
       return fail(

@@ -43,6 +43,9 @@ interface FakeAgent {
   goesBack?: boolean;
   // hellos left before it stops answering: an agent that dies after it came back.
   hellosLeft?: number;
+  // hellos still answered by the old process after the update: it execs after a renewal (agent #142).
+  oldHellos?: number;
+  staged?: string;
   updates: number;
 }
 const agents = new Map<string, FakeAgent>();
@@ -55,6 +58,8 @@ function fakeConnector(id: string): Promise<AgentConnection> {
   const a = agents.get(id)!;
   return Promise.resolve({
     hello: async () => {
+      if (a.staged && !(a.oldHellos! > 0)) a.version = a.staged;
+      else if (a.staged) a.oldHellos!--;
       if (a.hellosLeft !== undefined && a.hellosLeft-- <= 0)
         a.reachable = false;
       if (!a.reachable) throw new Error("connect ECONNREFUSED");
@@ -68,6 +73,10 @@ function fakeConnector(id: string): Promise<AgentConnection> {
       a.updates++;
       order.push(id);
       if (a.goesBack) return { version, restarting: true };
+      if (a.oldHellos !== undefined) {
+        a.staged = version;
+        return { version, restarting: true };
+      }
       if (a.comesBack) a.version = version;
       else a.reachable = false;
       return { version, restarting: true };
@@ -139,6 +148,7 @@ before(async () => {
   process.env.DEPLO_SERVER_IP = "192.0.2.250";
   rolloutTiming.confirmTries = 2;
   rolloutTiming.confirmDelayMs = 0;
+  rolloutTiming.oldTries = 0;
   rolloutTiming.wait = async (ms) => void waits.push(ms);
   rolloutTiming.holdMs = 30;
   rolloutTiming.holdWait = async () => {
@@ -324,7 +334,7 @@ test("a server back on the version it had stops the rollout, and is not tried ag
   assert.equal(row.nextRetryAt, null, "no retry of the same release");
   assert.match(
     row.lastError,
-    /did not answer within 30 seconds, so it runs v0\.5\.1-canary\.10 again/,
+    /It still ran v0\.5\.1-canary\.10 1 second after taking v.+, so the new server agent did not start or went back/,
   );
   assert.equal((await asAdmin(() => fleetAgentStatus())).pausedBy, "srv_a");
   assert.match(
@@ -334,6 +344,23 @@ test("a server back on the version it had stops the rollout, and is not tried ag
 
   await runAgentRollout();
   assert.deepEqual(order, ["srv_a"], "a later pass tries nobody");
+});
+
+// c49: the old process answers until its exec, timed right after a renewal.
+test("an agent still answering on its old version just after the update is waited for", async () => {
+  rolloutTiming.confirmTries = 6;
+  rolloutTiming.oldTries = 4;
+  try {
+    await server("srv_a", BEHIND, { oldHellos: 3 });
+    await server("srv_b", BEHIND);
+    await runAgentRollout();
+    assert.equal(agents.get("srv_a")!.version, AGENT_VERSION);
+    assert.equal((await getAgentUpdate("srv_a"))?.failure ?? null, null);
+    assert.deepEqual(order, ["srv_a", "srv_b"], "the rollout goes on");
+  } finally {
+    rolloutTiming.confirmTries = 2;
+    rolloutTiming.oldTries = 0;
+  }
 });
 
 // eu, 24 Nov 2026: a rollout went on while canary.47 was down on the servers before, its no_return worn away by a
