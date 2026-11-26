@@ -39,8 +39,10 @@ import {
   backupToRow,
 } from "../backup-rows";
 import { notLeftBehind } from "../backups/left-behind";
+import { FULL_SHARE, diskFull } from "../backups/room";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { latestBaseBackup } from "../clusters/change-log";
+import { latestDisk } from "../clusters/facts";
 import { standbyMemberOf, waitingForRoomNote } from "../clusters/placement";
 import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { insertServerDestination } from "../destinations/create";
@@ -85,41 +87,128 @@ function readableByFailover(
 }
 
 /**
- * Never the member the workload runs on (ADR-0019): a bucket, another member's disk (a new one when the team has
- * none), and only then a server outside the cluster, which no failover can read.
+ * Each server's free disk less what Deplo's own backups kept there will still write before their retention is full;
+ * null when its disk is unknown. `except` is the workload choosing, whose own backups do not count.
+ */
+async function backupRoom(
+  serverIds: string[],
+  except: string,
+): Promise<Map<string, number | null>> {
+  const rows =
+    serverIds.length === 0
+      ? []
+      : await getDb()
+          .select({
+            keep: backupsTable.retentionCount,
+            serverId: destTable.serverId,
+            destId: destTable.id,
+            appId: backupsTable.appId,
+            databaseId: backupsTable.databaseId,
+          })
+          .from(backupsTable)
+          .innerJoin(destTable, eq(destTable.id, backupsTable.destinationId))
+          .where(
+            and(
+              eq(backupsTable.name, FAILOVER_BACKUP_NAME),
+              inArray(destTable.serverId, serverIds),
+            ),
+          );
+  const schedules = rows
+    .map((r) => ({ ...r, target: r.appId ?? r.databaseId ?? "" }))
+    .filter((r) => r.target && r.target !== except);
+  const runs =
+    schedules.length === 0
+      ? []
+      : await getDb()
+          .select({
+            targetId: backupRunsTable.targetId,
+            destId: backupRunsTable.destinationId,
+            size: backupRunsTable.sizeBytes,
+          })
+          .from(backupRunsTable)
+          .where(
+            and(
+              inArray(
+                backupRunsTable.targetId,
+                schedules.map((r) => r.target),
+              ),
+              eq(backupRunsTable.status, "success"),
+            ),
+          )
+          .orderBy(desc(backupRunsTable.startedAt));
+  const pending = new Map<string, number>();
+  for (const s of schedules) {
+    const own = runs.filter((r) => r.targetId === s.target);
+    const kept = own.filter((r) => r.destId === s.destId).length;
+    const more = Math.max(0, s.keep - kept) * (own[0]?.size ?? 0);
+    pending.set(s.serverId!, (pending.get(s.serverId!) ?? 0) + more);
+  }
+  return new Map(
+    serverIds.map((id) => {
+      const d = latestDisk(id);
+      return [id, d.total > 0 ? d.free - (pending.get(id) ?? 0) : null];
+    }),
+  );
+}
+
+/**
+ * Never the member the workload runs on (ADR-0019): a bucket, else the other member with the most room for backups
+ * (its own destination, or a new one), and only then a server outside the cluster, which no failover can read.
  */
 async function failoverDestination(
   db: Placed & { clusterId: string },
 ): Promise<BackupDestination | null> {
   const members = await clusterMemberServerIds(db.clusterId);
-  const rank = (d: BackupDestination) => (d.kind === "s3" ? 0 : 1);
-  const usable = (await teamDestinations(db.teamId))
-    .filter(
-      (d) =>
-        d.status !== "error" && (d.kind === "s3" || d.serverId !== db.serverId),
-    )
-    .sort((a, b) => rank(a) - rank(b));
-  const readable = usable.find((d) =>
-    readableByFailover(d, db.serverId, members),
+  const usable = (await teamDestinations(db.teamId)).filter(
+    (d) =>
+      d.status !== "error" && (d.kind === "s3" || d.serverId !== db.serverId),
   );
-  if (readable) return readable;
+  const bucket = usable.find((d) => d.kind === "s3");
+  if (bucket) return bucket;
 
   const ready = (await listAllServers()).filter(
     (s) => s.id !== db.serverId && s.agent?.certFingerprint && !s.importOnly,
   );
-  // A member that answers before one that does not: a backup that cannot run protects nothing.
-  const member = members
+  const others = members
     .map((m) => ready.find((s) => s.id === m))
-    .filter((s): s is NonNullable<typeof s> => Boolean(s))
-    .sort(
-      (a, b) => Number(b.status === "online") - Number(a.status === "online"),
-    )[0];
+    .filter((s): s is NonNullable<typeof s> => Boolean(s));
+  const room = await backupRoom(
+    others.map((s) => s.id),
+    db.id,
+  );
+  const roomOf = (id: string) => room.get(id) ?? -Infinity;
+  const kept = (id: string) =>
+    Number(usable.some((d) => d.kind === "server" && d.serverId === id));
+  // A member that answers first (a backup that cannot run protects nothing), then the most room, then one in use.
+  const member = others.sort(
+    (a, b) =>
+      Number(b.status === "online") - Number(a.status === "online") ||
+      roomOf(b.id) - roomOf(a.id) ||
+      kept(b.id) - kept(a.id),
+  )[0];
   if (member)
-    return insertServerDestination(db.teamId, member.id, serverLabel(member));
+    return (
+      usable.find((d) => d.kind === "server" && d.serverId === member.id) ??
+      insertServerDestination(db.teamId, member.id, serverLabel(member))
+    );
   if (usable[0]) return usable[0];
   const own = ready.find((s) => isDeploHostServer(s));
   if (!own) return null;
   return insertServerDestination(db.teamId, own.id, serverLabel(own));
+}
+
+/** One of the database's enabled schedules writes where a failover can read: its next run hands the leader a backup. */
+export async function backsUpForFailover(db: Placed): Promise<boolean> {
+  if (!db.clusterId) return false;
+  const members = await clusterMemberServerIds(db.clusterId);
+  const rows = await getDb()
+    .select({ kind: destTable.kind, serverId: destTable.serverId })
+    .from(backupsTable)
+    .innerJoin(destTable, eq(destTable.id, backupsTable.destinationId))
+    .where(
+      and(eq(backupsTable.databaseId, db.id), eq(backupsTable.enabled, true)),
+    );
+  return rows.some((d) => readableByFailover(d, db.serverId, members));
 }
 
 /**
@@ -216,8 +305,8 @@ export async function ensureFailoverBackup(
 }
 
 /**
- * Deplo's own backup follows its workload: one kept on the server the workload now runs on, or on a server outside
- * the cluster, moves to where a failover can read it. A schedule the team made itself is never touched.
+ * Deplo's own backup follows its workload: one kept on the server it now runs on, outside the cluster, or on a disk
+ * past 80% used, moves to where a failover can read it. A schedule the team made itself is never touched.
  */
 export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
   const members = await clusterMemberServerIds(clusterId);
@@ -258,10 +347,12 @@ export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
           .where(eq(appsTable.id, b.appId ?? ""));
     if (!w || w.clusterId !== clusterId || w.teamId !== b.teamId) continue;
     const kept = { kind: b.destKind, serverId: b.destServerId };
-    if (readableByFailover(kept, w.serverId, members)) continue;
+    const full = b.destKind === "server" && diskFull(b.destServerId);
+    if (readableByFailover(kept, w.serverId, members) && !full) continue;
     const next = await failoverDestination({ ...w, clusterId });
     if (!next || next.id === b.destId) continue;
     if (!readableByFailover(next, w.serverId, members)) continue;
+    if (full && next.kind === "server" && diskFull(next.serverId)) continue;
     // Never onto a server that is down: the backup that still runs is worth more.
     if (
       next.kind === "server" &&
@@ -278,7 +369,9 @@ export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
       `Backs up ${w.name} every ${FAILOVER_BACKUP_MINUTES} minutes to ${next.name} from now on: ` +
         (b.destServerId === w.serverId
           ? `${w.name} now runs on ${here}, where its backups were kept.`
-          : "its backups were kept on a server outside its cluster, where a failover cannot read them."),
+          : full
+            ? `${(await getServerById(b.destServerId ?? ""))?.name ?? "the server that kept them"} is more than ${FULL_SHARE * 100}% full.`
+            : "its backups were kept on a server outside its cluster, where a failover cannot read them."),
       "Deplo",
       b.appId,
       w.teamId,

@@ -12,6 +12,8 @@ import { filesAsideOf } from "../clusters/copy-aside";
 import { getServerById } from "../servers/roster";
 import { clusterMemberServerIds } from "../clusters/roster";
 import { getAppById } from "./listing";
+import { loadAppGraph } from "../app-graph-load";
+import { diskFull, FULL_SHARE } from "../backups/room";
 import { formatBytes } from "../../utils";
 import type { App } from "../../types/app";
 
@@ -150,4 +152,55 @@ export async function removeAppSetAsideCopy(
     teamId,
   );
   return true;
+}
+
+const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * Keeps the newest set-aside copy of each of the App's data on each server, and removes an older one after 7 days, or
+ * after 1 once that server is past 80% used; one Activity line each.
+ */
+export async function expireSetAsideCopies(
+  appId: string,
+  now = Date.now(),
+): Promise<void> {
+  const app = await loadAppGraph(appId).catch(() => null);
+  if (!app?.clusterId) return;
+  const names = asideNames(app);
+  if (names.length === 0) return;
+  for (const serverId of await clusterMemberServerIds(app.clusterId)) {
+    const full = diskFull(serverId);
+    const before = now - (full ? 1 : 7) * DAY_MS;
+    const newest = new Set<string>();
+    const old = (await copiesOn(serverId, names))
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .filter((c) => {
+        if (newest.has(c.of)) return Date.parse(c.at) < before;
+        newest.add(c.of);
+        return false;
+      });
+    if (old.length === 0) continue;
+    try {
+      const conn = await connectAgent(serverId);
+      try {
+        for (const c of old) {
+          if (!(await conn.removeSetAside(c.volumeName)).ok) continue;
+          await recordActivity(
+            "app",
+            `Removed the copy of ${app.name}'s data that ${c.serverName} set aside on ${c.at.slice(0, 16).replace("T", " ")} UTC (${formatBytes(c.bytes)}): ` +
+              (full
+                ? `${c.serverName} is more than ${FULL_SHARE * 100}% full, and a newer copy is kept.`
+                : "it was older than 7 days, and a newer copy is kept."),
+            "Deplo",
+            app.id,
+            app.teamId,
+          );
+        }
+      } finally {
+        conn.close();
+      }
+    } catch {
+      // A server that does not answer keeps its copies until the next backup.
+    }
+  }
 }

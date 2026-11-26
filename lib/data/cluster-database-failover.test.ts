@@ -7,7 +7,8 @@ import { runWithIdentity } from "../auth/request-context";
 import { runTool } from "../mcp/run-tool-test-helpers";
 import { TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { getDatabaseMetricsMarkers } from "./metrics-markers";
-import { seedDestination } from "./backup-test-helpers";
+import { seedBackup, seedDestination } from "./backup-test-helpers";
+import { backups as backupsTable } from "../db/schema/control-plane/backups";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { workloadPlacements } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
@@ -242,6 +243,33 @@ test("after a failover onto the server that keeps its backups, the leader is tol
   assert.deepEqual(await cannot(), [
     "main cannot fail over yet: its backups are kept on server-3, the server it runs on, so they would stop with it. Pick another destination for its backup. Cluster eu will not move it to another server until that is fixed.",
   ]);
+});
+
+// c44: "Promoted the standby copy of lab-db" and "lab-db cannot fail over yet: ... Pick another destination" in one second.
+test("after a failover onto its backups' server, Deplo moves its own schedule and asks the team for nothing", async () => {
+  const cluster = await eu(["srv_2", "srv_3", "srv_4"]);
+  await main(cluster.id);
+  await seedDestination(db, {
+    id: "dst_srv3",
+    kind: "server",
+    serverId: "srv_3",
+  });
+  await seedBackup(db, {
+    id: "bkp_failover",
+    databaseId: "db_main",
+    destinationId: "dst_srv3",
+  });
+  await db
+    .update(backupsTable)
+    .set({ name: "Failover backup" })
+    .where(eq(backupsTable.id, "bkp_failover"));
+  await backedUp({ destinationId: "dst_srv3", startedAt: TODAY_1415 });
+
+  await apply(cluster.id, ...failedOver(cluster.id));
+
+  const [schedule] = await db.select().from(backupsTable);
+  assert.notEqual(schedule!.destinationId, "dst_srv3");
+  assert.deepEqual(await cannot(), []);
 });
 
 test("a published database's address follows it to the new server", async () => {

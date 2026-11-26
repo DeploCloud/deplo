@@ -46,6 +46,7 @@ import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import { outOfReachFailure } from "../clusters/reach";
 import { takeTurn } from "../clusters/copy-turns";
 import { liveCopy, nothingYetMessage, saySkippedOnce } from "./live-copy";
+import { expireSetAsideCopies } from "../apps/set-aside";
 import {
   archiveHoldsData,
   emptyArchiveMessage,
@@ -409,6 +410,8 @@ export async function executeBackup(
     appId: activityAppId,
   });
 
+  // Each backup of a cluster App also clears what its servers set aside of it long ago.
+  if (activityAppId) await expireSetAsideCopies(activityAppId).catch(() => {});
   if (failure) throw new Error(failure);
   return finished;
 }

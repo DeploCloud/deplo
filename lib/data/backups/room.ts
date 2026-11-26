@@ -13,7 +13,17 @@ import {
   type DestinationWithSecrets,
 } from "../destinations/credentials";
 import { getServerById } from "../servers/roster";
+import { latestDisk } from "../clusters/facts";
 import { formatBytes } from "./format-bytes";
+
+/** A disk past this share used hands Deplo's own backups to a member with more room, and keeps fewer set-aside copies. */
+export const FULL_SHARE = 0.8;
+
+/** Its disk is past FULL_SHARE used, as its last metrics said; unknown is not full. */
+export function diskFull(serverId: string | null | undefined): boolean {
+  const d = latestDisk(serverId ?? "");
+  return d.total > 0 && d.free < d.total * (1 - FULL_SHARE);
+}
 
 /** What a backup will write: an App's volumes as they are now, or a database's last dump. */
 async function expectedBytes(

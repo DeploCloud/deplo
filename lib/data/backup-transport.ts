@@ -57,6 +57,9 @@ export interface BackupOutcome {
   path?: "direct" | "relay";
 }
 
+// A Postgres base backup or change log goes member to member too; an older agent sends only dumps that way.
+export const BACKUP_MEMBER_ARCHIVE_CAPABILITY = "backup-store.member-archive";
+
 class RelayAborted extends Error {
   constructor() {
     super("the source ended the backup without a usable artifact");
@@ -150,9 +153,7 @@ async function memberBackup(
   req: BackupRequest,
   signal?: AbortSignal,
 ): Promise<BackupOutcome | null> {
-  const pair = target.archive
-    ? null
-    : await memberPair(target.serverId, destServer);
+  const pair = await memberPair(target.serverId, destServer);
   if (!pair) return null;
   const { from, to } = pair;
   const store = storeTargetFor(creds.destination, objectKey);
@@ -168,13 +169,16 @@ async function memberBackup(
   } finally {
     sink.close();
   }
-  const src = await connectBackupAgent(target.serverId, { store: true });
+  const src = await connectBackupAgent(target.serverId, {
+    store: true,
+    postgresArchive: !!target.archive,
+  });
   const release = abortWith(signal, src);
   try {
+    const caps = (await src.hello()).capabilities ?? [];
     if (
-      !(await src.hello()).capabilities?.includes(
-        BACKUP_STORE_MEMBER_CAPABILITY,
-      )
+      !caps.includes(BACKUP_STORE_MEMBER_CAPABILITY) ||
+      (target.archive && !caps.includes(BACKUP_MEMBER_ARCHIVE_CAPABILITY))
     )
       return null;
     const out = await consumeBackup(
