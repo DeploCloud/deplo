@@ -16,10 +16,13 @@ import {
   BACKUP_STORE_FETCH_CAPABILITY,
   BACKUP_STORE_MEMBER_CAPABILITY,
   BACKUP_STORE_SEALED_CAPABILITY,
+  POSTGRES_ARCHIVE_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
+import { PostgresArchive } from "../agent/gen/agent";
 import type { BackupDestination } from "../types/backup";
 import { AgentOfflineError } from "../infra/agent-client/errors";
 import {
+  BACKUP_MEMBER_ARCHIVE_CAPABILITY,
   backupToDestination,
   restoreFromDestination,
 } from "./backup-transport";
@@ -441,6 +444,67 @@ test("a backup Deplo relays only when no path joins the two members, and it says
   assert.equal(out.ok, true, out.error);
   assert.deepEqual(calls, ["member", "relay"]);
   assert.equal(out.path, "relay");
+});
+
+// c44: lab-db's 6.5 MB base backup went through Deplo in 86 s, between two members of one cluster.
+test("a Postgres base backup between two members goes between them once the source can send one that way", async () => {
+  await seededMembers();
+  for (const archiveToo of [false, true]) {
+    const calls: string[] = [];
+    const caps = [
+      BACKUP_CAPABILITY,
+      BACKUP_STORE_CAPABILITY,
+      BACKUP_STORE_MEMBER_CAPABILITY,
+      POSTGRES_ARCHIVE_CAPABILITY,
+      ...(archiveToo ? [BACKUP_MEMBER_ARCHIVE_CAPABILITY] : []),
+    ];
+    const source = {
+      hello: async () => ({ capabilities: caps }),
+      close() {},
+      backup: async function* (req: { memberFingerprint?: string }) {
+        calls.push(req.memberFingerprint ? "member" : "relay");
+        if (!req.memberFingerprint)
+          yield { data: Buffer.from("age-encryption.org/v1") };
+        yield {
+          result: {
+            ok: true,
+            sizeBytes: 21,
+            sha256: "ab12",
+            ...(req.memberFingerprint ? { path: "direct" } : {}),
+          },
+        };
+      },
+    } as unknown as AgentConnection;
+    const sink = {
+      hello: memberHello,
+      close() {},
+      expectClusterBackup: async () => {},
+      writeStoreFile: async (
+        _store: unknown,
+        _overwrite: boolean,
+        chunks: AsyncIterable<Buffer>,
+      ) => {
+        for await (const _ of chunks);
+        return { ok: true, error: "", bytesWritten: 21, sha256: "ab12" };
+      },
+    } as unknown as AgentConnection;
+    __setAgentConnectorForTest(async (id) =>
+      id === "srv_src" ? source : id === "srv_dst" ? sink : null,
+    );
+    const out = await backupToDestination(
+      toDst,
+      {
+        serverId: "srv_src",
+        kind: "database",
+        database: { dbType: "postgres" } as never,
+        archive: PostgresArchive.POSTGRES_ARCHIVE_BASE,
+      },
+      "db/1.base.tar.gz.age",
+    );
+    assert.equal(out.ok, true, out.error);
+    assert.deepEqual(calls, [archiveToo ? "member" : "relay"]);
+    assert.equal(out.path, archiveToo ? "direct" : "relay");
+  }
 });
 
 const fetchHello = async () => ({
