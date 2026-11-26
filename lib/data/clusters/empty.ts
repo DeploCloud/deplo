@@ -13,6 +13,7 @@ import { nowIso } from "../../ids";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { relocateClusterApp } from "../apps/source";
+import { rehomeFailoverBackups } from "../databases/failover";
 import { relocateClusterDatabase } from "../databases/server-move";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { hasPendingLock } from "../keyed-mutex";
@@ -169,6 +170,10 @@ export async function startRemovingClusterMember(
     by.teamId,
   );
   await tellLeader(cluster);
+  // Deplo's own backups kept there go elsewhere now, so no run writes to a member on its way out.
+  await rehomeFailoverBackups(cluster.id).catch((e) =>
+    console.warn(`[cluster-empty] ${cluster.id}: backups: ${message(e)}`),
+  );
   // A preview is no workload of the cluster, so nothing else moves it (#212).
   await movePreviewsOff(server.id).catch((e) =>
     console.warn(`[cluster-empty] ${cluster.id}: previews: ${message(e)}`),

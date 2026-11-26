@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import {
   backupDestination,
   backupRuns,
+  backups,
 } from "../db/schema/control-plane/backups";
 import { clusterMembers } from "../db/schema/control-plane/clusters";
 import type { AgentConnection } from "../infra/agent-client/connection";
@@ -17,7 +18,7 @@ import {
   clearMetricsHistory,
   recordMetricsSample,
 } from "../monitoring/history";
-import { seedDestination, seedRun } from "./backup-test-helpers";
+import { seedBackup, seedDestination, seedRun } from "./backup-test-helpers";
 import { removeClusterMember } from "./clusters/dissolve";
 import { runEmptyingPass } from "./clusters/empty";
 import type { ServerMetrics } from "./monitoring";
@@ -165,4 +166,33 @@ test("removing the server of a member that keeps its cluster's backups is refuse
     },
   );
   assert.ok(await isMember("srv_2"));
+});
+
+// c50: lab-kit-b's next runs were still headed for eu-4 while eu-4 was being emptied.
+test("Deplo's own backup schedule leaves a member the moment its removal starts", async () => {
+  const cluster = await keptOnSrv2();
+  await seedBackup(db, {
+    id: "bkp_web",
+    targetKind: "app",
+    appId: "web",
+    destinationId: "dst_2",
+  });
+  await db
+    .update(backups)
+    .set({ name: "Failover backup" })
+    .where(eq(backups.id, "bkp_web"));
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_2"));
+  const [b] = await db
+    .select({ serverId: backupDestination.serverId })
+    .from(backups)
+    .innerJoin(
+      backupDestination,
+      eq(backupDestination.id, backups.destinationId),
+    )
+    .where(eq(backups.id, "bkp_web"));
+  assert.equal(b?.serverId, "srv_4");
+  assert.ok(
+    await isMember("srv_2"),
+    "still leaving: its kept backup moves at the next pass",
+  );
 });
