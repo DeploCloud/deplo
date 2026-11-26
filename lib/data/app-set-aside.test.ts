@@ -10,7 +10,9 @@ import {
   recordMetricsSample,
 } from "../monitoring/history";
 import type { ServerMetrics } from "./monitoring";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import {
+  expireAllSetAsideCopies,
   expireSetAsideCopies,
   listAppSetAsideCopies,
   removeAppSetAsideCopy,
@@ -18,7 +20,7 @@ import {
 } from "./apps/set-aside";
 import { deleteApp } from "./apps/delete";
 import { executeBackup } from "./backups/execute-backup";
-import { seedDestination } from "./backup-test-helpers";
+import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import { TEAM_A } from "./identity-test-helpers";
 import { leaderLab } from "./cluster-leader-test-helpers";
 
@@ -238,4 +240,46 @@ test("a backup of the App clears what its servers set aside of it long ago", asy
   });
 
   assert.deepEqual(removed, [old]);
+});
+
+// c50: copies of a database, or of an App with no backup, were only ever expired by a backup of that App.
+test("the maintenance sweep expires old set-aside copies of every App and database of a cluster, backed up or not", async () => {
+  const { app, removed } = await withCopy();
+  await seedDatabase(lab.db, {
+    id: "db_pg",
+    name: "pg",
+    serverId: app.serverId,
+  });
+  await lab.db
+    .update(databasesTable)
+    .set({ clusterId: app.clusterId })
+    .where(eq(databasesTable.id, "db_pg"));
+  const pg = "deplo-db-pg_db-pg-data";
+  const copies = [
+    [`deplo-${app.slug}_data`, "2026-11-26T00:00:00Z"],
+    [`deplo-${app.slug}_data`, "2026-11-01T00:00:00Z"],
+    [pg, "2026-11-25T00:00:00Z"],
+    [pg, "2026-11-02T00:00:00Z"],
+  ].map(([of, t]) => ({
+    volumeName: `${of}-aside-${t!.replace(/[-:]/g, "")}`,
+    of: of!,
+    atMs: Date.parse(t!),
+    bytes: 4096,
+  }));
+  hosts.srv_3.extra!.setAsideCopies = async (of: string[]) =>
+    copies.filter((c) => of.includes(c.of) && !removed.includes(c.volumeName));
+
+  await expireAllSetAsideCopies(Date.parse("2026-11-27T12:00:00Z"));
+
+  assert.deepEqual(
+    removed.sort(),
+    [copies[3]!.volumeName, copies[1]!.volumeName].sort(),
+  );
+  const said = (await lab.db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    said.includes(
+      "Removed the copy of pg's data that srv_3 set aside on 2026-11-02 00:00 UTC (4 KiB): it was older than 7 days, and a newer copy is kept.",
+    ),
+    said.join("\n"),
+  );
 });
