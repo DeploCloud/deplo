@@ -34,6 +34,7 @@ import {
   syncClusterNetwork,
 } from "./clusters/network";
 import { clusterRoster } from "./clusters/relay";
+import { removeServer } from "./servers/removal";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import { turnOnExperiments } from "./experiments-test-helpers";
 
@@ -188,6 +189,20 @@ test("a server that leaves the cluster is taken off the network, and the others 
     .from(clusterNetworkPeers)
     .where(eq(clusterNetworkPeers.serverId, "srv_3"));
   assert.equal(left.length, 0);
+});
+
+// c44: a removed member stayed every peer's for 8 min 17 s, until a sweep that waited behind a slow tick.
+test("a server removed from Deplo leaves every peer's network without waiting for the sweep", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  await asAdmin(() => removeServer("srv_3"));
+  const gone = () =>
+    ["srv_1", "srv_2"].every(
+      (id) => !last(hosts[id]).peers.some((p) => p.fingerprint === fp(3)),
+    );
+  for (let i = 0; i < 100 && !gone(); i++)
+    await new Promise((r) => setTimeout(r, 20));
+  assert.ok(gone(), "srv_3 is still handed to its old peers");
 });
 
 test("a deleted cluster's servers are taken off its network by the sweep", async () => {

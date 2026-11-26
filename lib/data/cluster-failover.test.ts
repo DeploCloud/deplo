@@ -9,6 +9,7 @@ import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
 import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { domains as domainsTable } from "../db/schema/control-plane/domains";
@@ -18,7 +19,7 @@ import {
   listClusterWaiting,
   waitingForRoomNote,
 } from "./clusters/placement";
-import { applyLeaderEvent } from "./clusters/watch";
+import { __setHandedWaitForTest, applyLeaderEvent } from "./clusters/watch";
 import { rehostClusterAddresses } from "./clusters/failover-address";
 import { runWithIdentity } from "../auth/request-context";
 import { saveNotificationChannel } from "./notifications";
@@ -176,6 +177,37 @@ test("a generated address another team already routes is left alone, and Activit
       },
     ],
   );
+});
+
+// c44: after a move Deplo made, the old leader heard the new epoch from a member 100-200 ms before Deplo stored it.
+test("a leader that steps down for an epoch Deplo handed says nothing; one Deplo never stores is said", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  __setHandedWaitForTest(1_000);
+  try {
+    const stepped = async () =>
+      (await messages()).filter((m) => m.message.includes("stepped down"))
+        .length;
+    const epoch = cluster.leaderEpoch + 1;
+    setTimeout(
+      () =>
+        void lab.db
+          .update(clustersTable)
+          .set({ leaderEpoch: epoch })
+          .where(eq(clustersTable.id, cluster.id))
+          .then(() => {}),
+      150,
+    );
+    await apply(cluster.id, event(cluster.id, "superseded", { epoch }));
+    assert.equal(await stepped(), 0, "a move Deplo made is no step-down");
+    await apply(
+      cluster.id,
+      event(cluster.id, "superseded", { epoch: epoch + 1 }),
+    );
+    assert.equal(await stepped(), 1, "an epoch Deplo never stored is");
+  } finally {
+    __setHandedWaitForTest(null);
+  }
 });
 
 test("what Deplo says about a cluster goes to the teams with work on it, never to the oldest team", async () => {

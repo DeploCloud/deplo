@@ -435,6 +435,36 @@ test("a whole copy its App outgrew is held back like a new one, shown on the ser
   assert.equal(lines.length, 1, "Activity says it once");
 });
 
+// c44: lab-kit-c (520 MiB) refused on eu-1 wrote three Activity lines in 61 s, its free space in each, and the first
+// said 685.8 MB: its biggest file counted twice. One line, with the copy's size.
+test("a copy held back for room is said once with its size, whatever the passes in between read", async () => {
+  const cluster = await replicated();
+  const MB = 1024 ** 2;
+  const GB = 1024 * MB;
+  host.srv_2.capabilities.push(VOLUME_USAGE_CAPABILITY);
+  host.srv_2.extra.volumeSizes = async () => ({
+    bytes: 520 * MB,
+    largest: 140 * MB,
+  });
+  const partial = [
+    report({ synced: false, bytes: 100 * MB, diskBytes: 100 * MB }),
+  ];
+  host.srv_3.extra.metrics = disk(14 * GB, Math.round(12.2 * GB));
+  host.srv_3.replicaReports = partial;
+  await replicateCluster(cluster.id, true);
+  host.srv_3.unreachable = true;
+  await replicateCluster(cluster.id, true);
+  host.srv_3.unreachable = false;
+  host.srv_3.extra.metrics = disk(14 * GB, Math.round(12.3 * GB));
+  host.srv_3.replicaReports = partial;
+  await replicateCluster(cluster.id, true);
+  const lines = (await said()).filter((m) =>
+    m.includes("too little for a copy of web"),
+  );
+  assert.equal(lines.length, 1, lines.join("\n"));
+  assert.match(lines[0]!, /\(about 520\.0 MB\)/);
+});
+
 // eu, 24 Nov 2026: lab-fit3's copy began while the App was small, grew with it and took eu-1 to 92%.
 test("a copy not whole yet stops once the disk would be under a tenth free, however much of it came", async () => {
   const cluster = await replicated();

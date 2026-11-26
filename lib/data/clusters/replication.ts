@@ -199,7 +199,7 @@ async function copiesThatDoNotFit(
         name,
         app.name,
         disk?.free ?? 0,
-        Math.max(size + peak, copy?.bytes ?? 0),
+        Math.max(size, copy?.bytes ?? 0),
       ),
     );
   }
@@ -543,6 +543,10 @@ async function recordReports(
   }
 }
 
+// The copies Activity said were held back, until one runs with no error: a pass in between that read another error
+// (no answer, its turn) says nothing new (c44: three lines in 61 s). ponytail: in memory, a restart may say it again.
+const toldNoRoom = new Set<string>();
+
 /** Activity says it once, in the App's team, when a copy of it is first held back for room on a server. */
 async function sayCopiesWithoutRoom(
   before: ReplicaRow[],
@@ -556,7 +560,12 @@ async function sayCopiesWithoutRoom(
         b.error.includes(NO_ROOM_FOR_COPY),
     );
   for (const r of after) {
-    if (!r.error.includes(NO_ROOM_FOR_COPY) || held(before, r)) continue;
+    const key = `${r.appId}|${r.serverId}`;
+    if (r.error === "") toldNoRoom.delete(key);
+    if (!r.error.includes(NO_ROOM_FOR_COPY)) continue;
+    const told = toldNoRoom.has(key) || held(before, r);
+    toldNoRoom.add(key);
+    if (told) continue;
     const app = await loadAppGraph(r.appId);
     if (!app) continue;
     await recordActivity(
@@ -650,5 +659,6 @@ export async function refreshVolumeAppBundles(
 /** Test seam: forget what each member was handed. */
 export function __forgetHandedTables(): void {
   handed.clear();
+  toldNoRoom.clear();
   __forgetSizes();
 }

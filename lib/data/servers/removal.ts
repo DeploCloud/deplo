@@ -13,6 +13,7 @@ import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { clustersOfServer, pushClusterRosters } from "../clusters/relay";
+import { syncClusterNetworkSoon } from "../clusters/network";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById, serverRole } from "./roster";
 import { blockingRows } from "./removal-blockers";
@@ -133,8 +134,9 @@ async function removeServerRow(
     );
   }
   dropAgentChannel(id);
-  // A removed server's certificate leaves every cluster relay's roster at once.
+  // A removed server's certificate leaves every cluster relay's roster at once, and every peer's network soon.
   await pushClusterRosters(clusterIds);
+  for (const c of clusterIds) syncClusterNetworkSoon(c);
   await recordActivity(
     "server",
     `Removed server ${server.name}`,
