@@ -489,6 +489,11 @@ export async function addClusterMember(
     cameApps = apps.map((a) => a.id);
     return { apps: apps.length, databases: dbs.length };
   });
+  // c49: visitors through a new member met 404 and a self-signed certificate until the 2-minute answers pass.
+  const { handForwarderTables } = await import("./forwarders");
+  await handForwarderTables(clusterId).catch((e) =>
+    console.warn(`[cluster-join] ${clusterId}: ${messageOf(e)}`),
+  );
 
   const members = await readMembers(clusterId, { admin: true, teamId });
   const member = members.find((m) => m.serverId === serverId)!;
