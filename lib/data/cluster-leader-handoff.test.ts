@@ -1,7 +1,10 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
+import { eq } from "drizzle-orm";
+
 import type { TestDb } from "../db/test-harness";
+import { teams } from "../db/schema/control-plane/identity";
 import { clusterNetworkLinks } from "../db/schema/control-plane/clusters";
 import { nowIso } from "../ids";
 import { __forgetMemberProbes } from "../infra/agent-client/cluster-host";
@@ -11,16 +14,22 @@ import { handLeadersOff, placeClusterLeaders } from "./clusters/leader-move";
 import { getClusterById } from "./clusters/roster";
 import { __forgetHeirsForTest, clusterHeirs } from "./clusters/succession";
 import { leaderLab } from "./cluster-leader-test-helpers";
+import { TEAM_B } from "./identity-test-helpers";
 
 const lab = leaderLab();
 const { asAdmin, eu, messages, stored } = lab;
 
 let db: TestDb;
 let hosts: Record<string, FakeClusterHost>;
-beforeEach(() => {
+beforeEach(async () => {
   ({ db, hosts } = lab);
   __forgetMemberProbes();
   __forgetHeirsForTest();
+  // A cluster shared with every team speaks to the oldest one; seeded at the same instant, either was (c44's CI rerun).
+  await db
+    .update(teams)
+    .set({ createdAt: "2026-01-02T00:00:00.000Z" })
+    .where(eq(teams.id, TEAM_B));
 });
 
 /** Cluster eu on srv_2, srv_3 and srv_4, every pair direct, every agent able to pre-vote, led from a member. */
