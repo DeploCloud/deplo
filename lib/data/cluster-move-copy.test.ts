@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { eq } from "drizzle-orm";
@@ -29,6 +29,7 @@ import { moveAppToCluster } from "./apps/source";
 import type { FailoverBundle } from "./clusters/bundles";
 import { __forgetTurns } from "./clusters/copy-turns";
 import { copyAheadWait } from "./clusters/move-copy";
+import { __forgetMoves } from "./clusters/moves";
 import { replicateCluster } from "./clusters/replication";
 import {
   activity,
@@ -47,6 +48,11 @@ import {
 // c44: a move stopped lab-kit-d, then copied all 64 MB again though eu-3's copy was current (13.5 s down).
 
 emptyLab();
+after(() => {
+  __forgetTurns();
+  __forgetMoves();
+  __forgetMoveTries();
+});
 
 const VOL = "deplo-fise-data";
 const YAML = `services:\n  app:\n    image: nginx:1\n    volumes:\n      - ${VOL}:/data\nvolumes:\n  ${VOL}:\n    name: ${VOL}\n`;
@@ -109,6 +115,7 @@ async function fiseOnCluster() {
       composeUpArgs: [],
     },
   };
+  await db.delete(failoverBundlePushes);
   await db.insert(failoverBundlePushes).values({
     workloadKind: "app",
     workloadId: "fise",
