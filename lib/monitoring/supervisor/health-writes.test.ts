@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { eq } from "drizzle-orm";
+
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
+
 import {
   HEALTH_WRITE_MS,
   STREAM_INTERVAL_MS,
@@ -98,4 +102,24 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
   } finally {
     Date.now = realNow;
   }
+});
+
+test("a new server's memory is written on its first frame, not a health round later", async () => {
+  await seedEnrolledServer(h.db, SRV_A, "2026-01-01T00:00:00.000Z");
+  const feed = new Feed();
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
+  startMetricsStreams();
+
+  const first = frame();
+  first.host!.memTotal = 2 * 1024 ** 3;
+  await feed.send(first);
+
+  const [row] = await h.db
+    .select({ memoryMb: serversTable.memoryMb })
+    .from(serversTable)
+    .where(eq(serversTable.id, SRV_A));
+  assert.equal(row?.memoryMb, 2048);
 });
