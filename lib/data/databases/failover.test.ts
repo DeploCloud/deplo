@@ -161,6 +161,27 @@ test("a member past 80% used hands Deplo's backups to the one with the most room
   assert.equal(await keptOn("prj_c"), "srv_2");
 });
 
+// c48: the kit's hourly backups read "every 15 minutes" after a move.
+test("the line about a backup's new home says the backup's own schedule", async () => {
+  disk("srv_1", 6);
+  disk("srv_2", 4);
+  disk("srv_3", 3);
+  await app("prj_h", "srv_3");
+  await db
+    .update(backupsTable)
+    .set({ schedule: "0 * * * *" })
+    .where(eq(backupsTable.appId, "prj_h"));
+  disk("srv_1", 1.4);
+  await rehomeFailoverBackups("cl_eu");
+  const said = (await db.select().from(activitiesTable)).map((a) => a.message);
+  assert.ok(
+    said.includes(
+      "Backs up prj_h every hour to eu-2 from now on: eu-1 is more than 80% full.",
+    ),
+    said.join(" | "),
+  );
+});
+
 // c45: an aborted move of the old path moved an App's backups once, onto a member it never ran on.
 test("an App's backups stay where they are kept while a move of it is under way", async () => {
   disk("srv_1", 6);

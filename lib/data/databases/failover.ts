@@ -9,6 +9,7 @@ import {
   backups as backupsTable,
 } from "../../db/schema/control-plane/backups";
 import { nextCronRun } from "../../backups/cron";
+import { describeCron } from "../../schedule";
 import {
   FAILOVER_BACKUP_MINUTES,
   FAILOVER_BACKUP_SCHEDULE,
@@ -316,6 +317,8 @@ export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
       teamId: backupsTable.teamId,
       appId: backupsTable.appId,
       databaseId: backupsTable.databaseId,
+      schedule: backupsTable.schedule,
+      timezone: backupsTable.timezone,
       destKind: destTable.kind,
       destServerId: destTable.serverId,
       destId: destTable.id,
@@ -367,9 +370,10 @@ export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
       .set({ destinationId: next.id })
       .where(and(eq(backupsTable.id, b.id), eq(backupsTable.teamId, w.teamId)));
     const here = (await getServerById(w.serverId))?.name ?? "its server";
+    const when = describeCron(b.schedule, { timeZone: b.timezone });
     await recordActivity(
       "backup",
-      `Backs up ${w.name} every ${FAILOVER_BACKUP_MINUTES} minutes to ${next.name} from now on: ` +
+      `Backs up ${w.name} ${when ? when[0]!.toLowerCase() + when.slice(1) : "on its schedule"} to ${next.name} from now on: ` +
         (b.destServerId === w.serverId
           ? `${w.name} now runs on ${here}, where its backups were kept.`
           : full
