@@ -177,6 +177,52 @@ test("a move onto a member whose copy follows takes only the last changes, never
   );
 });
 
+// c46: twice a pass came between the leader placing lab-kit-d and its stop, and the whole volume was copied.
+test("a pass after the leader placed it on its new member still takes only the last changes", async () => {
+  const cluster = await fiseOnCluster();
+  copyOnSrv3();
+  await replicateCluster(cluster.id);
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  copyOnSrv3({ role: "sending", synced: false, appliedAt: "" });
+  await replicateCluster(cluster.id);
+  const lines: string[] = [];
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", (_l, t) =>
+      lines.push(t),
+    ),
+    "done",
+    lines.join("\n"),
+  );
+  assert.deepEqual(hosts.get("srv_3")!.promotions, [
+    { appId: "fise", from: "srv_2" },
+  ]);
+  assert.ok(!disks.get("srv_3")!.calls.includes(`member-import:${VOL}`));
+});
+
+test("a move that copies the data whole says why on Activity", async () => {
+  const cluster = await fiseOnCluster();
+  copyOnSrv3();
+  await replicateCluster(cluster.id);
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  (
+    hosts.get("srv_3")!.extra as Partial<AgentConnection>
+  ).promoteClusterReplica = async () => {
+    throw new Error("this server has no whole copy of the App's data yet");
+  };
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "done",
+  );
+  assert.ok(
+    (await activity()).some((m) =>
+      /Moved fise's data from srv_2 to srv_3, .*\. All of it was copied: its copy on srv_3 could not take its last changes \(this server has no whole copy/.test(
+        m,
+      ),
+    ),
+    (await activity()).join("\n"),
+  );
+});
+
 test("a move waits, its App running, until its new member's copy follows, then goes", async () => {
   copyAheadWait.everyMs = 5;
   try {
