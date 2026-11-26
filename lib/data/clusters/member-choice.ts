@@ -1,13 +1,17 @@
 import "server-only";
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
-import { clusterMembers as membersTable } from "../../db/schema/control-plane/clusters";
+import {
+  clusterJoinRequests as joinRequestsTable,
+  clusterMembers as membersTable,
+} from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { requireActiveTeamId } from "../../membership";
 import { archWords, type Cluster } from "../../types/cluster";
+import { recordActivity } from "../activity";
 import { formatBytes } from "../backups/format-bytes";
 import { markServerSeen } from "../servers/agent-handshake";
 import { appDataBytes } from "./data-size";
@@ -131,23 +135,61 @@ async function askMetrics(serverId: string): Promise<void> {
   }
 }
 
-/** Refuses, before anything stops, unless `serverId` of the cluster can take the workload now. */
+/** Vars so tests hurry it: a move towards a server still joining the cluster waits this long for it. */
+export const joinWait = { maxMs: 120_000 };
+
+// c48: a move asked right after the install was refused "not in cluster eu" for the 23 s the join took.
+async function joining(clusterId: string, serverId: string) {
+  const [r] = await getDb()
+    .select({ name: serversTable.name, error: joinRequestsTable.error })
+    .from(joinRequestsTable)
+    .innerJoin(serversTable, eq(serversTable.id, joinRequestsTable.serverId))
+    .where(
+      and(
+        eq(joinRequestsTable.serverId, serverId),
+        eq(joinRequestsTable.clusterId, clusterId),
+      ),
+    );
+  return r ?? null;
+}
+
+/** Refuses, before anything stops, unless `serverId` of the cluster can take the workload now; waits for one joining. */
 export async function assertMemberTakes(
   cluster: Cluster,
   serverId: string,
   w: MemberMove,
 ): Promise<void> {
-  const until = Date.now() + factsWait.maxMs;
+  const since = Date.now();
+  let until = 0;
+  let said = false;
   for (;;) {
     const mine = (await refusals(cluster, w)).find(
       (r) => r.row.id === serverId,
     );
-    if (!mine)
-      throw new Error(`That server is not in cluster ${cluster.name}.`);
+    if (!mine) {
+      const j = await joining(cluster.id, serverId);
+      if (!j) throw new Error(`That server is not in cluster ${cluster.name}.`);
+      if (Date.now() - since >= joinWait.maxMs)
+        throw new Error(
+          `${j.name} has not joined cluster ${cluster.name} within ${Math.round(joinWait.maxMs / 1000)} s, so ${w.name} stays where it runs.` +
+            (j.error ? ` ${j.error}` : ""),
+        );
+      if (!said)
+        await recordActivity(
+          "app",
+          `Moving ${w.name} waits for ${j.name} to join cluster ${cluster.name}.`,
+          "Deplo",
+          w.id,
+        );
+      said = true;
+      await new Promise((r) => setTimeout(r, factsWait.everyMs));
+      continue;
+    }
     if (!mine.refusal) return;
     const name = mine.row.server.name;
     if (mine.refusal !== waitingFor(name, w.name))
       throw new Error(mine.refusal);
+    until ||= Date.now() + factsWait.maxMs;
     if (Date.now() >= until)
       throw new Error(
         `No metrics came from ${name} within ${Math.round(factsWait.maxMs / 1000)} s, so Deplo does not know its memory yet and cannot tell whether ${w.name} fits there.`,

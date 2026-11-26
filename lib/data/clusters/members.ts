@@ -18,6 +18,7 @@ import {
 } from "../databases/failover";
 import { ensureVolumeAppBackups } from "./app-restore";
 import { joinAppTunnels } from "./app-tunnel";
+import { prepareJoiningProxy } from "./join-proxy";
 import { inBackground } from "./bundles";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
@@ -436,6 +437,7 @@ export async function addClusterMember(
 
   const reasons = await joinReasons(cluster, server);
   if (reasons.length > 0) throw new ClusterJoinRefusedError(reasons);
+  await prepareJoiningProxy(cluster, server);
 
   let cameApps: string[] = [];
   const came = await getDb().transaction(async (tx) => {
