@@ -250,3 +250,15 @@ test("a copy its new member stopped for room is refused for room, never tried ag
   assert.equal((await appRow("fise")).serverId, "srv_2");
   assert.equal((await appRow("fise")).migrateFromServerId, null);
 });
+
+test("a stopped App moves at once: nothing sends its changes, so no copy is waited for", async () => {
+  const cluster = await fiseOnCluster();
+  await db
+    .update(appsTable)
+    .set({ status: "idle" })
+    .where(eq(appsTable.id, "fise"));
+  copyOnSrv3({ role: "idle", connected: false, appliedAt: "" });
+  await replicateCluster(cluster.id);
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  assert.equal((await appRow("fise")).serverId, "srv_3");
+});

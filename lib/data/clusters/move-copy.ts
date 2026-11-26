@@ -16,6 +16,7 @@ import {
   copyReleaseToMembers,
   holdClusterFailoverImages,
   isBuiltImage,
+  membersHoldingImage,
 } from "./images";
 import { following, replicaRows } from "./replica-state";
 import {
@@ -68,13 +69,25 @@ export async function copyAhead(
     !cluster.replicationEnabled
   )
     return true;
+  // Nothing sends its changes while it is stopped or its server is off: the stop costs it nothing more.
+  if (
+    app.status !== "active" ||
+    (await getServerById(from))?.status !== "online"
+  )
+    return true;
   const held = await storedBundle(app.id);
   if (!held || !(await copyHolds(app, from, to, []))) return true;
-  if (isBuiltImage(held.stack.imageRef))
-    await copyReleaseToMembers(app.id, held.stack.imageRef, from, [to]).catch(
-      () => {},
-    );
-  await holdClusterFailoverImages(cluster.id).catch(() => {});
+  // One look, while a person waits: an image still to copy is copied in the background.
+  const quick = opts.within === 0;
+  const ref = held.stack.imageRef;
+  if (
+    isBuiltImage(ref) &&
+    !(await membersHoldingImage(app.id, ref)).includes(to)
+  ) {
+    if (quick) return false;
+    await copyReleaseToMembers(app.id, ref, from, [to]).catch(() => {});
+  }
+  if (!quick) await holdClusterFailoverImages(cluster.id).catch(() => {});
   const until = Date.now() + (opts.within ?? copyAheadWait.maxMs);
   for (;;) {
     const row = (await replicaRows([app.id])).find((r) => r.serverId === to);
