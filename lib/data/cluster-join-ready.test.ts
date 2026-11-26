@@ -14,6 +14,7 @@ import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { hasAnswerSupport, hasDnsChallenge } from "../deploy/traefik-cluster";
 import {
   CLUSTER_ANSWERS_CAPABILITY,
+  CLUSTER_NETWORK_CAPABILITY,
   DNS_CHALLENGE_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import {
@@ -105,6 +106,41 @@ test("a new member is handed the cluster's routes as it joins, not at the next a
   assert.ok(table, "its agent got a table");
   assert.deepEqual(table.serveAnswers, ["web"], "it answers for web");
   assert.ok(table.members.some((m) => m.serverId === "srv_4"));
+});
+
+// c50: through eu-4, 404 for 51 s: its agent refused the routes as not a member yet, and no peer knew it on the network.
+test("a new member takes the routes as a member and is on every peer's network when the join returns", async () => {
+  const { cluster, h } = await answeringEu();
+  h.extra.traefikConfig = async (req) => {
+    h.proxy.yaml = req.composeYaml;
+    return TraefikConfigResponse.fromPartial({ ok: true });
+  };
+  // As the agent does: a table is refused before setClusterMember.
+  h.extra.setClusterForwarders = async (table) => {
+    if (!h.status.member)
+      throw new Error("this server agent is not a cluster member");
+    h.forwarders.push(table);
+    return { held: 0, served: 0, answerRefusals: [], proxyRestarts: [] };
+  };
+  for (const other of hosts.values()) {
+    other.capabilities.push(CLUSTER_NETWORK_CAPABILITY);
+    other.networkTables.length = 0;
+  }
+  await asAdmin(() => addClusterMember(cluster.id, "srv_4"));
+  assert.deepEqual(h.forwarders.at(-1)?.serveAnswers, ["web"]);
+  const keys = (t?: { peers: { publicKey: string }[] }) =>
+    (t?.peers ?? []).map((p) => p.publicKey).sort();
+  for (const id of ["srv_2", "srv_3"]) {
+    const peer = hosts.get(id)!;
+    assert.ok(
+      keys(peer.networkTables.at(-1)).includes(h.networkKey),
+      `${id} knows srv_4 on the network`,
+    );
+    assert.ok(
+      keys(h.networkTables.at(-1)).includes(peer.networkKey),
+      `srv_4 knows ${id}`,
+    );
+  }
 });
 
 test("a proxy that refuses the change keeps the server out of the cluster, saying why", async () => {
@@ -199,7 +235,8 @@ test("a move towards a server that does not join in time is refused with why, an
     error: "The server agent on srv_4 is too old to join a cluster.",
   });
   Object.assign(factsWait, { everyMs: 5 });
-  joinWait.maxMs = 30;
+  // Room for its first look on a slow runner: past it, the move is refused before it says it waits.
+  joinWait.maxMs = 300;
   try {
     await assert.rejects(
       asAdmin(() => moveAppToCluster("web", cluster.id, "srv_4")),
