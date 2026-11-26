@@ -246,3 +246,13 @@ c46 left six open failures. Done (agent v0.5.3-canary.61, panel v0.8.2-canary.10
 3. **A cluster server's network key rotates with its tunnels up** (`rotateClusterNetworkKey`, deplo#414, deplo-agent#140); a Postgres base restores server to server and a failed backup keeps `held_ms` (deplo#412); the old proxy stops once the standby carries its visitors (deplo-agent#139).
 
 Live from 08:20 UTC on 26 Nov (ADR-0049, "What cluster eu showed", c47): moves, copies refused for room, the relay after a power cut, proxy recreates, the key rotation, hangs and power cuts passed. **Not fixed**: the second of two moves onto one member waits for the first one's deploy (`deploy_concurrency` 1: 21.8 s); a new member's first metrics come after 27 s, past the 20 s a move waits for them; visitors carried to a member whose agent was killed wait about 4 s past its return; each member's own lease is 2 s apart across its own agent update.
+
+## Moves outside the queue, metrics at the link, a resent renewal (26 Nov 2026)
+
+c47 left four open failures. Done (agent v0.5.4-canary.1, leader v0.1.1-canary.1, panel v0.8.3-canary.1):
+
+1. **A moved App starts outside the deploy queue**, a new member's metrics stream opens at its link, and a move towards a member that leaves fails with why (deplo#416, deplo#418).
+2. **A deleted App leaves no backup behind**, and a backup cut off by the delete removes what it landed (deplo#417, ADR-0019).
+3. **A restarted agent reads what it answers for first**, an update execs right after a renewal, the first metrics sample goes after a second (deplo-agent#142); a backup's pause is counted whole and its copy lands a step at a time (deplo-agent#141, #143); the leader sends a missed renewal again in its tick (deplo-cluster#32).
+
+Live from 13:58 UTC on 26 Nov (ADR-0049, "What cluster eu showed", c48): the rollout, orphan backups, moves refused for room, a move towards a member that left, backups under load, proxy recreates, the hang, the power cuts and the panel restart passed. **Not fixed**: two moves onto one member start together but are each down 14 to 17 s (one alone: 5 s); the first move onto a new member lands before Deplo recreates that member's proxy (60 s by name); visitors carried to a member whose agent was killed wait 1.2 to 4.4 s past its return and its own lease is 4 s apart in 2 of 4 restarts; fise came back 63 s after its server's power cut (memos 48 s), queued behind memos.

@@ -137,15 +137,20 @@ to prevent, and it is not an exotic setup: the team's seeded default lives in th
 managed folder and a hand-added second destination usually lands beside it.
 Deletes now enumerate the exact keys from `backup_runs`.
 
-### An artifact outlives its target, but not forever
+### A deleted target's backups go with it (26 Nov 2026)
 
 `backup_runs.database_id` / `app_id` are `ON DELETE SET NULL`, which used to blank
 the only columns naming what an artifact belonged to: retention stopped seeing
 it, no screen listed it, and on a server destination it was disk nobody could
 reclaim without SSH. `target_id` is written at insert and survives the delete, so
-those runs stay findable; a daily sweep on the scheduler's lease removes them
-after 30 days. Keeping the backups of a deleted app is still the default and
-still the right one - it just has an end.
+those runs stay findable. Deleting an App or a database now removes its backups
+(ADR-0043's delete path), and the sweep removes any run whose `target_id` names
+no App and no database at its first pass after a start, then daily, with one
+Activity line per team ("Deleted a backup (1.6 GB) of an App or database no
+longer in this team"). A run cut off by its target's delete is canceled and its
+file removed. Runs a team transfer detached still wait out 30 days. c48 saw both
+live on canary.1 of 0.8.3: the 1.6 GB run of a deleted App went 6 s after the
+panel started, and a 300 MB App deleted mid-copy left no file on its member.
 
 ### Cross-host relays through the control plane; cross-host restore is bidi
 
