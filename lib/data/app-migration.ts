@@ -39,6 +39,7 @@ import { formatBytes } from "../utils";
 import { placeAtLeaderFirst } from "./clusters/leader-sync";
 import { getClusterById } from "./clusters/roster";
 import { holdTurn } from "./clusters/copy-turns";
+import { lastChangesOnly, noRoomFor } from "./clusters/move-copy";
 import {
   dropTeardown,
   enqueueTeardowns,
@@ -272,18 +273,29 @@ async function runMigration(
         );
       }
 
-    let moved: { missing: string[]; path?: "direct" | "relay" };
+    let moved: { missing: string[]; path?: "direct" | "relay"; last?: number };
     try {
-      moved = await migrateWorkloadData(from, to, {
-        volumeNames: names,
-        filesSlug: includeFiles ? slug : undefined,
-      });
+      moved =
+        (await lastChangesOnly(app, names, toName, emit)) ??
+        (await migrateWorkloadData(from, to, {
+          volumeNames: names,
+          filesSlug: includeFiles ? slug : undefined,
+        }));
     } catch (e) {
+      // A copy its new server stopped for room breaks its link too: it is no link that dropped, and goes no again.
+      const room = app.clusterId ? await noRoomFor(app, from, to, names) : null;
       const again =
-        app.clusterId && linkDropped(e) ? nextTry(app.id, to) : null;
+        app.clusterId && !room && linkDropped(e) ? nextTry(app.id, to) : null;
       return rollback(
         app,
-        { fromName, toName, error: e, oldStopped, newStopped, again },
+        {
+          fromName,
+          toName,
+          error: room ? new Error(room) : e,
+          oldStopped,
+          newStopped,
+          again,
+        },
         emit,
       );
     }
@@ -329,11 +341,13 @@ async function runMigration(
     await recordActivity(
       "app",
       `Moved ${app.name}'s data from ${fromName} to ${toName}` +
-        (moved.path === "direct"
-          ? ", server to server"
-          : moved.path
-            ? ", through Deplo"
-            : "") +
+        (moved.last !== undefined
+          ? `, its last changes only (${formatBytes(moved.last)})`
+          : moved.path === "direct"
+            ? ", server to server"
+            : moved.path
+              ? ", through Deplo"
+              : "") +
         (asideNote ? `.${asideNote}` : ""),
       "system",
       appId,

@@ -3680,6 +3680,17 @@ export interface SetClusterReplicasResponse {
 export interface ClusterReplicaStatusRequest {
 }
 
+export interface PromoteClusterReplicaRequest {
+  appId: string;
+  /** The member the App left, by the server id the leader's placement names it with. */
+  fromServerId: string;
+}
+
+export interface PromoteClusterReplicaResponse {
+  /** The file data that crossed the network for the last changes. */
+  bytes: number;
+}
+
 export interface ClusterReplicaStatusResponse {
   replicas: ClusterReplicaState[];
 }
@@ -29958,6 +29969,168 @@ export const ClusterReplicaStatusRequest: MessageFns<ClusterReplicaStatusRequest
   },
 };
 
+function createBasePromoteClusterReplicaRequest(): PromoteClusterReplicaRequest {
+  return { appId: "", fromServerId: "" };
+}
+
+export const PromoteClusterReplicaRequest: MessageFns<PromoteClusterReplicaRequest> = {
+  encode(message: PromoteClusterReplicaRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.appId !== "") {
+      writer.uint32(10).string(message.appId);
+    }
+    if (message.fromServerId !== "") {
+      writer.uint32(18).string(message.fromServerId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PromoteClusterReplicaRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBasePromoteClusterReplicaRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.appId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.fromServerId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): PromoteClusterReplicaRequest {
+    return {
+      appId: isSet(object.appId)
+        ? globalThis.String(object.appId)
+        : isSet(object.app_id)
+        ? globalThis.String(object.app_id)
+        : "",
+      fromServerId: isSet(object.fromServerId)
+        ? globalThis.String(object.fromServerId)
+        : isSet(object.from_server_id)
+        ? globalThis.String(object.from_server_id)
+        : "",
+    };
+  },
+
+  toJSON(message: PromoteClusterReplicaRequest): unknown {
+    const obj: any = {};
+    if (message.appId !== "") {
+      obj.appId = message.appId;
+    }
+    if (message.fromServerId !== "") {
+      obj.fromServerId = message.fromServerId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PromoteClusterReplicaRequest>, I>>(base?: I): PromoteClusterReplicaRequest {
+    return PromoteClusterReplicaRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PromoteClusterReplicaRequest>, I>>(object: I): PromoteClusterReplicaRequest {
+    const message = createBasePromoteClusterReplicaRequest();
+    message.appId = object.appId ?? "";
+    message.fromServerId = object.fromServerId ?? "";
+    return message;
+  },
+};
+
+function createBasePromoteClusterReplicaResponse(): PromoteClusterReplicaResponse {
+  return { bytes: 0 };
+}
+
+export const PromoteClusterReplicaResponse: MessageFns<PromoteClusterReplicaResponse> = {
+  encode(message: PromoteClusterReplicaResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.bytes !== 0) {
+      writer.uint32(8).int64(message.bytes);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PromoteClusterReplicaResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBasePromoteClusterReplicaResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.bytes = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): PromoteClusterReplicaResponse {
+    return { bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0 };
+  },
+
+  toJSON(message: PromoteClusterReplicaResponse): unknown {
+    const obj: any = {};
+    if (message.bytes !== 0) {
+      obj.bytes = Math.round(message.bytes);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PromoteClusterReplicaResponse>, I>>(base?: I): PromoteClusterReplicaResponse {
+    return PromoteClusterReplicaResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PromoteClusterReplicaResponse>, I>>(
+    object: I,
+  ): PromoteClusterReplicaResponse {
+    const message = createBasePromoteClusterReplicaResponse();
+    message.bytes = object.bytes ?? 0;
+    return message;
+  },
+};
+
 function createBaseClusterReplicaStatusResponse(): ClusterReplicaStatusResponse {
   return { replicas: [] };
 }
@@ -31237,6 +31410,21 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): ClusterReplicaStatusResponse => ClusterReplicaStatusResponse.decode(value),
   },
   /**
+   * A move onto this member (Hello capability "cluster.replicas.move"): the copy here takes the last
+   * changes from the member the App left, once it stopped there, and becomes the App's data.
+   */
+  promoteClusterReplica: {
+    path: "/deplo.agent.v1.Agent/PromoteClusterReplica" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: PromoteClusterReplicaRequest): Buffer =>
+      Buffer.from(PromoteClusterReplicaRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): PromoteClusterReplicaRequest => PromoteClusterReplicaRequest.decode(value),
+    responseSerialize: (value: PromoteClusterReplicaResponse): Buffer =>
+      Buffer.from(PromoteClusterReplicaResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): PromoteClusterReplicaResponse => PromoteClusterReplicaResponse.decode(value),
+  },
+  /**
    * Put this server on a cluster's private network with every other server of the cluster, or take
    * it off with no peers. The full set each time; it answers with its key and how each peer is reached.
    */
@@ -32124,6 +32312,11 @@ export interface AgentServer extends UntypedServiceImplementation {
   setClusterReplicas: handleUnaryCall<SetClusterReplicasRequest, SetClusterReplicasResponse>;
   /** How each copy on this member stands. */
   clusterReplicaStatus: handleUnaryCall<ClusterReplicaStatusRequest, ClusterReplicaStatusResponse>;
+  /**
+   * A move onto this member (Hello capability "cluster.replicas.move"): the copy here takes the last
+   * changes from the member the App left, once it stopped there, and becomes the App's data.
+   */
+  promoteClusterReplica: handleUnaryCall<PromoteClusterReplicaRequest, PromoteClusterReplicaResponse>;
   /**
    * Put this server on a cluster's private network with every other server of the cluster, or take
    * it off with no peers. The full set each time; it answers with its key and how each peer is reached.
@@ -33123,6 +33316,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ClusterReplicaStatusResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * A move onto this member (Hello capability "cluster.replicas.move"): the copy here takes the last
+   * changes from the member the App left, once it stopped there, and becomes the App's data.
+   */
+  promoteClusterReplica(
+    request: PromoteClusterReplicaRequest,
+    callback: (error: ServiceError | null, response: PromoteClusterReplicaResponse) => void,
+  ): ClientUnaryCall;
+  promoteClusterReplica(
+    request: PromoteClusterReplicaRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: PromoteClusterReplicaResponse) => void,
+  ): ClientUnaryCall;
+  promoteClusterReplica(
+    request: PromoteClusterReplicaRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: PromoteClusterReplicaResponse) => void,
   ): ClientUnaryCall;
   /**
    * Put this server on a cluster's private network with every other server of the cluster, or take

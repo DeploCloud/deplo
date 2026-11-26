@@ -36,6 +36,7 @@ export function clusterRpc(
   | "setGeoTable"
   | "setClusterReplicas"
   | "clusterReplicaStatus"
+  | "promoteClusterReplica"
 > {
   const { client } = channel;
   return {
@@ -289,6 +290,15 @@ export function clusterRpc(
         relayed: s.relayed,
         diskBytes: Number(s.diskBytes ?? 0),
       }));
+    },
+    async promoteClusterReplica(appId, fromServerId) {
+      // The App is down while it runs: its last changes only, but no deadline but their own.
+      const r = await unary(
+        client.promoteClusterReplica.bind(client),
+        { appId, fromServerId },
+        3600_000,
+      );
+      return { bytes: Number(r.bytes) };
     },
     async clusterCall(method, payload, timeoutMs = CLUSTER_CALL_TIMEOUT_MS) {
       const r = await unary(

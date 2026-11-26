@@ -164,6 +164,8 @@ export const DNS_CHALLENGE_CAPABILITY = "dns.challenge";
 export const DNS_CERTIFICATES_CAPABILITY = "dns.certificates";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
 export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
+// A move puts the copy on its new member in place after only the last changes (c44), both members on this agent.
+export const CLUSTER_REPLICAS_MOVE_CAPABILITY = "cluster.replicas.move";
 // The agent starts a cluster's databases and Apps with stored data itself, under their lease (deplo#237): their
 // restart policy may be "no", so a server back from a power cut never starts a copy that runs elsewhere by now.
 // Not bare "cluster.supervise": agent 0.5.3-canary.10 says that and leaves a writer it cannot read down.
