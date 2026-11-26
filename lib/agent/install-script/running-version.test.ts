@@ -22,12 +22,13 @@ async function run(runs: "installed" | "other", body: string) {
 exec 9>/dev/null
 cp /bin/sleep ${dir}/proc-exe
 ${runs === "other" ? `printf x >> ${dir}/proc-exe` : ""}
-${dir}/proc-exe 30 & PID=$!
+started() { for _ in $(seq 500); do [ "$(readlink /proc/$PID/exe)" = "$1" ] && return; sleep 0.01; done; }
+${dir}/proc-exe 30 & PID=$!; started ${dir}/proc-exe
 trap 'kill $PID 2>/dev/null || true' EXIT
 systemctl() {
   case "$1" in
     show) echo "$PID" ;;
-    restart) RESTARTED="RESTARTED "; kill $PID; cp ${bin} ${dir}/proc-exe2; ${dir}/proc-exe2 30 & PID=$! ;;
+    restart) RESTARTED="RESTARTED "; kill $PID; cp ${bin} ${dir}/proc-exe2; ${dir}/proc-exe2 30 & PID=$!; started ${dir}/proc-exe2 ;;
   esac
 }
 RESTARTED=""; AGENT_BIN=${bin}; AGENT_VERSION=0.5.3-canary.59
