@@ -378,9 +378,11 @@ export async function executeBackup(
     return assembleBackupRun(updated[0]!);
   });
 
+  // A cancel can cut off the answer of a copy that already landed: its key goes either way.
   if (canceled) {
-    if (!failure && result?.ok && result.objectKey && creds)
-      await removeLanded(creds, targetServerId, result.objectKey, runId);
+    const landed = result?.objectKey || objectKey;
+    if (landed && creds)
+      await removeLanded(creds, targetServerId, landed, runId);
     throw new Error("This backup was canceled");
   }
   if (gone) throw new Error(`Backup of ${label} stopped: ${failure}`);
