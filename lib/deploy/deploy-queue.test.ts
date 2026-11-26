@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-queue-"));
 
@@ -562,24 +562,71 @@ test("a moved App's start never waits for another App's deploy; ordinary deploys
   await seedServer(db, SRV_A);
   await seedServer(db, SRV_B);
   await setConcurrency(SRV_A, 1);
-  for (const id of ["svc_busy", "svc_m1", "svc_m2", "svc_plain"])
-    await seedApp(db, { id, serverId: SRV_A, status: "queued" });
-  await db
-    .update(appsTable)
-    .set({ migrateFromServerId: SRV_B })
-    .where(inArray(appsTable.id, ["svc_m1", "svc_m2"]));
-  const deps = ["d_busy", "d_plain", "d_m1", "d_m2"];
-  for (const [i, id] of deps.entries())
-    await seedDeployment(db, {
-      id,
-      appId: id.replace("d_", "svc_"),
-      serverId: SRV_A,
-      status: "queued",
-      createdAt: `2026-01-01T00:00:0${i + 1}.000Z`,
-    });
+  await queueOn(SRV_A, "busy", 0);
+  enqueueDeployment({ depId: "d_busy", serverId: SRV_A, appId: "svc_busy" });
+  await waitFor(() => started.length === 1, "the ordinary deploy started");
+  await queueOn(SRV_A, "plain", 1);
+  await queueOn(SRV_A, "m1", 2, SRV_B);
+  await queueOn(SRV_A, "m2", 3, SRV_B);
   enqueueDeployment({ depId: "d_m2", serverId: SRV_A, appId: "svc_m2" });
   await waitFor(() => started.length === 3, "both moves started");
   await settle();
   assert.deepEqual([...started].sort(), ["d_busy", "d_m1", "d_m2"]);
   assert.equal(await statusOf("d_plain"), "queued");
 });
+
+// c48: two moves onto eu-3 (one core) started together and were down 17.2 s each, one alone 5 s.
+test("moved Apps' starts take one lane per CPU core, ahead of every ordinary deploy", async () => {
+  const { runner, started, finish } = makeFakeRunner();
+  __setRunnerForTest(runner);
+  await seedServer(db, SRV_A);
+  await seedServer(db, SRV_B);
+  await setConcurrency(SRV_A, 1);
+  await db
+    .update(serversTable)
+    .set({ cpuCores: 1 })
+    .where(eq(serversTable.id, SRV_A));
+  await queueOn(SRV_A, "busy", 0);
+  enqueueDeployment({ depId: "d_busy", serverId: SRV_A, appId: "svc_busy" });
+  await waitFor(() => started.length === 1, "the ordinary deploy started");
+  await queueOn(SRV_A, "plain", 1);
+  await queueOn(SRV_A, "m1", 2, SRV_B);
+  await queueOn(SRV_A, "m2", 3, SRV_B);
+  enqueueDeployment({ depId: "d_m1", serverId: SRV_A, appId: "svc_m1" });
+  await waitFor(() => started.length >= 2, "the first move started");
+  await settle();
+  assert.deepEqual(started, ["d_busy", "d_m1"], "one move per core");
+  await finish("d_busy");
+  await settle();
+  assert.deepEqual(started, ["d_busy", "d_m1"], "a waiting move goes first");
+  await finish("d_m1");
+  await waitFor(() => started.length >= 3, "the second move started");
+  await settle();
+  assert.equal(started[2], "d_m2");
+  assert.equal(await statusOf("d_plain"), "queued");
+  await finish("d_m2");
+  await waitFor(() => started.length === 4, "the ordinary deploy started");
+  assert.equal(started[3], "d_plain");
+});
+
+/** svc_<name>'s deploy d_<name> queued on `serverId`; `from` makes it a move's start from that server. */
+async function queueOn(
+  serverId: string,
+  name: string,
+  second: number,
+  from?: string,
+): Promise<void> {
+  await seedApp(db, { id: `svc_${name}`, serverId, status: "queued" });
+  if (from)
+    await db
+      .update(appsTable)
+      .set({ migrateFromServerId: from })
+      .where(eq(appsTable.id, `svc_${name}`));
+  await seedDeployment(db, {
+    id: `d_${name}`,
+    appId: `svc_${name}`,
+    serverId,
+    status: "queued",
+    createdAt: `2026-01-01T00:00:0${second}.000Z`,
+  });
+}
