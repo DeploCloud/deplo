@@ -499,6 +499,11 @@ export interface AgentConnection {
   // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.
   setClusterReplicas(table: ClusterReplicaTable): Promise<{ entries: number }>;
   clusterReplicaStatus(): Promise<ClusterReplicaReport[]>;
+  // Needs `cluster.replicas.move`: the copy here takes a moved App's last changes from the member it left, and becomes its data.
+  promoteClusterReplica(
+    appId: string,
+    fromServerId: string,
+  ): Promise<{ bytes: number }>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */

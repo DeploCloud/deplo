@@ -104,6 +104,8 @@ export interface FakeClusterHost {
   /** Every replication table this host's agent was handed, in order, and what it says of its copies (ADR-0046). */
   replicaTables: ClusterReplicaTable[];
   replicaReports: ClusterReplicaReport[];
+  /** Each move's copy put in place here: the App and the member it left. */
+  promotions: { appId: string; from: string }[];
   /** Every deploy request this host's agent was handed, answered ready. */
   deploys: DeployRequest[];
   /** Every backup this host's agent was asked for, answered with an artifact of `backupBytes` (0: nothing to write). */
@@ -482,6 +484,11 @@ export function fakeClusterHosts(): {
           return { entries: table.entries.length };
         }),
       clusterReplicaStatus: () => guard(() => [...h.replicaReports]),
+      promoteClusterReplica: (appId, from) =>
+        guard(() => {
+          h.promotions.push({ appId, from });
+          return { bytes: 4096 };
+        }),
       close: () => void h.closed++,
     };
     // A test that sizes the volumes sizes them for both reads; its biggest file is none unless it says.
@@ -558,6 +565,7 @@ export function fakeClusterHosts(): {
         geoTables: [],
         replicaTables: [],
         replicaReports: [],
+        promotions: [],
         deploys: [],
         backups: [],
         backupBytes: 2048,
