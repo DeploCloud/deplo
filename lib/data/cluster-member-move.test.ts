@@ -167,7 +167,10 @@ test("a move onto a member without metrics yet waits for them, and the picker sa
   try {
     await assert.rejects(
       asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3")),
-      { message: waiting },
+      {
+        message:
+          "No metrics came from srv_3 within 0 s, so Deplo does not know its memory yet and cannot tell whether web fits there.",
+      },
     );
     assert.equal((await appRow("web")).serverId, "srv_2");
 
@@ -178,7 +181,31 @@ test("a move onto a member without metrics yet waits for them, and the picker sa
     await moved;
     assert.equal((await appRow("web")).serverId, "srv_3");
   } finally {
-    Object.assign(factsWait, { everyMs: 1_000, maxMs: 20_000 });
+    Object.assign(factsWait, { everyMs: 1_000, maxMs: 60_000 });
+  }
+});
+
+// c47: eu-4's first metrics came 27 s after its agent started, and the move waiting for them was refused at 20 s.
+test("a move onto a member without metrics yet asks the member for them and goes", async () => {
+  await runningApp("web", "srv_2");
+  const cluster = await eu();
+  await db
+    .update(serversTable)
+    .set({ memoryMb: 0 })
+    .where(eq(serversTable.id, "srv_3"));
+  hosts.get("srv_3")!.extra.metrics = async () =>
+    ({ cpuCores: 2, memTotal: 8192 * 1024 * 1024, diskTotal: 0 }) as never;
+  Object.assign(factsWait, { everyMs: 5, maxMs: 2_000 });
+  try {
+    await asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3"));
+    assert.equal((await appRow("web")).serverId, "srv_3");
+    const [srv] = await db
+      .select({ memoryMb: serversTable.memoryMb })
+      .from(serversTable)
+      .where(eq(serversTable.id, "srv_3"));
+    assert.equal(srv?.memoryMb, 8192);
+  } finally {
+    Object.assign(factsWait, { everyMs: 1_000, maxMs: 60_000 });
   }
 });
 
