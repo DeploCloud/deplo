@@ -328,7 +328,10 @@ async function applyOne(
     }
     case "superseded": {
       // Cut off from every server, Deplo cannot know which leader that was, nor that it matters.
-      if (!(await clusterOutOfReach(clusterId)))
+      if (
+        !(await epochDeploHanded(clusterId, d.epoch)) &&
+        !(await clusterOutOfReach(clusterId))
+      )
         await recordClusterActivity(
           clusterId,
           `Cluster ${cluster.name}'s leader stepped down: a server in it follows a newer one.`,
@@ -339,6 +342,30 @@ async function applyOne(
     default:
       await advance();
       return "applied";
+  }
+}
+
+// How long a leader that stepped down waits to be Deplo's own move: a hand-over stores the epoch once the new leader
+// leads, up to 5 s after the old one heard it from a member (c44, leader-move.ts).
+let HANDED_WAIT_MS = 6_000;
+
+/** Test seam: how long a step-down waits for Deplo to store the epoch it handed; null is the real wait. */
+export function __setHandedWaitForTest(ms: number | null): void {
+  HANDED_WAIT_MS = ms ?? 6_000;
+}
+
+/** Whether Deplo stores `epoch` as the cluster's own within the wait: a leader it moved, not one that stepped down. */
+async function epochDeploHanded(
+  clusterId: string,
+  epoch: unknown,
+): Promise<boolean> {
+  if (typeof epoch !== "number") return false;
+  const end = Date.now() + HANDED_WAIT_MS;
+  for (;;) {
+    const c = await getClusterById(clusterId);
+    if (!c || c.leaderEpoch >= epoch) return true;
+    if (Date.now() >= end) return false;
+    await new Promise((r) => setTimeout(r, 100));
   }
 }
 
