@@ -31,6 +31,7 @@ import type { FailoverBundle } from "./clusters/bundles";
 import { __forgetTurns } from "./clusters/copy-turns";
 import { copyAheadWait } from "./clusters/move-copy";
 import { __forgetMoves } from "./clusters/moves";
+import { listWorkloadPlacements } from "./clusters/placement";
 import { replicateCluster } from "./clusters/replication";
 import {
   activity,
@@ -176,6 +177,26 @@ test("a move onto a member whose copy follows takes only the last changes, never
     (await activity()).some((m) => /its last changes only \(/.test(m)),
     (await activity()).join("\n"),
   );
+});
+
+// c48: lab-kit-a and -b were down 17.2 s each, stopped by the leader's placement before their starts had a turn.
+test("a move places its App on its new member only once its start runs, so it keeps running while it waits", async () => {
+  const cluster = await fiseOnCluster();
+  copyOnSrv3();
+  await replicateCluster(cluster.id);
+  const placedOn = async () =>
+    ((await listWorkloadPlacements("app", ["fise"])).get("fise") ?? []).map(
+      (p) => p.serverId,
+    );
+  await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+  assert.equal((await appRow("fise")).serverId, "srv_3");
+  assert.ok(!(await placedOn()).includes("srv_3"), "not placed while queued");
+  assert.ok(!disks.get("srv_2")!.calls.includes("stop:fise"));
+  assert.equal(
+    await moveClusterDataBeforeStart("fise", "srv_3", "fise", () => {}),
+    "done",
+  );
+  assert.deepEqual(await placedOn(), ["srv_3"]);
 });
 
 // c46: twice a pass came between the leader placing lab-kit-d and its stop, and the whole volume was copied.

@@ -155,6 +155,8 @@ export async function moveAppToCluster(
   const who = await sourceWriter(id, input, move);
   const go = async () => {
     await applyAppSource(id, input, who, move);
+    // Between two members its start places it, once it has a lane there (c48).
+    if (on && move.deploy) return;
     await recordPlacement({
       clusterId: cluster.id,
       kind: "app",
@@ -522,8 +524,9 @@ async function applyAppSource(
     await leaveClusterZone(moved, user.name);
   }
 
-  // A move inside a cluster goes leader first: the new server's lease names the App before the deploy starts it.
-  if (after.moved && sameCluster && move?.cluster)
+  // A move inside a cluster goes leader first: the new server's lease names the App before it starts there. With a
+  // deploy, that deploy places it once it has a lane, so the old member runs it while it waits (c48).
+  if (after.moved && sameCluster && move?.cluster && !move.deploy)
     await placeAtLeaderFirst(move.cluster, "app", id, input.serverId!);
 
   if (after.moved && (move ? move.deploy : input.source !== "upload")) {
