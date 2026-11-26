@@ -12,7 +12,11 @@ import type { Backup } from "../types/backup";
 import { sweepOrphanedBackupArtifacts } from "../data/backups/orphan-sweep";
 import { failEmptyAppBackups } from "../data/backups/empty-archive";
 import { runScheduledBackup } from "../data/backups/run-now";
-import { cronMatchesInZone, dedupeKeyFor } from "../crons/cron-tz";
+import {
+  cronMatchesInZone,
+  dedupeKeyFor,
+  nextCronRunInZone,
+} from "../crons/cron-tz";
 import {
   acquireLease,
   releaseLease,
@@ -25,6 +29,8 @@ import { schedulesPaused } from "../data/deplo-move/schedules";
 const TICK_MS = 60_000;
 
 const ORPHAN_SWEEP_EVERY_MS = 24 * 60 * 60_000;
+// ponytail: "quieter" is a fixed 15 min off the scheduled minute's burst; read the server's load if that falls short.
+const PAUSE_RETRY_MS = 15 * 60_000;
 
 function makeOwner(): string {
   return `${hostname()}:${process.pid}:${randomBytes(4).toString("hex")}`;
@@ -38,6 +44,8 @@ interface SchedulerState {
   ticking: boolean;
   lastTickAt: Date | null;
   lastOrphanSweepAt: number;
+  /** Schedules whose run missed its pause: when its second try runs, or null for its next scheduled run. */
+  pauseRetries: Map<string, number | null>;
 }
 
 const STATE_KEY = Symbol.for("deplo.backup.scheduler");
@@ -50,7 +58,9 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
   ticking: false,
   lastTickAt: null,
   lastOrphanSweepAt: 0,
+  pauseRetries: new Map(),
 });
+state.pauseRetries ??= new Map();
 
 export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
   if (await instanceFrozen()) return;
@@ -77,8 +87,9 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       .select()
       .from(backupsTable)
       .where(eq(backupsTable.enabled, true));
-    const due: { backup: Backup; firedFor: string }[] = [];
-    for (const b of enabledRows.map(assembleBackup)) {
+    const enabled = new Map(enabledRows.map((r) => [r.id, assembleBackup(r)]));
+    const due: { backup: Backup; firedFor: string | null }[] = [];
+    for (const b of enabled.values()) {
       if (!b.schedule) continue;
       let fireAt: Date | undefined;
       try {
@@ -98,11 +109,25 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       due.push({ backup: b, firedFor });
     }
 
+    for (const [id, at] of state.pauseRetries) {
+      const b = enabled.get(id);
+      if (!b) state.pauseRetries.delete(id);
+      else if (
+        at !== null &&
+        at <= now.getTime() &&
+        !due.some((d) => d.backup.id === id)
+      )
+        due.push({ backup: b, firedFor: null });
+    }
     for (const { backup: b, firedFor } of due) {
       if (!(await acquireLease(BACKUP_SCHEDULER_LEASE, state.owner))) break;
-      state.lastFired.set(b.id, { key: firedFor, at: now.getTime() });
+      if (firedFor)
+        state.lastFired.set(b.id, { key: firedFor, at: now.getTime() });
+      const secondTry = state.pauseRetries.has(b.id);
+      state.pauseRetries.delete(b.id);
       try {
-        await runScheduledBackup(b);
+        if ((await runScheduledBackup(b, { secondTry })) && !secondTry)
+          state.pauseRetries.set(b.id, pauseRetryAt(b, now));
       } catch (e) {
         console.warn(
           `[backups] scheduled backup ${b.id} errored: ${e instanceof Error ? e.message : String(e)}`,
@@ -135,6 +160,13 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
   }
 }
 
+/** Off the scheduled minute's burst, unless the next scheduled run comes first: that run is then the second try. */
+function pauseRetryAt(b: Backup, now: Date): number | null {
+  const at = now.getTime() + PAUSE_RETRY_MS;
+  const next = nextCronRunInZone(b.schedule!, now, b.timezone || "UTC", 1);
+  return next && next.getTime() <= at ? null : at;
+}
+
 export async function releaseBackupSchedulerLease(): Promise<void> {
   await releaseLease(BACKUP_SCHEDULER_LEASE, state.owner);
 }
@@ -157,6 +189,7 @@ export async function __stopBackupScheduler(): Promise<void> {
   state.started = false;
   state.ticking = false;
   state.lastFired.clear();
+  state.pauseRetries.clear();
   state.lastTickAt = null;
   await releaseLease(BACKUP_SCHEDULER_LEASE, state.owner);
 }

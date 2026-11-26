@@ -60,6 +60,11 @@ const AGENT_NO_VOLUME_FILE =
 
 // On globalThis: a scheduled run starts in the scheduler's bundle and is canceled from a request's (eu, 24 Nov
 // 2026: a canceled scheduled backup went on copying, the cancel never reached it).
+/** A scheduled backup that missed its 1 s pause: the scheduler tries it again once, later in the hour (c49). */
+export class PauseMissedError extends Error {}
+const missedPause = (failure: string | null) =>
+  !!failure?.includes("of pausing it");
+
 const IN_FLIGHT_KEY = Symbol.for("deplo.backups.in-flight");
 const inFlight = globalThis as unknown as {
   [IN_FLIGHT_KEY]?: Map<string, AbortController>;
@@ -107,6 +112,10 @@ export async function executeBackup(
     retentionCount: number;
     /** The schedule's runs are base backups, for as long as the database archives its change log. */
     baseBackup?: boolean;
+    /** A missed pause is no failure yet: no alert, and PauseMissedError for the scheduler to try again. */
+    retryMissedPause?: boolean;
+    /** The second try of a run that missed its pause. */
+    secondTry?: boolean;
   },
 ): Promise<BackupRun> {
   const startedAt = nowIso();
@@ -391,21 +400,25 @@ export async function executeBackup(
   if (!failure && opts.kind === "database" && opts.databaseId)
     scheduleDatabaseBundle(opts.databaseId);
 
+  const retry = !!opts.retryMissedPause && missedPause(failure);
   await recordActivity(
     "backup",
-    failure
-      ? `Backup of ${label} failed: ${failure}`
-      : `Backed up ${label} (${formatBytes(finished.sizeBytes)})${
-          result?.heldWhy
-            ? `. It was paused for the whole copy (${heldLabel(result.heldMs)?.replace(/^App paused /, "") ?? "briefly"}): ${result.heldWhy}`
-            : ""
-        }`,
+    retry
+      ? `Backup of ${label} will be tried again later this hour, when it is quieter: ${failure}`
+      : failure
+        ? `Backup of ${label} failed${opts.secondTry && missedPause(failure) ? " a second time" : ""}: ${failure}`
+        : `Backed up ${label} (${formatBytes(finished.sizeBytes)})${
+            result?.heldWhy
+              ? `. It was paused for the whole copy (${heldLabel(result.heldMs)?.replace(/^App paused /, "") ?? "briefly"}): ${result.heldWhy}`
+              : ""
+          }`,
     actor,
     activityAppId,
     teamId,
     null,
     activityDatabaseId,
   );
+  if (retry) throw new PauseMissedError(failure!);
   dispatchAlert({
     teamId,
     key: failure ? "backup_failed" : "backup_succeeded",
