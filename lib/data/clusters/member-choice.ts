@@ -5,9 +5,11 @@ import { getDb } from "../../db/client";
 import { clusterMembers as membersTable } from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
+import { connectAgent } from "../../infra/agent-client/connect";
 import { requireActiveTeamId } from "../../membership";
 import { archWords, type Cluster } from "../../types/cluster";
 import { formatBytes } from "../backups/format-bytes";
+import { markServerSeen } from "../servers/agent-handshake";
 import { appDataBytes } from "./data-size";
 import { clusterMemberFacts, neededMb } from "./facts";
 import { listClustersForTeam } from "./roster";
@@ -105,7 +107,29 @@ const waitingFor = (name: string, what: string) =>
   `Waiting for ${name}'s first metrics, to know whether ${what} fits there.`;
 
 /** Vars so tests hurry them: a move onto a member without metrics yet waits this long for them. */
-export const factsWait = { everyMs: 1_000, maxMs: 20_000 };
+export const factsWait = { everyMs: 1_000, maxMs: 60_000 };
+
+const MIB = 1024 * 1024;
+
+// c47: a new member's first metrics reached the panel 27 s after its agent started; the move asks the member itself.
+async function askMetrics(serverId: string): Promise<void> {
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      const m = await conn.metrics("");
+      if (m.cpuCores > 0)
+        await markServerSeen(serverId, undefined, undefined, {
+          cpuCores: m.cpuCores,
+          memoryMb: Math.round(Number(m.memTotal) / MIB),
+          diskGb: Math.round(Number(m.diskTotal) / (1024 * MIB)),
+        });
+    } finally {
+      conn.close();
+    }
+  } catch {
+    // Not answering yet: the next look asks again.
+  }
+}
 
 /** Refuses, before anything stops, unless `serverId` of the cluster can take the workload now. */
 export async function assertMemberTakes(
@@ -121,11 +145,14 @@ export async function assertMemberTakes(
     if (!mine)
       throw new Error(`That server is not in cluster ${cluster.name}.`);
     if (!mine.refusal) return;
-    if (
-      mine.refusal !== waitingFor(mine.row.server.name, w.name) ||
-      Date.now() >= until
-    )
+    const name = mine.row.server.name;
+    if (mine.refusal !== waitingFor(name, w.name))
       throw new Error(mine.refusal);
+    if (Date.now() >= until)
+      throw new Error(
+        `No metrics came from ${name} within ${Math.round(factsWait.maxMs / 1000)} s, so Deplo does not know its memory yet and cannot tell whether ${w.name} fits there.`,
+      );
+    await askMetrics(serverId);
     await new Promise((r) => setTimeout(r, factsWait.everyMs));
   }
 }
