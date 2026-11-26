@@ -5558,6 +5558,11 @@ type Mutation {
   rotateAppDeployHook(id: String!): String
 
   """
+  Give a server a new key on its clusters' private network while every tunnel stays up: it makes the next key, the other servers learn it, then it switches. Refused while any of their agents is too old.
+  """
+  rotateClusterNetworkKey(serverId: String!): Boolean
+
+  """
   Rotate the database's engine password (auto-generated when none is given) and return the NEW connection string - shown once, like revealConnection. Engines that persist users in the data volume are told first via an exec in the running container; the compose is then re-rendered so env/command/healthcheck agree. Requires the database to be running.
   """
   rotateDatabasePassword(id: String!, password: String): String

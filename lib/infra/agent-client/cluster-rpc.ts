@@ -212,11 +212,22 @@ export function clusterRpc(
     async setClusterNetwork(table) {
       const r = await unary(
         client.setClusterNetwork.bind(client),
-        { ...table, retirePublicKey: table.retirePublicKey ?? "" },
+        {
+          clusterId: table.clusterId,
+          address: table.address,
+          peers: table.peers.map((p) => ({
+            ...p,
+            nextPublicKey: p.nextPublicKey ?? "",
+          })),
+          retirePublicKey: table.retirePublicKey ?? "",
+          nextKey: table.nextKey ?? false,
+          rotateToPublicKey: table.rotateToPublicKey ?? "",
+        },
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return {
         publicKey: r.publicKey,
+        nextPublicKey: r.nextPublicKey,
         port: r.port,
         addresses: r.addresses,
         peers: r.peers.map((p) => ({

@@ -83,17 +83,25 @@ export interface ClusterNetworkTable {
   address: string;
   /** This server's network key, replaced before it answers: a caught copy holds it (Hello network.rekey). */
   retirePublicKey?: string;
+  /** Make a next network key and say it, changing nothing yet (Hello network.rotate). */
+  nextKey?: boolean;
+  /** Switch to that next key in place, once every peer holds it as this server's next one. */
+  rotateToPublicKey?: string;
   peers: {
     fingerprint: string;
     publicKey: string;
     address: string;
     endpoints: string[];
+    /** The key that peer is about to switch to. */
+    nextPublicKey?: string;
   }[];
 }
 
 /** What a server's agent says back: its key and port, its own addresses, and how it reaches each peer. */
 export interface ClusterNetworkReport {
   publicKey: string;
+  /** The next key it made at `nextKey`, until it switches to it; empty otherwise. */
+  nextPublicKey?: string;
   port: number;
   addresses: string[];
   peers: { fingerprint: string; path: "direct" | "relay" | "none" }[];

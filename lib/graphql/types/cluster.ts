@@ -37,6 +37,7 @@ import {
   removeClusterMember,
 } from "@/lib/data/clusters/dissolve";
 import { cancelClusterMemberRemoval } from "@/lib/data/clusters/empty";
+import { rotateNetworkKey } from "@/lib/data/clusters/network";
 import {
   addClusterMember,
   listClusterJoinCandidates,
@@ -763,6 +764,17 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { id, serverId }) =>
       thenRefresh(id, moveClusterLeader(id, serverId)),
+  }),
+  rotateClusterNetworkKey: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Give a server a new key on its clusters' private network while every tunnel stays up: it makes the next key, the other servers learn it, then it switches. Refused while any of their agents is too old.",
+    args: { serverId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serverId }) => {
+      await rotateNetworkKey(serverId);
+      return true;
+    },
   }),
   startClusterLeader: t.field({
     type: ClusterLeaderRef,
