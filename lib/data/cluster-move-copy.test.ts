@@ -281,6 +281,48 @@ test("a move waits, its App running, until its new member's copy follows, then g
   }
 });
 
+// c50: lab-kit-b's copy on eu-4 waited its turn behind another copy for minutes; Activity said only that it waited.
+test("a move whose copy waits its turn says where it stands once, then goes once the copy follows", async () => {
+  copyAheadWait.everyMs = 5;
+  try {
+    const cluster = await fiseOnCluster();
+    const queued = (place: string) =>
+      copyOnSrv3({
+        role: "idle",
+        connected: false,
+        synced: true,
+        appliedAt: "",
+        error: `Queued: ${place} in line: srv_2 is busy with a copy of web`,
+      });
+    queued("2nd");
+    await replicateCluster(cluster.id);
+    await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
+    const turn =
+      "Deplo: Moving fise waits for its copy on srv_3, 2nd in line: srv_2 is busy with a copy of web.";
+    const count = async (m: string) =>
+      (await activity()).filter((a) => a === m).length;
+    for (let i = 0; i < 200 && !(await count(turn)); i++) await sleep(10);
+    queued("1st");
+    await sleep(100);
+    assert.equal(await count(turn), 1, "said once");
+    assert.ok(
+      !(await activity()).some(
+        (a) => a.includes("1st in line") || a.includes("failed"),
+      ),
+      "a turn moving up is said no more, and is no failure",
+    );
+    assert.equal((await appRow("fise")).serverId, "srv_2", "it waits");
+    copyOnSrv3();
+    for (let i = 0; i < 400; i++) {
+      if ((await appRow("fise")).serverId === "srv_3") break;
+      await sleep(10);
+    }
+    assert.equal((await appRow("fise")).serverId, "srv_3");
+  } finally {
+    copyAheadWait.everyMs = 2_000;
+  }
+});
+
 // c47: lab-kit-a's move towards eu-4 waited on its copy for 24 minutes after eu-4 was removed.
 test("a move whose new member leaves the cluster fails at once and says why, its App where it runs", async () => {
   copyAheadWait.everyMs = 5;

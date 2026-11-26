@@ -128,9 +128,9 @@ export async function copyAhead(
   const toName = await serverName(to);
   // c49: a move waited 2 minutes, and another 15 on a dead copy, with nothing on Activity.
   const told = new Set<string>();
-  const say = async (what: string) => {
-    if (quick || told.has(what)) return;
-    told.add(what);
+  const say = async (what: string, key = what) => {
+    if (quick || told.has(key)) return;
+    told.add(key);
     await recordActivity("app", `Moving ${app.name} ${what}`, "Deplo", app.id);
   };
   for (;;) {
@@ -151,12 +151,18 @@ export async function copyAhead(
         `${row.error}, so ${app.name} stays on ${(await getServerById(from))?.name ?? "its server"}.`,
       );
     if (Date.now() >= until) return false;
-    const failed = row?.error && !row.error.startsWith(QUEUED) ? row.error : "";
-    await say(
-      failed
-        ? `still waits: its copy on ${toName} failed (${failed}). Deplo makes it again.`
-        : `waits for its copy on ${toName}.`,
-    );
+    // c50: a copy held for its turn kept a move waiting minutes, and Activity said only that it waited.
+    const turn = row?.error.startsWith(QUEUED)
+      ? row.error.slice(QUEUED.length).trim()
+      : "";
+    const failed = row?.error && !turn ? row.error : "";
+    if (failed)
+      await say(
+        `still waits: its copy on ${toName} failed (${failed}). Deplo makes it again.`,
+      );
+    else if (turn)
+      await say(`waits for its copy on ${toName}, ${turn}.`, "turn");
+    else await say(`waits for its copy on ${toName}.`);
     await replicateNow(cluster.id);
     await new Promise((r) => setTimeout(r, copyAheadWait.everyMs));
   }
