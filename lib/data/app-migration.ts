@@ -86,6 +86,9 @@ export async function moveClusterDataBeforeStart(
     app.slug !== deployKey
   )
     return "nothing";
+  // Placed once its start has a lane here, never while it waits: until then its old member keeps running it (c48).
+  const cluster = await getClusterById(app.clusterId);
+  if (cluster) await placeAtLeaderFirst(cluster, "app", appId, serverId);
   return runMigration(appId, serverId, emit, { beforeStart: true });
 }
 

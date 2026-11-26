@@ -20,6 +20,7 @@ import {
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { deployments } from "../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
+import { moveClusterDataBeforeStart } from "./app-migration";
 import { moveAppToCluster } from "./apps/source";
 import { moveDatabaseToCluster } from "./databases/server-move";
 import { factsWait, listClusterServerChoices } from "./clusters/member-choice";
@@ -66,16 +67,20 @@ test("an App on a cluster moves to the server of it that is picked, and the lead
   await asAdmin(() => moveAppToCluster("web", cluster.id, "srv_3"));
   const web = await appRow("web");
   assert.deepEqual([web.serverId, web.clusterId], ["srv_3", cluster.id]);
+  await moveClusterDataBeforeStart("web", "srv_3", "web", () => {});
   assert.deepEqual(await placedOn("app", "web"), ["srv_3"]);
   assert.deepEqual(asked, [], "the cluster did not pick");
 });
 
-test("a move between two servers of a cluster reaches the leader before its deploy starts", async () => {
+test("a move between two servers of a cluster reaches the leader before its deploy starts it", async () => {
   await runningApp("web", "srv_2");
   const cluster = await eu();
   let leaderHad: string | undefined = "no deploy";
+  let queued: string | undefined;
   // The stand-in settles its row: one left queued is picked again at once, forever.
   __setRunnerForTest(async (depId) => {
+    queued = rosterPlaces("app", "web");
+    await moveClusterDataBeforeStart("web", "srv_3", "web", () => {});
     leaderHad = rosterPlaces("app", "web");
     await db
       .update(deployments)
@@ -89,6 +94,7 @@ test("a move between two servers of a cluster reaches the leader before its depl
   } finally {
     __setRunnerForTest(async () => {});
   }
+  assert.notEqual(queued, "srv_3", "its old member ran it while it queued");
   assert.equal(leaderHad, "srv_3", "the leader placed it there first");
   assert.deepEqual(await placedOn("app", "web"), ["srv_3"]);
 });
