@@ -30,6 +30,8 @@ import {
   replicateNow,
 } from "./replication";
 import { getClusterById } from "./roster";
+import { QUEUED } from "./copy-turns";
+import { recordActivity } from "../activity";
 
 // A move between two members copies the App's data while it runs, and stops it only for the last changes (c44).
 
@@ -124,6 +126,13 @@ export async function copyAhead(
   if (!quick) await holdClusterFailoverImages(cluster.id).catch(() => {});
   const until = Date.now() + (opts.within ?? copyAheadWait.maxMs);
   const toName = await serverName(to);
+  // c49: a move waited 2 minutes, and another 15 on a dead copy, with nothing on Activity.
+  const told = new Set<string>();
+  const say = async (what: string) => {
+    if (quick || told.has(what)) return;
+    told.add(what);
+    await recordActivity("app", `Moving ${app.name} ${what}`, "Deplo", app.id);
+  };
   for (;;) {
     // c47: a move towards a member removed meanwhile waited on its copy for 24 minutes.
     const gone = await leftCluster(cluster, to);
@@ -142,6 +151,12 @@ export async function copyAhead(
         `${row.error}, so ${app.name} stays on ${(await getServerById(from))?.name ?? "its server"}.`,
       );
     if (Date.now() >= until) return false;
+    const failed = row?.error && !row.error.startsWith(QUEUED) ? row.error : "";
+    await say(
+      failed
+        ? `still waits: its copy on ${toName} failed (${failed}). Deplo makes it again.`
+        : `waits for its copy on ${toName}.`,
+    );
     await replicateNow(cluster.id);
     await new Promise((r) => setTimeout(r, copyAheadWait.everyMs));
   }

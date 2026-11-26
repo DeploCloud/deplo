@@ -30,7 +30,7 @@ import {
   refusalSentence,
 } from "./placement";
 import { getClusterById, requireClusterAdmin } from "./roster";
-import { messageOf } from "../../utils";
+import { joinNames, messageOf, plural } from "../../utils";
 
 // https://deplo.build/docs/operations/clusters/manage-servers#remove-a-server
 
@@ -137,13 +137,18 @@ export async function startRemovingClusterMember(
   const held = await listMemberWorkloads(server.id);
   await assertRoomElsewhere(cluster, server.id, held);
   const backups = (await keptBackups(cluster.id, server.id)).length;
+  const apps = held.filter((w) => w.kind === "app").length;
+  const counts = [
+    [apps, "App", "Apps"],
+    [held.length - apps, "database", "databases"],
+    [backups, "backup", "backups"],
+  ] as const;
   const first =
-    [
-      held.length > 0 ? String(held.length) : "",
-      backups > 0 ? `${backups} backup${backups === 1 ? "" : "s"}` : "",
-    ]
-      .filter(Boolean)
-      .join(" and ") || "0";
+    joinNames(
+      counts
+        .filter(([n]) => n > 0)
+        .map(([n, one, many]) => plural(n, one, many)),
+    ) || "nothing";
   await getDb()
     .update(membersTable)
     .set({

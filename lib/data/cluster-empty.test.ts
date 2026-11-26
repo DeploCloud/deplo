@@ -54,7 +54,7 @@ test("emptying sets emptying since, records who started it and tells the leader 
   assert.equal(m.emptyingTotal, 2);
   assert.equal(
     (await activity()).at(-1),
-    "user_1: Started removing server srv_2 from cluster eu: 2 to move first",
+    "user_1: Started removing server srv_2 from cluster eu: 2 Apps to move first",
   );
   assert.equal(rosters.length, 1, "the leader got a roster right away");
   assert.deepEqual(await card(cluster.id, "srv_2").then((c) => c.emptying), {

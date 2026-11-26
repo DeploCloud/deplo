@@ -93,6 +93,20 @@ test("a joining server's proxy takes the cluster's answers and DNS resolver in o
   assert.ok(await isMember("srv_4"));
 });
 
+// c49: through eu-4, visitors met 404 and a self-signed certificate for 105 s, until the 2-minute answers pass.
+test("a new member is handed the cluster's routes as it joins, not at the next answers pass", async () => {
+  const { cluster, h } = await answeringEu();
+  h.extra.traefikConfig = async (req) => {
+    h.proxy.yaml = req.composeYaml;
+    return TraefikConfigResponse.fromPartial({ ok: true });
+  };
+  await asAdmin(() => addClusterMember(cluster.id, "srv_4"));
+  const table = h.forwarders.at(-1);
+  assert.ok(table, "its agent got a table");
+  assert.deepEqual(table.serveAnswers, ["web"], "it answers for web");
+  assert.ok(table.members.some((m) => m.serverId === "srv_4"));
+});
+
 test("a proxy that refuses the change keeps the server out of the cluster, saying why", async () => {
   const { cluster, h } = await answeringEu();
   h.proxy.refuse = "the disk is full";
@@ -199,4 +213,10 @@ test("a move towards a server that does not join in time is refused with why, an
     joinWait.maxMs = 120_000;
   }
   assert.equal((await appRow("web")).serverId, "srv_2");
+  // c49: Activity kept only "waits", the refusal went to the API alone.
+  assert.ok(
+    (await activity()).includes(
+      "Deplo: Moving web did not start: srv_4 has not joined cluster eu within 0 s, so web stays where it runs. The server agent on srv_4 is too old to join a cluster.",
+    ),
+  );
 });
