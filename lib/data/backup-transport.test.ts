@@ -610,3 +610,52 @@ test("a restore Deplo relays only when no path joins the two members, and it say
   assert.deepEqual(calls, ["member", "relay"]);
   assert.equal(out.path, "relay");
 });
+
+// c46: lab-pg's base backup came back through Deplo, between two members of one cluster.
+test("a restore of a Postgres base backup another member keeps reads it from that member", async () => {
+  await seededMembers();
+  let relayed = false;
+  let asked: { memberFingerprint?: string } = {};
+  const workload = {
+    hello: async () => ({
+      capabilities: [
+        ...(await fetchHello()).capabilities,
+        POSTGRES_ARCHIVE_CAPABILITY,
+      ],
+    }),
+    close() {},
+    restore: async function* (req: typeof asked) {
+      asked = req;
+      yield { result: { ok: true, error: "", path: "direct" } };
+    },
+    restoreFrom: async function* () {
+      relayed = true;
+      yield { result: { ok: true, error: "" } };
+    },
+  } as unknown as AgentConnection;
+  const holder = {
+    hello: fetchHello,
+    close() {},
+    expectClusterFetch: async () => {},
+    readStoreFile: () => {
+      relayed = true;
+      return (async function* () {})();
+    },
+  } as unknown as AgentConnection;
+  __setAgentConnectorForTest(async (id) =>
+    id === "srv_src" ? workload : id === "srv_dst" ? holder : null,
+  );
+  const out = await restoreFromDestination(
+    { ...toDst, ageIdentity: "AGE-SECRET-KEY-1X" },
+    {
+      serverId: "srv_src",
+      kind: "database",
+      database: { dbType: "postgres" } as never,
+    },
+    "db/1.base.tar.gz.age",
+  );
+  assert.equal(out.ok, true, out.error);
+  assert.equal(out.path, "direct");
+  assert.equal(relayed, false, "Deplo carried no byte of it");
+  assert.equal(asked.memberFingerprint, "b".repeat(64));
+});
