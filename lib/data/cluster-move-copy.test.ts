@@ -254,6 +254,22 @@ test("a move waits, its App running, until its new member's copy follows, then g
     await asAdmin(() => moveAppToCluster("fise", cluster.id, "srv_3"));
     assert.equal((await appRow("fise")).serverId, "srv_2", "it runs there");
     assert.ok(!disks.get("srv_2")!.calls.includes("stop:fise"));
+    // c49: a move waited 2 minutes for its copy, and 15 on a dead one, with nothing on Activity.
+    const waits = "Deplo: Moving fise waits for its copy on srv_3.";
+    const failed =
+      "Deplo: Moving fise still waits: its copy on srv_3 failed (endpoint is closed for send). Deplo makes it again.";
+    const count = async (m: string) =>
+      (await activity()).filter((a) => a === m).length;
+    for (let i = 0; i < 200 && !(await count(waits)); i++) await sleep(10);
+    copyOnSrv3({
+      synced: false,
+      connected: false,
+      error: "endpoint is closed for send",
+    });
+    for (let i = 0; i < 200 && !(await count(failed)); i++) await sleep(10);
+    await sleep(50);
+    assert.equal(await count(waits), 1, "said once");
+    assert.equal(await count(failed), 1, "said once");
     copyOnSrv3();
     for (let i = 0; i < 400; i++) {
       if ((await appRow("fise")).serverId === "srv_3") break;
