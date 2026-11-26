@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,4 +62,12 @@ test("an agent Deplo updated during the install is not named by the installed ve
     await run("other", "agent_version_label"),
     "updated by Deplo since v0.5.3-canary.59",
   );
+});
+
+// Started by enable --now, a Type=simple service can still be systemd's own fork: it is checked before that.
+test("the running agent is checked before the service is started, never right after", async () => {
+  const script = await readFile("install-agent.sh", "utf8");
+  const check = script.indexOf("\nrun_installed_agent\n");
+  const start = script.indexOf("\nsystemctl enable --now deplo-agent ");
+  assert.ok(check > 0 && start > 0 && check < start);
 });

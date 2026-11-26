@@ -1647,8 +1647,8 @@ agent_version_label() {
 }
 
 spin_run "Starting the agent" systemctl daemon-reload
-systemctl enable --now deplo-agent >&9 2>&9
 run_installed_agent
+systemctl enable --now deplo-agent >&9 2>&9
 
 # Provisioning is the agent's own round trip to the control plane, and its result
 # is a signed certificate on disk. Waiting for that file turns "watch the
