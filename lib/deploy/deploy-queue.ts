@@ -11,6 +11,8 @@ import { instanceFrozen } from "../data/deplo-move/freeze";
 
 interface ServerLane {
   running: Set<string>;
+  /** Moved Apps' starts: never behind another App's deploy (c47: 21.8 s down), outside `deploy_concurrency`. */
+  moving: Set<string>;
   pumping: boolean;
   dirty: boolean;
 }
@@ -30,7 +32,12 @@ const laneKey = sql<string>`coalesce(${deploymentsTable.buildServerId}, ${deploy
 function laneFor(serverId: string): ServerLane {
   let lane = lanes.get(serverId);
   if (!lane) {
-    lane = { running: new Set(), pumping: false, dirty: false };
+    lane = {
+      running: new Set(),
+      moving: new Set(),
+      pumping: false,
+      dirty: false,
+    };
     lanes.set(serverId, lane);
   }
   return lane;
@@ -52,15 +59,19 @@ async function concurrencyFor(serverId: string): Promise<number> {
   return n >= 1 ? n : 1;
 }
 
+/** The next deploy to start: a moved App's start first, whatever the room; another only while `room`. */
 async function pickNext(
   serverId: string,
-): Promise<{ id: string; appId: string; key: string } | null> {
+  room: boolean,
+): Promise<{ id: string; appId: string; key: string; moving: boolean } | null> {
   const rows = await getDb()
     .select({
       id: deploymentsTable.id,
       appId: deploymentsTable.appId,
       deployKey: deploymentsTable.deployKey,
       teamId: appsTable.teamId,
+      // A move's start: its App still names the server it left, and the deploy is on the one it moved to.
+      moving: sql<boolean>`(${appsTable.migrateFromServerId} is not null and ${deploymentsTable.serverId} = ${appsTable.serverId} and ${deploymentsTable.previewId} is null)`,
     })
     .from(deploymentsTable)
     .innerJoin(appsTable, eq(appsTable.id, deploymentsTable.appId))
@@ -83,8 +94,13 @@ async function pickNext(
   let best: (typeof rows)[number] | null = null;
   for (const r of rows) {
     const key = r.deployKey || r.appId;
-    if (busyKeys.has(key)) continue;
-    if (!best || (running.get(r.teamId) ?? 0) < (running.get(best.teamId) ?? 0))
+    if (busyKeys.has(key) || !(r.moving || room)) continue;
+    if (
+      !best ||
+      (r.moving && !best.moving) ||
+      (r.moving === best.moving &&
+        (running.get(r.teamId) ?? 0) < (running.get(best.teamId) ?? 0))
+    )
       best = r;
   }
   if (best)
@@ -92,6 +108,7 @@ async function pickNext(
       id: best.id,
       appId: best.appId,
       key: best.deployKey || best.appId,
+      moving: Boolean(best.moving),
     };
   return null;
 }
@@ -104,6 +121,7 @@ function startOne(serverId: string, depId: string, key: string): void {
     .finally(() => {
       const lane = laneFor(serverId);
       lane.running.delete(depId);
+      lane.moving.delete(depId);
       busyKeys.delete(key);
       scheduleServer(serverId);
       for (const other of [...lanes.keys()]) {
@@ -129,11 +147,11 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
         concurrencyFor(serverId),
       ]);
       if (frozen) break;
-      while (lane.running.size < concurrency) {
-        const next = await pickNext(serverId);
+      for (;;) {
+        const next = await pickNext(serverId, lane.running.size < concurrency);
         if (!next) break;
         // Reserved before the runner claims queued -> building, or a re-drain picks it twice.
-        lane.running.add(next.id);
+        (next.moving ? lane.moving : lane.running).add(next.id);
         busyKeys.add(next.key);
         startOne(serverId, next.id, next.key);
       }

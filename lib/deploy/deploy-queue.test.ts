@@ -5,12 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-queue-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import {
@@ -552,4 +553,33 @@ test("a lane is shared: the team with nothing running goes before a team's secon
   await finish("d_a1");
   await waitFor(() => started.length === 3, "the third build started");
   assert.deepEqual(started, ["d_a1", "d_b", "d_a2"]);
+});
+
+// c47: lab-kit-b's start on eu-3 after its move queued behind lab-kit-a's deploy there, down 21.8 s.
+test("a moved App's start never waits for another App's deploy; ordinary deploys keep the limit", async () => {
+  const { runner, started } = makeFakeRunner();
+  __setRunnerForTest(runner);
+  await seedServer(db, SRV_A);
+  await seedServer(db, SRV_B);
+  await setConcurrency(SRV_A, 1);
+  for (const id of ["svc_busy", "svc_m1", "svc_m2", "svc_plain"])
+    await seedApp(db, { id, serverId: SRV_A, status: "queued" });
+  await db
+    .update(appsTable)
+    .set({ migrateFromServerId: SRV_B })
+    .where(inArray(appsTable.id, ["svc_m1", "svc_m2"]));
+  const deps = ["d_busy", "d_plain", "d_m1", "d_m2"];
+  for (const [i, id] of deps.entries())
+    await seedDeployment(db, {
+      id,
+      appId: id.replace("d_", "svc_"),
+      serverId: SRV_A,
+      status: "queued",
+      createdAt: `2026-01-01T00:00:0${i + 1}.000Z`,
+    });
+  enqueueDeployment({ depId: "d_m2", serverId: SRV_A, appId: "svc_m2" });
+  await waitFor(() => started.length === 3, "both moves started");
+  await settle();
+  assert.deepEqual([...started].sort(), ["d_busy", "d_m1", "d_m2"]);
+  assert.equal(await statusOf("d_plain"), "queued");
 });
