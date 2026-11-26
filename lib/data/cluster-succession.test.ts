@@ -27,7 +27,10 @@ import { nowIso } from "../ids";
 import { __forgetMemberProbes } from "../infra/agent-client/cluster-host";
 import { AgentUnreachableError } from "../infra/agent-client/errors";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
-import { CLUSTER_SUCCESSION_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_NETWORK_CAPABILITY,
+  CLUSTER_SUCCESSION_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
 import { SERVER_1 } from "./app-graph-test-helpers";
 import { HelloResponse } from "../agent/gen/agent";
 import { keepLeadersHome, placeClusterLeaders } from "./clusters/leader-move";
@@ -563,6 +566,21 @@ test("a leader whose server leaves the direct majority moves to one inside it", 
   const before = (await stored(cluster.id)).epoch;
   await placeClusterLeaders();
   assert.equal((await stored(cluster.id)).epoch, before);
+});
+
+// c46: eu-3's report from the pass just after eu-1's power cut said "relay"; 76 s later Deplo moved the leader for it.
+test("a leader is not moved for a relay its servers no longer report", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const on = led.leaderServerId!;
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    hosts[id].capabilities.push(CLUSTER_NETWORK_CAPABILITY);
+  await paths(cluster.id, ["srv_2", "srv_3", "srv_4"], (a, b) =>
+    a === on || b === on ? "relay" : "direct",
+  );
+  await placeClusterLeaders();
+  assert.equal((await stored(cluster.id)).server, on);
 });
 
 // eu, 23 Nov 2026: Deplo restarted, then two servers stopped; it had not heard their Hello since, so it took them for
