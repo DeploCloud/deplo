@@ -235,7 +235,8 @@ test("a move towards a server that does not join in time is refused with why, an
     error: "The server agent on srv_4 is too old to join a cluster.",
   });
   Object.assign(factsWait, { everyMs: 5 });
-  joinWait.maxMs = 30;
+  // Room for its first look on a slow runner: past it, the move is refused before it says it waits.
+  joinWait.maxMs = 300;
   try {
     await assert.rejects(
       asAdmin(() => moveAppToCluster("web", cluster.id, "srv_4")),
