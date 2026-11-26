@@ -12,6 +12,10 @@ import {
 } from "../../db/schema/control-plane/backups";
 import { seedBackup, seedRun } from "../backup-test-helpers";
 import { seedBase } from "./backups-test-helpers";
+import { activities } from "../../db/schema/control-plane/activity";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
+import type { AgentConnection } from "../../infra/agent-client/connection";
+import { BACKUP_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import {
   reconcileInFlightBackupRuns,
   sweepOrphanedBackupArtifacts,
@@ -102,7 +106,48 @@ test("reconcileInFlightBackupRuns is idempotent / a no-op with nothing stale", a
 });
 
 // The FKs are ON DELETE SET NULL, so deleting an app used to blank the only columns naming its artifacts.
-test("a deleted target's runs stay findable, and the sweep stamps them", async () => {
+test("a deleted App's backups go at the first sweep, with one Activity line", async (t) => {
+  const deleted: string[] = [];
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({ capabilities: [BACKUP_CAPABILITY] }),
+      s3Delete: async (target: { objectKey: string }) => {
+        deleted.push(target.objectKey);
+        return { ok: true, error: "", deleted: 1 };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await seedRun(db, {
+    id: "r_1",
+    destinationId: "s3_1",
+    appId: "prj_1",
+    targetKind: "app",
+    objectKey: "k/r_1",
+    sizeBytes: 1_678_644_804,
+  });
+  await pg.exec(`delete from apps where id = 'prj_1';
+    update servers set agent_cert_fingerprint = 'fp';`);
+  const [row] = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_1"));
+  assert.equal(row!.appId, null, "the FK really is blanked by the delete");
+  assert.equal(row!.targetId, "prj_1", "target_id survives it");
+
+  assert.equal(await sweepOrphanedBackupArtifacts(), 1);
+  assert.deepEqual(deleted, ["k/r_1"]);
+  assert.equal((await db.select().from(backupRunsTable)).length, 0);
+  const lines = (await db.select().from(activities)).map((a) => a.message);
+  assert.deepEqual(lines, [
+    "Deleted a backup (1.6 GB) of an App or database no longer in this team",
+  ]);
+});
+
+// A team transfer blanks app_id too, but the App lives on in the other team: the old team keeps them a while.
+test("an App moved to another team leaves its old backups on the keep window", async () => {
   await seedRun(db, {
     id: "r_1",
     destinationId: "s3_1",
@@ -110,15 +155,10 @@ test("a deleted target's runs stay findable, and the sweep stamps them", async (
     targetKind: "app",
     startedAt: "2020-01-01T00:00:00.000Z",
   });
-  await pg.exec(`delete from apps where id = 'prj_1';`);
-
-  const [row] = await db
-    .select()
-    .from(backupRunsTable)
+  await db
+    .update(backupRunsTable)
+    .set({ appId: null })
     .where(eq(backupRunsTable.id, "r_1"));
-  assert.equal(row!.appId, null, "the FK really is blanked by the delete");
-  assert.equal(row!.targetId, "prj_1", "target_id survives it");
-  assert.equal(row!.orphanedAt, null, "nothing has noticed yet");
 
   const reclaimed = await sweepOrphanedBackupArtifacts();
   assert.equal(reclaimed, 0, "the first sweep only starts the clock");
