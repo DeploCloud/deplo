@@ -20,6 +20,7 @@ import { getServerById } from "../servers/roster";
 import { redeployArchs } from "./architectures";
 import { neededMb } from "./facts";
 import { pushLeaderRoster } from "./leader-sync";
+import { keptBackups, moveKeptBackup } from "./member-backups";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import {
   askLeaderToPlace,
@@ -135,6 +136,14 @@ export async function startRemovingClusterMember(
   if (member.emptyingSince && !member.emptyingError) return;
   const held = await listMemberWorkloads(server.id);
   await assertRoomElsewhere(cluster, server.id, held);
+  const backups = (await keptBackups(cluster.id, server.id)).length;
+  const first =
+    [
+      held.length > 0 ? String(held.length) : "",
+      backups > 0 ? `${backups} backup${backups === 1 ? "" : "s"}` : "",
+    ]
+      .filter(Boolean)
+      .join(" and ") || "0";
   await getDb()
     .update(membersTable)
     .set({
@@ -149,7 +158,7 @@ export async function startRemovingClusterMember(
     "server",
     member.emptyingSince
       ? `Continued removing server ${server.name} from cluster ${cluster.name}`
-      : `Started removing server ${server.name} from cluster ${cluster.name}: ${held.length} to move first`,
+      : `Started removing server ${server.name} from cluster ${cluster.name}: ${first} to move first`,
     by.user.name,
     null,
     by.teamId,
@@ -358,6 +367,60 @@ async function halt(m: Member, cluster: Cluster, why: string): Promise<void> {
   );
 }
 
+// Cancelled or stopped meanwhile: what it keeps stays with it.
+async function stillEmptying(serverId: string): Promise<boolean> {
+  const [r] = await getDb()
+    .select({
+      since: membersTable.emptyingSince,
+      error: membersTable.emptyingError,
+    })
+    .from(membersTable)
+    .where(eq(membersTable.serverId, serverId))
+    .limit(1);
+  return Boolean(r?.since) && !r?.error;
+}
+
+/** Each backup the member keeps for its cluster moves to another member; false when one could not, and it stopped. */
+async function moveBackupsOff(cluster: Cluster, m: Member): Promise<boolean> {
+  const from = {
+    id: m.serverId,
+    name: (await getServerById(m.serverId))?.name ?? "this server",
+  };
+  const moved = new Map<
+    string,
+    { n: number; of: Set<string>; to: Set<string> }
+  >();
+  try {
+    for (const b of await keptBackups(cluster.id, m.serverId)) {
+      if ((await instanceFrozen()) || !(await stillEmptying(m.serverId)))
+        return false;
+      const to = await moveKeptBackup(cluster, from, b);
+      const t = moved.get(b.teamId) ?? { n: 0, of: new Set(), to: new Set() };
+      t.n++;
+      t.of.add(b.name);
+      t.to.add(to);
+      moved.set(b.teamId, t);
+    }
+  } catch (e) {
+    await halt(
+      m,
+      cluster,
+      `${message(e)} "Remove anyway" leaves its backups on ${from.name}.`,
+    );
+    return false;
+  } finally {
+    for (const [teamId, t] of moved)
+      await recordActivity(
+        "backup",
+        `Moved ${t.n} backup${t.n === 1 ? "" : "s"} of ${[...t.of].join(", ")} from ${from.name} to ${[...t.to].join(" and ")}, as ${from.name} leaves cluster ${cluster.name}.`,
+        ACTOR,
+        null,
+        teamId,
+      );
+  }
+  return true;
+}
+
 async function finish(cluster: Cluster, m: Member): Promise<void> {
   const { finishClusterMemberRemoval } = await import("./dissolve");
   await finishClusterMemberRemoval(cluster, m.serverId, m.emptyingTeamId);
@@ -395,15 +458,14 @@ async function step(serverId: string): Promise<boolean> {
       return false;
     }
     await setMoving();
-    const left = await listMemberWorkloads(serverId);
-    if (left.length === 0) await finish(cluster, m);
-    return left.length > 0;
+    // The next step moves the next one, or the backups and then it leaves.
+    return true;
   }
   const held = await listMemberWorkloads(serverId);
   // What is half-way goes first, so a member is never left holding only somebody's data.
   const next = held.find((w) => w.leaving) ?? held[0];
   if (!next) {
-    await finish(cluster, m);
+    if (await moveBackupsOff(cluster, m)) await finish(cluster, m);
     return false;
   }
   await setMoving(next);

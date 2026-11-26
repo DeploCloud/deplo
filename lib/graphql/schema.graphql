@@ -5296,9 +5296,9 @@ type Mutation {
   removeClusterDnsZone(id: String!): String
 
   """
-  Remove a server from a cluster; it stays a server of this Deplo. Its Apps and databases first move to the other servers, one at a time in the background (read `members.emptying` for progress), and it leaves once nothing is left; refused before anything moves when the others lack the room. Call it again to continue a removal that stopped. With keepWorkloads it leaves at once and its Apps and databases stay on it as ordinary ones that no cluster moves; the last server must pass it.
+  Remove a server from a cluster; it stays a server of this Deplo. Its Apps and databases first move to the other servers, one at a time in the background (read `members.emptying` for progress), and it leaves once nothing is left; refused before anything moves when the others lack the room. Call it again to continue a removal that stopped. With keepWorkloads it leaves at once and its Apps and databases stay on it as ordinary ones that no cluster moves; the last server must pass it. The backups it keeps for the cluster's other Apps and databases move to the other servers before it leaves; with leaveBackups, one with nothing left to move leaves at once and they stay on it.
   """
-  removeClusterMember(clusterId: String!, keepWorkloads: Boolean, serverId: String!): Cluster
+  removeClusterMember(clusterId: String!, keepWorkloads: Boolean, leaveBackups: Boolean, serverId: String!): Cluster
 
   """
   Remove a backup destination kept on a server being removed, with its schedules and restore points, for whichever team owns it. With `deleteArtifacts` the backup files go too. Returns true.

@@ -215,6 +215,20 @@ export function ServerMenu({
                   Continue removal
                 </DropdownMenuItem>
               )}
+              {m.emptying === "stopped" && (
+                <DropdownMenuItem
+                  disabled={pending}
+                  onSelect={() =>
+                    member(REMOVE_MEMBER, {
+                      keepWorkloads: false,
+                      leaveBackups: true,
+                    })
+                  }
+                >
+                  <ArrowRightFromLine className="size-4" />
+                  Remove anyway
+                </DropdownMenuItem>
+              )}
               {m.emptying !== "idle" && (
                 <DropdownMenuItem
                   disabled={pending}
