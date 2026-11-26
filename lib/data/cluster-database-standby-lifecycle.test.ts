@@ -230,10 +230,9 @@ test("turning it off removes the copy with its data and only the copy, and the d
   assert.equal((await row()).standby, false);
   assert.equal((await row()).standbySeed, null);
   assert.deepEqual(await copyOn(), []);
-  // The copy goes first; then every other member is swept for what an older run of it left.
   assert.deepEqual(
     host.srv_3.stack.filter((s) => s.startsWith("destroy")),
-    ["destroy:db-main", "destroy:db-main"],
+    ["destroy:db-main"],
   );
   assert.deepEqual(host.srv_2.stack, []);
   assert.match(
@@ -339,10 +338,9 @@ test("a database whose switch is off, or that left its cluster, keeps no copy af
   await syncStandby("db_main");
 
   assert.deepEqual(await copyOn(), []);
-  // The copy goes first; then every other member is swept for what an older run of it left.
   assert.deepEqual(
     host.srv_3.stack.filter((s) => s.startsWith("destroy")),
-    ["destroy:db-main", "destroy:db-main"],
+    ["destroy:db-main"],
   );
 });
 

@@ -8,6 +8,7 @@ import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import {
   backupDestination as destTable,
+  backupRuns as backupRunsTable,
   backups as backupsTable,
 } from "../../db/schema/control-plane/backups";
 import {
@@ -36,17 +37,24 @@ const MEMBERS = ["srv_1", "srv_2", "srv_3"];
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  await seedIdentity(db);
 });
 after(async () => {
   __resetTestDb();
   await pg.close();
 });
 beforeEach(async () => {
-  for (const t of [backupsTable, destTable, activitiesTable, clusterMembers])
+  for (const t of [
+    backupRunsTable,
+    backupsTable,
+    destTable,
+    activitiesTable,
+    appsTable,
+    clusterMembers,
+    clusters,
+  ])
     await db.delete(t);
-  await db.delete(clusters);
   clearMetricsHistory();
-  await seedIdentity(db);
   for (const [i, id] of MEMBERS.entries()) {
     await seedServerRow(db, { id, name: `eu-${i + 1}` });
     await db
