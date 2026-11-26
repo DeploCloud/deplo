@@ -171,6 +171,8 @@ export async function executeBackup(
   let targetServerId = "";
   let result: BackupOutcome | null = null;
   let failure: string | null = null;
+  // How long the App was paused, kept on a failed run too (c46: the 1 s pause's own failure had none).
+  let heldMs: number | null = null;
   // A live copy whose data holds no file yet is no backup and no failure: nothing is kept or alerted.
   let nothingYet = false;
   let objectKey = "";
@@ -241,6 +243,7 @@ export async function executeBackup(
           objectKey,
           abort.signal,
         );
+        heldMs = result.heldMs || null;
         if (!result.ok)
           failure = result.error || "the agent reported a failed backup";
         nothingYet = !!live?.runs && result.error === AGENT_NO_VOLUME_FILE;
@@ -330,14 +333,14 @@ export async function executeBackup(
   }
   const finished = await getDb().transaction(async (tx): Promise<BackupRun> => {
     const set = failure
-      ? { status: "failed" as const, error: failure, finishedAt }
+      ? { status: "failed" as const, error: failure, heldMs, finishedAt }
       : {
           status: "success" as const,
           error: null,
           objectKey: result!.objectKey,
           sizeBytes: result!.sizeBytes,
           decryptedSizeBytes: result!.decryptedSizeBytes || null,
-          heldMs: result!.heldMs || null,
+          heldMs,
           path: result!.path ?? null,
           sha256: result!.sha256 || null,
           finishedAt,
