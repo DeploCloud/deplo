@@ -9,7 +9,7 @@ import {
   clearMetricsHistory,
   recordMetricsSample,
 } from "../monitoring/history";
-import type { ServerMetrics } from "../types/server";
+import type { ServerMetrics } from "./monitoring";
 import {
   expireSetAsideCopies,
   listAppSetAsideCopies,

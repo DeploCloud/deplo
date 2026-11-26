@@ -21,7 +21,7 @@ import {
   clearMetricsHistory,
   recordMetricsSample,
 } from "../../monitoring/history";
-import type { ServerMetrics } from "../../types/server";
+import type { ServerMetrics } from "../monitoring";
 import { seedIdentity, TEAM_A } from "../identity-test-helpers";
 import { seedServerRow } from "../infra-test-helpers";
 import { seedApp } from "../app-graph-test-helpers";
