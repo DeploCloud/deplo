@@ -31,7 +31,7 @@ import { getClusterById } from "./roster";
 import { refreshAllClusterWarnings } from "./warnings";
 import { runClusterWatch } from "./watch";
 import { messageOf } from "../../utils";
-import { joinWaitingServers } from "./join-requests";
+import { joinOnLink, joinWaitingServers } from "./join-requests";
 
 // Starts a watch on every cluster's leader and keeps the leader's roster current; one Deplo instance holds the lease.
 export const CLUSTER_WATCH_LEASE = "cluster-watch";
@@ -272,6 +272,7 @@ export function startClusterWatch(): void {
   state.timer.unref?.();
   state.beatTimer = setInterval(() => void runClusterBeat(), BEAT_EVERY_MS);
   state.beatTimer.unref?.();
+  joinOnLink(() => state.holds === true);
 }
 
 export async function releaseClusterWatchLease(): Promise<void> {

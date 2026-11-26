@@ -3,6 +3,10 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import {
+  clusterMembers,
+  clusters,
+} from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
 import { getCurrentUser } from "../../auth/current-user";
@@ -12,6 +16,7 @@ import { recordActivity } from "../activity";
 import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
+import { keptBackups } from "../clusters/member-backups";
 import { clustersOfServer, pushClusterRosters } from "../clusters/relay";
 import { syncClusterNetworkSoon } from "../clusters/network";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
@@ -80,6 +85,21 @@ async function assertServerRemovable(id: string): Promise<void> {
   if (why) throw new Error(why);
 }
 
+// Removing its destination would delete them, as c48 lost 4 restore points of fise and memos with eu-4.
+async function assertNoClusterBackups(id: string, name: string): Promise<void> {
+  const [m] = await getDb()
+    .select({ clusterId: clusterMembers.clusterId, cluster: clusters.name })
+    .from(clusterMembers)
+    .innerJoin(clusters, eq(clusters.id, clusterMembers.clusterId))
+    .where(eq(clusterMembers.serverId, id));
+  const n = m ? (await keptBackups(m.clusterId, id)).length : 0;
+  if (m && n > 0)
+    throw new Error(
+      `${name} keeps ${n} backup${n === 1 ? "" : "s"} of the Apps and databases of cluster ${m.cluster}. ` +
+        `Remove it from the cluster first: Deplo moves them to its other servers.`,
+    );
+}
+
 export async function removeServer(id: string): Promise<ServerRemoval> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
@@ -102,6 +122,8 @@ async function removeServerRow(
         `because doing so would cut this dashboard off from its own server.`,
     );
 
+  await assertNoWorkloads(id);
+  await assertNoClusterBackups(id, server.name);
   await assertServerRemovable(id);
 
   const stranded = await getDb()
