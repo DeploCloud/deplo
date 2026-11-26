@@ -203,3 +203,32 @@ test("an App's backups stay where they are kept while a move of it is under way"
   await rehomeFailoverBackups("cl_eu");
   assert.equal(await keptOn("prj_c"), "srv_2");
 });
+
+// c50: lab-kit-b's backups were pointed at eu-4 while eu-4 was leaving the cluster.
+test("a member whose removal has started is never a backup's home, and Deplo's backups kept there move off", async () => {
+  disk("srv_1", 2);
+  disk("srv_2", 4);
+  disk("srv_3", 6);
+  await app("prj_a", "srv_1");
+  assert.equal(await keptOn("prj_a"), "srv_3");
+
+  await db
+    .update(clusterMembers)
+    .set({
+      emptyingSince: "2026-11-26T22:21:28.000Z",
+      emptyingError: "stopped",
+    })
+    .where(eq(clusterMembers.serverId, "srv_3"));
+  await app("prj_b", "srv_1");
+  assert.equal(await keptOn("prj_b"), "srv_2");
+
+  await rehomeFailoverBackups("cl_eu");
+  assert.equal(await keptOn("prj_a"), "srv_2");
+  const said = (await db.select().from(activitiesTable)).map((a) => a.message);
+  assert.ok(
+    said.includes(
+      "Backs up prj_a every 15 minutes to eu-2 from now on: eu-3 is leaving cluster eu.",
+    ),
+    said.join(" | "),
+  );
+});

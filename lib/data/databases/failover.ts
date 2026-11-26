@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
@@ -26,7 +26,10 @@ import {
   standbyMembersRefusal,
 } from "../../databases/standby";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
+import {
+  clusterMembers as membersTable,
+  clusters as clustersTable,
+} from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { isDeploHostServer } from "../../deploy/domains";
 import { newId, nowIso } from "../../ids";
@@ -74,6 +77,23 @@ async function teamDestinations(teamId: string): Promise<BackupDestination[]> {
 }
 
 const FAILOVER_BACKUP_NAME = "Failover backup";
+
+/** Members whose removal has started: never a backup's home from then on, even while it is stopped (c50). */
+async function leavingServerIds(): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ id: membersTable.serverId })
+    .from(membersTable)
+    .where(isNotNull(membersTable.emptyingSince));
+  return new Set(rows.map((r) => r.id));
+}
+
+/** The cluster's members that stay: where a failover backup may live. */
+async function stayingMembers(clusterId: string): Promise<string[]> {
+  const leaving = await leavingServerIds();
+  return (await clusterMemberServerIds(clusterId)).filter(
+    (m) => !leaving.has(m),
+  );
+}
 
 /** What another member can read without the workload's own server: a bucket, or another member's disk. */
 function readableByFailover(
@@ -159,16 +179,23 @@ async function backupRoom(
 async function failoverDestination(
   db: Placed & { clusterId: string },
 ): Promise<BackupDestination | null> {
-  const members = await clusterMemberServerIds(db.clusterId);
+  const leaving = await leavingServerIds();
+  const members = await stayingMembers(db.clusterId);
   const usable = (await teamDestinations(db.teamId)).filter(
     (d) =>
-      d.status !== "error" && (d.kind === "s3" || d.serverId !== db.serverId),
+      d.status !== "error" &&
+      (d.kind === "s3" ||
+        (d.serverId !== db.serverId && !leaving.has(d.serverId ?? ""))),
   );
   const bucket = usable.find((d) => d.kind === "s3");
   if (bucket) return bucket;
 
   const ready = (await listAllServers()).filter(
-    (s) => s.id !== db.serverId && s.agent?.certFingerprint && !s.importOnly,
+    (s) =>
+      s.id !== db.serverId &&
+      !leaving.has(s.id) &&
+      s.agent?.certFingerprint &&
+      !s.importOnly,
   );
   const others = members
     .map((m) => ready.find((s) => s.id === m))
@@ -310,7 +337,8 @@ export async function ensureFailoverBackup(
  * past 80% used, moves to where a failover can read it. A schedule the team made itself is never touched.
  */
 export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
-  const members = await clusterMemberServerIds(clusterId);
+  const leaving = await leavingServerIds();
+  const members = await stayingMembers(clusterId);
   const rows = await getDb()
     .select({
       id: backupsTable.id,
@@ -376,9 +404,11 @@ export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
       `Backs up ${w.name} ${when ? when[0]!.toLowerCase() + when.slice(1) : "on its schedule"} to ${next.name} from now on: ` +
         (b.destServerId === w.serverId
           ? `${w.name} now runs on ${here}, where its backups were kept.`
-          : full
-            ? `${(await getServerById(b.destServerId ?? ""))?.name ?? "the server that kept them"} is more than ${FULL_SHARE * 100}% full.`
-            : "its backups were kept on a server outside its cluster, where a failover cannot read them."),
+          : leaving.has(b.destServerId ?? "")
+            ? `${(await getServerById(b.destServerId ?? ""))?.name ?? "the server that kept them"} is leaving cluster ${(await getClusterById(clusterId))?.name ?? "its cluster"}.`
+            : full
+              ? `${(await getServerById(b.destServerId ?? ""))?.name ?? "the server that kept them"} is more than ${FULL_SHARE * 100}% full.`
+              : "its backups were kept on a server outside its cluster, where a failover cannot read them."),
       "Deplo",
       b.appId,
       w.teamId,
