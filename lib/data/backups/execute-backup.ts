@@ -5,6 +5,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
@@ -308,6 +309,9 @@ export async function executeBackup(
   } finally {
     backupRunsInFlight.delete(runId);
   }
+  if (failure && activityAppId && targetServerId)
+    failure =
+      (await cutByMove(activityAppId, targetServerId, label)) ?? failure;
 
   if (nothingYet && live) {
     const message = await nothingYetMessage(label, live.server);
@@ -432,6 +436,21 @@ export async function executeBackup(
   if (activityAppId) await expireSetAsideCopies(activityAppId).catch(() => {});
   if (failure) throw new Error(failure);
   return finished;
+}
+
+// c49: a backup cut by a move said the agent's words ("no such volume").
+async function cutByMove(
+  appId: string,
+  ranOn: string,
+  label: string,
+): Promise<string | null> {
+  const [app] = await getDb()
+    .select({ serverId: appsTable.serverId, server: serversTable.name })
+    .from(appsTable)
+    .leftJoin(serversTable, eq(serversTable.id, appsTable.serverId))
+    .where(eq(appsTable.id, appId));
+  if (!app?.serverId || app.serverId === ranOn) return null;
+  return `canceled by the move of ${label} to ${app.server ?? "another server"}`;
 }
 
 async function removeLanded(

@@ -11,6 +11,8 @@ import {
   backups as backupsTable,
 } from "../../db/schema/control-plane/backups";
 import { databases } from "../../db/schema/control-plane/databases";
+import { apps } from "../../db/schema/control-plane/apps";
+import { seedServer } from "../app-graph-test-helpers";
 import { seedBackup } from "../backup-test-helpers";
 import { asUser1, seedBase } from "./backups-test-helpers";
 import { runAppBackup, runBackup, runDatabaseBackup } from "./run-now";
@@ -263,6 +265,48 @@ test("a backup that fails before it reaches the server still names what it was b
   assert.deepEqual(said, [
     "Backup of database main failed",
     "Backup of prj_1 failed",
+  ]);
+});
+
+// c49: a backup cut by a move said Docker's "no such volume".
+test("a backup cut by its App's move says so, not the agent's words", async (t) => {
+  await seedServer(db, "srv_2");
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      readStack: async () => ({
+        exists: true,
+        yaml: "services:\n  web:\n    image: x\n    volumes:\n      - data:/data\nvolumes:\n  data: {}\n",
+      }),
+      async *backup() {
+        await db
+          .update(apps)
+          .set({ serverId: "srv_2" })
+          .where(eq(apps.id, "prj_1"));
+        yield {
+          result: {
+            ok: false,
+            error: "get deplo_prj_1_data: no such volume",
+            sizeBytes: 0,
+            sha256: "",
+            heldMs: 0,
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await pg.exec("truncate table activities");
+  await asUser1(() => runAppBackup("prj_1", "s3_1").catch(() => {}));
+  const said = (
+    await db.select({ m: activities.message }).from(activities)
+  ).map((a) => a.m);
+  assert.deepEqual(said, [
+    "Backup of prj_1 failed: canceled by the move of prj_1 to srv_2",
   ]);
 });
 
