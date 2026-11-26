@@ -24,13 +24,17 @@ import {
   fakeClusterHosts,
   type FakeClusterHost,
 } from "../infra/agent-client/cluster-test-helpers";
-import { CLUSTER_NETWORK_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_NETWORK_CAPABILITY,
+  NETWORK_ROTATE_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
 import { networkAddress } from "../deploy/cluster-network";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember, listClusterMembers } from "./clusters/members";
 import {
   reconcileClusterNetworks,
   retireNetworkKey,
+  rotateNetworkKey,
   syncClusterNetwork,
 } from "./clusters/network";
 import { clusterRoster } from "./clusters/relay";
@@ -319,4 +323,49 @@ test("a new server that answers with another server's network key gets one of it
       "key-srv_2+",
       id,
     );
+});
+
+// c46 printed eu-1's network key: a new one reaches every peer as its next key before the server switches to it.
+test("a network key is rotated with every peer told the next key first", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  for (const h of Object.values(hosts))
+    h.capabilities.push(NETWORK_ROTATE_CAPABILITY);
+  const before = hosts.srv_2.networkTables.length;
+  const told = (id: string) =>
+    hosts[id].networkTables.some(
+      (t) =>
+        t.peers.find((p) => p.fingerprint === fp(2))?.nextPublicKey ===
+        "key-srv_2-next",
+    );
+  const asked = hosts.srv_2.networkTables;
+  const at = () => asked.findIndex((t) => t.rotateToPublicKey);
+  assert.equal(await rotateNetworkKey("srv_2"), "key-srv_2-next");
+  assert.ok(
+    asked.slice(before).some((t) => t.nextKey),
+    "the next key made first",
+  );
+  assert.ok(at() > before, "then the switch");
+  for (const id of ["srv_1", "srv_3"]) {
+    assert.ok(told(id), `${id} told the next key`);
+    assert.equal(
+      last(hosts[id]).peers.find((p) => p.fingerprint === fp(2))?.publicKey,
+      "key-srv_2-next",
+      id,
+    );
+  }
+  const [row] = await db
+    .select({ key: clusterNetworkPeers.publicKey })
+    .from(clusterNetworkPeers)
+    .where(eq(clusterNetworkPeers.serverId, "srv_2"));
+  assert.equal(row?.key, "key-srv_2-next");
+});
+
+test("a network key is not rotated while a peer's agent cannot take it with its tunnels up", async () => {
+  const c = await eu();
+  await syncClusterNetwork(c.id);
+  hosts.srv_2.capabilities.push(NETWORK_ROTATE_CAPABILITY);
+  await assert.rejects(rotateNetworkKey("srv_2"), /too old/);
+  assert.ok(!hosts.srv_2.networkTables.some((t) => t.nextKey));
+  assert.equal(hosts.srv_2.networkKey, "key-srv_2");
 });

@@ -96,8 +96,9 @@ export interface FakeClusterHost {
   zoneReport: (
     table: SetClusterZoneRequest,
   ) => Omit<ClusterZoneReport, "geoSha256">;
-  /** Its agent's network key, as setClusterNetwork answers it. */
+  /** Its agent's network key, as setClusterNetwork answers it, and the next one it made. */
   networkKey: string;
+  nextNetworkKey: string;
   /** The location table its agent holds, by digest, and every one it was handed (ADR-0049 phase 2). */
   geoSha256: string;
   geoTables: { sha256: string; bytes: number }[];
@@ -452,8 +453,18 @@ export function fakeClusterHosts(): {
           // A key Deplo retires is replaced, once.
           if (table.retirePublicKey && table.retirePublicKey === h.networkKey)
             h.networkKey = `${h.networkKey}+`;
+          if (table.nextKey && !h.nextNetworkKey)
+            h.nextNetworkKey = `${h.networkKey}-next`;
+          if (
+            table.rotateToPublicKey &&
+            table.rotateToPublicKey === h.nextNetworkKey
+          ) {
+            h.networkKey = h.nextNetworkKey;
+            h.nextNetworkKey = "";
+          }
           return {
             publicKey: h.networkKey,
+            nextPublicKey: h.nextNetworkKey,
             port: table.peers.length > 0 ? 51820 : 0,
             addresses: [`192.168.7.${hosts.size}`],
             peers: table.peers.map((p) => ({
@@ -545,6 +556,7 @@ export function fakeClusterHosts(): {
         networkPath: () => "direct",
         zoneTables: [],
         networkKey: `key-${serverId}`,
+        nextNetworkKey: "",
         zoneReport: (table) =>
           table.zones.length > 0
             ? {

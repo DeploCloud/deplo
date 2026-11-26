@@ -162,6 +162,8 @@ export const CLUSTER_ZONE_GEO_CAPABILITY = "dns.geo";
 export const DNS_CHALLENGE_CAPABILITY = "dns.challenge";
 // A name's own certificate over DNS renewed by one server and held by every other as a file (ADR-0048 step 5).
 export const DNS_CERTIFICATES_CAPABILITY = "dns.certificates";
+// A network key replaced in place: a next key its peers learn first, then the switch (c46).
+export const NETWORK_ROTATE_CAPABILITY = "network.rotate";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
 export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
 // A move puts the copy on its new member in place after only the last changes (c44), both members on this agent.

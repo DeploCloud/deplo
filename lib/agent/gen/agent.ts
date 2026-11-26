@@ -3467,6 +3467,10 @@ export interface SetClusterNetworkRequest {
   peers: ClusterNetworkPeer[];
   /** This server's network key when it must be replaced first, since a caught copy holds it (Hello network.rekey). */
   retirePublicKey: string;
+  /** Make a next network key beside the current one, said as next_public_key; nothing changes yet (Hello network.rotate). */
+  nextKey: boolean;
+  /** Switch to the next key once every peer holds it as that one: the tunnel and its streams stay up. */
+  rotateToPublicKey: string;
 }
 
 export interface ClusterNetworkPeer {
@@ -3477,6 +3481,8 @@ export interface ClusterNetworkPeer {
   address: string;
   /** host:port pairs it may answer on directly; with none, a relay carries its packets. */
   endpoints: string[];
+  /** The key it is about to switch to: taken the moment it says it switched, never before. */
+  nextPublicKey: string;
 }
 
 export interface SetClusterNetworkResponse {
@@ -3486,11 +3492,13 @@ export interface SetClusterNetworkResponse {
   /** This host's own addresses, for its peers to try. */
   addresses: string[];
   peers: ClusterNetworkPeerState[];
+  /** The next key it made at next_key, until it switches to it. */
+  nextPublicKey: string;
 }
 
 export interface ClusterNetworkPeerState {
   fingerprint: string;
-  /** "direct", "relay" (no direct path answers) or "none". */
+  /** "direct", "relay" (no direct path answers, a relay carries it) or "none". */
   path: string;
   /** The host:port a direct path uses. */
   endpoint: string;
@@ -27420,7 +27428,7 @@ export const SetClusterForwardersResponse: MessageFns<SetClusterForwardersRespon
 };
 
 function createBaseSetClusterNetworkRequest(): SetClusterNetworkRequest {
-  return { clusterId: "", address: "", peers: [], retirePublicKey: "" };
+  return { clusterId: "", address: "", peers: [], retirePublicKey: "", nextKey: false, rotateToPublicKey: "" };
 }
 
 export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
@@ -27436,6 +27444,12 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
     }
     if (message.retirePublicKey !== "") {
       writer.uint32(34).string(message.retirePublicKey);
+    }
+    if (message.nextKey !== false) {
+      writer.uint32(40).bool(message.nextKey);
+    }
+    if (message.rotateToPublicKey !== "") {
+      writer.uint32(50).string(message.rotateToPublicKey);
     }
     return writer;
   },
@@ -27485,6 +27499,22 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
             message.retirePublicKey = reader.string();
             continue;
           }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.nextKey = reader.bool();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.rotateToPublicKey = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -27513,6 +27543,16 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
         : isSet(object.retire_public_key)
         ? globalThis.String(object.retire_public_key)
         : "",
+      nextKey: isSet(object.nextKey)
+        ? globalThis.Boolean(object.nextKey)
+        : isSet(object.next_key)
+        ? globalThis.Boolean(object.next_key)
+        : false,
+      rotateToPublicKey: isSet(object.rotateToPublicKey)
+        ? globalThis.String(object.rotateToPublicKey)
+        : isSet(object.rotate_to_public_key)
+        ? globalThis.String(object.rotate_to_public_key)
+        : "",
     };
   },
 
@@ -27530,6 +27570,12 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
     if (message.retirePublicKey !== "") {
       obj.retirePublicKey = message.retirePublicKey;
     }
+    if (message.nextKey !== false) {
+      obj.nextKey = message.nextKey;
+    }
+    if (message.rotateToPublicKey !== "") {
+      obj.rotateToPublicKey = message.rotateToPublicKey;
+    }
     return obj;
   },
 
@@ -27542,12 +27588,14 @@ export const SetClusterNetworkRequest: MessageFns<SetClusterNetworkRequest> = {
     message.address = object.address ?? "";
     message.peers = object.peers?.map((e) => ClusterNetworkPeer.fromPartial(e)) || [];
     message.retirePublicKey = object.retirePublicKey ?? "";
+    message.nextKey = object.nextKey ?? false;
+    message.rotateToPublicKey = object.rotateToPublicKey ?? "";
     return message;
   },
 };
 
 function createBaseClusterNetworkPeer(): ClusterNetworkPeer {
-  return { fingerprint: "", publicKey: "", address: "", endpoints: [] };
+  return { fingerprint: "", publicKey: "", address: "", endpoints: [], nextPublicKey: "" };
 }
 
 export const ClusterNetworkPeer: MessageFns<ClusterNetworkPeer> = {
@@ -27563,6 +27611,9 @@ export const ClusterNetworkPeer: MessageFns<ClusterNetworkPeer> = {
     }
     for (const v of message.endpoints) {
       writer.uint32(34).string(v!);
+    }
+    if (message.nextPublicKey !== "") {
+      writer.uint32(42).string(message.nextPublicKey);
     }
     return writer;
   },
@@ -27612,6 +27663,14 @@ export const ClusterNetworkPeer: MessageFns<ClusterNetworkPeer> = {
             message.endpoints.push(reader.string());
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.nextPublicKey = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -27636,6 +27695,11 @@ export const ClusterNetworkPeer: MessageFns<ClusterNetworkPeer> = {
       endpoints: globalThis.Array.isArray(object?.endpoints)
         ? object.endpoints.map((e: any) => globalThis.String(e))
         : [],
+      nextPublicKey: isSet(object.nextPublicKey)
+        ? globalThis.String(object.nextPublicKey)
+        : isSet(object.next_public_key)
+        ? globalThis.String(object.next_public_key)
+        : "",
     };
   },
 
@@ -27653,6 +27717,9 @@ export const ClusterNetworkPeer: MessageFns<ClusterNetworkPeer> = {
     if (message.endpoints?.length) {
       obj.endpoints = message.endpoints;
     }
+    if (message.nextPublicKey !== "") {
+      obj.nextPublicKey = message.nextPublicKey;
+    }
     return obj;
   },
 
@@ -27665,12 +27732,13 @@ export const ClusterNetworkPeer: MessageFns<ClusterNetworkPeer> = {
     message.publicKey = object.publicKey ?? "";
     message.address = object.address ?? "";
     message.endpoints = object.endpoints?.map((e) => e) || [];
+    message.nextPublicKey = object.nextPublicKey ?? "";
     return message;
   },
 };
 
 function createBaseSetClusterNetworkResponse(): SetClusterNetworkResponse {
-  return { publicKey: "", port: 0, addresses: [], peers: [] };
+  return { publicKey: "", port: 0, addresses: [], peers: [], nextPublicKey: "" };
 }
 
 export const SetClusterNetworkResponse: MessageFns<SetClusterNetworkResponse> = {
@@ -27686,6 +27754,9 @@ export const SetClusterNetworkResponse: MessageFns<SetClusterNetworkResponse> = 
     }
     for (const v of message.peers) {
       ClusterNetworkPeerState.encode(v!, writer.uint32(34).fork()).join();
+    }
+    if (message.nextPublicKey !== "") {
+      writer.uint32(42).string(message.nextPublicKey);
     }
     return writer;
   },
@@ -27735,6 +27806,14 @@ export const SetClusterNetworkResponse: MessageFns<SetClusterNetworkResponse> = 
             message.peers.push(ClusterNetworkPeerState.decode(reader, reader.uint32()));
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.nextPublicKey = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -27761,6 +27840,11 @@ export const SetClusterNetworkResponse: MessageFns<SetClusterNetworkResponse> = 
       peers: globalThis.Array.isArray(object?.peers)
         ? object.peers.map((e: any) => ClusterNetworkPeerState.fromJSON(e))
         : [],
+      nextPublicKey: isSet(object.nextPublicKey)
+        ? globalThis.String(object.nextPublicKey)
+        : isSet(object.next_public_key)
+        ? globalThis.String(object.next_public_key)
+        : "",
     };
   },
 
@@ -27778,6 +27862,9 @@ export const SetClusterNetworkResponse: MessageFns<SetClusterNetworkResponse> = 
     if (message.peers?.length) {
       obj.peers = message.peers.map((e) => ClusterNetworkPeerState.toJSON(e));
     }
+    if (message.nextPublicKey !== "") {
+      obj.nextPublicKey = message.nextPublicKey;
+    }
     return obj;
   },
 
@@ -27790,6 +27877,7 @@ export const SetClusterNetworkResponse: MessageFns<SetClusterNetworkResponse> = 
     message.port = object.port ?? 0;
     message.addresses = object.addresses?.map((e) => e) || [];
     message.peers = object.peers?.map((e) => ClusterNetworkPeerState.fromPartial(e)) || [];
+    message.nextPublicKey = object.nextPublicKey ?? "";
     return message;
   },
 };
