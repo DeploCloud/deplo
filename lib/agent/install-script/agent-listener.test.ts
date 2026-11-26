@@ -30,6 +30,7 @@ UNIT_AFTER=network-online.target; DOCKER_UNIT_LINES=""
 HOST_ROLE=server; URL=https://deplo.example.com; AGENT_STATE=running; PROVISIONED=true
 card_open() { echo "CARD $1"; }; card_kv() { echo "  $1: $2"; }; card_close() { :; }
 ok() { echo "OK $1"; }; note() { echo "NOTE $1"; }; warn() { echo "WARN $1"; }; err() { echo "ERR $1"; }
+agent_version_label() { printf 'v%s' "$AGENT_VERSION"; }
 ${await shellFn("install-agent.sh", "write_agent_unit")}
 ${await shellFn("install-agent.sh", "print_summary")}
 write_agent_unit
