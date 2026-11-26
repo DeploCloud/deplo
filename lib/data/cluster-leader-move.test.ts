@@ -14,6 +14,7 @@ import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers
 import { createCluster } from "./clusters/manage";
 import { ensureClusterLeader, getClusterLeader } from "./clusters/leader";
 import {
+  __setLeadWaitForTest,
   listClusterLeaderChoices,
   moveClusterLeader,
   reconcileRetiredLeaders,
@@ -75,28 +76,30 @@ test("moving the leader installs it on the picked server, which leads from the n
   );
 });
 
-test("the leader it leaves is told before the new one gets its roster, so no member waits past a second for a renewal", async () => {
+test("the new leader leads before Deplo records it, and the one it leaves is told only then", async () => {
   const cluster = await eu();
   const order: string[] = [];
-  for (const id of [SERVER_1, "srv_4"]) {
-    const answer = hosts[id].leader;
-    hosts[id].leader = (method, payload) => {
-      if (method === "leader.beat" || method === "leader.roster")
-        order.push(`${id} ${method}`);
-      return answer(method, payload);
+  for (const id of [SERVER_1, "srv_4"])
+    hosts[id].extra = {
+      clusterCall: async (method, payload) => {
+        if (method === "leader.beat" || method === "leader.roster") {
+          const { server, epoch } = await lab.stored(cluster.id);
+          order.push(`${id} ${method}, stored ${server ?? "deplo"} ${epoch}`);
+        }
+        return hosts[id].leader(method, payload);
+      },
     };
-  }
 
   await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
 
-  // c43: the roster went first and the old leader renewed on until a member refused it (1.49 s without a renewal).
+  // c44: Deplo recorded a leader that had refused, and the old one had already stepped down.
   assert.deepEqual(order.slice(0, 2), [
-    `${SERVER_1} leader.beat`,
-    "srv_4 leader.roster",
+    "srv_4 leader.roster, stored deplo 0",
+    `${SERVER_1} leader.beat, stored srv_4 2`,
   ]);
 });
 
-test("a leader that does not answer that it was replaced holds the new one's roster up two seconds at most", async () => {
+test("a leader that does not answer that it was replaced holds nothing up: the new one has its roster first", async () => {
   const cluster = await eu();
   const order: string[] = [];
   hosts[SERVER_1].extra = {
@@ -117,6 +120,80 @@ test("a leader that does not answer that it was replaced holds the new one's ros
   await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
 
   assert.deepEqual(order.slice(0, 2), ["roster", "beat answered"]);
+});
+
+// c44: eu-3 held an epoch it had promised itself, refused the move, and Deplo recorded it as the leader anyway.
+test("a new leader that refuses the cluster leaves the old one leading, and Activity says why", async () => {
+  const cluster = await eu();
+  const beats: string[] = [];
+  const answer = hosts.srv_4.leader;
+  hosts.srv_4.leader = (method, payload) => {
+    if (method === "leader.roster")
+      throw new Error("the leader holds a newer epoch: 136, asked for 2");
+    if (method === "leader.snapshot")
+      return new TextEncoder().encode(
+        JSON.stringify({ head: 0, clusters: {} }),
+      );
+    return answer(method, payload);
+  };
+  const old = hosts[SERVER_1].leader;
+  hosts[SERVER_1].leader = (method, payload) => {
+    if (method === "leader.beat") beats.push(new TextDecoder().decode(payload));
+    return old(method, payload);
+  };
+
+  await assert.rejects(
+    asAdmin(() => moveClusterLeader(cluster.id, "srv_4")),
+    /stays on .*: srv_4 refused it \(.*holds a newer epoch: 136/,
+  );
+
+  assert.deepEqual(await lab.stored(cluster.id), {
+    server: null,
+    takenOver: false,
+    epoch: cluster.leaderEpoch,
+  });
+  assert.deepEqual(beats, [], "the old leader was told to step down");
+  assert.match(
+    (await messages()).join("\n"),
+    /Deplo: The leader of cluster eu stays on .*: srv_4 refused it/,
+  );
+});
+
+test("a new leader that takes the epoch and leads nothing hands it back: the old one leads on at the next", async () => {
+  const cluster = await eu();
+  __setLeadWaitForTest(200);
+  const answer = hosts.srv_4.leader;
+  hosts.srv_4.leader = (method, payload) => {
+    if (method === "leader.snapshot")
+      return new TextEncoder().encode(
+        JSON.stringify({
+          head: 0,
+          clusters: {
+            [cluster.id]: { epoch: 2, leads: false, superseded: false },
+          },
+        }),
+      );
+    return answer(method, payload);
+  };
+  try {
+    await assert.rejects(
+      asAdmin(() => moveClusterLeader(cluster.id, "srv_4")),
+      /srv_4 did not lead it within 0.2 s/,
+    );
+  } finally {
+    __setLeadWaitForTest(null);
+  }
+
+  assert.deepEqual(await lab.stored(cluster.id), {
+    server: null,
+    takenOver: false,
+    epoch: 3,
+  });
+  assert.equal(leaders[SERVER_1].rosters.at(-1)!.epoch, 3);
+  const told = hosts.srv_4.calls
+    .filter((c) => c.method === "leader.beat")
+    .map((c) => JSON.parse(new TextDecoder().decode(c.payload)));
+  assert.deepEqual(told.at(-1)?.epochs, { [cluster.id]: 3 });
 });
 
 test("only an instance admin moves a leader, whichever team asks", async () => {
