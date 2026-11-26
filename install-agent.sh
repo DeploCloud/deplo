@@ -1630,7 +1630,7 @@ sha_of() { sha256sum "$1" 2>/dev/null | awk '{print $1}'; }
 run_installed_agent() {
   local pid
   pid="$(agent_pid)"
-  if [ -n "$pid" ] && [ "$pid" != 0 ] && [ "$(sha_of "/proc/$pid/exe")" != "$(sha_of "$AGENT_BIN")" ]; then
+  if [ -n "$pid" ] && [ "$pid" != 0 ] && [ "$(sha_of "${PROC_ROOT:-/proc}/$pid/exe")" != "$(sha_of "$AGENT_BIN")" ]; then
     systemctl restart deplo-agent >&9 2>&9 || true
   fi
 }
@@ -1639,7 +1639,7 @@ agent_version_label() {
   local pid
   pid="$(agent_pid)"
   if [ -n "$pid" ] && [ "$pid" != 0 ] &&
-    [ "$(sha_of "/proc/$pid/exe")" != "$AGENT_SHA256" ]; then
+    [ "$(sha_of "${PROC_ROOT:-/proc}/$pid/exe")" != "$AGENT_SHA256" ]; then
     printf 'updated by Deplo since v%s' "$AGENT_VERSION"
   else
     printf 'v%s' "$AGENT_VERSION"
