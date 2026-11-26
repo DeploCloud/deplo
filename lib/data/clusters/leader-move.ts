@@ -23,7 +23,9 @@ import { tellLeaderReplaced } from "./leader-beat";
 import {
   forgetLeaderRoster,
   prepareLeaderRoster,
+  pushLeaderRoster,
   readLeaderSnapshot,
+  sayOnce,
 } from "./leader-sync";
 import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
 import {
@@ -48,15 +50,21 @@ import { syncClusterNetworkSoon } from "./network";
 const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so the leader cannot run on it.";
 
-// How long a hand-over waits for the leader it leaves to renew once more: one that does not answer is not waited out.
-const HAND_OVER_WAIT_MS = 2_000;
+// How long a hand-over waits for the new leader to say it leads, and how often it asks (c44).
+let LEAD_WAIT_MS = 5_000;
+const LEAD_POLL_MS = 100;
+
+/** Test seam: how long a hand-over waits for the new leader to lead; null is the real wait. */
+export function __setLeadWaitForTest(ms: number | null): void {
+  LEAD_WAIT_MS = ms ?? 5_000;
+}
 
 const warn = (clusterId: string, e: unknown) =>
   console.warn(`[cluster-leader] ${clusterId}: ${messageOf(e)}`);
 
 /**
- * Makes another leader lead the cluster. The stored epoch rises first and the leader is told after, so no two
- * leaders are ever handed the same one. A leader that does not answer leads nothing: this throws and stores nothing.
+ * Makes another leader lead the cluster. Handed over from a leader that answers, the new one leads first, then Deplo
+ * records it at that epoch and the old one steps down (c44). A leader that does not answer leads nothing: this throws.
  */
 export async function leadFrom(
   cluster: Cluster,
@@ -85,12 +93,17 @@ export async function leadFrom(
     : cluster.leaderTakeoverAt
       ? await resumeSeqOf(cluster.id)
       : cluster.eventSeq;
+  const epoch = Math.max(cluster.leaderEpoch, 1) + 1;
+  const handOver = before && before.id !== next.id && !to.leaderTakeoverAt;
+  const ledAt = handOver
+    ? await takeLead(cluster, { ...target, leaderEpoch: epoch }, before, next)
+    : epoch;
   const claimed = await getDb()
     .update(clustersTable)
     .set({
       leaderServerId: to.leaderServerId,
       leaderTakeoverAt: to.leaderTakeoverAt,
-      leaderEpoch: Math.max(cluster.leaderEpoch, 1) + 1,
+      leaderEpoch: ledAt,
       eventSeq: head,
       resumeEventSeq,
       ...(to.leaderTeamId ? { leaderTeamId: to.leaderTeamId } : {}),
@@ -105,32 +118,90 @@ export async function leadFrom(
   if (claimed.length === 0)
     throw new Error("The cluster's leader changed meanwhile. Try again.");
   forgetLeaderRoster(cluster.id);
-  // The watch's next pass repeats a roster this leader did not take.
   const led = (await getClusterById(cluster.id))!;
-  const send = await prepareLeaderRoster(led).catch((e) => {
-    warn(cluster.id, e);
-    return null;
-  });
-  // A takeover is from a leader that does not answer. Any other one renews once more and stops when told, and the
-  // roster built above goes out right after, so no member waits past a second for a renewal (c43: 1.49 s).
-  const told =
-    before && before.id !== next.id && !to.leaderTakeoverAt
-      ? tellLeaderReplaced(before.id, cluster.id, led.leaderEpoch).catch(
-          () => {},
-        )
-      : Promise.resolve();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([
-    told,
-    new Promise((r) => (timer = setTimeout(r, HAND_OVER_WAIT_MS))),
-  ]);
-  clearTimeout(timer);
-  await send?.().catch((e) => warn(cluster.id, e));
-  await told;
+  if (handOver) {
+    // It leads already: the one it replaces stops now, without waiting to find out from a member.
+    await tellLeaderReplaced(before.id, cluster.id, ledAt).catch(() => {});
+    // Leading at a newer epoch than it was handed, it gets Deplo's roster at that one.
+    if (ledAt !== epoch)
+      await pushLeaderRoster(led).catch((e) => warn(cluster.id, e));
+  } else {
+    // The watch's next pass repeats a roster this leader did not take.
+    const send = await prepareLeaderRoster(led).catch((e) => {
+      warn(cluster.id, e);
+      return null;
+    });
+    await send?.().catch((e) => warn(cluster.id, e));
+  }
   // The leader's new server joins the cluster's network, and one it left goes off it.
   if (to.leaderServerId !== cluster.leaderServerId)
     syncClusterNetworkSoon(cluster.id);
   return led;
+}
+
+/**
+ * Hands the new leader the cluster at `planned.leaderEpoch` and says the epoch it leads at. One that refuses leaves
+ * the old leader leading; one that takes the epoch and leads nothing hands it back at the next. Either way it throws.
+ */
+async function takeLead(
+  cluster: Cluster,
+  planned: Cluster,
+  from: Server,
+  to: Server,
+): Promise<number> {
+  const epoch = planned.leaderEpoch;
+  const send = await prepareLeaderRoster(planned, { adopt: false });
+  const refused = send
+    ? await send().then(
+        () => null,
+        (e: unknown) => e,
+      )
+    : new Error(NO_HOST);
+  const end = Date.now() + (refused ? 0 : LEAD_WAIT_MS);
+  // An older leader does not say whether it leads: its taking the epoch is its word.
+  for (;;) {
+    const v = (await readLeaderSnapshot(planned).catch(() => null))?.clusters?.[
+      cluster.id
+    ];
+    if (v && !v.superseded && v.epoch >= epoch && (v.leads ?? !refused))
+      return v.epoch;
+    if (Date.now() >= end) break;
+    await new Promise((r) => setTimeout(r, LEAD_POLL_MS));
+  }
+  forgetLeaderRoster(cluster.id);
+  if (!refused) await leadAgain(cluster, epoch + 1, to);
+  const message = `The leader of cluster ${cluster.name} stays on ${from.name}: ${to.name} ${
+    refused
+      ? `refused it (${messageOf(refused)})`
+      : `did not lead it within ${LEAD_WAIT_MS / 1000} s`
+  }`;
+  await sayOnce(cluster.id, message, 3_600_000).catch((e) =>
+    warn(cluster.id, e),
+  );
+  throw new Error(`${message}.`);
+}
+
+/** The old leader leads on at `epoch`, past the one members may have taken from a leader that never led. */
+async function leadAgain(
+  cluster: Cluster,
+  epoch: number,
+  to: Server,
+): Promise<void> {
+  const claimed = await getDb()
+    .update(clustersTable)
+    .set({ leaderEpoch: epoch })
+    .where(
+      and(
+        eq(clustersTable.id, cluster.id),
+        eq(clustersTable.leaderEpoch, cluster.leaderEpoch),
+      ),
+    )
+    .returning({ id: clustersTable.id });
+  if (claimed.length === 0) return;
+  await pushLeaderRoster({ ...cluster, leaderEpoch: epoch }).catch((e) =>
+    warn(cluster.id, e),
+  );
+  await tellLeaderReplaced(to.id, cluster.id, epoch).catch(() => {});
 }
 
 /** The stored leader's last event Deplo applied before its machine stood in; null when it does not stand in. */

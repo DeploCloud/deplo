@@ -201,6 +201,8 @@ export interface LeaderSnapshot {
     {
       epoch: number;
       superseded: boolean;
+      /** Enough members took its epoch for it to renew and move work right now. */
+      leads?: boolean;
       /** heard: false is a member the leader has not heard since it took the epoch; an older leader omits it. */
       members: { id: string; state: string; heard?: boolean }[];
       placement?: LeaderEntry[];
@@ -232,8 +234,16 @@ async function nameOldAgent(
     .where(eq(serversTable.id, serverId))
     .limit(1);
   if (!server) return;
-  const message = sentence(server.name, cluster.name);
-  const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  await sayOnce(cluster.id, sentence(server.name, cluster.name));
+}
+
+/** Says a sentence about a cluster unless Activity said it within `withinMs`: a pass that retries is read once. */
+export async function sayOnce(
+  clusterId: string,
+  message: string,
+  withinMs = 24 * 3_600_000,
+): Promise<void> {
+  const since = new Date(Date.now() - withinMs).toISOString();
   const seen = await getDb()
     .select({ id: activities.id })
     .from(activities)
@@ -241,7 +251,7 @@ async function nameOldAgent(
       and(eq(activities.message, message), gte(activities.createdAt, since)),
     )
     .limit(1);
-  if (seen.length === 0) await recordClusterActivity(cluster.id, message);
+  if (seen.length === 0) await recordClusterActivity(clusterId, message);
 }
 
 const pushed = new Map<string, string>();
@@ -264,10 +274,17 @@ export async function pushLeaderRoster(
   return send ? send() : false;
 }
 
-/** Builds the roster `pushLeaderRoster` sends, and returns what sends it: a hand-over spends no time on reads. */
+/**
+ * Builds the roster `pushLeaderRoster` sends, and returns what sends it: a hand-over spends no time on reads. With
+ * `adopt: false` a leader that refuses it is not adopted at its newer epoch: a move only records one that leads.
+ */
 export async function prepareLeaderRoster(
   cluster: Cluster,
-  opts: { onlyIfChanged?: boolean; requireRotations?: boolean } = {},
+  opts: {
+    onlyIfChanged?: boolean;
+    requireRotations?: boolean;
+    adopt?: boolean;
+  } = {},
 ): Promise<(() => Promise<boolean>) | null> {
   const host = await leaderHost(cluster);
   if (!host) return null;
@@ -364,6 +381,7 @@ export async function prepareLeaderRoster(
       reply = await body(epoch);
       pushed.set(cluster.id, signature);
     } catch (e) {
+      if (opts.adopt === false) throw e;
       const snap = await readLeaderSnapshot(cluster).catch(() => null);
       const held = snap?.clusters[cluster.id]?.epoch ?? 0;
       if (held <= epoch) throw e;
@@ -381,7 +399,7 @@ export async function prepareLeaderRoster(
     // Each heir's leader keeps the roster to take the cluster over from, with Deplo down.
     const epochNow = Math.max(
       (await getClusterById(cluster.id))?.leaderEpoch ?? epoch,
-      1,
+      epoch,
     );
     for (const heir of heirs)
       await callClusterLeader(
