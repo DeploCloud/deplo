@@ -5,6 +5,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SheetHandle } from "@/components/ui/sheet-chrome";
+import { MENU_ITEM, MENU_SURFACE } from "@/components/ui/menu-styles";
 import {
   blockPressOutside,
   swallowGhostClick,
@@ -31,8 +32,9 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-accent data-[state=open]:bg-accent max-md:min-h-12 max-md:gap-3 max-md:rounded-lg max-md:px-3 max-md:text-[15px] max-md:[&_svg]:size-5",
-      inset && "pl-8",
+      MENU_ITEM,
+      "data-[state=open]:bg-accent max-md:min-h-12 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] max-md:[&_svg]:size-5",
+      inset && "pl-9",
       className,
     )}
     {...props}
@@ -52,7 +54,8 @@ const DropdownMenuSubContent = React.forwardRef<
     ref={ref}
     data-slot="dropdown-menu-content"
     className={cn(
-      "z-50 min-w-[8rem] animate-in overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg data-[side=bottom]:slide-in-from-top-2",
+      "z-50 min-w-[8rem] animate-in overflow-hidden data-[side=bottom]:slide-in-from-top-2",
+      MENU_SURFACE,
       ACTION_SHEET,
       className,
     )}
@@ -97,7 +100,8 @@ const DropdownMenuContent = React.forwardRef<
           sideOffset={sideOffset}
           data-slot="dropdown-menu-content"
           className={cn(
-            "z-50 min-w-[10rem] animate-in overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
+            "z-50 min-w-[10rem] animate-in overflow-hidden fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
+            MENU_SURFACE,
             ACTION_SHEET,
             className,
           )}
@@ -144,8 +148,9 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors outline-none select-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 max-md:min-h-12 max-md:gap-3 max-md:rounded-lg max-md:px-3 max-md:text-[15px] [&_svg]:size-4 [&_svg]:shrink-0 max-md:[&_svg]:size-5",
-      inset && "pl-8",
+      MENU_ITEM,
+      "transition-colors max-md:min-h-12 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] [&_svg]:size-4 [&_svg]:shrink-0 max-md:[&_svg]:size-5",
+      inset && "pl-9",
       variant === "destructive" &&
         "text-destructive focus:bg-destructive-wash-strong focus:text-destructive",
       className,
@@ -162,13 +167,14 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      "relative flex cursor-pointer items-center rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none select-none focus:bg-accent max-md:min-h-12 max-md:text-[15px]",
+      MENU_ITEM,
+      "pl-9 max-md:min-h-12 max-md:text-[15px]",
       className,
     )}
     checked={checked}
     {...props}
   >
-    <span className="absolute left-2 flex size-3.5 items-center justify-center">
+    <span className="absolute left-3 flex size-3.5 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <Check className="size-4" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -186,12 +192,13 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      "relative flex cursor-pointer items-center rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none select-none focus:bg-accent max-md:min-h-12 max-md:text-[15px]",
+      MENU_ITEM,
+      "pl-9 max-md:min-h-12 max-md:text-[15px]",
       className,
     )}
     {...props}
   >
-    <span className="absolute left-2 flex size-3.5 items-center justify-center">
+    <span className="absolute left-3 flex size-3.5 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <Circle className="size-2 fill-current" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -210,8 +217,8 @@ const DropdownMenuLabel = React.forwardRef<
   <DropdownMenuPrimitive.Label
     ref={ref}
     className={cn(
-      "px-2 py-1.5 text-xs font-medium text-muted-foreground max-md:px-3 max-md:text-[13px]",
-      inset && "pl-8",
+      "px-3 py-1.5 text-xs font-medium text-muted-foreground max-md:text-[13px]",
+      inset && "pl-9",
       className,
     )}
     {...props}
@@ -225,7 +232,7 @@ const DropdownMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1 my-1 h-px bg-border", className)}
+    className={cn("-mx-1.5 my-1.5 h-px bg-border", className)}
     {...props}
   />
 ));

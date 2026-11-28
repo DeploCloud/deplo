@@ -39,7 +39,7 @@ const TabsList = React.forwardRef<
     >
       <SlidingBackground
         rect={rect}
-        className={cn("bg-accent", indicatorClassName)}
+        className={cn("rounded-full bg-accent", indicatorClassName)}
       />
       {children}
     </TabsPrimitive.List>
@@ -50,7 +50,7 @@ TabsList.displayName = TabsPrimitive.List.displayName;
 const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
 
 const triggerClass =
-  "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap max-md:h-10 max-md:px-3.5 max-md:text-[15px] text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground";
+  "inline-flex cursor-pointer items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap max-md:h-10 max-md:px-3.5 max-md:text-[15px] text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground";
 
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
@@ -72,7 +72,7 @@ function SegmentedTabsList({
     <TabsList
       className={cn(
         // max-md:h-auto beats the plain list's phone height, which its taller triggers would overflow.
-        "grid h-auto w-full auto-cols-fr grid-flow-col items-center rounded-lg border border-border bg-surface p-1 max-md:h-auto",
+        "grid h-auto w-full auto-cols-fr grid-flow-col items-center rounded-full border border-border bg-surface p-1 max-md:h-auto",
         className,
       )}
       indicatorClassName="bg-background shadow-sm"

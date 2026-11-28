@@ -29,7 +29,7 @@ const PopoverContent = React.forwardRef<
           align={align}
           sideOffset={sideOffset}
           className={cn(
-            "z-50 w-72 animate-in rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg fade-in-0 outline-none zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
+            "z-50 w-72 animate-in rounded-2xl border border-border bg-popover p-4 text-popover-foreground shadow-lg fade-in-0 outline-none zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
             className,
           )}
           onOpenAutoFocus={(event) => {

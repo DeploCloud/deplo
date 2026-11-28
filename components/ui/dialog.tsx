@@ -77,7 +77,7 @@ const DialogContent = React.forwardRef<
           data-slot="sheet"
           ref={setRefs}
           className={cn(
-            "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] grid-cols-[minmax(0,1fr)] gap-4 rounded-xl border border-border bg-background p-6 shadow-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+            "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] grid-cols-[minmax(0,1fr)] gap-4 rounded-3xl border border-border bg-background p-6 shadow-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
             // Below md every dialog is a bottom sheet: no X, it closes by dragging or on the backdrop.
             "max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:shadow-[0_-12px_40px_rgb(0_0_0/0.55)]",
             flush
@@ -118,7 +118,7 @@ const DialogContent = React.forwardRef<
           {!hideClose && (
             <DialogPrimitive.Close
               type="button"
-              className="absolute top-4 right-4 cursor-pointer rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:outline-none max-md:sr-only"
+              className="absolute top-4 right-4 cursor-pointer rounded-full opacity-60 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:outline-none max-md:sr-only"
             >
               <X className="size-4" />
               <span className="sr-only">Close</span>

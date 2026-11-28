@@ -13,7 +13,7 @@
   Light + dark. App defaults to dark (see <html class="dark">).
 */
 :root {
-  --radius: 0.5rem;
+  --radius: 0.625rem;
 
   --background: #ffffff;
   --foreground: #0a0a0a;
@@ -233,6 +233,8 @@
      ground sits under every page and shows through anything translucent.
      `-strong` is the same hue one step up (selected/hover). */
   --color-card-hover: color-mix(in srgb, var(--foreground) 5%, var(--card));
+  /* A field is filled, not outlined: the input grey composed onto the page. */
+  --color-field: color-mix(in srgb, var(--input) 50%, var(--background));
   --color-surface: color-mix(in srgb, var(--muted) 35%, var(--background));
   --color-surface-strong: color-mix(
     in srgb,
@@ -295,10 +297,14 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* The rounded scale: xl is the card level everywhere, controls and badges are pills. */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: calc(var(--radius) * 1.2);
+  --radius-xl: calc(var(--radius) * 2);
+  --radius-2xl: calc(var(--radius) * 2.4);
+  --radius-3xl: calc(var(--radius) * 2.8);
+  --radius-4xl: calc(var(--radius) * 3.2);
 
   /* Full-HD tier: the card galleries (Overview, Templates, Apps) only go to
      3 columns at 1920px-wide (Full HD) screens and up; below that they stay at
