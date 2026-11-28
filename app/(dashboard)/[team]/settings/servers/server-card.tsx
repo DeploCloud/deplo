@@ -309,7 +309,7 @@ export function ServerCard({
   );
 
   const tile = (
-    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
       {server.isDeploHost ? (
         <DeploMark size={18} className="text-current" />
       ) : (

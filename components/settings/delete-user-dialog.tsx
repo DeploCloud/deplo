@@ -398,7 +398,7 @@ function Option({
   return (
     <label
       className={cn(
-        "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-colors",
+        "flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition-colors",
         danger ? "border-destructive/40 bg-destructive-wash" : "border-border",
       )}
     >

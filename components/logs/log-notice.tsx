@@ -42,7 +42,7 @@ export function LogNoticeChip({
           type="button"
           title={notice.title}
           className={cn(
-            "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:brightness-110",
+            "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors hover:brightness-110",
             "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             TONE[notice.tone],
             className,

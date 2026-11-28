@@ -132,7 +132,7 @@ function TipCard({
 }: Omit<SidebarTip, "id" | "when"> & { onDismiss?: () => void }) {
   const style = TONE[tone];
   return (
-    <div className={cn("relative rounded-lg border p-3", style.card)}>
+    <div className={cn("relative rounded-xl border p-3", style.card)}>
       {onDismiss && (
         <button
           type="button"

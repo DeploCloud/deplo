@@ -39,7 +39,7 @@ export function FrameworkRow({
         className,
       )}
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-strong">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-strong">
         <FrameworkIcon id={framework.id} className="size-4" />
       </span>
       <span className="min-w-0">
@@ -62,7 +62,7 @@ export function FrameworkRowSkeleton({ className }: { className?: string }) {
         className,
       )}
     >
-      <Skeleton className="size-8 shrink-0 rounded-md" />
+      <Skeleton className="size-8 shrink-0 rounded-lg" />
       <span className="min-w-0 flex-1 space-y-1.5">
         <Skeleton className="h-3.5 w-24" />
         <Skeleton className="h-3 w-44" />

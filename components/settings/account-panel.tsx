@@ -310,7 +310,7 @@ function SecurityShortcuts({
             <Link
               key={s.label}
               href="/settings/security"
-              className="group flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent"
+              className="group flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent"
             >
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
                 <s.icon className="size-4 text-muted-foreground" />

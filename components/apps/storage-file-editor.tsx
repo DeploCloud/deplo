@@ -180,7 +180,7 @@ function Note({
 function EditorSkeleton() {
   return (
     <div
-      className="animate-pulse rounded-lg border border-input bg-surface"
+      className="animate-pulse rounded-xl border border-input bg-surface"
       style={{ minHeight: EDITOR_MIN_HEIGHT }}
       aria-hidden
     />

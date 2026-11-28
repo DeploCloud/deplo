@@ -221,7 +221,7 @@ export function AddMemberDialog({
                       type="button"
                       key={u.userId}
                       onClick={() => setPicked(u)}
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
+                      className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left hover:border-border hover:bg-accent"
                     >
                       <UserAvatar
                         name={u.name}
@@ -263,7 +263,7 @@ export function AddMemberDialog({
                         reset();
                         onCreateUser?.();
                       }}
-                      className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-accent"
+                      className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-accent"
                     >
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-wash-strong text-primary transition-colors group-hover:bg-primary-wash-strong">
                         <UserPlus className="size-4" />

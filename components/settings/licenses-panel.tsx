@@ -293,7 +293,7 @@ function SourceLinks({
       aria-label={labelled ? undefined : label}
       title={labelled ? undefined : label}
       onClick={(e) => e.stopPropagation()}
-      className="inline-flex items-center gap-1.5 rounded-md p-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="inline-flex items-center gap-1.5 rounded-full p-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       <Icon className="size-4" />
       {labelled && label}

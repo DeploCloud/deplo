@@ -23,7 +23,7 @@ export function TemplateSearchField({
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search templates"
         aria-label="Search templates"
-        className="h-10 bg-background pl-9"
+        className="h-10 pl-9"
       />
     </div>
   );

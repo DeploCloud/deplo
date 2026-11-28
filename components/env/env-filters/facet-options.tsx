@@ -92,7 +92,7 @@ function FacetOptionRow({
       onMouseEnter={onActivate}
       onMouseDown={id ? (e) => e.preventDefault() : undefined}
       className={cn(
-        "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+        "flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 text-sm",
         active ? "bg-accent" : "hover:bg-accent",
         count === 0 && !checked && "opacity-50",
       )}
@@ -148,7 +148,7 @@ export function FacetClearRow({
       onMouseEnter={onActivate}
       onClick={onSelect}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium",
+        "flex w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 text-sm font-medium",
         active ? "bg-accent" : "hover:bg-accent",
       )}
     >

@@ -174,7 +174,7 @@ export function ConsolePane({
         >
           {instances.length > 1 ? (
             <Select value={active.name} onValueChange={switchInstance}>
-              <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
+              <SelectTrigger className="h-9 w-auto gap-2 px-3 font-mono text-xs">
                 <Boxes className="size-3.5 text-muted-foreground" />
                 <SelectValue />
               </SelectTrigger>
@@ -316,7 +316,7 @@ function ShellPicker({
   return (
     <SimpleTooltip content="Run each line through a shell so pipes, redirects and builtins work. 'auto' runs it raw - the first word is the binary.">
       <Select value={value} onValueChange={(v) => onChange(v as Shell)}>
-        <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
+        <SelectTrigger className="h-9 w-auto gap-2 px-3 font-mono text-xs">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

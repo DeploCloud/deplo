@@ -118,7 +118,7 @@ export function UploadInput({
         onDrop={onDrop}
         data-active={dragging || undefined}
         className={cn(
-          "group flex min-h-72 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border p-8 text-center transition-colors",
+          "group flex min-h-72 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border p-8 text-center transition-colors",
           dragging && "border-primary bg-primary-wash",
           uploading && "cursor-default opacity-80",
         )}

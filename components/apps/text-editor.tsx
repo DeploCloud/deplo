@@ -101,7 +101,7 @@ export function TextEditor({
   return (
     <div
       ref={hostRef}
-      className="overflow-hidden rounded-lg border border-input"
+      className="overflow-hidden rounded-xl border border-input"
       style={{ minHeight }}
     />
   );

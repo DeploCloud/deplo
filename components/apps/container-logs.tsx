@@ -482,7 +482,7 @@ export function ContainerLogs({
         {toolbar}
         {instances.length > 1 ? (
           <Select value={active.name} onValueChange={switchInstance}>
-            <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
+            <SelectTrigger className="h-9 w-auto gap-2 px-3 font-mono text-xs">
               <Boxes className="size-3.5 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>

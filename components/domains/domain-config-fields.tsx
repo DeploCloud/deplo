@@ -434,7 +434,7 @@ export function DomainConfigFields({
 
       <Accordion type="single" collapsible className="border-t border-border">
         <AccordionItem value="advanced" className="border-none">
-          <AccordionTrigger className="group gap-3 rounded-md py-3 hover:no-underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+          <AccordionTrigger className="group gap-3 rounded-xl py-3 hover:no-underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
             <span className="flex min-w-0 flex-1 items-center gap-3">
               <span className="shrink-0 group-hover:underline">
                 Advanced settings

@@ -520,7 +520,7 @@ function ProjectSectionHeader({
         aria-expanded={open}
         aria-controls={`vars-project-${section.id}`}
         className={cn(
-          "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-3 text-left",
+          "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl py-3 text-left",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         )}
       >
@@ -534,7 +534,7 @@ function ProjectSectionHeader({
         <Bone box loading={loading} className="shrink-0">
           <span
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-md",
+              "flex size-8 shrink-0 items-center justify-center rounded-lg",
               color ? "" : "bg-secondary text-muted-foreground",
             )}
             style={tileStyle}

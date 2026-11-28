@@ -132,7 +132,7 @@ export function ProjectsSection({
                           {envs.map((e) => (
                             <label
                               key={e.id}
-                              className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-accent"
+                              className="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1 text-sm hover:bg-accent"
                             >
                               <Checkbox
                                 checked={scope.envIds.includes(e.id)}
@@ -198,7 +198,7 @@ function ProjectTile({ color }: { color: string | null }) {
   return (
     <span
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-md",
+        "flex size-8 shrink-0 items-center justify-center rounded-lg",
         color ? "" : "bg-secondary text-muted-foreground",
       )}
       style={

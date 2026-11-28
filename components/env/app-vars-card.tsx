@@ -107,7 +107,7 @@ export function AppVarsCard({
           aria-expanded={open}
           aria-controls={bodyId}
           className={cn(
-            "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md text-left",
+            "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl text-left",
             "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           )}
         >

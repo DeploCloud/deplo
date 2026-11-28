@@ -55,11 +55,11 @@ function TemplateTile({ href }: { href: string }) {
     <Link
       href={href}
       className={cn(
-        "group flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
+        "group flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         veil.className,
       )}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground ring-1 ring-border">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground ring-1 ring-border">
         <LayoutTemplate className="size-4.5" />
       </span>
       <span className="min-w-0 flex-1">
@@ -85,7 +85,7 @@ export function SourceMark({
     <span
       className={cn(
         "flex shrink-0 items-center justify-center ring-1 ring-border",
-        size === "lg" ? "size-11 rounded-lg" : "size-9 rounded-md",
+        size === "lg" ? "size-11 rounded-lg" : "size-9 rounded-lg",
       )}
       style={{ backgroundColor: tab.brand.bg, color: tab.brand.fg }}
     >

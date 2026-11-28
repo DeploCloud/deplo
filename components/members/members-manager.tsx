@@ -301,7 +301,7 @@ function MemberCard({
   const granted = member.capabilities.filter((c) => c !== "view").length;
 
   const inner = (
-    <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4 transition-colors group-hover:border-foreground/20">
+    <div className="flex h-full flex-col gap-3 rounded-xl border border-border p-4 transition-colors group-hover:border-foreground/20">
       <div className="flex w-full items-center gap-3">
         {loading ? (
           <Skeleton className="size-8 shrink-0 rounded-full" />
@@ -394,7 +394,7 @@ function MemberCard({
   return (
     <Link
       href={`/settings/members/${member.userId}`}
-      className="group block h-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="group block h-full rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       aria-label={`Manage @${member.username}`}
     >
       {inner}

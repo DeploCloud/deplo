@@ -17,7 +17,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "divide-y divide-border overflow-hidden rounded-lg border border-border bg-card",
+        "divide-y divide-border overflow-hidden rounded-xl border border-border bg-card",
         className,
       )}
     >
@@ -85,7 +85,7 @@ export function NavRow({
 
 export function RowIcon({ icon: Icon }: { icon: NavItem["icon"] }) {
   return (
-    <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-foreground">
+    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-foreground">
       <Icon className="size-[17px]" />
     </span>
   );

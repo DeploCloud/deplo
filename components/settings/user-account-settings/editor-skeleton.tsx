@@ -59,7 +59,7 @@ function SkeletonRow({ button }: { button?: boolean }) {
     <div className={ROW_SHELL}>
       <TextLine box="h-5" bar="h-4 w-36" />
       <Skeleton
-        className={button ? "h-8 w-24 rounded-md" : "h-5 w-9 rounded-full"}
+        className={button ? "h-8 w-24 rounded-full" : "h-5 w-9 rounded-full"}
       />
     </div>
   );

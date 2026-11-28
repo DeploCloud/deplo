@@ -446,7 +446,7 @@ export function CreateDestination({
                     ) : (
                       <>
                         {isInstanceAdmin && (
-                          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
+                          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border p-3 text-sm">
                             <Checkbox
                               checked={allowPrivate}
                               onCheckedChange={(v) =>

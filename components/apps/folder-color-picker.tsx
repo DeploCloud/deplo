@@ -52,7 +52,7 @@ export function FolderColorPicker({
             aria-label="Default (no colour)"
             aria-pressed={value == null}
             className={cn(
-              "flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition",
+              "flex size-8 cursor-pointer items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition",
               value == null
                 ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
                 : "hover:opacity-80",
@@ -75,7 +75,7 @@ export function FolderColorPicker({
                   color: readableTextColor(c.value),
                 }}
                 className={cn(
-                  "flex size-8 cursor-pointer items-center justify-center rounded-md border border-black/10 transition",
+                  "flex size-8 cursor-pointer items-center justify-center rounded-full border border-black/10 transition",
                   active
                     ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
                     : "hover:opacity-80",
@@ -98,7 +98,7 @@ export function FolderColorPicker({
               value && isHexColor(value) ? normalizeHexColor(value) : "#3b82f6"
             }
             onChange={(e) => commitHex(e.target.value)}
-            className="size-9 shrink-0 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
+            className="size-9 shrink-0 cursor-pointer rounded-full border border-border bg-transparent p-0.5"
           />
           <Input
             id={`${idPrefix}-hex`}
@@ -109,7 +109,7 @@ export function FolderColorPicker({
             aria-invalid={invalid}
           />
           <div
-            className="flex size-9 shrink-0 items-center justify-center rounded-md border border-black/10"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-black/10"
             style={
               value
                 ? { backgroundColor: value, color: readableTextColor(value) }

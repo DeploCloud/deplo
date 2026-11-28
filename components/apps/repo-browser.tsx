@@ -260,7 +260,7 @@ export function RepoBrowser({
         branch={
           <Bone box>
             <Select value={initial.branch}>
-              <SelectTrigger className="h-8 w-auto max-w-full min-w-44 bg-background">
+              <SelectTrigger className="h-8 w-auto max-w-full min-w-44">
                 <span className="flex! min-w-0 items-center gap-2">
                   <GitBranch className="size-4 shrink-0 text-muted-foreground" />
                   {initial.branch}
@@ -320,7 +320,7 @@ export function RepoBrowser({
           <Select value={branch} onValueChange={setBranch}>
             <SelectTrigger
               id={branchFieldId}
-              className="h-8 w-auto max-w-full min-w-44 bg-background"
+              className="h-8 w-auto max-w-full min-w-44"
             >
               <span className="flex! min-w-0 items-center gap-2">
                 <GitBranch className="size-4 shrink-0 text-muted-foreground" />
@@ -462,7 +462,7 @@ export function RepoBrowser({
                 onClick={() => pickRepo(repo)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                  "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
                   isSelected && "bg-accent",
                 )}
               >

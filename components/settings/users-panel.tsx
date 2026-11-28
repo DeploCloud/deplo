@@ -629,7 +629,7 @@ function UserRow({
       ) : (
         <div
           className={cn(
-            "flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent",
+            "flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent",
             user.suspended && "opacity-60",
           )}
         >

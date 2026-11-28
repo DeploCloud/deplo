@@ -209,7 +209,7 @@ export function ClusterCard({
 
   const identity = (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
         <Network className="size-4.5" />
       </div>
       <div className="min-w-0">

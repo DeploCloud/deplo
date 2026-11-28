@@ -53,7 +53,7 @@ export function DateRangeFilter({
           aria-label="Filter by date"
           title={`Date: ${summary(params)}`}
           className={cn(
-            "flex h-9 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors max-md:h-11 max-md:text-[15px]",
+            "flex h-9 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-transparent bg-field px-3 text-sm transition-colors max-md:h-11 max-md:text-[15px]",
             "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             on
               ? "border-primary/60 bg-primary-wash text-foreground"
@@ -72,7 +72,7 @@ export function DateRangeFilter({
               key={r.value}
               type="button"
               onClick={() => onChange({ range: r.value, from: "", to: "" })}
-              className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-accent"
+              className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 text-sm font-medium hover:bg-accent"
             >
               <span className="flex size-4 shrink-0 items-center justify-center">
                 {params.range === r.value && !params.from && !params.to && (

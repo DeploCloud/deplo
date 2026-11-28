@@ -222,7 +222,7 @@ export function ProjectContainerCard({
   const tile = (
     <div
       className={cn(
-        "flex size-9 shrink-0 items-center justify-center rounded-md",
+        "flex size-9 shrink-0 items-center justify-center rounded-lg",
         shownColor ? "" : "bg-secondary text-muted-foreground",
       )}
       style={tileStyle}
@@ -387,7 +387,7 @@ export function ContainerCardSkeleton({
   view?: "grid" | "list";
   count?: string;
 }) {
-  const tile = <Skeleton className="size-9 shrink-0 rounded-md" />;
+  const tile = <Skeleton className="size-9 shrink-0 rounded-lg" />;
   const text = (
     <>
       <span className="block truncate font-medium">

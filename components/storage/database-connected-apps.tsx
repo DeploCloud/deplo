@@ -232,7 +232,7 @@ export function DatabaseConnectedAppsSkeleton() {
       <CardContent>
         <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
           <div className="flex items-center gap-3 px-3 py-2.5">
-            <Skeleton className="size-7 shrink-0 rounded-md" />
+            <Skeleton className="size-7 shrink-0 rounded-lg" />
             <div className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">
                 <Bone>app-name</Bone>

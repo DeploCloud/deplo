@@ -396,7 +396,7 @@ export function ShareFolderDialog({
                         type="button"
                         key={c.userId}
                         onClick={() => pickCandidate(c)}
-                        className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
+                        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left hover:border-border hover:bg-accent"
                       >
                         <UserAvatar
                           name={c.name}
@@ -477,7 +477,7 @@ export function ShareFolderDialog({
                         <label
                           key={cap}
                           htmlFor={id}
-                          className="flex cursor-pointer items-start gap-3 rounded-md px-1 py-1.5 hover:bg-accent"
+                          className="flex cursor-pointer items-start gap-3 rounded-xl px-2 py-1.5 hover:bg-accent"
                         >
                           <input
                             id={id}

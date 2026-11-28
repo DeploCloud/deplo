@@ -52,7 +52,7 @@ export function KindCard({
     >
       <span
         className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-md border",
+          "flex size-7 shrink-0 items-center justify-center rounded-lg border",
           selected
             ? "border-primary/40 bg-background text-primary"
             : "border-border bg-surface-strong text-muted-foreground",
@@ -106,7 +106,7 @@ export function EmptyPicker({
               key={kind}
               type="button"
               onClick={() => onAdd(kind)}
-              className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-surface"
+              className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-surface"
             >
               <span className="flex items-center gap-2">
                 <Icon className="size-4 text-muted-foreground" />
@@ -130,7 +130,7 @@ export function EmptyPicker({
       <button
         type="button"
         onClick={() => onAdd("host")}
-        className="mt-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-left transition-colors hover:bg-surface"
+        className="mt-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2 text-left transition-colors hover:bg-surface"
       >
         <FolderSymlink className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="text-xs font-medium">{VOLUME_KINDS.host.label}</span>

@@ -189,7 +189,7 @@ export function EnvironmentSwitcher({
                       <button
                         type="button"
                         aria-label={`Manage ${e.name}`}
-                        className="flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus:bg-accent data-[state=open]:bg-accent"
+                        className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus:bg-accent data-[state=open]:bg-accent"
                       >
                         <MoreHorizontal className="size-4" />
                       </button>

@@ -44,7 +44,7 @@ export function ChoiceCard({
     >
       <span
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors",
+          "flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors",
           selected
             ? "border-primary/40 bg-background text-primary"
             : "border-border bg-surface-strong text-muted-foreground",

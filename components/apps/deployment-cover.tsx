@@ -60,7 +60,7 @@ export function DeploymentCover({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="block overflow-hidden rounded-md border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block overflow-hidden rounded-lg border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

@@ -93,7 +93,7 @@ export function RecoveryKeyNudge({
         })
       }
       className={cn(
-        "flex w-full items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left transition-colors hover:bg-[var(--warning)]/10",
+        "flex w-full items-start gap-2 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left transition-colors hover:bg-[var(--warning)]/10",
         className,
       )}
     >

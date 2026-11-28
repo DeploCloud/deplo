@@ -81,7 +81,7 @@ export function WelcomeCelebration({
                 href={DISCORD_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="flex flex-col gap-2 rounded-lg border border-border p-4 transition-colors hover:bg-accent"
+                className="flex flex-col gap-2 rounded-xl border border-border p-4 transition-colors hover:bg-accent"
               >
                 <ChannelMark channel="discord" />
                 <span className="flex items-center gap-1 text-sm font-medium">
@@ -95,7 +95,7 @@ export function WelcomeCelebration({
               <Link
                 href="/settings/security"
                 onClick={() => setOpen(false)}
-                className="flex flex-col gap-2 rounded-lg border border-border p-4 transition-colors hover:bg-accent"
+                className="flex flex-col gap-2 rounded-xl border border-border p-4 transition-colors hover:bg-accent"
               >
                 <span className="flex size-9 items-center justify-center rounded-lg bg-muted">
                   <ShieldCheck className="size-5 text-foreground" />
@@ -110,7 +110,7 @@ export function WelcomeCelebration({
               href={docsUrl("docs.home")}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm transition-colors hover:bg-accent"
+              className="flex items-center gap-2 rounded-full border border-border px-4 py-2.5 text-sm transition-colors hover:bg-accent"
             >
               <BookOpen className="size-4 text-muted-foreground" />
               Read the docs

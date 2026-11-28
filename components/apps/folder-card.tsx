@@ -443,7 +443,7 @@ export function FolderCard({
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
           <div
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-md",
+              "flex size-9 shrink-0 items-center justify-center rounded-lg",
               tileClass,
             )}
             style={tileStyle}
@@ -470,7 +470,7 @@ export function FolderCard({
           <div className="flex min-w-0 items-center gap-3">
             <div
               className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-md",
+                "flex size-9 shrink-0 items-center justify-center rounded-lg",
                 tileClass,
               )}
               style={tileStyle}

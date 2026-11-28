@@ -64,7 +64,7 @@ export function RoleSelect({
       <div role="group" aria-label="Role" className="space-y-1.5">
         {isCustom && value === null && (
           <div className="flex w-full items-center gap-3 rounded-lg border border-primary bg-primary-wash px-3 py-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-wash-strong text-primary">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-wash-strong text-primary">
               <SlidersHorizontal className="size-4" aria-hidden />
             </span>
             <span className="min-w-0 flex-1">
@@ -88,7 +88,7 @@ export function RoleSelect({
               aria-pressed={selected}
               onClick={() => onChange(role.id)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                 selected
                   ? "border-primary bg-primary-wash"
                   : "border-border hover:bg-accent",
@@ -96,7 +96,7 @@ export function RoleSelect({
             >
               <span
                 className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-md",
+                  "flex size-8 shrink-0 items-center justify-center rounded-lg",
                   selected
                     ? "bg-primary-wash-strong text-primary"
                     : "bg-muted text-muted-foreground",

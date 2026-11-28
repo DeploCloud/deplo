@@ -483,7 +483,7 @@ function KindTile({
 }) {
   const brand = CHANNEL_BRAND[kind];
   const base =
-    "rounded-lg border p-3 text-left transition-colors hover:border-ring hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "rounded-xl border p-3 text-left transition-colors hover:border-ring hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   if (featured)
     return (
       <button
@@ -551,7 +551,7 @@ function ChannelRow({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         <ChannelMark channel={instance.kind} />
         <span className="min-w-0 flex-1">

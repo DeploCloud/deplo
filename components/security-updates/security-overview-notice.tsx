@@ -69,7 +69,7 @@ export function SecurityOverviewNotice({
               <li key={`${s.kind}:${s.id}`}>
                 <Link
                   href={subjectHref(s)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background py-1 pr-2.5 pl-1.5 text-xs hover:bg-surface"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background py-1 pr-2.5 pl-1.5 text-xs hover:bg-surface"
                 >
                   <SubjectLogo subject={s} size={18} />
                   <span className="font-medium">{s.name}</span>

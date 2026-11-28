@@ -35,16 +35,16 @@ export function LogPaneSkeleton() {
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Skeleton className="size-4" />
         <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-9 w-36 rounded-md" />
+        <Skeleton className="h-9 w-36 rounded-full" />
         <Skeleton className="h-4 w-20 rounded-full" />
-        <Skeleton className="h-9 w-full max-w-100 rounded-md" />
-        <Skeleton className="h-9 w-36 rounded-md" />
+        <Skeleton className="h-9 w-full max-w-100 rounded-full" />
+        <Skeleton className="h-9 w-36 rounded-full" />
         <div className="ml-auto flex items-center gap-1">
-          <Skeleton className="size-9 rounded-md" />
-          <Skeleton className="size-9 rounded-md" />
-          <Skeleton className="size-9 rounded-md" />
-          <Skeleton className="size-9 rounded-md" />
-          <Skeleton className="size-9 rounded-md" />
+          <Skeleton className="size-9 rounded-full" />
+          <Skeleton className="size-9 rounded-full" />
+          <Skeleton className="size-9 rounded-full" />
+          <Skeleton className="size-9 rounded-full" />
+          <Skeleton className="size-9 rounded-full" />
         </div>
       </div>
 

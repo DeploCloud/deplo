@@ -163,7 +163,7 @@ export function MobileMorePanel({
                 key={i.href}
                 href={i.href}
                 onClick={onClose}
-                className="flex h-14 items-center gap-2.5 rounded-lg border border-border bg-card px-3.5 font-medium"
+                className="flex h-14 items-center gap-2.5 rounded-full border border-border bg-card px-3.5 font-medium"
               >
                 <i.icon className="size-[19px] shrink-0 text-muted-foreground" />
                 <span className="truncate">{i.label}</span>
