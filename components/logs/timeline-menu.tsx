@@ -122,7 +122,7 @@ export function TimelineMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-1">
+      <PopoverContent align="start" className="w-64 p-1.5">
         {ranges.map((range) => {
           const on = range.minutes === current.minutes;
           return (
@@ -132,7 +132,7 @@ export function TimelineMenu({
               onClick={() =>
                 onChange({ ...value, sinceMinutes: range.minutes })
               }
-              className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-medium hover:bg-accent"
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium hover:bg-accent"
             >
               <span className="flex size-4 shrink-0 items-center justify-center">
                 {on && <Check className="size-3.5" />}
@@ -142,9 +142,9 @@ export function TimelineMenu({
           );
         })}
 
-        <div className="my-1 h-px bg-border" />
+        <div className="-mx-1.5 my-1.5 h-px bg-border" />
 
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
           <span>Show timestamps</span>
           <Switch
             checked={value.timestamps}

@@ -139,7 +139,7 @@ export function TimezonePicker({
             className="h-10 border-0 px-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
-        <div ref={listRef} className="max-h-72 overflow-y-auto p-1">
+        <div ref={listRef} className="max-h-72 overflow-y-auto p-1.5">
           {matches.length === 0 ? (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">
               No timezone matches that
@@ -153,7 +153,7 @@ export function TimezonePicker({
                 onClick={() => pick(zone)}
                 onMouseEnter={() => setActive(i)}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
+                  "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm",
                   i === active ? "bg-accent text-accent-foreground" : "",
                 )}
               >

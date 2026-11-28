@@ -51,14 +51,14 @@ export function FacetSection({
   const Icon = facet.icon;
   const noun = people ? "people" : `${facet.label.toLowerCase()}s`;
   return (
-    <div className="px-1 pt-1 pb-2">
-      <p className="flex items-center gap-2 px-2 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
+    <div className="px-1.5 pt-1.5 pb-2">
+      <p className="flex items-center gap-2 px-3 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
         {Icon && <Icon className="size-3.5" />}
         {facet.label}
       </p>
       {searchable && (
-        <div className="relative px-1 pb-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative pb-1.5">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -77,7 +77,7 @@ export function FacetSection({
         className={people ? "max-h-[8.5rem]" : undefined}
         empty={
           ordered.length === 0 && (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+            <p className="px-3 py-2 text-sm text-muted-foreground">
               {people ? "No one matches." : "Nothing matches."}
             </p>
           )

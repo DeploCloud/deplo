@@ -145,7 +145,7 @@ export function FacetCombobox<T>({
       </PopoverAnchor>
       <PopoverContent
         align="start"
-        className="min-w-64 p-1"
+        className="min-w-64 p-1.5"
         style={{ width: "var(--radix-popper-anchor-width)" }}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
@@ -173,7 +173,7 @@ export function FacetCombobox<T>({
             active={activeIndex === 0}
             onActivate={() => setActive(0)}
           />
-          <div aria-hidden className="my-1 h-px bg-border" />
+          <div aria-hidden className="-mx-1.5 my-1.5 h-px bg-border" />
           <FacetOptionList
             options={shownOptions}
             values={values}
@@ -185,7 +185,7 @@ export function FacetCombobox<T>({
             onActivate={setActive}
             empty={
               shownOptions.length === 0 && (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                <p className="px-3 py-2 text-xs text-muted-foreground">
                   No match for “{query.trim()}”.
                 </p>
               )

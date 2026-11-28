@@ -48,13 +48,13 @@ export function FacetMenu<T>({
           <ChevronDown className="ml-auto size-4 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-1">
+      <PopoverContent align="start" className="w-64 p-1.5">
         <FacetClearRow
           label={facet.allLabel}
           on={on}
           onSelect={() => onChange([])}
         />
-        <div className="my-1 h-px bg-border" />
+        <div className="-mx-1.5 my-1.5 h-px bg-border" />
         <FacetOptionList
           options={facet.options}
           values={values}
