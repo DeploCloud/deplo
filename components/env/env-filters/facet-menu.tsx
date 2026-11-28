@@ -35,7 +35,7 @@ export function FacetMenu<T>({
           aria-label={`Filter by ${facet.label.toLowerCase()}`}
           title={facetTitle(facet, values)}
           className={cn(
-            "flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-full border border-transparent bg-field px-3 text-sm transition-colors max-md:h-11 max-md:text-[15px]",
+            "flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg border border-transparent bg-field px-3 text-sm transition-colors max-md:h-11 max-md:text-[15px]",
             "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-50",
             on
@@ -48,13 +48,13 @@ export function FacetMenu<T>({
           <ChevronDown className="ml-auto size-4 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-1.5">
+      <PopoverContent align="start" className="w-64 p-1">
         <FacetClearRow
           label={facet.allLabel}
           on={on}
           onSelect={() => onChange([])}
         />
-        <div className="-mx-1.5 my-1.5 h-px bg-border" />
+        <div className="-mx-1 my-1 h-px bg-border" />
         <FacetOptionList
           options={facet.options}
           values={values}

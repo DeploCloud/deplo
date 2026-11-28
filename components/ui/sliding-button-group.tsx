@@ -25,12 +25,12 @@ export function SlidingButtonGroup({
       ref={ref}
       role="group"
       className={cn(
-        "relative isolate flex items-center gap-0.5 rounded-full border border-border p-0.5 [&_button]:relative [&_button]:z-10",
+        "relative isolate flex items-center gap-0.5 rounded-lg border border-border p-0.5 [&_button]:relative [&_button]:z-10",
         className,
       )}
       {...props}
     >
-      <SlidingBackground rect={rect} className="rounded-full bg-secondary" />
+      <SlidingBackground rect={rect} className="rounded-md bg-secondary" />
       {children}
     </div>
   );

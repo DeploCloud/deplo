@@ -271,11 +271,11 @@ export function Combobox<T>({
               style={{ left: rect.left, top: rect.top, width: rect.width }}
             >
               {filtered.length === 0 ? (
-                <p className="px-4.5 py-3.5 text-xs text-muted-foreground">
+                <p className="px-3.5 py-3 text-xs text-muted-foreground">
                   {emptyLabel(items.length > 0)}
                 </p>
               ) : (
-                <ul className="max-h-72 overflow-auto p-1.5">
+                <ul className="max-h-72 overflow-auto p-1">
                   {filtered.map((item, i) => {
                     if (selectable && !selectable(item))
                       return (
@@ -297,7 +297,7 @@ export function Combobox<T>({
                             choose(item);
                           }}
                           className={cn(
-                            "w-full space-y-0.5 rounded-xl px-3 py-2 text-left",
+                            "w-full space-y-0.5 rounded-md px-2.5 py-2 text-left",
                             trailing && "pr-9",
                             i === activeIndex
                               ? "bg-accent"

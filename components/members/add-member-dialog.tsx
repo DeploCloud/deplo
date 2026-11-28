@@ -221,7 +221,7 @@ export function AddMemberDialog({
                       type="button"
                       key={u.userId}
                       onClick={() => setPicked(u)}
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-left hover:border-border hover:bg-accent"
+                      className="flex w-full cursor-pointer items-center gap-3 rounded-md border border-transparent px-3 py-2 text-left hover:border-border hover:bg-accent"
                     >
                       <UserAvatar
                         name={u.name}

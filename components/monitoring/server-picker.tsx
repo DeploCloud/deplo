@@ -64,7 +64,7 @@ export function ServerPicker({
               className="h-10 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <CommandList className="max-h-72 p-1.5">
+          <CommandList className="max-h-72 p-1">
             <CommandPrimitive.Empty className="py-6 text-center text-sm text-muted-foreground">
               No server found
             </CommandPrimitive.Empty>

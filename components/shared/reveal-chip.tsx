@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 export const REVEAL_MASK = "••••••••••••";
 
 const OUTER =
-  "relative block h-7 w-full rounded-full align-middle ring-1 ring-inset";
+  "relative block h-7 w-full rounded-md align-middle ring-1 ring-inset";
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 const TOGGLE =
   "group cursor-pointer text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
@@ -146,7 +146,7 @@ export function RevealChip({
       <button
         {...toggleProps}
         className={cn(
-          "relative h-full min-w-0 flex-1 rounded-l-full hover:bg-surface",
+          "relative h-full min-w-0 flex-1 rounded-l-md hover:bg-surface",
           TOGGLE,
           pending && "cursor-progress",
         )}
@@ -197,7 +197,7 @@ function CopySlot({
       onClick={copy}
       disabled={busy}
       aria-label={label}
-      className="flex h-full shrink-0 cursor-pointer items-center rounded-r-full px-2 text-muted-foreground/60 transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-progress"
+      className="flex h-full shrink-0 cursor-pointer items-center rounded-r-md px-2 text-muted-foreground/60 transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-progress"
     >
       <span
         key={phase}

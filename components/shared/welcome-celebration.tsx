@@ -110,7 +110,7 @@ export function WelcomeCelebration({
               href={docsUrl("docs.home")}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-2 rounded-full border border-border px-4 py-2.5 text-sm transition-colors hover:bg-accent"
+              className="flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm transition-colors hover:bg-accent"
             >
               <BookOpen className="size-4 text-muted-foreground" />
               Read the docs

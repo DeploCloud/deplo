@@ -58,7 +58,7 @@ export function WizardStepper<T extends string>({
     <ol ref={ref} className="relative isolate flex items-center gap-1">
       <SlidingBackground
         rect={rect}
-        className={cn("rounded-full bg-secondary", SLIDE)}
+        className={cn("rounded-md bg-secondary", SLIDE)}
       />
       {steps.map((s, i) => {
         const done = i < at;
@@ -82,7 +82,7 @@ export function WizardStepper<T extends string>({
               disabled={!open}
               aria-current={active ? "step" : undefined}
               className={cn(
-                "relative z-10 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                "relative z-10 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                 SLIDE,
                 active

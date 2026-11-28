@@ -118,7 +118,7 @@ export function TeamChecklist({
         teams.map((team) => (
           <label
             key={team.id}
-            className="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 hover:bg-accent"
+            className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 hover:bg-accent"
           >
             <Checkbox
               checked={selected.has(team.id)}

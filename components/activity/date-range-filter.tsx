@@ -53,7 +53,7 @@ export function DateRangeFilter({
           aria-label="Filter by date"
           title={`Date: ${summary(params)}`}
           className={cn(
-            "flex h-9 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-transparent bg-field px-3 text-sm transition-colors max-md:h-11 max-md:text-[15px]",
+            "flex h-9 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-transparent bg-field px-3 text-sm transition-colors max-md:h-11 max-md:text-[15px]",
             "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             on
               ? "border-primary/60 bg-primary-wash text-foreground"
@@ -65,14 +65,14 @@ export function DateRangeFilter({
           <ChevronDown className="ml-auto size-4 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="flex w-auto gap-1.5 p-1.5">
-        <div className="w-40 shrink-0 space-y-0.5 border-r border-border pr-1.5">
+      <PopoverContent align="start" className="flex w-auto gap-1 p-1">
+        <div className="w-40 shrink-0 space-y-0.5 border-r border-border pr-1">
           {[{ value: "", label: ALL_TIME }, ...ACTIVITY_RANGES].map((r) => (
             <button
               key={r.value}
               type="button"
               onClick={() => onChange({ range: r.value, from: "", to: "" })}
-              className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium hover:bg-accent"
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium hover:bg-accent"
             >
               <span className="flex size-4 shrink-0 items-center justify-center">
                 {params.range === r.value && !params.from && !params.to && (

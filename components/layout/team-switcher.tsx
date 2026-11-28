@@ -97,7 +97,7 @@ export function TeamSwitcher({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex cursor-pointer items-center gap-2 rounded-full px-2.5 py-1.5 text-sm hover:bg-accent max-md:h-11 max-md:text-[15px]"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-accent max-md:h-11 max-md:text-[15px]"
           >
             <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="md" />
             <TeamName name={team.name} />
@@ -210,7 +210,7 @@ function TeamRow({
               }}
               aria-label={`Settings for ${team.name}`}
               className={cn(
-                "cursor-pointer rounded-full p-0.5 text-muted-foreground transition-opacity hover:text-foreground",
+                "cursor-pointer rounded-md p-0.5 text-muted-foreground transition-opacity hover:text-foreground",
                 !active &&
                   "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
               )}

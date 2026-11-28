@@ -34,7 +34,7 @@ export function ClusterAnswerField({
       aria-pressed={way === value}
       onClick={() => onWay(value)}
       className={cn(
-        "flex-1 rounded-full px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50",
+        "flex-1 rounded-md px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50",
         way === value
           ? "text-foreground"
           : "text-muted-foreground hover:text-foreground",

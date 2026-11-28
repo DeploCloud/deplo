@@ -337,7 +337,7 @@ function ShellPicker({
 
 function ModeTabs({ attachable }: { attachable: boolean }) {
   return (
-    <TabsList className="h-9 gap-0 rounded-full border border-border bg-background/60 p-1">
+    <TabsList className="h-9 gap-0 rounded-lg border border-border bg-background/60 p-1">
       <TabsTrigger value="exec" className="px-2.5 py-1 text-xs">
         <SquareTerminal />
         Shell

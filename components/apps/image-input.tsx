@@ -233,20 +233,20 @@ export function ImageInput({
             )}
           >
             {loading && (
-              <div className="flex items-center gap-2 px-4.5 py-3.5 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 px-3.5 py-3 text-xs text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />
                 Searching {mode === "tag" ? "tags" : "registry"}
               </div>
             )}
             {!loading && suggestions.length === 0 && (
-              <div className="px-4.5 py-3.5 text-xs text-muted-foreground">
+              <div className="px-3.5 py-3 text-xs text-muted-foreground">
                 {mode === "tag"
                   ? "No matching tags found."
                   : "No matches on Docker Hub. For other registries, type the full image (e.g. ghcr.io/owner/app) then add a “:” for tags."}
               </div>
             )}
             {suggestions.length > 0 && (
-              <ul className="max-h-72 overflow-auto p-1.5">
+              <ul className="max-h-72 overflow-auto p-1">
                 {suggestions.map((s, i) => (
                   <li key={`${s.kind}:${s.value}`}>
                     <button
@@ -257,7 +257,7 @@ export function ImageInput({
                         choose(s);
                       }}
                       className={cn(
-                        "flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-left text-sm",
+                        "flex w-full items-center justify-between gap-2.5 rounded-md px-2.5 py-2 text-left text-sm",
                         i === highlight
                           ? "bg-accent"
                           : "hover:bg-surface-strong",
@@ -268,7 +268,7 @@ export function ImageInput({
                           {s.data.name}
                         </span>
                         {s.kind === "name" && s.data.official && (
-                          <span className="shrink-0 rounded-full bg-primary-wash-strong px-1.5 text-[10px] font-medium text-primary">
+                          <span className="shrink-0 rounded-sm bg-primary-wash-strong px-1.5 text-[10px] font-medium text-primary">
                             official
                           </span>
                         )}

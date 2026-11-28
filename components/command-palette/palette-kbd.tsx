@@ -50,7 +50,7 @@ export function SearchTrigger({
       }}
       aria-keyshortcuts="Meta+K Control+K"
       aria-label="Search"
-      className="relative flex h-10 w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-full border border-sidebar-border bg-card pl-[11px] text-left text-sm whitespace-nowrap text-muted-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none"
+      className="relative flex h-10 w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg border border-sidebar-border bg-card pl-[11px] text-left text-sm whitespace-nowrap text-muted-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none"
     >
       <Search className="pointer-events-none size-4 shrink-0" />
       <span className={cn(FADE, compact && "opacity-0")}>Search</span>

@@ -85,7 +85,7 @@ export function SecurityAlertPill({ teamId }: { teamId: string }) {
   return (
     <div
       className={cn(
-        "flex h-7 items-center rounded-full text-xs font-medium",
+        "flex h-7 items-center rounded-md text-xs font-medium",
         attacked
           ? "bg-destructive-wash-strong text-destructive"
           : "bg-warning-wash-strong text-warning",
@@ -96,7 +96,7 @@ export function SecurityAlertPill({ teamId }: { teamId: string }) {
           <button
             type="button"
             aria-label={title}
-            className="flex h-full items-center gap-1.5 rounded-l-full pr-1 pl-2.5"
+            className="flex h-full items-center gap-1.5 rounded-l-md pr-1 pl-2"
           >
             <ShieldAlert className="size-3.5" />
             <span className="hidden lg:inline">{title}</span>
@@ -147,7 +147,7 @@ export function SecurityAlertPill({ teamId }: { teamId: string }) {
         type="button"
         aria-label="Dismiss"
         onClick={dismiss}
-        className="flex h-full items-center rounded-r-full pr-2.5 pl-1"
+        className="flex h-full items-center rounded-r-md pr-2 pl-1"
       >
         <X className="size-3.5" />
       </button>

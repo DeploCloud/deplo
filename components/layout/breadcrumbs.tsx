@@ -274,7 +274,7 @@ function Crumb({
         aria-label={home ? segment.name : undefined}
         aria-current={isCurrent ? "page" : undefined}
         className={cn(
-          "flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 font-medium transition-colors hover:bg-surface-strong hover:text-foreground",
+          "flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 font-medium transition-colors hover:bg-surface-strong hover:text-foreground",
           isCurrent ? "text-foreground" : "text-muted-foreground",
         )}
       >
@@ -325,7 +325,7 @@ function SiblingMenu({
           type="button"
           aria-label={`Switch ${segment.name}`}
           className={cn(
-            "flex shrink-0 items-center rounded-full text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            "flex shrink-0 items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
             label ? "px-1 py-0.5 text-muted-foreground" : "p-0.5",
           )}
         >

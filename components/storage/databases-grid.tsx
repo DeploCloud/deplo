@@ -504,7 +504,7 @@ function SortableCard({
       ref={setActivatorNodeRef}
       type="button"
       aria-label="Drag to reorder"
-      className="cursor-grab rounded-full p-1 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing"
+      className="cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing"
       onClick={(e) => e.preventDefault()}
       onKeyDown={keyboardListener as React.KeyboardEventHandler}
       {...attributes}

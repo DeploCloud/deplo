@@ -58,7 +58,7 @@ export function AppContainers({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="-mx-2 inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-surface-strong px-2 py-0.5 text-sm hover:bg-accent"
+        className="-mx-2 inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md bg-surface-strong px-2 py-0.5 text-sm hover:bg-accent"
       >
         <Boxes className="size-3.5 shrink-0" />
         <StatusDot status={summary.dot} className="size-2" />

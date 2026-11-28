@@ -95,7 +95,7 @@ export function TimelineMenu({
       disabled={disabled}
       aria-label="Time range"
       className={cn(
-        "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-transparent bg-field px-3 text-sm transition-colors",
+        "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-transparent bg-field px-3 text-sm transition-colors",
         "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "text-muted-foreground hover:text-foreground",
@@ -122,7 +122,7 @@ export function TimelineMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-1.5">
+      <PopoverContent align="start" className="w-64 p-1">
         {ranges.map((range) => {
           const on = range.minutes === current.minutes;
           return (
@@ -132,7 +132,7 @@ export function TimelineMenu({
               onClick={() =>
                 onChange({ ...value, sinceMinutes: range.minutes })
               }
-              className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium hover:bg-accent"
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium hover:bg-accent"
             >
               <span className="flex size-4 shrink-0 items-center justify-center">
                 {on && <Check className="size-3.5" />}
@@ -142,9 +142,9 @@ export function TimelineMenu({
           );
         })}
 
-        <div className="-mx-1.5 my-1.5 h-px bg-border" />
+        <div className="-mx-1 my-1 h-px bg-border" />
 
-        <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+        <div className="flex items-center justify-between gap-2 px-2.5 py-2 text-sm">
           <span>Show timestamps</span>
           <Switch
             checked={value.timestamps}
@@ -154,7 +154,7 @@ export function TimelineMenu({
         </div>
 
         {value.timestamps && (
-          <div className="flex items-center justify-between gap-2 px-3 pb-1.5 text-sm">
+          <div className="flex items-center justify-between gap-2 px-2.5 pb-1.5 text-sm">
             <span className="text-muted-foreground">Format</span>
             <SlidingButtonGroup aria-label="Timestamp format">
               {(["absolute", "relative"] as const).map((format) => (
@@ -164,7 +164,7 @@ export function TimelineMenu({
                   onClick={() => onChange({ ...value, format })}
                   aria-pressed={value.format === format}
                   className={cn(
-                    "cursor-pointer rounded-full px-2.5 py-0.5 text-xs capitalize",
+                    "cursor-pointer rounded-md px-2.5 py-0.5 text-xs capitalize",
                     value.format === format
                       ? "text-foreground"
                       : "text-muted-foreground hover:text-foreground",

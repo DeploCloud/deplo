@@ -44,9 +44,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
           title: "group-[.toast]:font-medium group-[.toast]:leading-snug",
           icon: "group-[.toast]:mt-0.5",
           actionButton:
-            "group-[.toast]:rounded-full group-[.toast]:bg-primary group-[.toast]:font-medium group-[.toast]:text-primary-foreground",
+            "group-[.toast]:rounded-lg group-[.toast]:bg-primary group-[.toast]:font-medium group-[.toast]:text-primary-foreground",
           cancelButton:
-            "group-[.toast]:rounded-full group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+            "group-[.toast]:rounded-lg group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
       }}
       {...props}

@@ -196,7 +196,7 @@ export function WizardCard({
               <div
                 role="group"
                 aria-label="Deployment actions"
-                className="inline-flex overflow-hidden rounded-full shadow-sm"
+                className="inline-flex overflow-hidden rounded-lg shadow-sm"
               >
                 {nextButton}
                 <DropdownMenu>

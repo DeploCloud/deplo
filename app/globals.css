@@ -297,14 +297,14 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  /* The rounded scale: xl is the card level everywhere, controls and badges are pills. */
+  /* lg is a control (10px), md an item or chip, xl a card, menu or panel, 3xl a dialog. */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: calc(var(--radius) * 1.2);
-  --radius-xl: calc(var(--radius) * 2);
-  --radius-2xl: calc(var(--radius) * 2.4);
-  --radius-3xl: calc(var(--radius) * 2.8);
-  --radius-4xl: calc(var(--radius) * 3.2);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.2);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-3xl: calc(var(--radius) * 2);
+  --radius-4xl: calc(var(--radius) * 2.4);
 
   /* Full-HD tier: the card galleries (Overview, Templates, Apps) only go to
      3 columns at 1920px-wide (Full HD) screens and up; below that they stay at

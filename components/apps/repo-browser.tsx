@@ -462,7 +462,7 @@ export function RepoBrowser({
                 onClick={() => pickRepo(repo)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                  "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
                   isSelected && "bg-accent",
                 )}
               >

@@ -370,7 +370,7 @@ export function RegisterUserWizard({
                                     }))
                                   }
                                   className={cn(
-                                    "rounded-full border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                                    "rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                                     a.role === r
                                       ? "border-primary bg-primary-wash text-foreground"
                                       : "border-border text-muted-foreground hover:bg-accent",

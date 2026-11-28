@@ -132,7 +132,7 @@ export function VersionCombobox({
           </div>
         )}
         {filtered.length > 0 && (
-          <ul className="max-h-72 overflow-auto p-1.5">
+          <ul className="max-h-72 overflow-auto p-1">
             {filtered.map((it, i) => (
               <li key={it.value}>
                 <button
@@ -143,7 +143,7 @@ export function VersionCombobox({
                     choose(it);
                   }}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left font-mono text-xs",
+                    "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left font-mono text-xs",
                     i === activeIndex ? "bg-accent" : "hover:bg-surface-strong",
                   )}
                 >

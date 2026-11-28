@@ -157,7 +157,7 @@ function EnvDraftBody({
                 {sharedVars.map((v) => (
                   <label
                     key={v.id}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 hover:bg-surface"
+                    className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 hover:bg-surface"
                   >
                     <Checkbox
                       checked={picked.includes(v.id)}

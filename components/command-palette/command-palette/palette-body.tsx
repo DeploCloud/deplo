@@ -242,7 +242,7 @@ export function PaletteBody({
         {loading && result === null && (
           <CommandGroup heading="Resources">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="mx-1 my-1 h-9 rounded-xl" />
+              <Skeleton key={i} className="mx-1 my-1 h-9 rounded-md" />
             ))}
           </CommandGroup>
         )}

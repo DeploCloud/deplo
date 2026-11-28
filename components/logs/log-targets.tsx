@@ -129,7 +129,7 @@ function OpenTargetLink({ row }: { row: LogTreeRow }) {
       aria-label={label}
       title={label}
       onMouseDown={(e) => e.stopPropagation()}
-      className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       <ExternalLink className="size-3.5" />
     </Link>

@@ -40,7 +40,7 @@ function FacetGroupHeader({
   const all = options.every((o) => values.includes(o.value));
   const mine = new Set(options.map((o) => o.value));
   return (
-    <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+    <div className="flex items-center gap-2 px-2.5 pt-2 pb-1">
       <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
         {group}
       </span>
@@ -92,7 +92,7 @@ function FacetOptionRow({
       onMouseEnter={onActivate}
       onMouseDown={id ? (e) => e.preventDefault() : undefined}
       className={cn(
-        "flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm",
+        "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm",
         active ? "bg-accent" : "hover:bg-accent",
         count === 0 && !checked && "opacity-50",
       )}
@@ -148,7 +148,7 @@ export function FacetClearRow({
       onMouseEnter={onActivate}
       onClick={onSelect}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium",
+        "flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium",
         active ? "bg-accent" : "hover:bg-accent",
       )}
     >

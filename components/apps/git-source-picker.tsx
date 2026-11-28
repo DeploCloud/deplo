@@ -171,7 +171,7 @@ export function GitSourcePicker({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex min-w-0 items-center gap-2 rounded-full border border-transparent bg-field px-3 py-2 text-left text-sm transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring sm:w-80"
+              className="flex min-w-0 items-center gap-2 rounded-lg border border-transparent bg-field px-3 py-2 text-left text-sm transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring sm:w-80"
             >
               {active ? (
                 <>
