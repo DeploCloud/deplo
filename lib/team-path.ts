@@ -2,6 +2,15 @@ export const TEAM_HEADER = "x-deplo-team";
 export const ACTIVE_TEAM_COOKIE = "deplo_team";
 export const ACTIVE_TEAM_TTL_SECONDS = 60 * 60 * 24 * 365;
 
+/** A request named a team its caller cannot act in: a 403, never a fallback to another team. */
+export class TeamUnavailableError extends Error {
+  readonly status = 403;
+  constructor(message: string) {
+    super(message);
+    this.name = "TeamUnavailableError";
+  }
+}
+
 const FLAT_SEGMENTS = [
   "api",
   "engines",
@@ -78,6 +87,11 @@ export function pickActiveTeam<T extends { id: string; slug: string }>(
 ): T {
   const named = (value: string | null | undefined) =>
     value ? teams.find((t) => t.id === value || t.slug === value) : undefined;
+  // The cookie only remembers a choice and may outlive a membership; a team the request names must be the caller's.
+  if (fromUrl && !named(fromUrl))
+    throw new TeamUnavailableError(
+      `You are not a member of team "${fromUrl}". Ask an admin of that team to add you.`,
+    );
   return named(fromUrl) ?? named(fromCookie) ?? teams[0];
 }
 

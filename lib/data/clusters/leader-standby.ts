@@ -13,11 +13,14 @@ import type { Cluster } from "../../types/cluster";
 import { activityAt, recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
+import { silentFor } from "../../infra/agent-link/registry";
 import { updatingClusterHost } from "./binary-rollout";
 import { reconcileClusterBundles } from "./bundles";
 import { leaderHostOf } from "./host";
 import {
+  SILENT_AFTER_MS,
   __setLeaderBeatClockForTest,
+  beatClusterLeaders,
   forgetHeir,
   leaderNamedRecently,
   nameHeir,
@@ -79,6 +82,19 @@ async function say(cluster: Cluster, message: string): Promise<void> {
 export async function superviseClusterLeader(
   clusterId: string,
 ): Promise<LeaderHandover> {
+  // The watch tick and a missed beat both check: one at a time, or two would count one silence twice.
+  if (supervising.has(clusterId)) return null;
+  supervising.add(clusterId);
+  try {
+    return await supervise(clusterId);
+  } finally {
+    supervising.delete(clusterId);
+  }
+}
+
+const supervising = new Set<string>();
+
+async function supervise(clusterId: string): Promise<LeaderHandover> {
   if (await instanceFrozen()) return null;
   const cluster = await getClusterById(clusterId);
   if (!cluster?.leaderServerId) {
@@ -89,7 +105,10 @@ export async function superviseClusterLeader(
   if (updatingClusterHost(cluster.leaderServerId)) return null;
   // The heir is asked while the leader is: a leader that went silent waits out its link first.
   const [reach, leading] = await Promise.all([
-    clusterLeaderReach(cluster.leaderServerId),
+    // Silent on its link already: asking would only wait out its Hello.
+    silentFor(cluster.leaderServerId, SILENT_AFTER_MS)
+      ? ("away" as const)
+      : clusterLeaderReach(cluster.leaderServerId),
     leadingHeir(cluster),
   ]);
   const answers = reach === "answers";
@@ -146,6 +165,8 @@ export async function superviseClusterLeader(
     }
     nameHeir(clusterId, line.trying.serverId, line.trying.epoch);
     if (!named) {
+      // The word leaves now, not at the next beat.
+      await beatClusterLeaders().catch(() => {});
       const heirName =
         (await getServerById(line.trying.serverId))?.name ?? "A server";
       await say(

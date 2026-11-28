@@ -62,23 +62,22 @@ test("a Dokploy machine Deplo already manages is recognised by its address", asy
   );
 });
 
+// Its own server: a deploy another test file left running dials the shared srv_1 through this stub (the deploy's
+// image sweep, twice, on main's CI at canary.94), so only this machine's dials are counted.
 test("a matched machine is dialed at scan, never assumed from its row", async () => {
   const { servers: serversTable } =
     await import("../../db/schema/control-plane/servers");
   const { eq } = await import("drizzle-orm");
+  const own = await seedSource(db, "dokploy", "dokploy.acme.test", true);
   await db
     .update(serversTable)
-    .set({
-      ip: "dokploy.acme.test",
-      host: "dokploy.acme.test",
-      status: "online",
-      statusCheckedAt: null,
-    })
-    .where(eq(serversTable.id, SERVER_1));
+    .set({ ip: "dokploy.acme.test", status: "online", statusCheckedAt: null })
+    .where(eq(serversTable.id, own));
 
   const dialed: string[] = [];
   const answer = (ok: boolean) =>
     __setAgentConnectorForTest(async (id) => {
+      if (id !== own) return null;
       dialed.push(id);
       if (!ok) throw new Error("14 UNAVAILABLE: No connection established");
       return {
@@ -93,16 +92,15 @@ test("a matched machine is dialed at scan, never assumed from its row", async ()
 
   answer(true);
   const up = await asOwner(() => scanMigrationSource(CONNECT));
-  assert.equal(
-    up.servers.find((s) => s.sourceId === "")!.deploServerOnline,
-    true,
-  );
-  assert.deepEqual(dialed, [SERVER_1], "asked exactly once");
+  const machine = up.servers.find((s) => s.sourceId === "")!;
+  assert.equal(machine.deploServerId, own);
+  assert.equal(machine.deploServerOnline, true);
+  assert.deepEqual(dialed, [own], "asked exactly once");
 
   await db
     .update(serversTable)
     .set({ statusCheckedAt: new Date().toISOString() })
-    .where(eq(serversTable.id, SERVER_1));
+    .where(eq(serversTable.id, own));
   dialed.length = 0;
   answer(false);
   const down = await asOwner(() => scanMigrationSource(CONNECT));
@@ -110,6 +108,7 @@ test("a matched machine is dialed at scan, never assumed from its row", async ()
     down.servers.find((s) => s.sourceId === "")!.deploServerOnline,
     false,
   );
+  assert.deepEqual(dialed, [own]);
 
   __setAgentConnectorForTest();
 });

@@ -54,6 +54,10 @@ import {
 import { restoreTunnelConnectors } from "./dns-providers/tunnels";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { clusters } from "../db/schema/control-plane/clusters";
+import {
+  turnOffExperiments,
+  turnOnExperiments,
+} from "./experiments-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -98,6 +102,7 @@ beforeEach(async () => {
       { id: MATE, teamId: TEAM_A, role: "member" },
     ],
   });
+  await turnOnExperiments(db, "tunnels");
   await seedServer(db);
   await seedApp(db, { id: "prj_1" });
   host = { yaml: STACK, applied: 0 };
@@ -542,4 +547,24 @@ test("a cluster App's domain is never switched by an edit", async () => {
   );
   await as(OWNER, () => updateDomain(dom.id, { proxied: true }));
   assert.equal(recordOf("app.example.com").proxied, false);
+});
+
+test("with the experiment off, a domain cannot ask for a tunnel", async () => {
+  await connect();
+  await turnOffExperiments(db, "tunnels");
+  await assert.rejects(
+    () =>
+      as(OWNER, () => addDomain("prj_1", "app.example.com", { tunnel: true })),
+    /Tunnels are not turned on for this Deplo/,
+  );
+});
+
+test("with the experiment off, an edit cannot move a domain onto a tunnel", async () => {
+  await connect();
+  const dom = await as(OWNER, () => addDomain("prj_1", "app.example.com", {}));
+  await turnOffExperiments(db, "tunnels");
+  await assert.rejects(
+    () => as(OWNER, () => updateDomain(dom.id, { tunnel: true })),
+    /Tunnels are not turned on for this Deplo/,
+  );
 });

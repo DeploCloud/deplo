@@ -20,9 +20,14 @@ export class AgentUnreachableError extends Error {
 
 /** A server that links, whose link stayed away past the wait (ADR-0040). */
 export class AgentOfflineError extends AgentUnreachableError {
-  constructor(serverId: string) {
+  constructor(
+    readonly serverId: string,
+    /** Set when Deplo reaches no server of the server's cluster: the one true reason, in the person's words. */
+    readonly outOfReach?: string,
+  ) {
     super(
-      `server ${serverId} is offline: its agent has not connected for ${LINK_WAIT_MS / 1000} s`,
+      outOfReach ??
+        `server ${serverId} is offline: its agent has not connected for ${LINK_WAIT_MS / 1000} s`,
     );
   }
 }

@@ -12,10 +12,9 @@ import {
 } from "./schema";
 import type { ApiTemplate, CatalogTemplate, TemplateListQuery } from "./types";
 
-const cacheOptions = {
-  cache: "force-cache" as const,
-  next: { revalidate: 3600, tags: ["templates"] },
-} satisfies RequestInit;
+const CATALOG_TTL = 300;
+const FEATURED_TTL = 60;
+const IMAGE_TTL = 3600;
 
 function apiUrl(path: string): string {
   return `${templatesApiBase()}${path}`;
@@ -25,27 +24,37 @@ export function templateAssetUrl(path: string): string {
   return apiUrl(templateAssetPathSchema.parse(path));
 }
 
-async function get(url: string, accept: string, tags?: string[]) {
-  const response = await fetch(url, {
+function get(
+  url: string,
+  accept: string,
+  revalidate = CATALOG_TTL,
+  tags = ["templates"],
+) {
+  return fetch(url, {
     headers: { Accept: accept },
-    ...cacheOptions,
-    ...(tags ? { next: { revalidate: 3600, tags } } : {}),
+    cache: "force-cache",
+    next: { revalidate, tags },
   });
-  return response;
 }
 
-async function fetchJson<T>(path: string, schema: z.ZodType<T>): Promise<T> {
-  const response = await get(apiUrl(path), "application/json");
+async function fetchJson<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  revalidate = CATALOG_TTL,
+): Promise<T> {
+  const response = await get(apiUrl(path), "application/json", revalidate);
   if (!response.ok)
     throw new Error(`Template catalog returned ${response.status}.`);
   return schema.parse(await response.json());
 }
 
 async function fetchText(path: string, slug: string): Promise<string> {
-  const response = await get(templateAssetUrl(path), "text/plain", [
-    "templates",
-    `template:${slug}`,
-  ]);
+  const response = await get(
+    templateAssetUrl(path),
+    "text/plain",
+    CATALOG_TTL,
+    ["templates", `template:${slug}`],
+  );
   if (!response.ok)
     throw new Error(`Template catalog returned ${response.status}.`);
   return response.text();
@@ -56,7 +65,11 @@ export async function getTemplates(query: TemplateListQuery = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(parsed))
     if (value !== undefined) params.set(key, String(value));
-  return fetchJson(`/templates?${params}`, templatesResponseSchema);
+  return fetchJson(
+    `/templates?${params}`,
+    templatesResponseSchema,
+    parsed.featured ? FEATURED_TTL : CATALOG_TTL,
+  );
 }
 
 function withAssetUrls(t: ApiTemplate): CatalogTemplate {
@@ -69,6 +82,13 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
       images: variant.images.map(templateAssetUrl),
     })),
   };
+}
+
+export async function listFeaturedTemplates(
+  limit: number,
+): Promise<CatalogTemplate[]> {
+  const page = await getTemplates({ featured: true, limit });
+  return page.data.map(withAssetUrls);
 }
 
 export async function listCatalog(): Promise<CatalogTemplate[]> {
@@ -120,7 +140,7 @@ export async function getTemplateVariant(
 
 export async function templateImageBytes(url: string): Promise<Buffer | null> {
   try {
-    const response = await get(url, "image/webp");
+    const response = await get(url, "image/webp", IMAGE_TTL);
     if (!response.ok) return null;
     const bytes = Buffer.from(await response.arrayBuffer());
     if (!bytes.byteLength || bytes.byteLength > MAX_LOGO_BYTES) return null;

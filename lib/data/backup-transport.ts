@@ -4,6 +4,18 @@ import type { AgentConnection } from "../infra/agent-client/connection";
 import { mapBackupUnsupported } from "../infra/agent-client/errors";
 import { connectBackupAgent } from "../infra/agent-client/preflight";
 import {
+  BACKUP_STORE_FETCH_CAPABILITY,
+  BACKUP_STORE_MEMBER_CAPABILITY,
+  BACKUP_STORE_SEALED_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
+import { memberPair } from "./clusters/member-path";
+import { status as GrpcStatus } from "@grpc/grpc-js";
+import {
+  AgentOfflineError,
+  AgentUnreachableError,
+  toAgentError,
+} from "../infra/agent-client/errors";
+import {
   destinationServerId,
   s3TargetFor,
   storeTargetFor,
@@ -38,8 +50,15 @@ export interface BackupOutcome {
   decryptedSizeBytes: number;
   // How long the App was paused for a consistent volume copy; 0 or absent when it was not.
   heldMs?: number;
+  // Why that pause lasted the whole copy, not only a copy on the App's own disk; empty when it did not.
+  heldWhy?: string;
   sha256: string;
+  // How it reached another server's disk: "direct" (server to server) or "relay" (through Deplo).
+  path?: "direct" | "relay";
 }
+
+// A Postgres base backup or change log goes member to member too; an older agent sends only dumps that way.
+export const BACKUP_MEMBER_ARCHIVE_CAPABILITY = "backup-store.member-archive";
 
 class RelayAborted extends Error {
   constructor() {
@@ -76,6 +95,7 @@ export function backupRequestFor(
     ageRecipient: dest.ageRecipient ?? "",
     streamOut: false,
     archive: target.archive ?? PostgresArchive.POSTGRES_ARCHIVE_NONE,
+    memberFingerprint: "",
   };
 }
 
@@ -99,14 +119,82 @@ export async function backupToDestination(
     });
     const release = abortWith(signal, conn);
     try {
-      return await consumeBackup(conn, req, objectKey);
+      return await consumeBackup(conn, req, objectKey, signal);
     } finally {
       release();
       conn.close();
     }
   }
 
-  return relayBackup(creds, target, objectKey, destServer, req, signal);
+  const direct = await memberBackup(
+    creds,
+    target,
+    objectKey,
+    destServer,
+    req,
+    signal,
+  );
+  if (direct) return direct;
+  return {
+    ...(await relayBackup(creds, target, objectKey, destServer, req, signal)),
+    path: "relay",
+  };
+}
+
+/**
+ * A backup from one cluster member to another's disk goes between them over the cluster's network (ADR-0047);
+ * null when it cannot, before anything was read, and Deplo relays it instead.
+ */
+async function memberBackup(
+  creds: DestinationWithSecrets,
+  target: TransportTarget,
+  objectKey: string,
+  destServer: string,
+  req: BackupRequest,
+  signal?: AbortSignal,
+): Promise<BackupOutcome | null> {
+  const pair = await memberPair(target.serverId, destServer);
+  if (!pair) return null;
+  const { from, to } = pair;
+  const store = storeTargetFor(creds.destination, objectKey);
+  const sink = await connectBackupAgent(destServer, { store: true });
+  try {
+    if (
+      !(await sink.hello()).capabilities?.includes(
+        BACKUP_STORE_MEMBER_CAPABILITY,
+      )
+    )
+      return null;
+    await sink.expectClusterBackup(store, from);
+  } finally {
+    sink.close();
+  }
+  const src = await connectBackupAgent(target.serverId, {
+    store: true,
+    postgresArchive: !!target.archive,
+  });
+  const release = abortWith(signal, src);
+  try {
+    const caps = (await src.hello()).capabilities ?? [];
+    if (
+      !caps.includes(BACKUP_STORE_MEMBER_CAPABILITY) ||
+      (target.archive && !caps.includes(BACKUP_MEMBER_ARCHIVE_CAPABILITY))
+    )
+      return null;
+    const out = await consumeBackup(
+      src,
+      { ...req, store, s3: undefined, memberFingerprint: to },
+      objectKey,
+      signal,
+    );
+    if (out.path === undefined) return null;
+    return out;
+  } catch (e) {
+    throw lostServer(e, target.serverId);
+  } finally {
+    release();
+    src.close();
+  }
 }
 
 function abortWith(
@@ -129,9 +217,10 @@ async function consumeBackup(
   conn: AgentConnection,
   req: BackupRequest,
   objectKey: string,
+  signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   let result: BackupOutcome | null = null;
-  for await (const ev of conn.backup(req)) {
+  for await (const ev of conn.backup(req, signal)) {
     if (ev.result) {
       result = {
         ok: ev.result.ok,
@@ -140,7 +229,11 @@ async function consumeBackup(
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
         decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
         heldMs: Number(ev.result.heldMs ?? 0),
+        heldWhy: ev.result.heldWhy ?? "",
         sha256: ev.result.sha256 ?? "",
+        ...(ev.result.path === "direct" || ev.result.path === "relay"
+          ? { path: ev.result.path }
+          : {}),
       };
     }
   }
@@ -172,6 +265,17 @@ function digestMismatch(
         `but ${landed.bytesWritten} landed.`;
 }
 
+// A server whose link drops mid-send is offline, by name: execute-backup says whether it is the source or the
+// destination (eu, 24 Nov 2026: a cut destination read "This server is offline").
+function lostServer(e: unknown, serverId: string): unknown {
+  const err = toAgentError(e);
+  return err instanceof AgentUnreachableError &&
+    !(err instanceof AgentOfflineError) &&
+    err.code === GrpcStatus.UNAVAILABLE
+    ? new AgentOfflineError(serverId)
+    : e;
+}
+
 async function relayBackup(
   creds: DestinationWithSecrets,
   target: TransportTarget,
@@ -188,6 +292,12 @@ async function relayBackup(
   });
   let sink: AgentConnection | null = null;
   let release = abortWith(signal, src);
+  // Both ends stop together: on a cancel, and whenever either one ends first (eu, 24 Nov 2026: a canceled
+  // relayed backup went on copying for 2 minutes and nearly filled its destination).
+  const stop = new AbortController();
+  const stopBoth = () => stop.abort();
+  if (signal?.aborted) stop.abort();
+  else signal?.addEventListener("abort", stopBoth, { once: true });
   try {
     sink = await connectBackupAgent(destServer, { store: true });
     release();
@@ -195,38 +305,58 @@ async function relayBackup(
     const source: { result: BackupOutcome | null } = { result: null };
 
     const bytes = (async function* () {
-      for await (const ev of src.backup({
-        ...base,
-        streamOut: true,
-        s3: undefined,
-      })) {
-        if (ev.result) {
-          source.result = {
-            ok: ev.result.ok,
-            error: ev.result.error,
-            objectKey,
-            sizeBytes: Number(ev.result.sizeBytes ?? 0),
-            decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
-            heldMs: Number(ev.result.heldMs ?? 0),
-            sha256: ev.result.sha256 ?? "",
-          };
-          if (!ev.result.ok) throw new RelayAborted();
-          continue;
+      try {
+        for await (const ev of src.backup(
+          {
+            ...base,
+            streamOut: true,
+            s3: undefined,
+          },
+          stop.signal,
+        )) {
+          if (ev.result) {
+            source.result = {
+              ok: ev.result.ok,
+              error: ev.result.error,
+              objectKey,
+              sizeBytes: Number(ev.result.sizeBytes ?? 0),
+              decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+              heldMs: Number(ev.result.heldMs ?? 0),
+              heldWhy: ev.result.heldWhy ?? "",
+              sha256: ev.result.sha256 ?? "",
+            };
+            if (!ev.result.ok) throw new RelayAborted();
+            continue;
+          }
+          if (ev.data && ev.data.length) yield Buffer.from(ev.data);
         }
-        if (ev.data && ev.data.length) yield Buffer.from(ev.data);
+      } catch (e) {
+        throw lostServer(e, target.serverId);
       }
       if (!source.result) throw new RelayAborted();
     })();
 
+    // A cut send ends like a whole one on the wire (an http2 cancel half-closes first): the destination keeps only what
+    // the source's own size and digest name (eu, 24 Nov 2026: 184 bytes of a failed backup were kept).
+    const sealed = (await sink.hello()).capabilities?.includes(
+      BACKUP_STORE_SEALED_CAPABILITY,
+    );
     let landed: Awaited<ReturnType<AgentConnection["writeStoreFile"]>>;
     try {
       landed = await sink.writeStoreFile(
         storeTargetFor(dest, objectKey),
         false,
         bytes,
+        stop.signal,
+        sealed
+          ? () => ({
+              sizeBytes: source.result?.sizeBytes ?? -1,
+              sha256: source.result?.sha256 ?? "",
+            })
+          : undefined,
       );
     } catch (e) {
-      if (!(e instanceof RelayAborted)) throw e;
+      if (!(e instanceof RelayAborted)) throw lostServer(e, destServer);
       return (
         source.result ?? {
           ok: false,
@@ -241,9 +371,14 @@ async function relayBackup(
 
     const produced = source.result;
     if (!produced) {
+      // The destination stopped taking it first (eu, 23 Nov 2026: a full disk): the source's copy is ended now, and
+      // the App it paused runs again, rather than waiting for its stream to stall.
+      await bytes.return(undefined).catch(() => {});
       return {
         ok: false,
-        error: "the agent ended the backup without a result",
+        error: landed.ok
+          ? "the agent ended the backup without a result"
+          : `the destination server stopped taking the backup: ${landed.error || "it gave no reason"}`,
         objectKey,
         sizeBytes: 0,
         decryptedSizeBytes: 0,
@@ -264,6 +399,7 @@ async function relayBackup(
         sizeBytes: 0,
         decryptedSizeBytes: 0,
         sha256: "",
+        heldMs: produced.heldMs,
       };
     }
     const mismatch = digestMismatch(produced, landed);
@@ -284,6 +420,7 @@ async function relayBackup(
         sizeBytes: 0,
         decryptedSizeBytes: 0,
         sha256: "",
+        heldMs: produced.heldMs,
       };
     }
     return {
@@ -293,9 +430,12 @@ async function relayBackup(
       sizeBytes: landed.bytesWritten,
       decryptedSizeBytes: produced.decryptedSizeBytes,
       heldMs: produced.heldMs ?? 0,
+      heldWhy: produced.heldWhy ?? "",
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
+    stop.abort();
+    signal?.removeEventListener("abort", stopBoth);
     release();
     sink?.close();
     src.close();
@@ -322,7 +462,15 @@ export function restoreRequestFor(
     ageIdentity: creds.ageIdentity,
     expectedSha256,
     fromReplica: false,
+    memberFingerprint: "",
   };
+}
+
+export interface RestoreOutcome {
+  ok: boolean;
+  error: string;
+  /** How a backup kept on another server's disk reached it: "direct" (server to server) or "relay" (through Deplo). */
+  path?: "direct" | "relay";
 }
 
 export async function restoreFromDestination(
@@ -330,7 +478,7 @@ export async function restoreFromDestination(
   target: TransportTarget,
   objectKey: string,
   expectedSha256 = "",
-): Promise<{ ok: boolean; error: string }> {
+): Promise<RestoreOutcome> {
   const dest = creds.destination;
   const destServer = destinationServerId(dest, target.serverId);
 
@@ -350,6 +498,88 @@ export async function restoreFromDestination(
     }
   }
 
+  const direct = await memberRestore(
+    creds,
+    target,
+    objectKey,
+    expectedSha256,
+    destServer,
+  );
+  if (direct) return direct;
+  return {
+    ...(await relayRestore(
+      creds,
+      target,
+      objectKey,
+      expectedSha256,
+      destServer,
+    )),
+    path: "relay",
+  };
+}
+
+/**
+ * A restore on one cluster member from a backup another member keeps reads it from that member over the cluster's
+ * network (ADR-0043); null when it cannot, before anything was read, and Deplo relays it instead.
+ */
+async function memberRestore(
+  creds: DestinationWithSecrets,
+  target: TransportTarget,
+  objectKey: string,
+  expectedSha256: string,
+  destServer: string,
+): Promise<RestoreOutcome | null> {
+  const pair = await memberPair(target.serverId, destServer);
+  if (!pair) return null;
+  const store = storeTargetFor(creds.destination, objectKey);
+  const holder = await connectBackupAgent(destServer, { store: true });
+  try {
+    if (
+      !(await holder.hello()).capabilities?.includes(
+        BACKUP_STORE_FETCH_CAPABILITY,
+      )
+    )
+      return null;
+    await holder.expectClusterFetch(store, pair.from);
+  } finally {
+    holder.close();
+  }
+  const workload = await connectBackupAgent(target.serverId, {
+    store: true,
+    redisAof: isRedis(target),
+    postgresArchive: isBaseBackupKey(objectKey),
+  });
+  try {
+    if (
+      !(await workload.hello()).capabilities?.includes(
+        BACKUP_STORE_FETCH_CAPABILITY,
+      )
+    )
+      return null;
+    const req = restoreRequestFor(creds, target, objectKey, expectedSha256);
+    const out = await consumeRestore(
+      workload.restore({
+        ...req,
+        store,
+        s3: undefined,
+        memberFingerprint: pair.to,
+      }),
+    );
+    if (out.path === undefined) return null;
+    return out;
+  } finally {
+    workload.close();
+  }
+}
+
+async function relayRestore(
+  creds: DestinationWithSecrets,
+  target: TransportTarget,
+  objectKey: string,
+  expectedSha256: string,
+  destServer: string,
+): Promise<RestoreOutcome> {
+  const dest = creds.destination;
   const src = await connectBackupAgent(destServer, { store: true });
   let workload: AgentConnection | null = null;
   try {
@@ -409,14 +639,21 @@ export async function openUploadRestore(
 
 async function consumeRestore(
   events: AsyncGenerator<
-    { result?: { ok: boolean; error: string } },
+    { result?: { ok: boolean; error: string; path?: string } },
     void,
     unknown
   >,
-): Promise<{ ok: boolean; error: string }> {
-  let result: { ok: boolean; error: string } | null = null;
+): Promise<RestoreOutcome> {
+  let result: RestoreOutcome | null = null;
   for await (const ev of events) {
-    if (ev.result) result = { ok: ev.result.ok, error: ev.result.error };
+    if (ev.result)
+      result = {
+        ok: ev.result.ok,
+        error: ev.result.error,
+        ...(ev.result.path === "direct" || ev.result.path === "relay"
+          ? { path: ev.result.path }
+          : {}),
+      };
   }
   return (
     result ?? {

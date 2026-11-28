@@ -55,6 +55,8 @@ export interface ClusterReplicaTable {
     slug: string;
     volumeNames: string[];
     includeFiles: boolean;
+    /** Why the member keeps its copy whole and idle for now (the copy queue); empty or absent receives. */
+    hold?: string;
   }[];
 }
 
@@ -69,6 +71,10 @@ export interface ClusterReplicaReport {
   bytes: number;
   error: string;
   fromServerId: string;
+  /** A relay, so Deplo, carries its stream. */
+  relayed?: boolean;
+  /** What the copy takes on this member's disk; 0 from an agent that does not say. */
+  diskBytes?: number;
 }
 
 /** One server's place on its cluster's network (ADR-0047): its tunnel address and every other server of the cluster. */
@@ -77,17 +83,25 @@ export interface ClusterNetworkTable {
   address: string;
   /** This server's network key, replaced before it answers: a caught copy holds it (Hello network.rekey). */
   retirePublicKey?: string;
+  /** Make a next network key and say it, changing nothing yet (Hello network.rotate). */
+  nextKey?: boolean;
+  /** Switch to that next key in place, once every peer holds it as this server's next one. */
+  rotateToPublicKey?: string;
   peers: {
     fingerprint: string;
     publicKey: string;
     address: string;
     endpoints: string[];
+    /** The key that peer is about to switch to. */
+    nextPublicKey?: string;
   }[];
 }
 
 /** What a server's agent says back: its key and port, its own addresses, and how it reaches each peer. */
 export interface ClusterNetworkReport {
   publicKey: string;
+  /** The next key it made at `nextKey`, until it switches to it; empty otherwise. */
+  nextPublicKey?: string;
   port: number;
   addresses: string[];
   peers: { fingerprint: string; path: "direct" | "relay" | "none" }[];
@@ -315,6 +329,8 @@ export interface AgentConnection {
     slug: string,
     removeVolumes?: boolean,
     reclaimVolumes?: string[],
+    /** A deleted App's set-aside copies go too (capability `teardown.set-aside`). */
+    dropSetAside?: boolean,
   ): Promise<{ ok: boolean; error: string }>;
   reroute(req: {
     slug: string;
@@ -335,6 +351,10 @@ export interface AgentConnection {
   }): Promise<{ ok: boolean; error: string }>;
   exportVolume(volumeName: string): AsyncGenerator<Buffer, void, unknown>;
   volumeUsage(volumeNames: string[]): Promise<Map<string, number>>;
+  /** What the volumes hold together, and their biggest file: a copy rebuilding it holds it twice meanwhile. */
+  volumeSizes(
+    volumeNames: string[],
+  ): Promise<{ bytes: number; largest: number }>;
   /** The dated copies a returning cluster member set aside of these volumes (Hello `volumes.set-aside`). */
   setAsideCopies(of: string[]): Promise<SetAsideCopy[]>;
   removeSetAside(volumeName: string): Promise<{ ok: boolean; error: string }>;
@@ -418,11 +438,39 @@ export interface AgentConnection {
     relays: string[],
     pins?: ClusterLeaderPins,
   ): Promise<{ member: boolean; relayLinks: number }>;
+  /** Needs `cluster.failover.images`: the registry images this member keeps ready for a failover; replaces the list. */
+  holdFailoverImages(images: FailoverImageHold[]): Promise<FailoverImageHeld[]>;
   /** Tells this member to accept one image from one member's certificate; it refuses any other image stream. */
   expectClusterImage(
     imageRef: string,
     sourceFingerprint: string,
     keep: number,
+  ): Promise<void>;
+  /** Needs `volume-copy.member`: tells this member to take one volume from one member's certificate, once. */
+  expectClusterVolume(
+    volumeName: string,
+    wipeFirst: boolean,
+    sourceFingerprint: string,
+  ): Promise<void>;
+  /** Needs `volume-copy.member`: copies a volume to that member; path "none" when nothing joins them. */
+  sendClusterVolume(
+    volumeName: string,
+    targetFingerprint: string,
+  ): Promise<{
+    bytes: number;
+    sha256: string;
+    path: string;
+    missing: boolean;
+  }>;
+  /** Needs `backup-store.member`: tells this member to keep one backup from one member's certificate, once. */
+  expectClusterBackup(
+    store: StoreTarget,
+    sourceFingerprint: string,
+  ): Promise<void>;
+  /** Needs `backup-store.fetch`: tells this member that one member reads one backup from its store, once. */
+  expectClusterFetch(
+    store: StoreTarget,
+    readerFingerprint: string,
   ): Promise<void>;
   // Needs `cluster.images` (ADR-0044): send a built image to one member, which prunes older releases.
   copyClusterImage(
@@ -459,6 +507,11 @@ export interface AgentConnection {
   // Needs `cluster.replicas` (ADR-0046): the full set of replicated Apps, and how each copy here stands.
   setClusterReplicas(table: ClusterReplicaTable): Promise<{ entries: number }>;
   clusterReplicaStatus(): Promise<ClusterReplicaReport[]>;
+  // Needs `cluster.replicas.move`: the copy here takes a moved App's last changes from the member it left, and becomes its data.
+  promoteClusterReplica(
+    appId: string,
+    fromServerId: string,
+  ): Promise<{ bytes: number }>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */
@@ -495,7 +548,11 @@ export interface AgentConnection {
     req: UpdateControlPlaneRequest,
   ): Promise<UpdateControlPlaneResponse>;
 
-  backup(req: BackupRequest): AsyncGenerator<BackupEvent, void, unknown>;
+  /** The signal cancels the call: the agent then stops the copy and the App runs again. */
+  backup(
+    req: BackupRequest,
+    signal?: AbortSignal,
+  ): AsyncGenerator<BackupEvent, void, unknown>;
   restore(req: RestoreRequest): AsyncGenerator<RestoreEvent, void, unknown>;
   s3Check(s3: S3Target): Promise<{ ok: boolean; error: string }>;
   s3Delete(
@@ -523,6 +580,9 @@ export interface AgentConnection {
     store: StoreTarget,
     overwrite: boolean,
     chunks: AsyncIterable<Buffer>,
+    signal?: AbortSignal,
+    /** What the source sent, read once every chunk is written: the destination keeps nothing else. */
+    sealedBy?: () => { sizeBytes: number; sha256: string },
   ): Promise<{
     ok: boolean;
     error: string;
@@ -586,4 +646,15 @@ export interface SetAsideCopy {
   of: string;
   atMs: number;
   bytes: number;
+}
+
+/** A registry image a member keeps for a failover, and its size where it is held (0 unknown). */
+export interface FailoverImageHold {
+  imageRef: string;
+  bytes: number;
+}
+
+export interface FailoverImageHeld extends FailoverImageHold {
+  held: boolean;
+  error: string;
 }

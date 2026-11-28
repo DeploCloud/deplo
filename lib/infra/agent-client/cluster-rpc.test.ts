@@ -78,7 +78,9 @@ test("each call sends its fields and answers with the agent's", async () => {
     method: "place",
     payload: new Uint8Array([1]),
   });
-  for (const { ms } of Object.values(sent)) assert.ok(ms > 0 && ms <= 180_000);
+  // An install answers once its binary is downloaded and staged, so it may take a slow link's 10 minutes.
+  for (const [name, { ms }] of Object.entries(sent))
+    assert.ok(ms > 0 && ms <= (name === "install" ? 600_000 : 180_000), name);
   // Deplo's beat is given up on before the next one is due.
   await rpc.clusterCall("leader.beat", new Uint8Array([1]), 4_000);
   assert.ok(sent.call.ms > 0 && sent.call.ms <= 4_000);

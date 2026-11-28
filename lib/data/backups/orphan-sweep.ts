@@ -1,12 +1,14 @@
 import "server-only";
 
-import { and, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, ne, notExists, or } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
 } from "../../db/schema/control-plane/backups";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { nowIso } from "../../ids";
 import { dispatchAlert } from "../../notify/dispatch";
 import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
@@ -14,6 +16,8 @@ import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
 import { deleteManyFromDestination } from "../backup-transport";
 import { ownsArtifact } from "./copied-runs";
 import { anyBackupCapableServer } from "./target-lookup";
+import { formatBytes } from "./format-bytes";
+import { recordActivity } from "../activity";
 
 const ORPHAN_ARTIFACT_KEEP_MS = 30 * 24 * 60 * 60_000;
 
@@ -32,10 +36,31 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
     .where(and(orphanedTargets, isNull(backupRunsTable.orphanedAt)));
 
   const cutoff = new Date(Date.now() - ORPHAN_ARTIFACT_KEEP_MS).toISOString();
+  // Deleted: no App or database has its id any more, so it goes now. Moved to another team: the keep window.
+  const targetGone = and(
+    notExists(
+      getDb()
+        .select({ id: appsTable.id })
+        .from(appsTable)
+        .where(eq(appsTable.id, backupRunsTable.targetId)),
+    ),
+    notExists(
+      getDb()
+        .select({ id: databasesTable.id })
+        .from(databasesTable)
+        .where(eq(databasesTable.id, backupRunsTable.targetId)),
+    ),
+  );
   const orphaned = await getDb()
     .select()
     .from(backupRunsTable)
-    .where(and(orphanedTargets, lt(backupRunsTable.orphanedAt, cutoff)))
+    .where(
+      and(
+        orphanedTargets,
+        ne(backupRunsTable.status, "running"),
+        or(lt(backupRunsTable.orphanedAt, cutoff), targetGone),
+      ),
+    )
     .orderBy(backupRunsTable.orphanedAt)
     .limit(ORPHAN_SWEEP_BATCH);
   if (orphaned.length === 0) return 0;
@@ -47,6 +72,7 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
   }
 
   let reclaimed = 0;
+  const removedByTeam = new Map<string, typeof orphaned>();
   for (const [key, runs] of byDestination) {
     const [teamId, destinationId] = key.split(" ") as [string, string];
     const removable = new Set(
@@ -89,6 +115,22 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
       await getDb()
         .delete(backupRunsTable)
         .where(inArray(backupRunsTable.id, [...removable]));
+    const gone = withArtifacts.filter((r) => removable.has(r.id));
+    if (gone.length > 0)
+      removedByTeam.set(teamId, [
+        ...(removedByTeam.get(teamId) ?? []),
+        ...gone,
+      ]);
+  }
+  for (const [teamId, gone] of removedByTeam) {
+    const bytes = gone.reduce((n, r) => n + r.sizeBytes, 0);
+    await recordActivity(
+      "backup",
+      `Deleted ${gone.length === 1 ? "a backup" : `${gone.length} backups`} (${formatBytes(bytes)}) of an App or database no longer in this team`,
+      "Deplo",
+      null,
+      teamId,
+    );
   }
   if (reclaimed > 0)
     console.log(

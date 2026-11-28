@@ -59,9 +59,10 @@ export function toRoutableDomain(
   siblings: Domain[] = [],
 ): RoutableDomain {
   const tls = domainTlsConfig(d);
-  // Passed on by every server of the cluster, it reaches the App's proxy on the internal entrypoint (ADR-0048).
-  if (d.answersEverywhere && tls.tls)
-    tls.entrypoint = `${tls.entrypoint},${ANSWER_ENTRYPOINT}`;
+  // Passed on by every server of the cluster, its own too, it reaches the App's proxy on the internal entrypoint only
+  // (ADR-0048): a router on websecure won over that passthrough, so its own server's visitors met a recreate or a
+  // hang straight, 502 or 404 (c41).
+  if (d.answersEverywhere && tls.tls) tls.entrypoint = ANSWER_ENTRYPOINT;
   // The cluster's zone checks its certificate over DNS: the zone's or its own, renewed by one server and held by
   // every other, or its own ordered by this App's server over DNS.
   if (

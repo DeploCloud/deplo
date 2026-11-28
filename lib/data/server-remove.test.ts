@@ -10,7 +10,8 @@ import { eq } from "drizzle-orm";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
-import { seedDatabase, seedDestination } from "./backup-test-helpers";
+import { seedDatabase, seedDestination, seedRun } from "./backup-test-helpers";
+import { backupDestination } from "../db/schema/control-plane/backups";
 import { seedServerRow } from "./infra-test-helpers";
 import { addServer } from "./servers/enrollment";
 import { removeServer, uninstallServerAgent } from "./servers/removal";
@@ -99,6 +100,11 @@ test("blocks removal while a backup destination keeps its artifacts here", async
     kind: "server",
     serverId: SERVER,
   });
+  await seedRun(db, {
+    id: "brun_1",
+    destinationId: "dst_here",
+    status: "success",
+  });
 
   await assert.rejects(
     () => asAdmin(() => removeServer(SERVER)),
@@ -110,6 +116,19 @@ test("blocks removal while a backup destination keeps its artifacts here", async
     },
   );
   assert.notEqual(await pinnedCert(), "");
+});
+
+// c49: once eu-4 left its cluster, its destination, emptied by the move of its backups, still refused removeServer.
+test("a backup destination that keeps nothing here is removed with the server", async () => {
+  await seedDestination(db, {
+    id: "dst_empty",
+    name: "eu-4",
+    kind: "server",
+    serverId: SERVER,
+  });
+  await asAdmin(() => removeServer(SERVER));
+  assert.equal(await getServerById(SERVER), null);
+  assert.equal((await db.select().from(backupDestination)).length, 0);
 });
 
 test("blocks removal while a database is hosted - a clean message, not a raw FK error", async () => {
@@ -345,6 +364,11 @@ test("a blocked removal fails BEFORE the host is touched", async () => {
     name: "Nightly backups",
     kind: "server",
     serverId: id,
+  });
+  await seedRun(db, {
+    id: "brun_1",
+    destinationId: "dst_on_source",
+    status: "success",
   });
   const calls = fakeAgent();
   try {

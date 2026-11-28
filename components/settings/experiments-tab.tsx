@@ -5,6 +5,7 @@ import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import {
   ArrowLeftRight,
+  Cable,
   FlaskConical,
   GitPullRequest,
   Network,
@@ -30,6 +31,7 @@ const ICON: Record<
   zeroDowntime: ArrowLeftRight,
   pullRequests: GitPullRequest,
   clusters: Network,
+  tunnels: Cable,
   canary: FlaskConical,
 };
 
@@ -38,10 +40,11 @@ const DOCS: Record<ExperimentKey, DocsTopic> = {
   zeroDowntime: "deploy.zeroDowntime",
   pullRequests: "previews.overview",
   clusters: "clusters.overview",
+  tunnels: "panel.tunnel",
   canary: "upgrade.canary",
 };
 
-// What a pause stops. Clusters never get here: they refuse while in use.
+// What a pause stops. Clusters and tunnels never get here: they refuse while in use.
 const PAUSE: Partial<Record<ExperimentKey, string>> = {
   crons: "No cron job runs until it is turned back on.",
   zeroDowntime:

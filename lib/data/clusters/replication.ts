@@ -12,6 +12,7 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { nowIso } from "../../ids";
 import { CLUSTER_REPLICAS_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import { formatBytes } from "../backups/format-bytes";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type {
   ClusterReplicaReport,
@@ -24,10 +25,32 @@ import { standbyForCluster } from "../databases/standby";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
 import { refreshAppBundle, restoreDescriptor } from "./app-restore";
-import { storedBundle } from "./bundles";
+import { __forgetSizes, volumeSizes } from "./data-size";
+import { writableBytes } from "./facts";
+import { inLine, storedBundle } from "./bundles";
 import { fingerprintOf } from "./relay";
-import { promotable, replicaRows } from "./replica-state";
+import {
+  BEHIND_AFTER_MS,
+  REPLICA_ID,
+  promotable,
+  replicaRows,
+  type ReplicaRow,
+} from "./replica-state";
 import { clusterOutOfReach } from "./reach";
+import {
+  copyMemory,
+  heldBy,
+  joinLine,
+  lineOf,
+  leaveLine,
+  leaveLineOn,
+  mayGo,
+  placeOf,
+  placeWords,
+  QUEUED,
+  setReplicaTurns,
+  turnWait,
+} from "./copy-turns";
 import { getClusterById } from "./roster";
 
 // Replication (ADR-0046): each member's server agent is handed the cluster's replicated Apps. The one that runs an
@@ -86,16 +109,278 @@ export async function replicaTable(
 // What each member was last handed, so a table that did not change is not sent again.
 const handed = new Map<string, string>();
 
+/** A copy that does not fit, in the words the server's row and page show it (ADR-0043). */
+export function noRoomForCopy(
+  server: string,
+  app: string,
+  free: number,
+  need: number,
+): string {
+  return `${server} has ${formatBytes(free)} free, too little for a copy of ${app} (about ${formatBytes(need)}) and a tenth of its disk free`;
+}
+export const NO_ROOM_FOR_COPY = "too little for a copy of";
+/** How a server agent ends a copy it stopped for room, at a tenth of its disk free (deplo-agent `room.Marker`). */
+export const AGENT_NO_ROOM = "keep a tenth of its disk free";
+
+/**
+ * The entries a member does not start a copy of, with why: a replica follows a backup's rule and starts only when
+ * it leaves a tenth of the member's disk free, the set-aside copies on it counted (ADR-0043). A copy the member says
+ * it holds whole, or the App it runs, is never held back.
+ */
+async function copiesThatDoNotFit(
+  table: ClusterReplicaTable,
+  serverId: string,
+  held: ClusterReplicaReport[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = table.entries.map((e) => e.appId);
+  if (ids.length === 0) return out;
+  const apps = await getDb()
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(inArray(appsTable.id, ids));
+  let disk: { free: number; total: number } | null | undefined;
+  // Held back last time: it starts again only with a fifth more room, so a copy the agent stopped does not start
+  // and stop over and over.
+  const before = new Set(
+    (
+      await getDb()
+        .select({
+          appId: clusterAppReplicas.appId,
+          error: clusterAppReplicas.error,
+        })
+        .from(clusterAppReplicas)
+        .where(
+          and(
+            eq(clusterAppReplicas.serverId, serverId),
+            inArray(clusterAppReplicas.appId, ids),
+          ),
+        )
+    )
+      .filter((r) => r.error.includes(NO_ROOM_FOR_COPY))
+      .map((r) => r.appId),
+  );
+  for (const e of table.entries) {
+    const app = apps.find((a) => a.id === e.appId);
+    if (!app?.serverId || app.serverId === serverId) continue;
+    if (e.volumeNames.length === 0) continue;
+    const copy = held.find((r) => r.appId === e.appId);
+    if (copy?.role === "sending") continue;
+    // The agent's own word: it stopped the copy at a tenth free (a copy bigger than Deplo measured).
+    const stopped = !!copy?.error.includes(AGENT_NO_ROOM);
+    const { bytes: size, largest } = await volumeSizes(
+      app.serverId,
+      e.volumeNames,
+    ).catch(() => ({ bytes: 0, largest: 0 }));
+    // A copy not whole yet grows with its App: it is held back whenever the disk would be under a tenth free, not
+    // only at its start (eu-1 reached 92% with the copy of an App that was small when its copy began). What it
+    // holds is its size on disk; where it holds part of the data, the biggest file counts twice while it is rebuilt.
+    const has = copy?.diskBytes || copy?.bytes || 0;
+    // A whole copy needs no room until its App outgrows it: c41's grew 1 GB past one, and its catch-up took eu-3
+    // to 89%, stopped there by the agent and started again.
+    if (copy?.synced && !stopped && size - has < COPYING_BYTES) continue;
+    const peak = has > 0 ? largest : 0;
+    const need =
+      Math.max(size - has, 0) + peak + (before.has(e.appId) ? size / 5 : 0);
+    disk ??= await memberDisk(serverId).catch(() => null);
+    if (
+      !stopped &&
+      (!disk || disk.total <= 0 || disk.free - need >= disk.total / 10)
+    )
+      continue;
+    const name = (await getServerById(serverId))?.name ?? "This server";
+    out.set(
+      e.appId,
+      noRoomForCopy(
+        name,
+        app.name,
+        disk?.free ?? 0,
+        Math.max(size, copy?.bytes ?? 0),
+      ),
+    );
+  }
+  return out;
+}
+
+async function memberDisk(serverId: string) {
+  const conn = await connectAgent(serverId);
+  try {
+    const m = await conn.metrics();
+    return {
+      free: writableBytes({
+        diskTotal: Number(m.diskTotal),
+        diskUsed: Number(m.diskUsed),
+        diskPct: m.diskPct,
+      }),
+      total: Number(m.diskTotal),
+    };
+  } finally {
+    conn.close();
+  }
+}
+
+/** A copy that took this much since the last pass moves data now: a catch-up, or what an App empty at its first copy wrote since. */
+export const COPYING_BYTES = 8 * 1024 * 1024;
+/** A copy holding its turn keeps it while it takes this much a second: an eighth of the agent's 2 MB/s floor. */
+export const STILL_COPYING_RATE = 256 * 1024;
+
+/** The copies that wait their turn, by member and App: `queued` ones are new and are not handed yet, `holds` are kept whole and idle. */
+export interface CopyQueue {
+  queued: Map<string, Map<string, string>>;
+  holds: Map<string, Map<string, string>>;
+}
+
+/**
+ * Which copies wait their turn: a server takes one copy at a time, sent or received (ADR-0043). Every copy that moves
+ * data counts, new or held: one not whole yet, one behind, one taking COPYING_BYTES since the last pass (c38: lab-pd,
+ * empty at its first copy, took 300 MB as followed changes beside a backup). A copy that held a turn keeps it while it
+ * copies; one that waits for a busy end is held whole until its turn; none waits past the queue's limit.
+ */
+export async function queuedCopies(
+  table: ClusterReplicaTable,
+  held: Map<string, ClusterReplicaReport[]>,
+  refused: Map<string, Map<string, string>>,
+): Promise<CopyQueue> {
+  const out: CopyQueue = { queued: new Map(), holds: new Map() };
+  const kind = `replica:${table.clusterId}`;
+  leaveLineOn(
+    table.members.map((m) => m.serverId),
+    kind,
+  );
+  const ids = table.entries.map((e) => e.appId);
+  if (ids.length === 0) {
+    for (const key of lineOf(kind)) leaveLine(key);
+    return out;
+  }
+  const apps = await getDb()
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(inArray(appsTable.id, ids));
+  const app = new Map(apps.map((a) => [a.id, a]));
+  const mem = copyMemory();
+  const busy = new Map<string, string>();
+  const turns = new Set<string>();
+  const take = (key: string, ends: string[], what: string) => {
+    for (const id of ends) if (!busy.has(id)) busy.set(id, what);
+    turns.add(key);
+    mem.waiting.delete(key);
+  };
+  const isBusy = (id: string) => busy.get(id) ?? null;
+  const wait = async (into: Map<string, Map<string, string>>, c: Want) => {
+    const p = placeOf(c.key, isBusy)!;
+    const name = (await getServerById(p.serverId))?.name ?? "Another server";
+    const q = into.get(c.serverId) ?? new Map<string, string>();
+    q.set(c.appId, `${QUEUED} ${placeWords(p, name)}`);
+    into.set(c.serverId, q);
+    if (!mem.waiting.has(c.key)) mem.waiting.set(c.key, Date.now());
+  };
+  const waitedOut = (key: string) =>
+    Date.now() - (mem.waiting.get(key) ?? Date.now()) >= turnWait.maxMs;
+  for (const m of table.members) {
+    const b = heldBy(m.serverId);
+    if (b) busy.set(m.serverId, b);
+  }
+  const now = Date.now();
+  type Want = {
+    key: string;
+    serverId: string;
+    appId: string;
+    ends: string[];
+    what: string;
+    into: Map<string, Map<string, string>>;
+    /** Bytes taken since the last pass: of two copies first seen together, the one further on started first. */
+    moved: number;
+  };
+  const wants: Want[] = [];
+  for (const [serverId, reports] of held)
+    for (const r of reports) {
+      const a = app.get(r.appId);
+      if (!a?.serverId || a.serverId === serverId || r.role === "sending")
+        continue;
+      const key = `${serverId}|${r.appId}`;
+      const last = mem.bytes.get(key);
+      mem.bytes.set(key, { bytes: r.bytes, at: now });
+      const moved = last ? Math.abs(r.bytes - last.bytes) : 0;
+      // A copy with its turn keeps it while it still moves data, however close two passes come (c44).
+      const rate = last ? moved / Math.max((now - last.at) / 1000, 1) : 0;
+      const grew =
+        moved >= COPYING_BYTES ||
+        (mem.turns.has(key) && rate >= STILL_COPYING_RATE);
+      const behind =
+        !r.appliedAt || now - Date.parse(r.appliedAt) >= BEHIND_AFTER_MS;
+      const copying =
+        r.role === "receiving" ? !r.synced || behind || grew : false;
+      const holding = r.role === "idle" && r.error.startsWith(QUEUED);
+      if (copying || holding)
+        wants.push({
+          key,
+          serverId,
+          appId: r.appId,
+          ends: [serverId, a.serverId],
+          what: `a copy of ${a.name}`,
+          into: out.holds,
+          moved,
+        });
+    }
+  for (const e of table.entries) {
+    const a = app.get(e.appId);
+    if (!a?.serverId) continue;
+    for (const m of table.members) {
+      if (m.serverId === a.serverId || !held.has(m.serverId)) continue;
+      if (refused.get(m.serverId)?.has(e.appId)) continue;
+      if (held.get(m.serverId)!.some((r) => r.appId === e.appId)) continue;
+      wants.push({
+        key: `${m.serverId}|${e.appId}`,
+        serverId: m.serverId,
+        appId: e.appId,
+        ends: [m.serverId, a.serverId],
+        what: `a copy of ${a.name}`,
+        into: out.queued,
+        moved: 0,
+      });
+    }
+  }
+  // A copy that holds a turn keeps it while it copies: a backup or a move that asked since never sends it back (c44).
+  const keeps = wants.filter((c) => mem.turns.has(c.key));
+  for (const c of keeps) take(c.key, c.ends, c.what);
+  // The others wait in the order they first asked, behind every backup that asked before them (ADR-0043).
+  const rest = wants.filter((c) => !keeps.includes(c));
+  for (const c of [...rest].sort((x, y) => y.moved - x.moved))
+    joinLine(c.key, c.ends, c.what, kind);
+  const asked = lineOf(kind);
+  rest.sort((x, y) => asked.indexOf(x.key) - asked.indexOf(y.key));
+  for (const c of rest) {
+    if (waitedOut(c.key) || mayGo(c.key, isBusy)) {
+      leaveLine(c.key);
+      take(c.key, c.ends, c.what);
+    } else await wait(c.into, c);
+  }
+  const wanted = new Set(rest.map((c) => c.key));
+  for (const key of lineOf(kind)) if (!wanted.has(key)) leaveLine(key);
+  mem.turns = turns;
+  setReplicaTurns(busy);
+  return out;
+}
+
 /** Hands every member the table and reads back its copies; a member that cannot take it is noted, the rest go on. */
 export async function pushReplicaTables(
   clusterId: string,
   force = false,
 ): Promise<Map<string, ClusterReplicaReport[] | string>> {
   const table = await replicaTable(clusterId);
-  const sum = JSON.stringify(table);
   const out = new Map<string, ClusterReplicaReport[] | string>();
+  // What each holds now decides what it may start: never what Deplo stored last.
+  const held = new Map<string, ClusterReplicaReport[]>();
+  const refused = new Map<string, Map<string, string>>();
   for (const m of table.members) {
-    const key = `${clusterId}|${m.serverId}`;
     try {
       const conn = await connectAgent(m.serverId);
       try {
@@ -104,11 +389,59 @@ export async function pushReplicaTables(
           out.set(m.serverId, AGENT_TOO_OLD);
           continue;
         }
+        const reports = await conn.clusterReplicaStatus();
+        held.set(m.serverId, reports);
+        refused.set(
+          m.serverId,
+          await copiesThatDoNotFit(table, m.serverId, reports),
+        );
+      } finally {
+        conn.close();
+      }
+    } catch (e) {
+      handed.delete(`${clusterId}|${m.serverId}`);
+      out.set(m.serverId, `This server did not answer: ${messageOf(e)}`);
+    }
+  }
+  const { queued, holds } = await queuedCopies(table, held, refused);
+  for (const m of table.members) {
+    if (!held.has(m.serverId)) continue;
+    const key = `${clusterId}|${m.serverId}`;
+    const notNow = new Map([
+      ...(refused.get(m.serverId) ?? []),
+      ...(queued.get(m.serverId) ?? []),
+    ]);
+    const hold = holds.get(m.serverId);
+    try {
+      const conn = await connectAgent(m.serverId);
+      try {
+        const mine = {
+          ...table,
+          entries: table.entries
+            .filter((e) => !notNow.has(e.appId))
+            .map((e) => ({ ...e, hold: hold?.get(e.appId) ?? "" })),
+        };
+        const sum = JSON.stringify(mine);
         if (force || handed.get(key) !== sum) {
-          await conn.setClusterReplicas(table);
+          await conn.setClusterReplicas(mine);
           handed.set(key, sum);
         }
-        out.set(m.serverId, await conn.clusterReplicaStatus());
+        const reports = (await conn.clusterReplicaStatus()).filter(
+          (r) => !notNow.has(r.appId),
+        );
+        for (const [appId, error] of notNow)
+          reports.push({
+            appId,
+            role: "idle",
+            connected: false,
+            streams: 0,
+            synced: false,
+            appliedAt: "",
+            bytes: 0,
+            error,
+            fromServerId: "",
+          });
+        out.set(m.serverId, reports);
       } finally {
         conn.close();
       }
@@ -152,7 +485,9 @@ async function recordReports(
         connected: r?.connected ?? false,
         synced: r?.synced ?? false,
         appliedAt: r?.appliedAt || null,
-        bytes: r?.bytes ?? 0,
+        // Its size on disk as the agent says it, never the bytes it was sent: a rebuilt file is sent again.
+        bytes: r?.diskBytes || r?.bytes || 0,
+        relayed: r?.relayed ?? false,
         error: typeof got === "string" ? got : (r?.error ?? ""),
         checkedAt: at,
       };
@@ -181,13 +516,19 @@ async function recordReports(
       ),
     );
   const after = await replicaRows(ids);
+  await sayCopiesWithoutRoom(before, after);
   for (const e of table.entries) {
     const app = await loadAppGraph(e.appId);
     if (!app) continue;
     const was = promotable(before, app);
     const now = promotable(after, app);
-    if (was === now) continue;
-    await refreshAppBundle(app.id).catch(quietly(app.slug));
+    // A bundle pushed while no copy was whole (a deploy, a move, Deplo's return) is put in step here too.
+    const held = (await storedBundle(app.id))?.restore?.backupId === REPLICA_ID;
+    if (was === now) {
+      if (held !== now) await inLine(app.id, () => refreshAppBundle(app.id));
+      continue;
+    }
+    await inLine(app.id, () => refreshAppBundle(app.id));
     // The App's page and its Activity say the same line.
     const { copyRows } = await import("../apps/failover");
     const rows = await copyRows(app, [...reports.keys()], after);
@@ -195,6 +536,41 @@ async function recordReports(
     await recordActivity(
       "app",
       copiesActivity(app.name, server, rows, now),
+      "Deplo",
+      app.id,
+      app.teamId,
+    );
+  }
+}
+
+// The copies Activity said were held back, until one runs with no error: a pass in between that read another error
+// (no answer, its turn) says nothing new (c44: three lines in 61 s). ponytail: in memory, a restart may say it again.
+const toldNoRoom = new Set<string>();
+
+/** Activity says it once, in the App's team, when a copy of it is first held back for room on a server. */
+async function sayCopiesWithoutRoom(
+  before: ReplicaRow[],
+  after: ReplicaRow[],
+): Promise<void> {
+  const held = (rows: ReplicaRow[], r: ReplicaRow) =>
+    rows.some(
+      (b) =>
+        b.appId === r.appId &&
+        b.serverId === r.serverId &&
+        b.error.includes(NO_ROOM_FOR_COPY),
+    );
+  for (const r of after) {
+    const key = `${r.appId}|${r.serverId}`;
+    if (r.error === "") toldNoRoom.delete(key);
+    if (!r.error.includes(NO_ROOM_FOR_COPY)) continue;
+    const told = toldNoRoom.has(key) || held(before, r);
+    toldNoRoom.add(key);
+    if (told) continue;
+    const app = await loadAppGraph(r.appId);
+    if (!app) continue;
+    await recordActivity(
+      "server",
+      `${r.error}. Free some space on it, and the copy starts.`,
       "Deplo",
       app.id,
       app.teamId,
@@ -276,11 +652,13 @@ export async function refreshVolumeAppBundles(
   for (const r of await appsOf(clusterId)) {
     const app = await loadAppGraph(r.id);
     if (app && appDisk(app) === "volume")
-      await refreshAppBundle(r.id).catch(quietly(r.id));
+      await inLine(r.id, () => refreshAppBundle(r.id));
   }
 }
 
 /** Test seam: forget what each member was handed. */
 export function __forgetHandedTables(): void {
   handed.clear();
+  toldNoRoom.clear();
+  __forgetSizes();
 }

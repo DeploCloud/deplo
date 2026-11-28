@@ -502,14 +502,14 @@ fi
 # ==============================================================================
 # 2. The agent service
 # ==============================================================================
-# Stop it FIRST: while it lives, systemd restarts it (Restart=on-failure) and it
+# Stop it FIRST: while it lives, systemd restarts it (Restart=always) and it
 # keeps holding the docker socket.
 phase "Server agent"
 
 if [ -f "$UNIT" ] || systemctl list-unit-files deplo-agent.service >/dev/null 2>&1; then
   step "Stopping and disabling the deplo-agent service"
   run systemctl disable --now deplo-agent
-  run rm -f "$UNIT"
+  run rm -rf "$UNIT" "$UNIT.d"
   run systemctl daemon-reload
   applied "Agent service removed"
 else

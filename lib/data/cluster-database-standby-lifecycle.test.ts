@@ -20,10 +20,13 @@ import {
   relocateClusterDatabase,
   updateDatabase,
 } from "./databases/server-move";
+import { seedDestination } from "./backup-test-helpers";
+import { pushDatabaseBundle } from "./clusters/database-bundles";
 import {
   apply,
   asAdmin,
   backedUp,
+  cannot,
   databaseLab,
   db,
   deploSaid,
@@ -104,6 +107,25 @@ test("a failover that promoted the copy says so, restores nothing, and a new cop
     (r) => /DEPLO_STANDBY_SEED=(sby_[A-Za-z0-9_-]+)/.exec(r.composeYaml)![1],
   );
   assert.notEqual(seeds[0], seeds[1]);
+});
+
+test("a database with a copy to promote is never said to be unable to fail over for want of a backup", async () => {
+  const cluster = await eu(["srv_2", "srv_3", "srv_4"]);
+  await main(cluster.id);
+  await seedDestination(db, {
+    id: "dst_srv2",
+    kind: "server",
+    serverId: "srv_2",
+  });
+  await backedUp({ destinationId: "dst_srv2" });
+  onSrv3();
+  await asAdmin(() => setDatabaseStandby("db_main", true));
+  await flushStandbySyncs();
+
+  await pushDatabaseBundle("db_main");
+
+  assert.ok((await open()).promote, "the leader can promote the copy");
+  assert.deepEqual(await cannot(), []);
 });
 
 test("with no other server to take a new copy, the page says there is none right now", async () => {
@@ -289,9 +311,10 @@ test("deleting the database removes its copy from the other server too", async (
 
   await asAdmin(() => deleteDatabase("db_main", { force: true }));
 
+  // The copy goes first; then every other member is swept for what an older run of it left.
   assert.deepEqual(
     host.srv_3.stack.filter((s) => s.startsWith("destroy")),
-    ["destroy:db-main"],
+    ["destroy:db-main", "destroy:db-main"],
   );
   assert.deepEqual(
     await db

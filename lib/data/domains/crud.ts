@@ -68,6 +68,7 @@ import {
   registerAppTunnelDomain,
   settleAppTunnel,
 } from "../clusters/app-tunnel";
+import { requireExperiment } from "../experiments";
 import {
   recordSwitchNote,
   settleRecordSwitch,
@@ -199,6 +200,8 @@ async function addDomainUnlocked(
     .from(domainsTable)
     .where(and(eq(domainsTable.name, clean), ne(domainsTable.appId, appId)))
     .limit(1);
+  if (!shared && config.tunnel === true && project.clusterId == null)
+    await requireExperiment("tunnels");
   const service = resolveApp(config.service, project, isCompose);
   if (isCompose && config.port == null)
     throw new Error("Application port is required");
@@ -492,6 +495,7 @@ async function updateDomainUnlocked(
     throw new Error(
       `${current.name} belongs to an app on a cluster, which serves its domains its own way`,
     );
+  if (tunnel && !wasTunnel) await requireExperiment("tunnels");
   // A tunnel decides its own HTTPS and proxying; the edit form does not offer them.
   if (tunnel) {
     next.tunnel = true;

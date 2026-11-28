@@ -45,6 +45,8 @@ export const servers = pgTable(
     bootstrapExpiresAt: isoTimestamptz("bootstrap_expires_at"),
     bootstrapUsedAt: isoTimestamptz("bootstrap_used_at"),
     lastSeenAt: isoTimestamptz("last_seen_at"),
+    // Its disk passed 90% used and Activity said so; cleared once it is back under.
+    diskFullAt: isoTimestamptz("disk_full_at"),
     statusCheckedAt: isoTimestamptz("status_checked_at"),
     statusProbedAt: isoTimestamptz("status_probed_at"),
     statusMessage: text("status_message"),

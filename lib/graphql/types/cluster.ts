@@ -37,6 +37,7 @@ import {
   removeClusterMember,
 } from "@/lib/data/clusters/dissolve";
 import { cancelClusterMemberRemoval } from "@/lib/data/clusters/empty";
+import { rotateNetworkKey } from "@/lib/data/clusters/network";
 import {
   addClusterMember,
   listClusterJoinCandidates,
@@ -290,6 +291,10 @@ const ClusterMemberRef = builder
       relayWarning: t.exposeString("relayWarning", {
         description:
           "One plain sentence while the server reaches part of its cluster only through Deplo's relay, so it stops like a power cut when Deplo's machine does; empty otherwise.",
+      }),
+      copyWarning: t.exposeString("copyWarning", {
+        description:
+          "One plain sentence while a copy of an App does not start on this server, because it would leave less than a tenth of its disk free: the App and the space it needs, to an instance admin; empty otherwise.",
       }),
       nextInLine: t.exposeInt("nextInLine", {
         description:
@@ -726,15 +731,17 @@ builder.mutationFields((t) => ({
     type: ClusterRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Remove a server from a cluster; it stays a server of this Deplo. Its Apps and databases first move to the other servers, one at a time in the background (read `members.emptying` for progress), and it leaves once nothing is left; refused before anything moves when the others lack the room. Call it again to continue a removal that stopped. With keepWorkloads it leaves at once and its Apps and databases stay on it as ordinary ones that no cluster moves; the last server must pass it.",
+      "Remove a server from a cluster; it stays a server of this Deplo. Its Apps and databases first move to the other servers, one at a time in the background (read `members.emptying` for progress), and it leaves once nothing is left; refused before anything moves when the others lack the room. Call it again to continue a removal that stopped. With keepWorkloads it leaves at once and its Apps and databases stay on it as ordinary ones that no cluster moves; the last server must pass it. The backups it keeps for the cluster's other Apps and databases move to the other servers before it leaves; with leaveBackups, one with nothing left to move leaves at once and they stay on it.",
     args: {
       clusterId: t.arg.string({ required: true }),
       serverId: t.arg.string({ required: true }),
       keepWorkloads: t.arg.boolean({ required: false }),
+      leaveBackups: t.arg.boolean({ required: false }),
     },
-    resolve: (_r, { clusterId, serverId, keepWorkloads }) =>
+    resolve: (_r, { clusterId, serverId, keepWorkloads, leaveBackups }) =>
       removeClusterMember(clusterId, serverId, {
         keepWorkloads: keepWorkloads === true,
+        leaveBackups: leaveBackups === true,
       }),
   }),
   deleteCluster: t.field({
@@ -759,6 +766,17 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { id, serverId }) =>
       thenRefresh(id, moveClusterLeader(id, serverId)),
+  }),
+  rotateClusterNetworkKey: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Give a server a new key on its clusters' private network while every tunnel stays up: it makes the next key, the other servers learn it, then it switches. Refused while any of their agents is too old.",
+    args: { serverId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serverId }) => {
+      await rotateNetworkKey(serverId);
+      return true;
+    },
   }),
   startClusterLeader: t.field({
     type: ClusterLeaderRef,

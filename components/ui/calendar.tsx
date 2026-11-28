@@ -38,11 +38,11 @@ export function Calendar({
         day: cn(
           "relative size-8 p-0 text-center text-sm",
           "[&:has(>[data-range-middle])]:bg-accent",
-          "[&:has(>[data-range-start])]:rounded-l-md [&:has(>[data-range-start])]:bg-accent",
-          "[&:has(>[data-range-end])]:rounded-r-md [&:has(>[data-range-end])]:bg-accent",
+          "[&:has(>[data-range-start])]:rounded-l-full [&:has(>[data-range-start])]:bg-accent",
+          "[&:has(>[data-range-end])]:rounded-r-full [&:has(>[data-range-end])]:bg-accent",
         ),
         day_button: cn(
-          "size-8 cursor-pointer rounded-md p-0 font-normal",
+          "size-8 cursor-pointer rounded-full p-0 font-normal",
           "hover:bg-accent hover:text-accent-foreground",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           "aria-selected:bg-primary aria-selected:text-primary-foreground",

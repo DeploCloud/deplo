@@ -85,7 +85,13 @@ export function stackRpc(
     stopStack(slug: string, services: string[] = []) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.stopStack(
-          { slug, removeVolumes: false, reclaimVolumes: [], services },
+          {
+            slug,
+            removeVolumes: false,
+            reclaimVolumes: [],
+            services,
+            dropSetAside: false,
+          },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -98,7 +104,13 @@ export function stackRpc(
     startStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.startStack(
-          { slug, removeVolumes: false, reclaimVolumes: [], services: [] },
+          {
+            slug,
+            removeVolumes: false,
+            reclaimVolumes: [],
+            services: [],
+            dropSetAside: false,
+          },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -112,10 +124,11 @@ export function stackRpc(
       slug: string,
       removeVolumes = false,
       reclaimVolumes: string[] = [],
+      dropSetAside = false,
     ) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.destroyStack(
-          { slug, removeVolumes, reclaimVolumes, services: [] },
+          { slug, removeVolumes, reclaimVolumes, services: [], dropSetAside },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -178,7 +191,13 @@ export function stackRpc(
         running: boolean;
       }>((resolve, reject) => {
         client.readStack(
-          { slug, removeVolumes: false, reclaimVolumes: [], services: [] },
+          {
+            slug,
+            removeVolumes: false,
+            reclaimVolumes: [],
+            services: [],
+            dropSetAside: false,
+          },
           (err, resp) =>
             err
               ? reject(toAgentError(err))

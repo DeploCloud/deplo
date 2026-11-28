@@ -33,7 +33,7 @@ export const fieldControl = "focus-visible:ring-0 focus-visible:ring-offset-0";
 function FieldError({ children }: { children?: string | null }) {
   return (
     <Collapse open={Boolean(children)}>
-      <p className="rounded-b-md border border-t-0 border-destructive/40 bg-destructive-wash-strong px-3 pt-1.5 pb-2 text-xs text-destructive">
+      <p className="rounded-b-xl border border-t-0 border-destructive/40 bg-destructive-wash-strong px-3 pt-1.5 pb-2 text-xs text-destructive">
         {children}
       </p>
     </Collapse>
@@ -52,7 +52,7 @@ export function Field({
   return (
     <div
       className={cn(
-        "rounded-md ring-offset-background focus-within:ring-2 focus-within:ring-offset-1",
+        "rounded-xl ring-offset-background focus-within:ring-2 focus-within:ring-offset-1",
         error ? "focus-within:ring-destructive/50" : "focus-within:ring-ring",
         className,
       )}

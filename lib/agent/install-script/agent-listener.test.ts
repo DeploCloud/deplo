@@ -30,6 +30,7 @@ UNIT_AFTER=network-online.target; DOCKER_UNIT_LINES=""
 HOST_ROLE=server; URL=https://deplo.example.com; AGENT_STATE=running; PROVISIONED=true
 card_open() { echo "CARD $1"; }; card_kv() { echo "  $1: $2"; }; card_close() { :; }
 ok() { echo "OK $1"; }; note() { echo "NOTE $1"; }; warn() { echo "WARN $1"; }; err() { echo "ERR $1"; }
+agent_version_label() { printf 'v%s' "$AGENT_VERSION"; }
 ${await shellFn("install-agent.sh", "write_agent_unit")}
 ${await shellFn("install-agent.sh", "print_summary")}
 write_agent_unit
@@ -55,6 +56,25 @@ test("the agent is installed with no listen address and no word about ports or f
     /^OK The agent enrolled with https:\/\/deplo\.example\.com\.$/m,
   );
   assert.doesNotMatch(out, /9443|port|firewall|ufw|TCP/i, out);
+});
+
+// ADR-0043: canary.47 died by SIGPIPE, a stop systemd takes as clean, and nothing started it again.
+test("the agent's unit starts it again on any exit, without a start limit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-agent-unit-"));
+  await bash(
+    `set -euo pipefail
+UNIT=${dir}/deplo-agent.service; AGENT_BIN=/usr/local/bin/deplo-agent; AGENT_DATA=/var/lib/deplo-agent
+BOOTSTRAP_ENV=$AGENT_DATA/bootstrap.env; UNIT_AFTER=network-online.target; DOCKER_UNIT_LINES=""
+${await shellFn("install-agent.sh", "write_agent_unit")}
+write_agent_unit
+`,
+    dir,
+  );
+  const unit = await readFile(join(dir, "deplo-agent.service"), "utf8");
+  await rm(dir, { recursive: true, force: true });
+  assert.match(unit, /^Restart=always$/m);
+  assert.match(unit, /^RestartSec=1$/m);
+  assert.match(unit, /^StartLimitIntervalSec=0$/m);
 });
 
 test("the install script has no agent port setting and prints no firewall command", async () => {

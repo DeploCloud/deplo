@@ -231,7 +231,7 @@ test("emptying Deplo's own server moves its App to another member and leaves the
   await asAdmin(() => removeClusterMember(cluster.id, SERVER_1));
   assert.equal(
     (await messages()).at(-1),
-    `user_1: Started removing server ${SERVER_1} from cluster eu: 1 to move first`,
+    `user_1: Started removing server ${SERVER_1} from cluster eu: 1 App to move first`,
   );
   await runEmptyingPass();
 

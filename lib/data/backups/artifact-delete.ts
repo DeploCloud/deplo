@@ -31,6 +31,7 @@ import {
 import { backupTargetInScope, requireBackupCapability } from "./target-access";
 import { ownsArtifact } from "./copied-runs";
 import { formatBytes } from "./format-bytes";
+import { cancelBackupsOfDeleted } from "./execute-backup";
 import type { BackupTargetKind } from "../../types/backup";
 
 export async function deleteBackupRun(runId: string): Promise<void> {
@@ -79,7 +80,9 @@ export async function deleteBackupRun(runId: string): Promise<void> {
 
   await recordActivity(
     "backup",
-    `Deleted a backup of ${target.label} from ${formatBytes(run.sizeBytes)}`,
+    run.sizeBytes
+      ? `Deleted a ${formatBytes(run.sizeBytes)} backup of ${target.label}`
+      : `Deleted a backup of ${target.label}`,
     user.name,
     run.appId,
     teamId,
@@ -213,6 +216,7 @@ export async function deleteBackupsWithTarget(input: {
     input.kind === "app"
       ? await requireAppCapability(input.targetId, "delete_apps")
       : await requireCapability("delete_databases");
+  await cancelBackupsOfDeleted(input.targetId);
   const failed = (await sweepTargetBackups(teamId, input)).failedDestinations;
   if (failed.length > 0)
     throw new Error(

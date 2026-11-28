@@ -46,7 +46,7 @@ export async function generateMetadata(
   props: LayoutProps<"/[team]/apps/[slug]">,
 ): Promise<Metadata> {
   const { slug } = await props.params;
-  const project = await getAppBySlug(slug);
+  const project = await getAppBySlug(slug).catch(() => null);
   if (!project) return { title: "App" };
   const name = truncate(project.name, PROJECT_TITLE_MAX);
   return {

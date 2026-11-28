@@ -79,6 +79,13 @@ export function lastHeardAt(serverId: string): number | null {
     : (lastHeard.get(serverId) ?? null);
 }
 
+/** Whether nothing was heard from the server for `ms`: a call to it would only wait out its Hello. */
+export function silentFor(serverId: string, ms: number): boolean {
+  if (serverAnswers(serverId) === false) return true;
+  const heard = lastHeardAt(serverId);
+  return heard !== null && Date.now() - heard > ms;
+}
+
 export function hasLinked(serverId: string): boolean {
   return registry.seen.has(serverId);
 }

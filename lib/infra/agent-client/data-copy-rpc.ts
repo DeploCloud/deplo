@@ -37,6 +37,7 @@ export function dataCopyRpc(
   AgentConnection,
   | "exportVolume"
   | "volumeUsage"
+  | "volumeSizes"
   | "setAsideCopies"
   | "removeSetAside"
   | "setAside"
@@ -76,6 +77,30 @@ export function dataCopyRpc(
                 ),
         );
       });
+    },
+    volumeSizes(volumeNames: string[]) {
+      return new Promise<{ bytes: number; largest: number }>(
+        (resolve, reject) => {
+          client.volumeUsage(
+            { volumeNames, setAsideOf: [] },
+            new Metadata(),
+            { deadline: new Date(Date.now() + VOLUME_USAGE_TIMEOUT_MS) },
+            (err, resp) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({
+                    bytes: resp.volumes.reduce(
+                      (n, v) => n + Number(v.bytes),
+                      0,
+                    ),
+                    largest: Math.max(
+                      0,
+                      ...resp.volumes.map((v) => Number(v.largestFileBytes)),
+                    ),
+                  }),
+          );
+        },
+      );
     },
     setAsideCopies(of: string[]) {
       return new Promise<SetAsideCopy[]>((resolve, reject) => {

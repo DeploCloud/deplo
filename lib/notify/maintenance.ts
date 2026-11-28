@@ -26,6 +26,8 @@ import { reconcileClusterImages } from "../data/clusters/images";
 import { reconcileFailoverBundles } from "../data/clusters/bundles";
 import { reconcileDatabaseBundles } from "../data/clusters/database-bundles";
 import { reconcileFailoverBackupHomes } from "../data/databases/failover";
+import { expireAllSetAsideCopies } from "../data/apps/set-aside";
+import { expireLeftBehindRuns } from "../data/backups/left-behind-expiry";
 import { reconcileStandbys } from "../data/databases/standby";
 import { rehostClusterAddresses } from "../data/clusters/failover-address";
 import { reconcileClusterRelay } from "../data/clusters/relay";
@@ -63,6 +65,8 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("name forwarders", reconcileNameForwarders);
   await settle("failover bundles", reconcileFailoverBundles);
   await settle("failover backups", reconcileFailoverBackupHomes);
+  await settle("set-aside copies", () => expireAllSetAsideCopies());
+  await settle("left-behind backups", () => expireLeftBehindRuns());
   await settle("database bundles", reconcileDatabaseBundles);
   await settle("standby copies", reconcileStandbys);
   await settle("cluster addresses", rehostClusterAddresses);

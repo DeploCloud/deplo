@@ -36,7 +36,7 @@ import {
 export { TRAEFIK_CONTAINER };
 
 /** Every server's Traefik: install scripts write it, and a stack behind it on the same line is moved up when its server links. */
-export const TRAEFIK_IMAGE = "traefik:v3.7.17";
+export const TRAEFIK_IMAGE = "traefik:v3.7.20";
 
 const TRAEFIK_TAG = /^traefik:(v\d+\.\d+)(?:\.(\d+))?$/;
 
@@ -52,6 +52,34 @@ export function withTraefikImage(currentYaml: string): string | null {
   if (m[2] !== undefined && Number(m[2]) >= Number(pin[2])) return null;
   image.value = TRAEFIK_IMAGE;
   withRedirectFallback(doc, service);
+  return dump(doc);
+}
+
+const RESOLVER = /^--certificatesresolvers\.([^.=]+)\.acme\./;
+
+/**
+ * Every resolver of the stack orders ECDSA P-256 keys, unless one already names its key type: a new connection
+ * signed with Traefik's default RSA-4096 key cost 11.6 ms of a one-core server (c38), P-256 0.04 ms. Null when
+ * nothing changes; certificates already issued change at their renewal.
+ */
+export function withEcdsaKeys(currentYaml: string): string | null {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  const command = listOf(service.get("command", true));
+  const resolvers = new Set(
+    command.flatMap((c) => c.match(RESOLVER)?.slice(1, 2) ?? []),
+  );
+  const missing = [...resolvers].filter(
+    (r) =>
+      !command.some((c) =>
+        c.startsWith(`--certificatesresolvers.${r}.acme.keytype=`),
+      ),
+  );
+  if (missing.length === 0) return null;
+  setList(doc, service, "command", [
+    ...command,
+    ...missing.map((r) => `--certificatesresolvers.${r}.acme.keytype=EC256`),
+  ]);
   return dump(doc);
 }
 

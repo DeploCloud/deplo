@@ -38,6 +38,8 @@ import type { SetAsideCopy } from "../infra/agent-client/connection";
 import { formatBytes } from "../utils";
 import { placeAtLeaderFirst } from "./clusters/leader-sync";
 import { getClusterById } from "./clusters/roster";
+import { holdTurn } from "./clusters/copy-turns";
+import { lastChangesOnly, noRoomFor } from "./clusters/move-copy";
 import {
   dropTeardown,
   enqueueTeardowns,
@@ -84,6 +86,9 @@ export async function moveClusterDataBeforeStart(
     app.slug !== deployKey
   )
     return "nothing";
+  // Placed once its start has a lane here, never while it waits: until then its old member keeps running it (c48).
+  const cluster = await getClusterById(app.clusterId);
+  if (cluster) await placeAtLeaderFirst(cluster, "app", appId, serverId);
   return runMigration(appId, serverId, emit, { beforeStart: true });
 }
 
@@ -219,116 +224,156 @@ async function runMigration(
     return "nothing";
   }
 
-  let newStopped = false;
-  let oldStopped = false;
-  try {
-    // Before its first start a member may hold no stack of it yet.
-    if (there?.exists !== false) await stopStackOn(to, slug);
-    newStopped = true;
-  } catch (e) {
-    return rollback(
-      app,
-      { fromName, toName, error: e, oldStopped, newStopped },
-      emit,
-    );
-  }
-  if (hasStack) {
+  const copyAndSwitch = async (): Promise<MoveOutcome> => {
+    let newStopped = false;
+    let oldStopped = false;
     try {
-      await stopStackOn(from, slug);
-      oldStopped = true;
+      // Before its first start a member may hold no stack of it yet.
+      if (there?.exists !== false) await stopStackOn(to, slug);
+      newStopped = true;
     } catch (e) {
-      return isUnreachable(e)
-        ? hold(app, { fromName, toName, error: e, newStopped }, emit)
-        : rollback(
-            app,
-            { fromName, toName, error: e, oldStopped, newStopped },
-            emit,
-          );
+      return rollback(
+        app,
+        { fromName, toName, error: e, oldStopped, newStopped },
+        emit,
+      );
     }
-  }
+    if (hasStack) {
+      try {
+        await stopStackOn(from, slug);
+        oldStopped = true;
+      } catch (e) {
+        return isUnreachable(e)
+          ? hold(app, { fromName, toName, error: e, newStopped }, emit)
+          : rollback(
+              app,
+              { fromName, toName, error: e, oldStopped, newStopped },
+              emit,
+            );
+      }
+    }
 
-  // What the new member held of it is set aside before the copy writes over it, never lost.
-  let asideNote = "";
-  if (app.clusterId)
+    // What the new member held of it is set aside before the copy writes over it, never lost.
+    let asideNote = "";
+    if (app.clusterId)
+      try {
+        const copies = await setAsideOn(to, slug, names);
+        if (copies.length > 0)
+          asideNote = ` What ${toName} held of it was set aside first (${formatBytes(sum(copies))}).`;
+      } catch (e) {
+        return rollback(
+          app,
+          {
+            fromName,
+            toName,
+            error: new Error(
+              `what ${toName} held of it could not be set aside first: ${errMsg(e)}`,
+            ),
+            oldStopped,
+            newStopped,
+          },
+          emit,
+        );
+      }
+
+    let moved: { missing: string[]; path?: "direct" | "relay"; last?: number };
+    let whole: string | null = null;
     try {
-      const copies = await setAsideOn(to, slug, names);
-      if (copies.length > 0)
-        asideNote = ` What ${toName} held of it was set aside first (${formatBytes(sum(copies))}).`;
+      const last = await lastChangesOnly(app, names, toName);
+      if ("whole" in last) {
+        whole = last.whole;
+        if (whole)
+          emit("warn", `${app.name}'s data is copied whole: ${whole}.`);
+      }
+      moved =
+        "moved" in last
+          ? last.moved
+          : await migrateWorkloadData(from, to, {
+              volumeNames: names,
+              filesSlug: includeFiles ? slug : undefined,
+            });
     } catch (e) {
+      // A copy its new server stopped for room breaks its link too: it is no link that dropped, and goes no again.
+      const room = app.clusterId ? await noRoomFor(app, from, to, names) : null;
+      const again =
+        app.clusterId && !room && linkDropped(e) ? nextTry(app.id, to) : null;
       return rollback(
         app,
         {
           fromName,
           toName,
-          error: new Error(
-            `what ${toName} held of it could not be set aside first: ${errMsg(e)}`,
-          ),
+          error: room ? new Error(room) : e,
           oldStopped,
           newStopped,
+          again,
         },
         emit,
       );
     }
+    moveTries.delete(app.id);
+    if (moved.missing.length > 0)
+      emit(
+        "warn",
+        `${moved.missing.join(", ")} was not on ${fromName}, so nothing was copied for it. ` +
+          `Its volumes there are kept, in case the app was running with data under another name.`,
+      );
 
-  let moved: { missing: string[] };
-  try {
-    moved = await migrateWorkloadData(from, to, {
-      volumeNames: names,
-      filesSlug: includeFiles ? slug : undefined,
-    });
-  } catch (e) {
-    return rollback(
-      app,
-      { fromName, toName, error: e, oldStopped, newStopped },
-      emit,
-    );
-  }
-  if (moved.missing.length > 0)
+    let newUp = true;
+    try {
+      // Before its first start the deploy that asked for the copy starts it.
+      if (!opts.beforeStart) await startStackOn(to, slug);
+    } catch (e) {
+      newUp = false;
+      emit(
+        "warn",
+        `Data copied, but the stack did not start on ${toName} (${errMsg(e)}). Redeploy to bring it up.`,
+      );
+    }
+
+    let teardownNote = "";
+    if (moved.missing.length > 0) {
+      await destroyStackOn(from, slug, false).catch((e) => {
+        teardownNote = ` The stack on ${fromName} could not be stopped (${errMsg(e)}).`;
+      });
+    } else if (hasStack || names.length > 0) {
+      const gone = await teardownOrQueue(strayEntry(app, from, names)).catch(
+        () => false,
+      );
+      if (!gone)
+        teardownNote = ` ${fromName} did not answer; Deplo keeps retrying the teardown there.`;
+    }
+
+    await clearMarker(appId);
+    await clearDataCopyError({ kind: "app", id: appId });
     emit(
-      "warn",
-      `${moved.missing.join(", ")} was not on ${fromName}, so nothing was copied for it. ` +
-        `Its volumes there are kept, in case the app was running with data under another name.`,
+      teardownNote || !newUp ? "warn" : "info",
+      `${app.name}'s data is on ${toName}.` + asideNote + teardownNote,
     );
-
-  let newUp = true;
+    await recordActivity(
+      "app",
+      `Moved ${app.name}'s data from ${fromName} to ${toName}` +
+        (moved.last !== undefined
+          ? `, its last changes only (${formatBytes(moved.last)})`
+          : moved.path === "direct"
+            ? ", server to server"
+            : moved.path
+              ? ", through Deplo"
+              : "") +
+        (whole ? `. All of it was copied: ${whole}` : "") +
+        (asideNote ? `.${asideNote}` : ""),
+      "system",
+      appId,
+    );
+    return "done";
+  };
+  // A move never waits its turn: on a cluster the App is down once the leader holds its new server (c38: two
+  // Apps stopped 4 minutes in the queue). It holds both servers, and every other copy there waits for it.
+  const release = holdTurn([from, to], `the move of ${app.name}`);
   try {
-    // Before its first start the deploy that asked for the copy starts it.
-    if (!opts.beforeStart) await startStackOn(to, slug);
-  } catch (e) {
-    newUp = false;
-    emit(
-      "warn",
-      `Data copied, but the stack did not start on ${toName} (${errMsg(e)}). Redeploy to bring it up.`,
-    );
+    return await copyAndSwitch();
+  } finally {
+    release();
   }
-
-  let teardownNote = "";
-  if (moved.missing.length > 0) {
-    await destroyStackOn(from, slug, false).catch((e) => {
-      teardownNote = ` The stack on ${fromName} could not be stopped (${errMsg(e)}).`;
-    });
-  } else if (hasStack || names.length > 0) {
-    const gone = await teardownOrQueue(strayEntry(app, from, names)).catch(
-      () => false,
-    );
-    if (!gone)
-      teardownNote = ` ${fromName} did not answer; Deplo keeps retrying the teardown there.`;
-  }
-
-  await clearMarker(appId);
-  await clearDataCopyError({ kind: "app", id: appId });
-  emit(
-    teardownNote || !newUp ? "warn" : "info",
-    `${app.name}'s data is on ${toName}.` + asideNote + teardownNote,
-  );
-  await recordActivity(
-    "app",
-    `Moved ${app.name}'s data from ${fromName} to ${toName}` +
-      (asideNote ? `.${asideNote}` : ""),
-    "system",
-    appId,
-  );
-  return "done";
 }
 
 const sum = (copies: SetAsideCopy[]) => copies.reduce((n, c) => n + c.bytes, 0);
@@ -377,6 +422,7 @@ async function keepNewer(
 async function setAsideOldCopy(
   app: App,
   from: string,
+  stopped: () => void = () => {},
 ): Promise<{ copies: SetAsideCopy[]; names: string[] }> {
   let names: string[];
   let hasStack: boolean;
@@ -393,6 +439,7 @@ async function setAsideOldCopy(
     old.close();
   }
   if (hasStack) await stopStackOn(from, app.slug);
+  stopped();
   return {
     copies: await setAsideOnto(from, app.serverId, names, app.slug),
     names,
@@ -406,20 +453,25 @@ const asideSentence = async (app: App, from: string, copies: SetAsideCopy[]) =>
 
 /**
  * "Deploy anyway" on a cluster App whose move is held: the old member's copy is set aside where the App runs, never
- * deleted. One that does not answer has its removal queued, and the queue sets the copy aside first. Says which.
+ * deleted. One that does not answer has its removal queued, and Activity says where its copy went once it answers.
+ * `stopped` runs once the old copy is stopped, or could not be reached to stop: the new one may start then.
  */
-export async function setAsideHeldCopy(app: App): Promise<string> {
+export async function setAsideHeldCopy(
+  app: App,
+  stopped: () => void = () => {},
+): Promise<string> {
   const from = app.migrateFromServerId!;
   try {
-    const { copies, names } = await setAsideOldCopy(app, from);
+    const { copies, names } = await setAsideOldCopy(app, from, stopped);
     await teardownOrQueue(strayEntry(app, from, names)).catch(() => {});
     return await asideSentence(app, from, copies);
   } catch (e) {
+    stopped();
     const fromName = await serverName(from);
     if (!isUnreachable(e))
       return `What ${fromName} holds of ${app.name} could not be set aside (${errMsg(e)}), so it stays there.`;
     await enqueueTeardowns([strayEntry(app, from)]);
-    return `${fromName} does not answer: what it holds of ${app.name} is set aside on ${await serverName(app.serverId)} once it answers again, then removed there.`;
+    return `${fromName} does not answer, so what it holds of ${app.name} stays on it for now: Activity says where it is kept once ${fromName} answers again.`;
   }
 }
 
@@ -456,6 +508,81 @@ function strayEntry(app: App, serverId: string, reclaim?: string[]) {
   };
 }
 
+// A dropped link does not end a move (ADR-0043): the App runs where it was again, and the move goes again by
+// itself, up to MOVE_RETRIES times, once both servers answer. eu-4's link closed mid-copy on canary.90 (c37).
+const MOVE_RETRIES = 3;
+export const moveRetry = { waitMs: 5_000, answerMs: 3 * 60_000 };
+const moveTries = new Map<string, { to: string; n: number }>();
+
+function nextTry(appId: string, to: string): number | null {
+  const was = moveTries.get(appId);
+  const n = was?.to === to ? was.n + 1 : 1;
+  if (n > MOVE_RETRIES) return null;
+  moveTries.set(appId, { to, n });
+  return n;
+}
+
+const LINK_WORDS =
+  /cut short|did not confirm|connection (reset|closed|ended)|broken pipe|\bEOF\b|ENOENT|UNAVAILABLE|is offline|channel has been shut down/i;
+
+/** The copy broke because a link did: Deplo's to a server, or the one between the two servers. */
+export function linkDropped(e: unknown): boolean {
+  return isUnreachable(e) || LINK_WORDS.test(errMsg(e));
+}
+
+async function answers(serverId: string): Promise<boolean> {
+  try {
+    const c = await connectAgent(serverId);
+    c.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Moves the App again once both servers answer, as Deplo's own move. One its old server could not start again (the
+ * link that dropped was that server's: c38) starts there first, so it runs where it is until the next try.
+ */
+function moveAgain(
+  app: App,
+  from: string,
+  to: string,
+  n: number,
+  startFirst: boolean,
+): void {
+  setTimeout(async () => {
+    const until = Date.now() + moveRetry.answerMs;
+    while (
+      Date.now() < until &&
+      !((await answers(from)) && (await answers(to)))
+    )
+      await new Promise((r) => setTimeout(r, moveRetry.waitMs));
+    if (startFirst) await startStackOn(from, app.slug).catch(() => {});
+    try {
+      const cluster = app.clusterId
+        ? await getClusterById(app.clusterId)
+        : null;
+      if (!cluster) return;
+      const { relocateClusterApp } = await import("./apps/source");
+      await relocateClusterApp(
+        app.id,
+        cluster,
+        to,
+        `its copy broke when a link dropped (try ${n + 1} of ${MOVE_RETRIES + 1})`,
+      );
+    } catch (e) {
+      moveTries.delete(app.id);
+      console.warn(`[move] ${app.name} could not move again: ${errMsg(e)}`);
+    }
+  }, moveRetry.waitMs).unref();
+}
+
+/** Test seam. */
+export function __forgetMoveTries(): void {
+  moveTries.clear();
+}
+
 async function rollback(
   app: App,
   ctx: {
@@ -464,6 +591,8 @@ async function rollback(
     error: unknown;
     oldStopped: boolean;
     newStopped: boolean;
+    /** Which try comes next, when the move goes again by itself. */
+    again?: number | null;
   },
   emit: Emit,
 ): Promise<MoveOutcome> {
@@ -484,9 +613,31 @@ async function rollback(
     }).catch(() => false);
   await teardownOrQueue(strayEntry(app, to)).catch(() => {});
   publishAppChanged(app.id);
+  if (ctx.again) {
+    const where = oldUp
+      ? `it runs on ${ctx.fromName} again`
+      : `it starts on ${ctx.fromName} again once that server answers`;
+    emit(
+      "warn",
+      `The copy of ${app.name}'s data to ${ctx.toName} broke when a link dropped (${errMsg(ctx.error)}): ` +
+        `${where}, and the move goes again by itself once both servers answer ` +
+        `(try ${ctx.again + 1} of ${MOVE_RETRIES + 1}).`,
+    );
+    await recordActivity(
+      "app",
+      `Moving ${app.name} to ${ctx.toName} broke when a link dropped - ${where}, and the move goes again by itself`,
+      "system",
+      app.id,
+    );
+    moveAgain(app, from, to, ctx.again, !oldUp);
+    return "rolled-back";
+  }
+  const tries = moveTries.get(app.id);
+  moveTries.delete(app.id);
   emit(
     "error",
-    `Failed to copy ${app.name}'s data to ${ctx.toName} (${errMsg(ctx.error)}). ` +
+    (tries ? `After ${tries.n + 1} tries: ` : "") +
+      `Failed to copy ${app.name}'s data to ${ctx.toName} (${errMsg(ctx.error)}). ` +
       `The move was rolled back - the app is still on ${ctx.fromName}` +
       (oldUp
         ? "."
@@ -494,7 +645,9 @@ async function rollback(
   );
   await recordActivity(
     "app",
-    `Moving ${app.name} to ${ctx.toName} failed - it stays on ${ctx.fromName}`,
+    tries
+      ? `Moving ${app.name} to ${ctx.toName} failed after ${tries.n + 1} tries - it stays on ${ctx.fromName}: ${errMsg(ctx.error)}`
+      : `Moving ${app.name} to ${ctx.toName} failed - it stays on ${ctx.fromName}`,
     "system",
     app.id,
   );

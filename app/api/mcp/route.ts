@@ -3,7 +3,7 @@ import {
   DEFAULT_MAX_REQUEST_BODY_SIZE,
 } from "@modelcontextprotocol/server";
 import { capRequestBody } from "@/lib/http/body-cap";
-import { TEAM_HEADER } from "@/lib/team-path";
+import { TEAM_HEADER, TeamUnavailableError } from "@/lib/team-path";
 import { authenticateToken, stampMcpUse } from "@/lib/data/tokens/authenticate";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -107,7 +107,10 @@ async function contextForTeam(
   );
   if (!match) throw refusal;
 
-  const identity = await authenticateToken(raw, match.id);
+  const identity = await authenticateToken(raw, match.id).catch((e) => {
+    if (e instanceof TeamUnavailableError) return null;
+    throw e;
+  });
   if (!identity || identity.teamId !== match.id) throw refusal;
 
   return runWithIdentity(identity, async () => {
@@ -138,6 +141,11 @@ export async function POST(request: Request) {
   try {
     first = await authenticateToken(raw, hint);
   } catch (e) {
+    if (e instanceof TeamUnavailableError)
+      return Response.json(
+        { error: e.message },
+        { status: 403, headers: OAUTH_CORS_HEADERS },
+      );
     return refuse(request, e instanceof Error ? e.message : "Not authorized");
   }
   if (!first) return refuse(request, "That API token is not valid.");

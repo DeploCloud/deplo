@@ -2,6 +2,8 @@ import "server-only";
 
 import { AGENT_VERSION, CLUSTER_VERSION, clusterPinned } from "../version";
 
+import { publicBaseUrl } from "../public-url";
+
 export const AGENT_REPO = "DeploCloud/deplo-agent";
 export const CLUSTER_REPO = "DeploCloud/deplo-cluster";
 
@@ -108,4 +110,41 @@ function clusterCell(): {
 export function __resetReleaseCacheForTests(): void {
   cell().value = null;
   clusterCell().value = {};
+}
+
+const SERVED = /^(deplo-agent|deplo-cluster)-linux-(amd64|arm64)$/;
+
+/** Where one binary of a release this Deplo pins lives on GitHub, for the route that serves it; null for any other file. */
+export async function pinnedBinaryUpstream(
+  file: string,
+): Promise<string | null> {
+  const m = SERVED.exec(file);
+  if (!m) return null;
+  const release =
+    m[1] === "deplo-agent"
+      ? await resolveAgentRelease()
+      : await resolveClusterRelease();
+  return release?.binaries[m[2] as Arch]?.url ?? null;
+}
+
+/**
+ * The URLs a server downloads a pinned release from: Deplo's own address, which its link already reaches, so a server
+ * that reaches GitHub slowly still updates in time (an agent answers SelfUpdate only once the binary is staged).
+ * GitHub's when Deplo has no https address; the checksums are the release's either way.
+ */
+export function servedByDeplo(
+  binaries: Record<string, { url: string; sha256: string }>,
+  binary: "deplo-agent" | "deplo-cluster",
+  base: string | null = publicBaseUrl(),
+): Record<string, { url: string; sha256: string }> {
+  if (!base?.startsWith("https://")) return binaries;
+  return Object.fromEntries(
+    Object.entries(binaries).map(([arch, bin]) => [
+      arch,
+      {
+        url: `${base}/api/agent/release/${binary}-linux-${arch}`,
+        sha256: bin.sha256,
+      },
+    ]),
+  );
 }

@@ -6,10 +6,17 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
-import { backups as backupsTable } from "../../db/schema/control-plane/backups";
+import {
+  backupRuns,
+  backups as backupsTable,
+} from "../../db/schema/control-plane/backups";
+import { databases } from "../../db/schema/control-plane/databases";
+import { apps } from "../../db/schema/control-plane/apps";
+import { seedServer } from "../app-graph-test-helpers";
 import { seedBackup } from "../backup-test-helpers";
 import { asUser1, seedBase } from "./backups-test-helpers";
 import { runAppBackup, runBackup, runDatabaseBackup } from "./run-now";
+import { cancelBackupsOfDeleted } from "./execute-backup";
 import { activities } from "../../db/schema/control-plane/activity";
 import { listBackupRuns } from "./run-listing";
 import { status as GrpcStatus } from "@grpc/grpc-js";
@@ -143,6 +150,105 @@ test("a run records how long the agent held the App, and nothing when it held no
   });
 });
 
+// c46: lab-room's backup failed for the 1 s pause and its run kept no held_ms.
+test("a failed run records how long the agent held the App too", async (t) => {
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        yield {
+          result: {
+            ok: false,
+            error: "its data could not be copied within 1s of pausing it",
+            sizeBytes: 0,
+            sha256: "",
+            heldMs: 1004,
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await assert.rejects(() => runDatabaseBackup("db_1", "s3_1"));
+    const runs = await listBackupRuns({ databaseId: "db_1" });
+    assert.deepEqual(
+      runs.map((r) => [r.status, r.heldMs]),
+      [["failed", 1004]],
+    );
+  });
+});
+
+// eu, 24 Nov 2026: nothing said that a backup between two members went through Deplo.
+test("a run records whether it went server to server or through Deplo", async (t) => {
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        yield {
+          result: {
+            ok: true,
+            error: "",
+            sizeBytes: 3,
+            sha256: "",
+            path: "direct",
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await runDatabaseBackup("db_1", "s3_1");
+    const runs = await listBackupRuns({ databaseId: "db_1" });
+    assert.ok(runs.some((r) => r.path === "direct"));
+  });
+});
+
+test("a backup that paused the App for its whole copy says why in Activity", async (t) => {
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        yield {
+          result: {
+            ok: true,
+            error: "",
+            sizeBytes: 3,
+            sha256: "",
+            heldMs: 12_300,
+            heldWhy:
+              "the server has 0.3 GB free, too little to copy 2.0 GB of data on its own disk first",
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(() => runDatabaseBackup("db_1", "s3_1"));
+  const said = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    said.some((m) =>
+      /^Backed up .*\. It was paused for the whole copy \(12\.3 s\): the server has 0\.3 GB free, too little to copy 2\.0 GB of data on its own disk first$/.test(
+        m,
+      ),
+    ),
+    said.join("\n"),
+  );
+});
+
 test("a backup that fails before it reaches the server still names what it was backing up", async (t) => {
   __setAgentConnectorForTest(async () => {
     throw new AgentUnreachableError("offline", GrpcStatus.UNAVAILABLE);
@@ -160,4 +266,121 @@ test("a backup that fails before it reaches the server still names what it was b
     "Backup of database main failed",
     "Backup of prj_1 failed",
   ]);
+});
+
+// c49: a backup cut by a move said Docker's "no such volume".
+test("a backup cut by its App's move says so, not the agent's words", async (t) => {
+  await seedServer(db, "srv_2");
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      readStack: async () => ({
+        exists: true,
+        yaml: "services:\n  web:\n    image: x\n    volumes:\n      - data:/data\nvolumes:\n  data: {}\n",
+      }),
+      async *backup() {
+        await db
+          .update(apps)
+          .set({ serverId: "srv_2" })
+          .where(eq(apps.id, "prj_1"));
+        yield {
+          result: {
+            ok: false,
+            error: "get deplo_prj_1_data: no such volume",
+            sizeBytes: 0,
+            sha256: "",
+            heldMs: 0,
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await pg.exec("truncate table activities");
+  await asUser1(() => runAppBackup("prj_1", "s3_1").catch(() => {}));
+  const said = (
+    await db.select({ m: activities.message }).from(activities)
+  ).map((a) => a.m);
+  assert.deepEqual(said, [
+    "Backup of prj_1 failed: canceled by the move of prj_1 to srv_2",
+  ]);
+});
+
+// eu, 24 Nov 2026: a copy saved 3 s after its App was deleted stayed as a backup. One that lands after its target
+// went is removed from the destination, never listed, and Activity says nothing of it.
+test("a backup that lands after its database was deleted is removed, not kept", async (t) => {
+  const deleted: string[] = [];
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup(req: { s3?: { objectKey?: string } }) {
+        await db.delete(databases).where(eq(databases.id, "db_1"));
+        yield {
+          result: {
+            ok: true,
+            error: "",
+            sizeBytes: 3,
+            sha256: "",
+            objectKey: req.s3?.objectKey ?? "",
+          },
+        };
+      },
+      s3Delete: async (target: { objectKey: string }) => {
+        deleted.push(target.objectKey);
+        return { ok: true, error: "", deleted: 1 };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await assert.rejects(() => runDatabaseBackup("db_1", "s3_1"), /deleted/);
+  });
+  const runs = await db.select().from(backupRuns);
+  assert.equal(runs.length, 1);
+  assert.notEqual(runs[0]!.status, "success");
+  assert.deepEqual(deleted, [runs[0]!.objectKey]);
+  const lines = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    !lines.some((m) => /Backed up|Backup of .* failed/.test(m)),
+    lines.join("\n"),
+  );
+});
+
+// c36: a delete canceled a run whose file had landed but whose answer had not; the file outlived its App.
+test("a run its target's delete cuts off removes the file it may have landed", async (t) => {
+  const deleted: string[] = [];
+  let key = "";
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup(req: { s3?: { objectKey?: string } }) {
+        key = req.s3?.objectKey ?? "";
+        await cancelBackupsOfDeleted("db_1");
+        await db.delete(backupRuns);
+        throw new Error("the call was canceled");
+      },
+      s3Delete: async (target: { objectKey: string }) => {
+        deleted.push(target.objectKey);
+        return { ok: true, error: "", deleted: 1 };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await assert.rejects(() => runDatabaseBackup("db_1", "s3_1"), /canceled/);
+  });
+  assert.ok(key);
+  assert.deepEqual(deleted, [key]);
 });

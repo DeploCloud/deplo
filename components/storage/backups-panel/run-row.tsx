@@ -104,7 +104,11 @@ export function RunRow({
             <StatusDot status={run.status} />
           )}
           <span className="text-sm font-medium">
-            {running ? "Running" : timeAgo(run.startedAt)}
+            {running
+              ? run.queued
+                ? "Queued"
+                : "Running"
+              : timeAgo(run.startedAt)}
           </span>
           {!running && !ok && (
             <span className="text-xs text-muted-foreground capitalize">
@@ -132,12 +136,26 @@ export function RunRow({
           {ok && heldLabel(run.heldMs) && (
             <span> · {heldLabel(run.heldMs)}</span>
           )}
+          {ok && run.path && (
+            <span>
+              {" "}
+              ·{" "}
+              {run.path === "direct"
+                ? "sent server to server"
+                : "sent through Deplo"}
+            </span>
+          )}
           {ok && !run.sha256 && (
             <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
               <span> · not checksummed</span>
             </SimpleTooltip>
           )}
         </p>
+        {running && run.queued && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Waits its turn, {run.queued}
+          </p>
+        )}
         {run.error && (
           <SimpleTooltip content={run.error}>
             <p className="mt-1 line-clamp-2 min-w-64 text-xs whitespace-normal text-destructive">

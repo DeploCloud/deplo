@@ -1,6 +1,8 @@
 import "server-only";
 
 import { and, eq } from "drizzle-orm";
+import { silentFor } from "../../infra/agent-link/registry";
+import { SILENT_AFTER_MS } from "./leader-beat";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { directCore, type PathReport } from "../../clusters/direct-core";
@@ -20,7 +22,7 @@ import { CLUSTER_SUCCESSION_CAPABILITY } from "../../infra/agent-client/hello-ca
 import { agentBehind } from "./binary-rollout";
 import { clusterMemberFacts } from "./facts";
 import { leaderHostOf } from "./host";
-import { clusterNetworkLinksOf } from "./network";
+import { clusterNetworkLinksOf, syncClusterNetwork } from "./network";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 
 // A cluster's leader lives on one of its own servers, with a line of members after it (ADR-0043, 23 Nov 2026).
@@ -60,6 +62,22 @@ export async function leaderCandidates(clusterId: string): Promise<string[]> {
   const core = directCore(live, await pathReports(clusterId, live));
   if (live.length > 1 && core.length < 2) return [];
   return core.filter((id) => !facts.get(id)?.emptying);
+}
+
+/**
+ * The members whose agent does not answer now. What Deplo tells the others keeps them: one that was off at a push
+ * keeps a list without them and leads later with what it held (eu, 23 Nov 2026). Never throws.
+ */
+export async function silentMembers(clusterId: string): Promise<string[]> {
+  try {
+    const ids = await clusterMemberServerIds(clusterId);
+    const ok = await Promise.all(
+      ids.map(async (id) => (await probeClusterHost(id)) === "ok"),
+    );
+    return ids.filter((_, i) => !ok[i]);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -146,6 +164,8 @@ async function heirView(
   serverId: string,
   clusterId: string,
 ): Promise<HeirView | null | undefined> {
+  // A server silent on its link does not answer: asking would only wait out its Hello.
+  if (silentFor(serverId, SILENT_AFTER_MS)) return undefined;
   try {
     const raw = await callClusterLeader(
       serverId,
@@ -330,6 +350,12 @@ async function leaderRelayed(cluster: Cluster): Promise<boolean> {
     return false;
   // A leader that does not answer is the supervisor's: an heir may lead already, and a move would hand over its head.
   if ((await probeClusterHost(id)) !== "ok") return false;
-  const candidates = await leaderCandidates(cluster.id);
-  return candidates.length >= 2 && !candidates.includes(id);
+  const outside = async () => {
+    const candidates = await leaderCandidates(cluster.id);
+    return candidates.length >= 2 && !candidates.includes(id);
+  };
+  if (!(await outside())) return false;
+  // The paths of the last pass may predate a member's return (c46: the leader moved 76 s after one): read them again.
+  await syncClusterNetwork(cluster.id);
+  return outside();
 }

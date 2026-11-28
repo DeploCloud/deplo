@@ -107,7 +107,11 @@ export function DataCopyNotice({
                   : "The data that was meant to be there is not coming back."
             }
             confirmLabel={`${verb} anyway`}
-            successMessage={`${name} can be ${kind === "app" ? "deployed" : "started"} again`}
+            successMessage={
+              kind === "app"
+                ? `Deploying ${name}`
+                : `${name} can be started again`
+            }
             onConfirm={async () => {
               const res = await gqlAction(
                 kind === "app" ? ACCEPT_APP : ACCEPT_DATABASE,
