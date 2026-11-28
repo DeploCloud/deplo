@@ -132,7 +132,7 @@ function ProblemLink({
 }
 
 const TINT: Record<StatusTone, string> = {
-  ok: "var(--green)",
+  ok: "var(--success)",
   warn: "var(--warning)",
   bad: "var(--destructive)",
 };

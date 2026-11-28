@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 export type StatusTone = "ok" | "warn" | "bad";
 
 const COLOR: Record<StatusTone, string> = {
-  ok: "var(--green)",
+  ok: "var(--success)",
   warn: "var(--warning)",
   bad: "var(--destructive)",
 };
