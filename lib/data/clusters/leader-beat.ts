@@ -4,6 +4,8 @@ import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { callClusterLeader } from "../../infra/agent-client/cluster-host";
 import { CLUSTER_BEAT_TIMEOUT_MS } from "../../infra/agent-client/deadlines";
+import { silentFor } from "../../infra/agent-link/registry";
+import { LINK_PING_MS } from "../../infra/agent-link/protocol";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { leaderHost } from "./host";
 import { getClusterById } from "./roster";
@@ -11,16 +13,28 @@ import { getClusterById } from "./roster";
 // Deplo says every few seconds at which epoch each cluster is led. A leader that hears exactly half of its
 // servers leads only on that word, so two leaders never hold one half each (docs/agents/cluster-rollout.md §5).
 
-export const BEAT_EVERY_MS = 5_000;
+export const BEAT_EVERY_MS = 2_000;
 
-/** How long a leader goes unnamed before another may lead: longer than the 20 s it trusts a beat (`DeploFor` in deplo-cluster). */
-export const TAKEOVER_AFTER_MS = 25_000;
+/** How long Deplo asks its word to hold; a leader older than that holds every word 20 s (`DeploFor` in deplo-cluster). */
+export const TRUST_MS = 8_000;
+const LEGACY_TRUST_MS = 20_000;
+// What a beat may take to reach the leader after it left: the wait covers it.
+const IN_TRANSIT_MS = 5_000;
+/** Two of the link's pings unheard: a server that is gone, for every check that would otherwise wait on it. */
+export const SILENT_AFTER_MS = 2 * LINK_PING_MS - 1_000;
+
+/** How long a leader whose word holds 20 s goes unnamed before another may lead. */
+export const TAKEOVER_AFTER_MS = LEGACY_TRUST_MS + IN_TRANSIT_MS;
 
 const enc = (v: unknown): Uint8Array =>
   new TextEncoder().encode(JSON.stringify(v));
 
 // When each cluster's leader may last have heard its epoch from this Deplo: a beat that left, answered or not.
 const named = new Map<string, number>();
+// How long that leader said its word holds, an earlier and longer one included; unknown is 20 s.
+const holds = new Map<string, number>();
+// Clusters whose stored leader did not take the last beat: Deplo checks on them at once, not at the next tick.
+const missed = new Set<string>();
 const inFlight = new Set<string>();
 const clock = { now: () => Date.now(), startedAt: Date.now() };
 // The member next in line Deplo gives its word to while the stored leader is silent, at the epoch it asks to lead.
@@ -31,6 +45,8 @@ const held = new Set<string>();
 /** Test seam: forget every beat. With a clock, Deplo started at its present; without, it has been up forever. */
 export function __setLeaderBeatClockForTest(now: (() => number) | null): void {
   named.clear();
+  holds.clear();
+  missed.clear();
   heirs.clear();
   held.clear();
   clock.now = now ?? (() => Date.now());
@@ -40,7 +56,15 @@ export function __setLeaderBeatClockForTest(now: (() => number) | null): void {
 /** Whether the cluster's leader may still be leading on Deplo's last word. A Deplo that just started assumes so. */
 export function leaderNamedRecently(clusterId: string): boolean {
   const at = named.get(clusterId) ?? clock.startedAt;
-  return clock.now() - at < TAKEOVER_AFTER_MS;
+  const hold = named.has(clusterId)
+    ? (holds.get(clusterId) ?? LEGACY_TRUST_MS)
+    : LEGACY_TRUST_MS;
+  return clock.now() - at < hold + IN_TRANSIT_MS;
+}
+
+/** The clusters whose stored leader did not take the last beat. */
+export function leadersMissingBeats(): string[] {
+  return [...missed];
 }
 
 /** Deplo's word goes to this heir, at the epoch it tries, instead of the stored leader (ADR-0043, 23 Nov 2026). */
@@ -70,12 +94,38 @@ async function beat(
 ): Promise<void> {
   let left = false;
   try {
-    await callClusterLeader(serverId, "leader.beat", enc({ epochs }), {
-      timeoutMs: CLUSTER_BEAT_TIMEOUT_MS,
-      sent: () => (left = true),
-    });
+    // A server not heard for longer than two of the link's pings is not reached: the beat would only wait out its
+    // Hello, while the leader that may replace it waits on this miss.
+    if (silentFor(serverId, SILENT_AFTER_MS))
+      throw new Error("the server does not answer");
+    const raw = await callClusterLeader(
+      serverId,
+      "leader.beat",
+      enc({ epochs, trustMs: TRUST_MS }),
+      { timeoutMs: CLUSTER_BEAT_TIMEOUT_MS, sent: () => (left = true) },
+    );
+    const said = holdsOf(raw);
+    for (const id of Object.keys(epochs)) {
+      holds.set(id, said);
+      missed.delete(id);
+    }
+  } catch (e) {
+    for (const id of Object.keys(epochs)) missed.add(id);
+    throw e;
   } finally {
     if (left) for (const id of Object.keys(epochs)) named.set(id, clock.now());
+  }
+}
+
+// How long the leader says Deplo's word holds there: a leader older than that holds every word 20 s.
+function holdsOf(raw: Uint8Array): number {
+  try {
+    const ms = (
+      JSON.parse(new TextDecoder().decode(raw)) as { holdsMs?: unknown }
+    ).holdsMs;
+    return typeof ms === "number" && ms > 0 ? ms : LEGACY_TRUST_MS;
+  } catch {
+    return LEGACY_TRUST_MS;
   }
 }
 

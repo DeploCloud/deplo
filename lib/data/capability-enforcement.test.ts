@@ -48,6 +48,7 @@ import { listEnv, upsertEnv } from "./env";
 import { deleteTeam } from "./team-delete";
 import { setFolderGrant } from "./folder-access";
 import { authenticateToken } from "./tokens/authenticate";
+import { TeamUnavailableError } from "../team-path";
 import { createToken } from "./tokens/mint";
 import {
   verifyDeployHookToken,
@@ -636,10 +637,14 @@ async function hookCall(
   appId: string,
   urlToken: string,
 ): Promise<"401" | "404" | "403-disabled" | "refused" | "deployed"> {
-  const principal = await authenticateToken(
-    raw,
-    await owningTeamId(appId),
-  ).catch(() => null);
+  let principal;
+  try {
+    principal = await authenticateToken(raw, await owningTeamId(appId));
+  } catch (e) {
+    // The route answers another team's App as a missing one.
+    if (e instanceof TeamUnavailableError) return "404";
+    principal = null;
+  }
   if (!principal) return "401";
   const unreachable = await runWithIdentity(
     principal,

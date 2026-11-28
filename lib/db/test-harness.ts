@@ -26,13 +26,27 @@ const PGLITE_VERSION: string = JSON.parse(
   ),
 ).version;
 
+// The snapshots live as long as the run that made them: /tmp is memory on many hosts. scripts/test.mjs shares
+// one dir between its workers and removes it; a process on its own removes its own.
+let ownCacheDir: string | undefined;
+function cacheDir(): string {
+  const shared = process.env.DEPLO_TEST_CACHE_DIR;
+  if (shared) return shared;
+  if (!ownCacheDir) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "deplo-pglite-"));
+    process.on("exit", () => fs.rmSync(dir, { recursive: true, force: true }));
+    ownCacheDir = dir;
+  }
+  return ownCacheDir;
+}
+
 function cachePath(): string {
   const h = crypto.createHash("sha256").update(PGLITE_VERSION);
   for (const f of fs.readdirSync(MIGRATIONS).sort()) {
     const p = path.join(MIGRATIONS, f);
     if (fs.statSync(p).isFile()) h.update(fs.readFileSync(p));
   }
-  return path.join(os.tmpdir(), `deplo-pglite-${h.digest("hex").slice(0, 16)}`);
+  return path.join(cacheDir(), `snapshot-${h.digest("hex").slice(0, 16)}`);
 }
 
 let cacheFile: string | undefined;
@@ -103,7 +117,7 @@ async function openTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
 export async function makeEmptyTestPg(
   options: PGliteOptions = {},
 ): Promise<PGlite> {
-  const file = path.join(os.tmpdir(), `deplo-pglite-empty-${PGLITE_VERSION}`);
+  const file = path.join(cacheDir(), `empty-${PGLITE_VERSION}`);
   const cached = await loadSnapshot(file, options);
   if (cached) return cached;
   const pg = new PGlite(options);

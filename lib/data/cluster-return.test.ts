@@ -7,6 +7,7 @@ import { TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedApp } from "./app-graph-test-helpers";
 import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import { backupRuns } from "../db/schema/control-plane/backups";
+import { BACKUP_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
 import { activities } from "../db/schema/control-plane/activity";
@@ -548,6 +549,31 @@ test("a late save is listed only for the team that owns the workload, in its own
       actor: "Deplo",
     },
   ]);
+});
+
+// eu, 24 Nov 2026: what a member saved 3 s after its App was deleted stayed as a backup. Saved for a workload that is
+// gone, or on its way out, the file goes from the destination and nothing is listed.
+test("a late save of a workload deleted meanwhile is removed, never listed", async (t) => {
+  const cluster = await eu();
+  await shop(cluster.id);
+  await seedDestination(lab.db, { id: "dst_s3", name: "bucket" });
+  const deleted: string[] = [];
+  const srv2 = lab.members.srv_2!;
+  srv2.capabilities.push(BACKUP_CAPABILITY);
+  srv2.extra.s3Delete = async (target) => {
+    deleted.push(target.objectKey);
+    return { ok: true, error: "", deleted: 1 };
+  };
+  t.after(() => delete srv2.extra.s3Delete);
+  await lab.db.delete(databasesTable).where(eq(databasesTable.id, "db_shop"));
+  lab.seq = 0;
+  await applyLeaderEvent(
+    cluster.id,
+    event(cluster.id, "left_saved", { member: "srv_2", saved: [SAVED] }),
+  );
+  assert.deepEqual(await lab.db.select().from(backupRuns), []);
+  assert.deepEqual(await saves(TEAM_A), []);
+  assert.deepEqual(deleted, [SAVED.objectKey]);
 });
 
 test("a return that set data aside says so, with its size and where to find it", async () => {

@@ -23,6 +23,7 @@ import { leaderHost } from "./host";
 import { memberIsEmptying } from "./member-workloads";
 import { clusterMemberServerIds, getCluster } from "./roster";
 import { messageOf } from "../../utils";
+import { formatBytes } from "../backups/format-bytes";
 
 export type WorkloadKind = "app" | "database";
 
@@ -43,14 +44,20 @@ export interface PlacementRequest {
   archs?: string[];
   /** Members never chosen: a standby copy never shares a member with its database. */
   exclude?: string[];
+  /** What its data takes on a member that holds none of it; 0 for a new App (ADR-0043). */
+  diskBytes?: number;
+  /** A new workload, whose data nobody can measure yet: the leader puts it where it can grow (ADR-0043). */
+  dataUnknown?: boolean;
 }
 
 export type PlacementRefusalReason =
-  "no_member_online" | "no_architecture" | "no_image" | "no_room";
+  "no_member_online" | "no_architecture" | "no_image" | "no_room" | "no_disk";
 
 export interface PlacementRefusal {
   reason: PlacementRefusalReason;
   neededMb: number;
+  /** Its data, for a refusal for disk. */
+  neededBytes?: number;
   cluster: string;
   workload: string;
 }
@@ -73,6 +80,7 @@ const REASON_REFUSALS = new Set<string>([
   "no_architecture",
   "no_image",
   "no_room",
+  "no_disk",
 ]);
 
 /** The fixed set of sentences a refusal becomes. */
@@ -95,6 +103,10 @@ export function refusalSentence(
         : `No server in cluster ${cluster} has the kind of processor ${workload} was built for. Add a server that does.`;
     case "no_image":
       return `No server in cluster ${cluster} has ${workload}'s image yet. Try again in a minute.`;
+    case "no_disk":
+      return r.neededBytes
+        ? `No server in cluster ${cluster} has room for ${workload}'s data (about ${formatBytes(r.neededBytes)}) and a tenth of its disk free. Free some space on one, or add a server.`
+        : `Every server in cluster ${cluster} has less than a tenth of its disk free. Free some space on one, or add a server.`;
   }
 }
 
@@ -120,6 +132,7 @@ function parseAnswer(raw: Uint8Array): {
         refusal: {
           reason: r.reason as PlacementRefusalReason,
           neededMb: Number(r.neededMb) || 0,
+          neededBytes: Number(r.neededBytes) || 0,
           cluster: String(r.cluster ?? ""),
           workload: String(r.workload ?? ""),
         },
@@ -160,6 +173,8 @@ async function askLeader(
             peakMb: peakMemoryMb(req.id, many?.replicas),
             image: req.imageRef ?? "",
             archs: req.archs ?? [],
+            ...(req.diskBytes ? { diskBytes: req.diskBytes } : {}),
+            ...(req.dataUnknown ? { dataUnknown: true } : {}),
           },
           members: facts,
           ...(many
@@ -248,6 +263,8 @@ export interface PlacementReport {
   /** One entry per replica in placement order; null is waiting for room. */
   members: (string | null)[];
   epoch: number;
+  /** The leader's word, which may be stale: it never takes the row back to an older epoch (c43). */
+  fromLeader?: boolean;
 }
 
 /**
@@ -266,10 +283,14 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
       .select({ id: table.id, serverId: table.serverId })
       .from(table)
       .where(and(eq(table.id, r.workloadId), eq(table.clusterId, r.clusterId)))
-      .limit(1);
+      .limit(1)
+      .for("update");
     if (owned.length === 0) return false;
     const before = await tx
-      .select({ m: workloadPlacements.memberServerId })
+      .select({
+        m: workloadPlacements.memberServerId,
+        epoch: workloadPlacements.epoch,
+      })
       .from(workloadPlacements)
       .where(
         and(
@@ -277,6 +298,7 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
           eq(workloadPlacements.workloadId, r.workloadId),
         ),
       );
+    if (r.fromLeader && before.some((b) => b.epoch > r.epoch)) return false;
     moved =
       r.kind === "app" &&
       homeOf(
@@ -367,7 +389,7 @@ export async function recordJoinedPlacements(
 /** A leader's report arriving in the background: ignored while a Deplo move freezes this instance. */
 export async function applyLeaderReport(r: PlacementReport): Promise<boolean> {
   if (await instanceFrozen()) return false;
-  const recorded = await recordPlacement(r);
+  const recorded = await recordPlacement({ ...r, fromLeader: true });
   // A member that now runs one of the Environment's workloads needs its names (#200).
   if (recorded) syncNameForwardersSoon(r.clusterId);
   return recorded;

@@ -12,6 +12,8 @@ import { requireActiveTeamId } from "../../membership";
 import { notLeftBehind, withLeftServerNames } from "./left-behind";
 import { backupTargetInScope } from "./target-access";
 import type { Backup, BackupRun, BackupRunStatus } from "../../types/backup";
+import { placeWords, queuedNote } from "../clusters/copy-turns";
+import { getServerById } from "../servers/roster";
 
 export async function listBackupRuns(filter: {
   appId?: string;
@@ -36,7 +38,19 @@ export async function listBackupRuns(filter: {
     .from(backupRunsTable)
     .where(and(eq(backupRunsTable.teamId, teamId), targetWhere))
     .orderBy(desc(backupRunsTable.startedAt), desc(backupRunsTable.seq));
-  return withLeftServerNames(rows.map(assembleBackupRun));
+  return withQueued(await withLeftServerNames(rows.map(assembleBackupRun)));
+}
+
+/** A running backup that waits its turn says its place in line, and what holds it up (ADR-0043). */
+async function withQueued(runs: BackupRun[]): Promise<BackupRun[]> {
+  return Promise.all(
+    runs.map(async (r) => {
+      const w = r.status === "running" ? queuedNote(r.id) : null;
+      if (!w) return r;
+      const name = (await getServerById(w.serverId))?.name ?? "Another server";
+      return { ...r, queued: placeWords(w, name) };
+    }),
+  );
 }
 
 export interface DatabaseBackupSummary {

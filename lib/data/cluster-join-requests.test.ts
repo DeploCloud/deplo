@@ -15,6 +15,8 @@ import {
 } from "../db/schema/control-plane/clusters";
 import { servers } from "../db/schema/control-plane/servers";
 import { addServer } from "./servers/enrollment";
+import { recordFirstLink } from "./servers/agent-handshake";
+import { activities } from "../db/schema/control-plane/activity";
 import {
   cancelClusterJoin,
   joinWaitingServers,
@@ -99,6 +101,23 @@ test("a refused join keeps waiting, says why, and is tried again only after a mi
   await joinWaitingServers(now + 10_000);
   const [again] = await db.select().from(clusterJoinRequests);
   assert.equal(again.triedAt, tried, "not asked again within a minute");
+});
+
+// c49: "Connected server eu-5" was written at addServer, for a server that never ran an agent.
+test("a server is connected on Activity at its agent's first link, not when it is added", async () => {
+  const { server } = await addFor("clu_eu");
+  const said = async () =>
+    (await db.select({ m: activities.message }).from(activities)).map(
+      (r) => r.m,
+    );
+  assert.ok((await said()).includes("Added server new-one"));
+  assert.ok(!(await said()).includes("Connected server new-one"));
+  await recordFirstLink(server.id);
+  await recordFirstLink(server.id);
+  assert.equal(
+    (await said()).filter((m) => m === "Connected server new-one").length,
+    1,
+  );
 });
 
 test("cancelling leaves the server as one of yours, and says so in Activity", async () => {

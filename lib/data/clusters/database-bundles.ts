@@ -53,8 +53,13 @@ import {
   refreshLeaderKeys,
   sayCannotFailOver,
 } from "./bundles";
-import { copyImagesToMembers, stackImages } from "./images";
+import {
+  copyImagesToMembers,
+  holdClusterFailoverImages,
+  stackImages,
+} from "./images";
 import { standbyMemberOf } from "./placement";
+import { backsUpForFailover } from "../databases/failover";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import {
   STANDBY_ENGINES,
@@ -291,6 +296,8 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
             createdAt: db.createdAt,
           },
         );
+  if (lacking.length > 0)
+    void holdClusterFailoverImages(cluster.id).catch(() => undefined);
   await getDb()
     .delete(pushes)
     .where(
@@ -302,7 +309,9 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
         ),
       ),
     );
-  if (source.why) await say(source.why);
+  // A copy to promote fails it over without a backup, and a schedule already writing elsewhere fixes it itself (c44).
+  if (source.why && !promote && !(await backsUpForFailover(db)))
+    await say(source.why);
   if (lead && failed.includes(keyFingerprint(lead.publicKey)))
     await say(
       "the cluster's leader did not take its bundle. Deplo will send it again.",

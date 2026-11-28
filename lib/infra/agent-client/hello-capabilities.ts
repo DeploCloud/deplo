@@ -8,6 +8,18 @@ export const BACKUP_CAPABILITY = "backup";
 
 export const BACKUP_STORE_CAPABILITY = "backup-store";
 
+// A relayed backup is kept only when a trailer naming its size and digest matches what landed (ADR-0043).
+export const BACKUP_STORE_SEALED_CAPABILITY = "backup-store.sealed";
+
+// A backup goes member to member over the cluster's private network, not through Deplo (ADR-0047).
+export const BACKUP_STORE_MEMBER_CAPABILITY = "backup-store.member";
+
+// A restore reads a backup kept on another member straight from it, not through Deplo (ADR-0043).
+export const BACKUP_STORE_FETCH_CAPABILITY = "backup-store.fetch";
+
+// A move copies a volume member to member over the cluster's private network (ADR-0047).
+export const VOLUME_COPY_MEMBER_CAPABILITY = "volume-copy.member";
+
 export const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
 
 export const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";
@@ -112,6 +124,8 @@ export const CLUSTER_IMAGES_CAPABILITY = "cluster.images";
 
 // A member copies a registry image from another and starts a failover from what it holds: no registry needed.
 export const CLUSTER_REGISTRY_IMAGES_CAPABILITY = "cluster.images.registry";
+/** HoldFailoverImages: a member pulls its cluster's registry images ahead of a failover, and keeps them. */
+export const CLUSTER_FAILOVER_IMAGES_CAPABILITY = "cluster.failover.images";
 
 // The agent starts a workload its cluster's leader moves to it; without it the leader's order is renewed and ignored.
 export const CLUSTER_FAILOVER_CAPABILITY = "cluster.failover";
@@ -148,8 +162,12 @@ export const CLUSTER_ZONE_GEO_CAPABILITY = "dns.geo";
 export const DNS_CHALLENGE_CAPABILITY = "dns.challenge";
 // A name's own certificate over DNS renewed by one server and held by every other as a file (ADR-0048 step 5).
 export const DNS_CERTIFICATES_CAPABILITY = "dns.certificates";
+// A network key replaced in place: a next key its peers learn first, then the switch (c46).
+export const NETWORK_ROTATE_CAPABILITY = "network.rotate";
 // Replication of App data, member to member (ADR-0046): a table to follow, a status to read, a copy a failover puts in place.
 export const CLUSTER_REPLICAS_CAPABILITY = "cluster.replicas";
+// A move puts the copy on its new member in place after only the last changes (c44), both members on this agent.
+export const CLUSTER_REPLICAS_MOVE_CAPABILITY = "cluster.replicas.move";
 // The agent starts a cluster's databases and Apps with stored data itself, under their lease (deplo#237): their
 // restart policy may be "no", so a server back from a power cut never starts a copy that runs elsewhere by now.
 // Not bare "cluster.supervise": agent 0.5.3-canary.10 says that and leaves a writer it cannot read down.

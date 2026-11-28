@@ -11,6 +11,8 @@ import { instanceFrozen } from "../data/deplo-move/freeze";
 
 interface ServerLane {
   running: Set<string>;
+  /** Moved Apps' starts: a lane of their own, one per CPU core, ahead of every other deploy (c47, c48). */
+  moving: Set<string>;
   pumping: boolean;
   dirty: boolean;
 }
@@ -30,7 +32,12 @@ const laneKey = sql<string>`coalesce(${deploymentsTable.buildServerId}, ${deploy
 function laneFor(serverId: string): ServerLane {
   let lane = lanes.get(serverId);
   if (!lane) {
-    lane = { running: new Set(), pumping: false, dirty: false };
+    lane = {
+      running: new Set(),
+      moving: new Set(),
+      pumping: false,
+      dirty: false,
+    };
     lanes.set(serverId, lane);
   }
   return lane;
@@ -42,25 +49,40 @@ function invokeRunner(depId: string): Promise<void> {
   return (overrideRunner ?? runDeploymentGuarded)(depId);
 }
 
-async function concurrencyFor(serverId: string): Promise<number> {
-  const rows = await getDb()
-    .select({ n: serversTable.deployConcurrency })
+async function widthsFor(
+  serverId: string,
+): Promise<{ deploys: number; moves: number }> {
+  const [row] = await getDb()
+    .select({
+      deploys: serversTable.deployConcurrency,
+      cores: serversTable.cpuCores,
+    })
     .from(serversTable)
     .where(eq(serversTable.id, serverId))
     .limit(1);
-  const n = rows[0]?.n ?? 1;
-  return n >= 1 ? n : 1;
+  return {
+    deploys: Math.max(row?.deploys ?? 1, 1),
+    moves: Math.max(row?.cores ?? 1, 1),
+  };
 }
 
+/**
+ * The next deploy to start: a moved App's start while the move lane has room; another only while `room` and no
+ * move runs or waits here, so two moves never share one core with each other or a build (c48: 17 s down each).
+ */
 async function pickNext(
   serverId: string,
-): Promise<{ id: string; appId: string; key: string } | null> {
+  room: boolean,
+  lane: { moves: number; width: number },
+): Promise<{ id: string; appId: string; key: string; moving: boolean } | null> {
   const rows = await getDb()
     .select({
       id: deploymentsTable.id,
       appId: deploymentsTable.appId,
       deployKey: deploymentsTable.deployKey,
       teamId: appsTable.teamId,
+      // A move's start: its App still names the server it left, and the deploy is on the one it moved to.
+      moving: sql<boolean>`(${appsTable.migrateFromServerId} is not null and ${deploymentsTable.serverId} = ${appsTable.serverId} and ${deploymentsTable.previewId} is null)`,
     })
     .from(deploymentsTable)
     .innerJoin(appsTable, eq(appsTable.id, deploymentsTable.appId))
@@ -80,18 +102,28 @@ async function pickNext(
     .where(and(eq(laneKey, serverId), eq(deploymentsTable.status, "building")))
     .groupBy(appsTable.teamId))
     running.set(r.teamId, Number(r.n));
+  const movesRoom = lane.moves < lane.width;
+  let movesAhead = lane.moves > 0;
   let best: (typeof rows)[number] | null = null;
   for (const r of rows) {
     const key = r.deployKey || r.appId;
     if (busyKeys.has(key)) continue;
-    if (!best || (running.get(r.teamId) ?? 0) < (running.get(best.teamId) ?? 0))
+    movesAhead ||= Boolean(r.moving);
+    if (r.moving ? !movesRoom : !room) continue;
+    if (
+      !best ||
+      (r.moving && !best.moving) ||
+      (r.moving === best.moving &&
+        (running.get(r.teamId) ?? 0) < (running.get(best.teamId) ?? 0))
+    )
       best = r;
   }
-  if (best)
+  if (best && (best.moving || !movesAhead))
     return {
       id: best.id,
       appId: best.appId,
       key: best.deployKey || best.appId,
+      moving: Boolean(best.moving),
     };
   return null;
 }
@@ -104,6 +136,7 @@ function startOne(serverId: string, depId: string, key: string): void {
     .finally(() => {
       const lane = laneFor(serverId);
       lane.running.delete(depId);
+      lane.moving.delete(depId);
       busyKeys.delete(key);
       scheduleServer(serverId);
       for (const other of [...lanes.keys()]) {
@@ -124,16 +157,20 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
   try {
     while (lane.dirty) {
       lane.dirty = false;
-      const [frozen, concurrency] = await Promise.all([
+      const [frozen, widths] = await Promise.all([
         instanceFrozen(),
-        concurrencyFor(serverId),
+        widthsFor(serverId),
       ]);
       if (frozen) break;
-      while (lane.running.size < concurrency) {
-        const next = await pickNext(serverId);
+      for (;;) {
+        const next = await pickNext(
+          serverId,
+          lane.running.size < widths.deploys,
+          { moves: lane.moving.size, width: widths.moves },
+        );
         if (!next) break;
         // Reserved before the runner claims queued -> building, or a re-drain picks it twice.
-        lane.running.add(next.id);
+        (next.moving ? lane.moving : lane.running).add(next.id);
         busyKeys.add(next.key);
         startOne(serverId, next.id, next.key);
       }

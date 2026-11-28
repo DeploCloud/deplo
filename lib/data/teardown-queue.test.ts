@@ -26,7 +26,12 @@ import {
   drainTeardowns,
   enqueueTeardowns,
   nextTeardownAttempt,
+  teardownsDueNow,
 } from "./teardown-queue";
+import {
+  clusterMembers as clusterMembersTable,
+  clusters as clustersTable,
+} from "../db/schema/control-plane/clusters";
 
 let db: TestDb;
 let pg: PGlite;
@@ -70,12 +75,26 @@ function fakeAgent(opts: {
   destroyOk?: boolean;
   after?: string[];
 }) {
-  const calls = { destroy: 0, stop: 0, list: 0, reclaimed: [] as string[] };
+  const calls = {
+    destroy: 0,
+    stop: 0,
+    list: 0,
+    reclaimed: [] as string[],
+    dropSetAside: false,
+    on: [] as string[],
+  };
   let names = opts.containers ?? [];
-  __setTeardownDialForTest(async () => ({
-    destroyStack: async (_slug: string, _rm?: boolean, reclaim?: string[]) => {
+  __setTeardownDialForTest(async (serverId) => ({
+    destroyStack: async (
+      _slug: string,
+      _rm?: boolean,
+      reclaim?: string[],
+      dropSetAside?: boolean,
+    ) => {
       calls.destroy++;
+      calls.on.push(serverId);
       calls.reclaimed = reclaim ?? [];
+      calls.dropSetAside = !!dropSetAside;
       names = opts.after ?? [];
       return { ok: opts.destroyOk ?? true, error: "" };
     },
@@ -453,4 +472,68 @@ test("a delete names the app's own volumes, so a never-deployed stack loses them
     ["deplo-blink-data", "deplo-blink_cache"],
     "its own two volumes by name; never the host path, never the foreign volume",
   );
+});
+
+const dataVolume = (appId: string) =>
+  db.insert(appVolumesTable).values({
+    appId,
+    position: 0,
+    volumeId: "vol_1",
+    type: "named",
+    name: "data",
+    mountPath: "/data",
+    readOnly: false,
+  });
+
+// eu, 24 Nov 2026: lab-pause2 was deleted while a member that had held it was just back; its 2 GB volume, its
+// container and its dated copy stayed there until removed by hand.
+test("a delete waiting on a silent server removes its volumes and set-aside copies once it answers", async () => {
+  await db
+    .update(serversTable)
+    .set({ status: "offline" })
+    .where(eq(serversTable.id, SERVER_1));
+  await asOwner(async () => {
+    await seedApp(db, { id: "prj_1", slug: "blink" });
+    await dataVolume("prj_1");
+    await deleteApp("prj_1");
+  });
+  const calls = fakeAgent({ containers: [] });
+  await teardownsDueNow(SERVER_1);
+  await drainTeardowns(new Date(Date.now() + 1000));
+  assert.equal(
+    calls.destroy,
+    1,
+    "no container left is no reason to keep its volume",
+  );
+  assert.deepEqual(calls.reclaimed, ["deplo-blink-data"]);
+  assert.equal(calls.dropSetAside, true);
+  assert.equal((await queued()).length, 0);
+});
+
+test("a cluster App's delete reaches every server of its cluster, with its volumes and copies", async () => {
+  await seedServer(db, SERVER_2);
+  await seedServer(db, "srv_3");
+  await db
+    .insert(clustersTable)
+    .values({ id: "clu_1", name: "eu", createdAt: T0.toISOString() });
+  await db.insert(clusterMembersTable).values(
+    [SERVER_1, SERVER_2, "srv_3"].map((serverId) => ({
+      serverId,
+      clusterId: "clu_1",
+      joinedAt: T0.toISOString(),
+    })),
+  );
+  const calls = fakeAgent({ containers: [] });
+  await asOwner(async () => {
+    await seedApp(db, { id: "prj_1", slug: "blink", serverId: SERVER_2 });
+    await db
+      .update(appsTable)
+      .set({ clusterId: "clu_1" })
+      .where(eq(appsTable.id, "prj_1"));
+    await dataVolume("prj_1");
+    await deleteApp("prj_1");
+  });
+  assert.deepEqual(calls.on.sort(), [SERVER_1, SERVER_2, "srv_3"].sort());
+  assert.deepEqual(calls.reclaimed, ["deplo-blink-data"]);
+  assert.equal(calls.dropSetAside, true);
 });

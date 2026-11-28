@@ -5,11 +5,19 @@ import { eq, like } from "drizzle-orm";
 import { activities } from "../db/schema/control-plane/activity";
 import type { TestDb } from "../db/test-harness";
 import {
+  clusterLeaderKeys,
   clusterNetworkLinks,
   clusterWarnings,
   clusters as clustersTable,
 } from "../db/schema/control-plane/clusters";
-import { doorClosed, doorOpened } from "../infra/agent-link/registry";
+import {
+  admitLink,
+  doorClosed,
+  doorOpened,
+  linkEnded,
+  linkGeneration,
+  nextLinkId,
+} from "../infra/agent-link/registry";
 import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
 import {
   serverAgentCapabilities,
@@ -19,7 +27,10 @@ import { nowIso } from "../ids";
 import { __forgetMemberProbes } from "../infra/agent-client/cluster-host";
 import { AgentUnreachableError } from "../infra/agent-client/errors";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
-import { CLUSTER_SUCCESSION_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  CLUSTER_NETWORK_CAPABILITY,
+  CLUSTER_SUCCESSION_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
 import { SERVER_1 } from "./app-graph-test-helpers";
 import { HelloResponse } from "../agent/gen/agent";
 import { keepLeadersHome, placeClusterLeaders } from "./clusters/leader-move";
@@ -32,7 +43,12 @@ import {
 import { forgetLeaderRoster, pushLeaderRoster } from "./clusters/leader-sync";
 import { listClusterMembers } from "./clusters/members";
 import { getClusterById } from "./clusters/roster";
-import { __forgetHeirsForTest, clusterHeirs } from "./clusters/succession";
+import { leaderHost } from "./clusters/host";
+import {
+  __forgetHeirsForTest,
+  clusterHeirs,
+  lineReach,
+} from "./clusters/succession";
 import { refreshClusterWarnings } from "./clusters/warnings";
 import { applyLeaderEvent } from "./clusters/watch";
 import {
@@ -388,7 +404,13 @@ test("with half of the servers left, Deplo gives its word to the next in line, a
         `${led.leaderServerId} stopped answering, so Deplo gives its word to ${second}, next in line, to lead cluster eu`,
       ),
     );
+    assert.deepEqual(
+      beatsTo(hosts[second]),
+      [{ [cluster.id]: epoch }],
+      "the word leaves as soon as it is given",
+    );
     hosts[SERVER_1].calls.length = 0;
+    hosts[second].calls.length = 0;
     await beatClusterLeaders();
     assert.deepEqual(beatsTo(hosts[second]), [{ [cluster.id]: epoch }]);
     assert.deepEqual(
@@ -463,13 +485,39 @@ test("a relayed server gets the warning on itself, and a cluster with no direct 
   assert.ok((await keys()).includes("not_for_production"));
   await refreshClusterWarnings((await getClusterById(cluster.id))!);
 
+  // Direct again, but the leader names nobody to lead next yet: a cut now would find no heir (eu, 24 Nov 2026).
   await paths(cluster.id, ["srv_2", "srv_3", "srv_4"], direct);
+  await refreshClusterWarnings((await getClusterById(cluster.id))!);
+  assert.ok((await keys()).includes("not_for_production"));
+
+  const now = (await getClusterById(cluster.id))!;
+  const heirs = await clusterHeirs(now);
+  assert.equal(heirs.length, 2);
+  const host = (await leaderHost(now))!.id;
+  const calls = hosts[host].leader;
+  hosts[host].leader = (method, payload) =>
+    method === "leader.snapshot"
+      ? new TextEncoder().encode(
+          JSON.stringify({
+            head: 7,
+            clusters: {
+              [cluster.id]: {
+                epoch: now.leaderEpoch,
+                leads: true,
+                superseded: false,
+                // The leader's own order, not Deplo's: its first heir leads next.
+                line: [...heirs].reverse(),
+              },
+            },
+          }),
+        )
+      : calls(method, payload);
   await refreshClusterWarnings((await getClusterById(cluster.id))!);
   assert.ok(!(await keys()).includes("not_for_production"));
   const said = (await messages()).filter((m) => /OK for production/.test(m));
   assert.deepEqual(said, [
     "Deplo: Cluster eu is not OK for production: fewer than half of its servers reach each other directly, so if Deplo's machine stops, every App and database of it stops",
-    "Deplo: Cluster eu is OK for production again: more than half of its servers reach each other directly",
+    `Deplo: Cluster eu is OK for production again: more than half of its servers reach each other directly, and ${[...heirs].reverse().join(" then ")} lead it next if its leader's server stops`,
   ]);
   assert.deepEqual(
     (await asAdmin(() => listClusterMembers(cluster.id))).map(
@@ -518,6 +566,21 @@ test("a leader whose server leaves the direct majority moves to one inside it", 
   const before = (await stored(cluster.id)).epoch;
   await placeClusterLeaders();
   assert.equal((await stored(cluster.id)).epoch, before);
+});
+
+// c46: eu-3's report from the pass just after eu-1's power cut said "relay"; 76 s later Deplo moved the leader for it.
+test("a leader is not moved for a relay its servers no longer report", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const on = led.leaderServerId!;
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    hosts[id].capabilities.push(CLUSTER_NETWORK_CAPABILITY);
+  await paths(cluster.id, ["srv_2", "srv_3", "srv_4"], (a, b) =>
+    a === on || b === on ? "relay" : "direct",
+  );
+  await placeClusterLeaders();
+  assert.equal((await stored(cluster.id)).server, on);
 });
 
 // eu, 23 Nov 2026: Deplo restarted, then two servers stopped; it had not heard their Hello since, so it took them for
@@ -643,6 +706,90 @@ test("a leader stepping down is not said while Deplo reaches none of the cluster
       data: { epoch: led.leaderEpoch + 1 },
     });
     assert.ok(!(await messages()).some((m) => m.includes("stepped down")));
+  } finally {
+    doorClosed();
+  }
+});
+
+// eu, 23 Nov 2026: eu-1 was off when Deplo last told the members whose orders to take, so it kept a list without
+// eu-3, and eu-3's left out eu-1. Cut off from Deplo, the two heirs could not reach each other and nobody led.
+test("every member takes the orders of every member's leader, also one that was off when the line was named", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first, second] = await clusterHeirs(led);
+  hosts[first].unreachable = true;
+  const { pushClusterRoster } = await import("./clusters/relay");
+  await pushClusterRoster(cluster.id);
+  const parties = relayRosters(hosts[SERVER_1]).at(-1)!.parties;
+  for (const id of [led.leaderServerId!, first, second]) {
+    const [row] = await db
+      .select({ fp: serversTable.agentCertFingerprint })
+      .from(serversTable)
+      .where(eq(serversTable.id, id));
+    assert.ok(
+      parties.some((p) => p.role === "leader" && p.fingerprint === row.fp),
+      `${id}'s leader is not one the members take orders from`,
+    );
+  }
+});
+
+// eu, 23 Nov 2026: eu-3 was off when Deplo last refreshed the leaders' keys, so its key was dropped and later bundles
+// never reached it; it led with a stale one that held no restore, and memos never moved. A member off keeps its key.
+test("a member's leader that is off keeps its key, so the bundles still reach it", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [first] = await clusterHeirs(led);
+  // The heirs run a leader of their own, which gives its key.
+  await keepLeadersHome([cluster.id]);
+  const { refreshLeaderKeys } = await import("./clusters/bundles");
+  await refreshLeaderKeys(led);
+  const owners = async () =>
+    (
+      await db
+        .select({ serverId: clusterLeaderKeys.serverId })
+        .from(clusterLeaderKeys)
+        .where(eq(clusterLeaderKeys.clusterId, cluster.id))
+    ).map((k) => k.serverId);
+  assert.ok((await owners()).includes(first), "the heir holds no key");
+  hosts[first].unreachable = true;
+  __forgetMemberProbes();
+  await refreshLeaderKeys(led);
+  assert.ok(
+    (await owners()).includes(first),
+    "an heir that is off lost its key",
+  );
+});
+
+test("an heir not heard for two of the link's pings is read as away, without waiting on its Hello", async () => {
+  const cluster = await three();
+  await placeClusterLeaders();
+  const led = (await getClusterById(cluster.id))!;
+  const [heir] = await clusterHeirs(led);
+  doorOpened();
+  admitLink(
+    {
+      id: nextLinkId(),
+      serverId: heir,
+      pinnedFingerprint: "x",
+      client: {} as never,
+      hello: {} as never,
+      openedAt: Date.now() - 60_000,
+      heardAt: () => Date.now() - 6_000,
+      close() {
+        linkEnded(this as never, "test");
+      },
+    },
+    linkGeneration(heir),
+  );
+  try {
+    hosts[heir].calls.length = 0;
+    await lineReach(led);
+    assert.deepEqual(
+      hosts[heir].calls.filter((c) => c.method === "leader.snapshot"),
+      [],
+    );
   } finally {
     doorClosed();
   }

@@ -137,7 +137,7 @@ export async function addServer(
   if (input.clusterId) await requestClusterJoin(server.id, input.clusterId);
   await recordActivity(
     "server",
-    `Connected server ${server.name}`,
+    `Added server ${server.name}`,
     user.name,
     null,
     teamId,

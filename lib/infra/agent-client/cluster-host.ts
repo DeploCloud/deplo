@@ -18,6 +18,8 @@ import type {
   ClusterNetworkReport,
   ClusterNetworkTable,
   ClusterZoneReport,
+  FailoverImageHeld,
+  FailoverImageHold,
   ProxyCertificateReport,
   ProxyRestartReport,
 } from "./connection";
@@ -103,15 +105,17 @@ export async function installClusterLeader(
     throw new ClusterReleaseUnavailableError(
       "This Deplo has no cluster release to install yet.",
     );
-  const { resolveClusterRelease } = await import("../../agent/release");
+  const { resolveClusterRelease, servedByDeplo } =
+    await import("../../agent/release");
   const release = await resolveClusterRelease(version);
   if (!release)
     throw new ClusterReleaseUnavailableError(
       "Could not download the cluster release this Deplo installs from GitHub. Try again in a minute.",
     );
-  const binaries: Record<string, { url: string; sha256: string }> = {};
+  const fromGitHub: Record<string, { url: string; sha256: string }> = {};
   for (const [arch, bin] of Object.entries(release.binaries))
-    if (bin) binaries[arch] = { url: bin.url, sha256: bin.sha256 };
+    if (bin) fromGitHub[arch] = { url: bin.url, sha256: bin.sha256 };
+  const binaries = servedByDeplo(fromGitHub, "deplo-cluster");
   return onHost(serverId, async (conn) => {
     const here = await conn.clusterStatus();
     if (here.installed && isNewer(here.version, release.version))
@@ -564,6 +568,14 @@ export function copyClusterImage(
   return onImages(sourceServerId, (conn) =>
     conn.copyClusterImage(imageRef, targetFingerprint, keep),
   );
+}
+
+/** The registry images a member keeps ready for a failover; it pulls what it lacks, one at a time (`cluster.failover.images`). */
+export function holdFailoverImages(
+  serverId: string,
+  images: FailoverImageHold[],
+): Promise<FailoverImageHeld[]> {
+  return onImages(serverId, (conn) => conn.holdFailoverImages(images));
 }
 
 /** Tells the target to accept that one image from the source's certificate: a member takes no image it was not told of. */

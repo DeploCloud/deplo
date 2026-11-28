@@ -47,6 +47,7 @@ import {
   reachableHostIp,
   rememberPanelUrl,
 } from "./settings-store";
+import { requireExperiment } from "../experiments";
 
 // https://deplo.build/docs/operations/cloudflare-tunnel
 
@@ -142,6 +143,7 @@ export async function setPanelTunnel(input: {
   apiToken?: string | null;
 }): Promise<PanelTunnel> {
   await requireInstanceAdmin();
+  await requireExperiment("tunnels");
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
 

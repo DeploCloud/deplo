@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { backupRuns as backupRunsTable } from "../../db/schema/control-plane/backups";
+import { activities as activitiesTable } from "../../db/schema/control-plane/activity";
 import { runWithIdentity } from "../../auth/request-context";
 import {
   seedIdentity,
@@ -223,4 +224,26 @@ test("deleting a backup needs delete_backups, not manage_backups", async () => {
   await asUser1(async () => {
     assert.equal((await listBackupRuns({ appId: "prj_1" })).length, 1);
   });
+});
+
+test("the Activity line about a deleted backup reads as a sentence", async () => {
+  await asUser1(async () => {
+    await seedRun(db, {
+      id: "brun_failed2",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "failed",
+      objectKey: "",
+      sizeBytes: 2 * 1024 ** 3,
+    });
+    await deleteBackupRun("brun_failed2");
+  });
+  const lines = (
+    await db.select({ m: activitiesTable.message }).from(activitiesTable)
+  ).map((r) => r.m);
+  assert.ok(
+    lines.some((m) => /^Deleted a 2\.0 GB backup of /.test(m)),
+    lines.join("\n"),
+  );
 });

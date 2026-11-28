@@ -1315,7 +1315,7 @@ else
     cat > "$TRAEFIK_DIR/docker-compose.yml" <<YAML
 services:
   traefik:
-    image: traefik:v3.7.17
+    image: traefik:v3.7.20
     container_name: deplo-traefik
     restart: unless-stopped
     logging:
@@ -1347,6 +1347,7 @@ services:
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@acme.com}
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.keytype=EC256
     ports:
       - "80:80"
       - "443:443"
@@ -1588,6 +1589,7 @@ write_agent_unit() {
 Description=Deplo server agent
 After=$UNIT_AFTER
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -1598,8 +1600,9 @@ EnvironmentFile=-$BOOTSTRAP_ENV
 ExecStart=$AGENT_BIN \\
   --data-dir / \\
   --agent-dir $AGENT_DATA
-Restart=on-failure
-RestartSec=5
+# Any exit starts it again: a stop systemd takes as clean once left every server without its agent (ADR-0043).
+Restart=always
+RestartSec=1
 $DOCKER_UNIT_LINES
 
 [Install]
@@ -1621,7 +1624,30 @@ else
   ok "Backup store ready" "/data/backups"
 fi
 
+# A service an earlier run left up keeps the binary it started from (c46): it is restarted onto the one installed.
+agent_pid() { systemctl show -p MainPID --value deplo-agent 2>/dev/null || true; }
+sha_of() { sha256sum "$1" 2>/dev/null | awk '{print $1}'; }
+run_installed_agent() {
+  local pid
+  pid="$(agent_pid)"
+  if [ -n "$pid" ] && [ "$pid" != 0 ] && [ "$(sha_of "${PROC_ROOT:-/proc}/$pid/exe")" != "$(sha_of "$AGENT_BIN")" ]; then
+    systemctl restart deplo-agent >&9 2>&9 || true
+  fi
+}
+# The version the service runs: the one installed, or a newer one Deplo updated it to meanwhile.
+agent_version_label() {
+  local pid
+  pid="$(agent_pid)"
+  if [ -n "$pid" ] && [ "$pid" != 0 ] &&
+    [ "$(sha_of "${PROC_ROOT:-/proc}/$pid/exe")" != "$AGENT_SHA256" ]; then
+    printf 'updated by Deplo since v%s' "$AGENT_VERSION"
+  else
+    printf 'v%s' "$AGENT_VERSION"
+  fi
+}
+
 spin_run "Starting the agent" systemctl daemon-reload
+run_installed_agent
 systemctl enable --now deplo-agent >&9 2>&9
 
 # Provisioning is the agent's own round trip to the control plane, and its result
@@ -1648,7 +1674,8 @@ AGENT_STATE="starting"
 systemctl is-active --quiet deplo-agent && AGENT_STATE="running"
 
 print_summary() {
-  local agent="v$AGENT_VERSION, $AGENT_STATE"
+  local agent
+  agent="$(agent_version_label), $AGENT_STATE"
   card_open "This host is a Deplo $HOST_ROLE"
   card_kv "Agent" "$agent"
   card_kv "Panel" "$URL"

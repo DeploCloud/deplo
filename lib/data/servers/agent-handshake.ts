@@ -4,6 +4,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import {
   serverRetiredCerts,
+  serverTeams as serverTeamsTable,
   servers as serversTable,
 } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
@@ -11,6 +12,7 @@ import { findServerForToken, signBootstrapCsr } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
 import { pushRostersForServer } from "../clusters/relay";
+import { recordActivity } from "../activity";
 import { agentSeen } from "./agent-update-state";
 import { agentLinkUrl } from "./panel-address";
 import { listAllServers } from "./roster";
@@ -83,12 +85,28 @@ export async function completeBootstrap(
 /** Its first verified link, kept for good; a Deplo move never inserts servers, so the freeze does not apply. */
 export async function recordFirstLink(serverId: string): Promise<void> {
   try {
-    await getDb()
+    const [first] = await getDb()
       .update(serversTable)
       .set({ firstLinkedAt: nowIso() })
       .where(
         and(eq(serversTable.id, serverId), isNull(serversTable.firstLinkedAt)),
+      )
+      .returning({ name: serversTable.name });
+    // c49: written at addServer, it named a server that never ran an agent.
+    if (first) {
+      const [team] = await getDb()
+        .select({ id: serverTeamsTable.teamId })
+        .from(serverTeamsTable)
+        .where(eq(serverTeamsTable.serverId, serverId))
+        .limit(1);
+      await recordActivity(
+        "server",
+        `Connected server ${first.name}`,
+        "Deplo",
+        null,
+        team?.id ?? null,
       );
+    }
   } catch (e) {
     // The next link it opens records it.
     console.error(`[deplo] could not record ${serverId}'s first link:`, e);

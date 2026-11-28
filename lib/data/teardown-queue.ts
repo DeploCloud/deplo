@@ -21,6 +21,8 @@ export interface TeardownEntry {
   label: string;
   teamId: string | null;
   reclaimVolumes?: string[];
+  /** A deleted App: its set-aside copies go with it, also from a server that answers only later. */
+  dropSetAside?: boolean;
 }
 
 const BACKOFF_MS = [
@@ -89,6 +91,8 @@ export async function enqueueTeardowns(
           projectLabel: e.projectLabel,
           label: e.label,
           teamId: e.teamId,
+          reclaimVolumes: JSON.stringify(e.reclaimVolumes ?? []),
+          dropSetAside: !!e.dropSetAside,
           attempts: 0,
           lastError: "",
           nextAttemptAt: firstDrain,
@@ -96,7 +100,14 @@ export async function enqueueTeardowns(
           createdAt: now,
         })),
       )
-      .onConflictDoNothing();
+      // A delete queued over an earlier teardown of the same stack widens it: never narrows what it removes.
+      .onConflictDoUpdate({
+        target: [pendingTeardowns.serverId, pendingTeardowns.deployKey],
+        set: {
+          reclaimVolumes: sql`case when excluded.reclaim_volumes = '[]' then ${pendingTeardowns.reclaimVolumes} else excluded.reclaim_volumes end`,
+          dropSetAside: sql`${pendingTeardowns.dropSetAside} or excluded.drop_set_aside`,
+        },
+      });
   } catch (e) {
     console.error("[deplo] could not queue a teardown:", errMsg(e));
   }
@@ -130,7 +141,12 @@ async function attemptTeardown(
     return { gone: false, error: errMsg(e) };
   }
   try {
-    if (opts.verifyFirst) {
+    // A stack with no container left may still hold the volumes and copies a delete removes.
+    if (
+      opts.verifyFirst &&
+      !entry.dropSetAside &&
+      !entry.reclaimVolumes?.length
+    ) {
       const before = await stackContainers(conn, entry);
       if (before !== null && before.length === 0)
         return { gone: true, error: "" };
@@ -139,6 +155,7 @@ async function attemptTeardown(
       entry.deployKey,
       true,
       entry.reclaimVolumes,
+      entry.dropSetAside,
     );
     const left = await stackContainers(conn, entry);
     if (left === null)
@@ -282,6 +299,8 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
       projectLabel: pendingTeardowns.projectLabel,
       label: pendingTeardowns.label,
       teamId: pendingTeardowns.teamId,
+      reclaimVolumes: pendingTeardowns.reclaimVolumes,
+      dropSetAside: pendingTeardowns.dropSetAside,
       serverName: serversTable.name,
     })
     .from(pendingTeardowns)
@@ -302,6 +321,8 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
       projectLabel: row.projectLabel,
       label: row.label,
       teamId: row.teamId,
+      reclaimVolumes: parseNames(row.reclaimVolumes),
+      dropSetAside: row.dropSetAside,
     };
     try {
       // A cluster App's copy on a server it left is set aside where the App runs first, never deleted (ADR-0046).
@@ -339,6 +360,28 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
       );
     }
   });
+}
+
+function parseNames(raw: string): string[] {
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((n) => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A server that answers again: what waits to be torn down there is tried at the next drain, not hours later. */
+export async function teardownsDueNow(serverId: string): Promise<void> {
+  await getDb()
+    .update(pendingTeardowns)
+    .set({ nextAttemptAt: nowIso() })
+    .where(
+      and(
+        eq(pendingTeardowns.serverId, serverId),
+        isNull(pendingTeardowns.abandonedAt),
+      ),
+    );
 }
 
 export async function pendingTeardownsForServer(

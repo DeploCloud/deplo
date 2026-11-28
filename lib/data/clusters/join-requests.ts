@@ -15,6 +15,8 @@ import { nowIso } from "../../ids";
 import { messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import { requireExperiment } from "../experiments";
+import { onAgentLink } from "../../infra/agent-link/registry";
+import { withKeyedLock } from "../keyed-mutex";
 import { addClusterMember } from "./members";
 
 // A refused join is asked again at most this often: a reason like an old agent goes away on its own.
@@ -106,8 +108,14 @@ export async function listClusterJoinRequests(): Promise<
   return new Map(rows.map(({ serverId, ...r }) => [serverId, r]));
 }
 
-/** The background half: every waiting server that is installed and answers joins, as the person who asked. */
-export async function joinWaitingServers(now = Date.now()): Promise<number> {
+/**
+ * The background half: every waiting server that is installed and answers joins, as the person who asked. `linked`
+ * is one whose agent link just came up: it joins now, not at the next tick (c48: 23 s later).
+ */
+export async function joinWaitingServers(
+  now = Date.now(),
+  linked?: string,
+): Promise<number> {
   const due = new Date(now - RETRY_MS).toISOString();
   const waiting = await getDb()
     .select({
@@ -122,8 +130,12 @@ export async function joinWaitingServers(now = Date.now()): Promise<number> {
       and(
         isNotNull(serversTable.agentCertFingerprint),
         ne(serversTable.agentCertFingerprint, ""),
-        eq(serversTable.status, "online"),
-        or(isNull(requestsTable.triedAt), lt(requestsTable.triedAt, due)),
+        linked
+          ? eq(requestsTable.serverId, linked)
+          : and(
+              eq(serversTable.status, "online"),
+              or(isNull(requestsTable.triedAt), lt(requestsTable.triedAt, due)),
+            ),
       ),
     );
   let joined = 0;
@@ -140,12 +152,25 @@ export async function joinWaitingServers(now = Date.now()): Promise<number> {
         .where(row);
       continue;
     }
+    const { userId, teamId } = w;
     try {
-      await runWithIdentity({ userId: w.userId, teamId: w.teamId }, () =>
-        addClusterMember(w.clusterId, w.serverId),
+      // A tick and a link can both find it: the second finds no request left.
+      const done = await withKeyedLock(
+        `cluster-join:${w.serverId}`,
+        async () => {
+          const [still] = await getDb()
+            .select({ serverId: requestsTable.serverId })
+            .from(requestsTable)
+            .where(row);
+          if (!still) return false;
+          await runWithIdentity({ userId, teamId }, () =>
+            addClusterMember(w.clusterId, w.serverId),
+          );
+          await getDb().delete(requestsTable).where(row);
+          return true;
+        },
       );
-      await getDb().delete(requestsTable).where(row);
-      joined++;
+      if (done) joined++;
     } catch (e) {
       await getDb()
         .update(requestsTable)
@@ -154,4 +179,14 @@ export async function joinWaitingServers(now = Date.now()): Promise<number> {
     }
   }
   return joined;
+}
+
+/** Joins a waiting server as soon as its agent links; `holds` says whether this Deplo runs the cluster watch. */
+export function joinOnLink(holds: () => boolean): () => void {
+  return onAgentLink((e) => {
+    if (e.type !== "up" || !holds()) return;
+    void joinWaitingServers(Date.now(), e.serverId).catch((err) =>
+      console.warn(`[cluster] joining ${e.serverId}: ${messageOf(err)}`),
+    );
+  });
 }

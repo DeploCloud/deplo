@@ -328,6 +328,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       name: input.name.trim(),
       environmentId: placement.environmentId,
       limitMb: 0,
+      dataUnknown: true,
       // A pulled image only goes where its registry says it runs; one built here goes anywhere.
       archs:
         input.source === "docker-image" && input.dockerImage

@@ -335,7 +335,7 @@ export async function recordActivity(
       const firstTeam = await db
         .select({ id: teams.id })
         .from(teams)
-        .orderBy(teams.createdAt)
+        .orderBy(teams.createdAt, teams.id)
         .limit(1);
       resolved = firstTeam[0]?.id ?? null;
     }

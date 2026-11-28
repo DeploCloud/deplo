@@ -25,11 +25,13 @@ export const REMOVE_MEMBER = /* GraphQL */ `
     $clusterId: String!
     $serverId: String!
     $keepWorkloads: Boolean
+    $leaveBackups: Boolean
   ) {
     removeClusterMember(
       clusterId: $clusterId
       serverId: $serverId
       keepWorkloads: $keepWorkloads
+      leaveBackups: $leaveBackups
     ) {
       id
     }

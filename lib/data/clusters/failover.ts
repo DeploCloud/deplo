@@ -358,7 +358,7 @@ interface Left {
 
 const NO_ROOM = "no_room";
 // No server of its kind is the same wait to a reader: `other` already names the kind ("no other x86 server").
-const ROOM = new Set([NO_ROOM, "no_architecture"]);
+const ROOM = new Set([NO_ROOM, "no_architecture", "no_disk"]);
 // A wait read back after a reconnect from a leader too old to say why.
 const UNKNOWN = "unknown";
 
@@ -371,6 +371,8 @@ function waitingWhy(reason: string, other: string, rest = ""): string {
       return `${other} has its image yet`;
     case "no_member_online":
       return `${other} is online and ready`;
+    case "no_disk":
+      return `${other} has room for its data and a tenth of its disk free`;
     case UNKNOWN:
       return `${other} has taken ${rest ? "the rest" : "it"} yet`;
     default:
@@ -388,6 +390,8 @@ function waitingLine(reason: string, other: string, names: string): string {
       return `${Other} has the image of ${names} yet.`;
     case "no_member_online":
       return `${Other} is online and ready for ${names}.`;
+    case "no_disk":
+      return `${Other} has room for the data of ${names} and a tenth of its disk free.`;
     case UNKNOWN:
       return `${Other} has taken ${names} yet.`;
     default:

@@ -133,6 +133,9 @@ export const AGENT_LINK_VERSION = "0.5.1-canary.10";
 // The first agent release that keeps to the fence its cluster leader gives it: a fixed fact too.
 export const AGENT_SHORT_FENCE_VERSION = "0.5.3-canary.5";
 
+// The first agent release that kills a fenced stack's containers all at once, done 11 s after its lease ran out.
+export const AGENT_QUICK_STOP_VERSION = "0.5.3-canary.43";
+
 /** What a Deplo with floor `min` can do with a server's agent: use it, update it, wait for it to connect, or for a reinstall. */
 export type AgentReach = "usable" | "updatable" | "unlinked" | "reinstall";
 

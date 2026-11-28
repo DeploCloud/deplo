@@ -109,3 +109,22 @@ test("a refused update is recorded once and tried again on the next link", async
   assert.match(entry, /^Could not update Traefik on eu-2 .*port 80 is taken/);
   assert.deepEqual(rest, []);
 });
+
+// c38: every proxy ordered RSA-4096 keys, 11.6 ms of a one-core server per new connection.
+test("a proxy on the pin that orders RSA keys is moved to ECDSA once, and says so", async () => {
+  await seedServerRow(db, { id: "srv_rsa", name: "eu-3" });
+  const host = fakeHost(
+    `${stack(TRAEFIK_IMAGE)}    command:
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+`,
+  );
+
+  await bringTraefikToPin("srv_rsa");
+  await bringTraefikToPin("srv_rsa");
+
+  assert.equal(host.applied, 1);
+  assert.match(host.yaml, /acme\.keytype=EC256/);
+  assert.deepEqual(await trail(), [
+    "Traefik on eu-3 now asks for ECDSA certificates, which cost its server far less per new connection",
+  ]);
+});

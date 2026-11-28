@@ -51,12 +51,4 @@ export const COLLECTIONS: TemplateCollection[] = [
   },
 ];
 
-export const FEATURED = [
-  "uptime-kuma",
-  "n8n",
-  "vaultwarden",
-  "immich",
-  "nextcloud",
-  "plausible",
-  "portainer",
-];
+export const FEATURED_LIMIT = 7;

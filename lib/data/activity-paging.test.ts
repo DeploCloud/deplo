@@ -2,6 +2,7 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -9,6 +10,7 @@ import {
   folders as foldersTable,
   projects as projectsTable,
 } from "../db/schema/control-plane/projects";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedActivity } from "./infra-test-helpers";
@@ -367,4 +369,19 @@ test("filters: a date that is not a date is refused by name, never sent to SQL",
       1,
     );
   });
+});
+
+// c44: two teams created in the same instant tied for the oldest: a line no team owns lands on the same one each time.
+test("a line no team owns goes to the oldest team, the lower id on a tie", async () => {
+  await pg.exec(
+    `update teams set created_at = '${T0}' where id in ('${TEAM_A}', '${TEAM_B}');`,
+  );
+  // Rewritten last, TEAM_A is the row a scan meets second.
+  await pg.exec(`update teams set name = name where id = '${TEAM_A}';`);
+  await recordActivity("server", "Cluster eu: a line for everyone", "Deplo");
+  const [row] = await db
+    .select({ teamId: activitiesTable.teamId })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.message, "Cluster eu: a line for everyone"));
+  assert.equal(row?.teamId, TEAM_A);
 });

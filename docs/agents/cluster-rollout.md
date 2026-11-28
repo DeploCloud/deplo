@@ -66,9 +66,11 @@ it. Nothing runs while `deplo.cluster` is empty or while the instance is frozen 
 - **`busy`**: a leader is not restarted while a server of a cluster it leads stopped answering in
   the last 45 minutes. A restart there starts the failover clock over and holds it for the 5
   minutes of §5's extension.
-- **`no_return`**: the leader took the binary and did not start on it. The pass stops, and later
-  passes try only that server: a release that breaks one leader must not reach the one that stands
-  in for it.
+- **`no_return`**: the leader took the binary and did not start on it, the agent put the one before
+  it back because it did not answer on its socket within 30 s (the install fails with `ABORTED`), or
+  within the minute it is held it stopped running or stopped renewing a member it heard. The pass
+  stops, and nothing installs that pin on that server again on its own until it runs on the pin: a
+  release that breaks one leader must not reach the one that stands in for it (ADR-0043).
 
 There is no manual path and no script. "Try again" on the cluster card installs the pin on a leader
 that is not running; a running one is the rollout's.
@@ -122,13 +124,16 @@ member that answers vouches for less.**
   answers the new leader knows of every extension the dead one may hold. A renewal from a leader that
   announces nothing (an older one), and the first lease an agent ever counts, make it unsure for the
   longest lease. With `Unsure` 0 the presumption drops to the plain lease.
-- **The plain lease is 5 s only for a member Deplo vouches for** (`Member.ShortFence`: its stored
-  agent version is `AGENT_SHORT_FENCE_VERSION` or newer, `lib/version.ts`), else 60 s.
-- **A member that answers** the new leader once holds a plain 5 s lease from it (60 s on an older agent), and the usual
+- **The plain lease is 20 s (leader v0.1.0-canary.23; 5 s before) only for a member Deplo vouches for** (`Member.ShortFence`: its stored
+  agent version is `AGENT_SHORT_FENCE_VERSION` or newer, `lib/version.ts`), else 60 s. An agent at
+  `AGENT_QUICK_STOP_VERSION` or newer (`Member.QuickStop`) kills a fenced stack's containers all at once and is
+  done 11 s after its lease ran out (`fenceTakes`, `stoppedWithin` 31 s), so a leader waits 13 s past the lease
+  for it (`quickMargin`) instead of 21.
+- **A member that answers** the new leader once holds a plain 20 s lease from it (60 s on an older agent), and the usual
   clock applies from then on: after 5 s of silence its Apps without a Volume move, and its databases and
-  Apps with a Volume once the member's own fence is over (`stoppedWithin`, 24 s from the last renewal),
+  Apps with a Volume once the member's own fence is over (`stoppedWithin`, 31 s from the last renewal),
   or 81 s for an agent too old to say.
-- **A member that never answers** keeps its databases and Apps with a Volume for 5 s + the 21 s
+- **A member that never answers** keeps its databases and Apps with a Volume for 20 s + the 21 s
   margin when the members vouch and Deplo knows its agent, 60 s + 21 s when Deplo does not, and
   60 s + 5 min + 21 s = 6 min 21 s when no member can vouch (older agents, or an extension really
   announced). A person's "bring it back from a backup" is refused for the same time
@@ -155,7 +160,7 @@ it from everyone else, is the next section's subject.
 
 ### A line of succession (23 Nov 2026)
 
-The leader lives on a member and names its line in every renewal (`Order.Line`, then `Order.Last`, Deplo's machine): at most two heirs Deplo picked (`Roster.Heirs`), each running a leader that stands by (`leader.standby`) and holds the bundles. An heir's agent asks the leader beside it to lead (`leader.succeed`) once its lease went unrenewed for `lease.PreVoteFor` (10 s, the removal time) plus `lease.SucceedStagger` (5 s) per place down the line, never while the lease is extended. That leader asks a pre-vote (`Order.PreVote`: nothing is taken) and probes with `Order.Succeed` only after a quorum said yes; a member refuses both while its leader renewed it within `PreVoteFor`, and gives each epoch to one leader only (`Order.From`). A leader that gets no quorum within `SucceedFor` (10 s of the last ask) stands by again. Deplo adopts an heir that leads (`adoptHeir`) at its epoch, and Deplo's machine standing in asks the same pre-vote. All of it needs Hello `cluster.succession` on every member: an older agent would take an heir's epoch unasked, so a cluster with one has no line. **Change `PreVoteFor`, the removal time and `TAKEOVER_AFTER_MS` together**: Deplo's machine must stand in later than the last heir asks.
+The leader lives on a member and names its line in every renewal (`Order.Line`, then `Order.Last`, Deplo's machine): at most two heirs Deplo picked (`Roster.Heirs`), each running a leader that stands by (`leader.standby`) and holds the bundles. An heir's agent asks the leader beside it to lead (`leader.succeed`) once its lease went unrenewed for `lease.PreVoteFor` (10 s, the removal time) plus `lease.SucceedStagger` (5 s) per place down the line, never while the lease is extended. That leader asks a pre-vote (`Order.PreVote`: nothing is taken, so its tally is in once a quorum said yes, and a dead member is not waited out) and probes with `Order.Succeed` only after a quorum said yes, waiting for every member's answer since it says what each runs; a member refuses both while its leader renewed it within `PreVoteFor`, and gives each epoch to one leader only (`Order.From`). A leader that gets no quorum within `SucceedFor` (10 s of the last ask) stands by again. Deplo adopts an heir that leads (`adoptHeir`) at its epoch, and Deplo's machine standing in asks the same pre-vote. All of it needs Hello `cluster.succession` on every member: an older agent would take an heir's epoch unasked, so a cluster with one has no line. **Change `PreVoteFor`, the removal time and `TAKEOVER_AFTER_MS` together**: Deplo's machine must stand in later than the last heir asks. A failover starts a member's databases one at a time, then each App with data on its own and its Apps without data one after another, beside them: a slow start holds no App with data behind it, and a member that answers again mid-pass still keeps the stateless Apps not started yet.
 
 ### Two leaders at once: only one of them leads
 
@@ -165,19 +170,22 @@ newer one. So **a leader leads only while it is sure a quorum of its members tak
 one that is not sure renews nobody, extends nothing, moves nothing and refuses a person's move
 (`cluster.leads` in `internal/leader`).
 
-- **A quorum** is more than half of the members in its roster, or **exactly half while Deplo named
-  its epoch in the last 20 s** (`DeploFor`). Deplo's word is the **beat**: every 5 s
-  `beatClusterLeaders` (`lib/data/clusters/leader-beat.ts`) sends `leader.beat {epochs}` through the
-  agent to the leader each cluster is stored on (`leaderHost`), or, while that one is silent, to the first heir
-  that tries to lead, at the epoch it tries (`nameHeir`, ADR-0043), and to no other.
+- **A quorum** is more than half of the members in its roster, or **exactly half while Deplo's word holds**.
+  Deplo's word is the **beat**: every 2 s `beatClusterLeaders` (`lib/data/clusters/leader-beat.ts`) sends
+  `leader.beat {epochs, trustMs: 8000}` through the agent to the leader each cluster is stored on (`leaderHost`),
+  or, while that one is silent, to the first heir that tries to lead, at the epoch it tries (`nameHeir`, ADR-0043),
+  and to no other. The leader holds the word `trustMs`, never more than `DeploFor` (20 s, what an older panel
+  gets), and answers `holdsMs`: how much longer it holds the word, an earlier and longer one included. A beat the
+  stored leader does not take has Deplo check it at once (`leadersMissingBeats`), not at the 15 s watch tick.
 - **Sure** lasts 10 s (`SureFor`, two renewals) from the start of a round a quorum answered. A leader
   that is not sure sends a **probe** first (`lease.Order.Probe`): the member takes the epoch, refuses
   every older one from then on, and its lease is not renewed. With a quorum of answers the renewals
   follow in the same tick. A drain always asks again before it extends.
-- **Deplo waits before it lets another leader lead**: the two missed checks, and 25 s
-  (`TAKEOVER_AFTER_MS`) since the last beat that left for the old leader, answered or not. A Deplo
-  that just started counts from its start. That is longer than a leader trusts a beat, so two halves
-  never both hold Deplo's word. **Change `DeploFor` and `TAKEOVER_AFTER_MS` together.**
+- **Deplo waits before it lets another leader lead**: the two missed checks, and the last `holdsMs` that
+  leader answered plus 5 s since the last beat that left for it, answered or not: 13 s for a leader on
+  v0.1.0-canary.18 or newer, 25 s (`TAKEOVER_AFTER_MS`) for an older one or a Deplo that just started, which counts
+  from its start. That is longer than the leader holds the word, so two halves never both hold Deplo's word.
+  **Change `DeploFor`, `TRUST_MS` and the 5 s in transit together.**
 - **A leader Deplo can reach is told** it was replaced, on a hand-back and on a move
   (`tellLeaderReplaced`, the beat with the newer epoch): it stops at once and takes no older roster.
 - **A leader that becomes sure after it was not** presumes again that each member it never heard
@@ -198,23 +206,23 @@ never both have Deplo's word. Once the newer leader is sure, at `s`:
 
 What each case costs to stay safe (`internal/leader/split_test.go` pins every row):
 
-| Case                                                      | Who leads                         | What is lost                                                                                                                                                                                                                                                                                 |
-| --------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No split                                                  | The leader                        | Nothing.                                                                                                                                                                                                                                                                                     |
-| Deplo down, every member up                               | The leader, any size of cluster   | Nothing.                                                                                                                                                                                                                                                                                     |
-| Deplo down, fewer than half of the members dead           | The leader                        | Nothing: their work fails over on the usual clock.                                                                                                                                                                                                                                           |
-| Deplo down, exactly half dead (one of two)                | Nobody                            | No failover. 20 s after Deplo's last beat the leader stops renewing the members that are left, and 5 s later they stop their databases and Apps with a Volume. Apps without one keep running. It all starts again within seconds of Deplo being back, and the dead members' work moves then. |
-| More than half dead at once, Deplo up or down             | Nobody                            | The same for the members that are left, until a member returns or the dead ones are removed from the cluster: a smaller roster has a smaller quorum.                                                                                                                                         |
-| Split, old leader with fewer than half                    | Deplo's machine                   | The old side stops its single-writer work within seconds of the split. Deplo's leader starts it elsewhere after 6 min 21 s; Apps without a Volume after 5 s.                                                                                                                                 |
-| Split, old leader with more than half                     | The old leader                    | Deplo's leader hears too few: it renews nobody and moves nothing, so Deplo's side stops its single-writer work after 5 s and the old leader moves it once that fence is over. Deplo cannot see that side until the split heals.                                                              |
-| Even split                                                | Deplo's machine, on Deplo's word  | The old leader stops renewing 20 s after its last beat; its half stops its single-writer work 5 s later and Deplo's leader moves it after 6 min 21 s.                                                                                                                                        |
-| Leader on Deplo's machine (before 23 Nov 2026)            | It alone: nobody stands in for it | With exactly half of the members unreachable, a Deplo restart longer than about 25 s stops the other half's single-writer work until Deplo is back. Deplo now moves such a leader onto a member.                                                                                             |
-| The leader's member stops (leader on a member)            | The heir, without Deplo           | Every member fences after 5 s; the heir is asked to lead after the removal time (10 s), leads once a quorum pre-votes and takes its epoch, and moves the dead member's work after the plain fence when no extension was announced.                                                           |
-| The leader's and the first heir's members stop, half left | The next heir, on Deplo's word    | Deplo names the epoch the next heir tries once the stored leader is 25 s unnamed, so it leads exactly half; Deplo's machine stands in only when nobody in the line answers Deplo.                                                                                                            |
-| Cut between the leader and its heir only                  | The leader                        | Nothing: the other members still hear the leader, so the heir's pre-vote has no quorum and its own member never takes its epoch. The next renewal names another heir.                                                                                                                        |
-| The heir cut off alone                                    | The leader                        | The heir's own single-writer work stops after 5 s and moves; it takes nothing, stands by again, and back it is named at the end of the line.                                                                                                                                                 |
-| One member                                                | The leader, with or without Deplo | Nothing: one of one is more than half.                                                                                                                                                                                                                                                       |
-| The split heals                                           | The newer epoch                   | Nothing: the old leader asks first, hears the newer epoch and steps down without renewing anyone.                                                                                                                                                                                            |
+| Case                                                      | Who leads                         | What is lost                                                                                                                                                                                                                                                                                                                                     |
+| --------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No split                                                  | The leader                        | Nothing.                                                                                                                                                                                                                                                                                                                                         |
+| Deplo down, every member up                               | The leader, any size of cluster   | Nothing.                                                                                                                                                                                                                                                                                                                                         |
+| Deplo down, fewer than half of the members dead           | The leader                        | Nothing: their work fails over on the usual clock.                                                                                                                                                                                                                                                                                               |
+| Deplo down, exactly half dead (one of two)                | Nobody                            | No failover. 20 s after Deplo's last beat the leader stops renewing the members that are left, and 20 s later they stop their databases and Apps with a Volume. Apps without one keep running. It all starts again within seconds of Deplo being back, and the dead members' work moves then.                                                    |
+| More than half dead at once, Deplo up or down             | Nobody                            | The same for the members that are left, until a member returns or the dead ones are removed from the cluster: a smaller roster has a smaller quorum.                                                                                                                                                                                             |
+| Split, old leader with fewer than half                    | Deplo's machine                   | The old side stops its single-writer work within seconds of the split. Deplo's leader starts it elsewhere after 6 min 21 s; Apps without a Volume after 5 s.                                                                                                                                                                                     |
+| Split, old leader with more than half                     | The old leader                    | Deplo's leader hears too few: it renews nobody and moves nothing, so Deplo's side stops its single-writer work after 20 s and the old leader moves it once that fence is over. Deplo cannot see that side until the split heals.                                                                                                                 |
+| Even split                                                | Deplo's machine, on Deplo's word  | The old leader stops renewing 20 s after its last beat; its half stops its single-writer work 20 s later and Deplo's leader moves it after 6 min 21 s.                                                                                                                                                                                           |
+| Leader on Deplo's machine (before 23 Nov 2026)            | It alone: nobody stands in for it | With exactly half of the members unreachable, a Deplo restart longer than about 25 s stops the other half's single-writer work until Deplo is back. Deplo now moves such a leader onto a member.                                                                                                                                                 |
+| The leader's member stops (leader on a member)            | The heir, without Deplo           | No member fences: the heir is asked to lead after the removal time (10 s), leads once a quorum pre-votes and takes its epoch (about 11 s), and renews every member before its 20 s lease runs out (5 s before leader v0.1.0-canary.23: every member fenced); the dead member's work moves after the plain fence when no extension was announced. |
+| The leader's and the first heir's members stop, half left | The next heir, on Deplo's word    | Deplo names the epoch the next heir tries once the stored leader is 25 s unnamed, so it leads exactly half; Deplo's machine stands in only when nobody in the line answers Deplo.                                                                                                                                                                |
+| Cut between the leader and its heir only                  | The leader                        | Nothing: the other members still hear the leader, so the heir's pre-vote has no quorum and its own member never takes its epoch. The next renewal names another heir.                                                                                                                                                                            |
+| The heir cut off alone                                    | The leader                        | The heir's own single-writer work stops after 20 s and moves; it takes nothing, stands by again, and back it is named at the end of the line.                                                                                                                                                                                                    |
+| One member                                                | The leader, with or without Deplo | Nothing: one of one is more than half.                                                                                                                                                                                                                                                                                                           |
+| The split heals                                           | The newer epoch                   | Nothing: the old leader asks first, hears the newer epoch and steps down without renewing anyone.                                                                                                                                                                                                                                                |
 
 **A workload the roster calls waiting is not started on its word.** A leader that takes over reads
 "waiting for room" in Deplo's picture, and the old leader may have handed that workload back to a
@@ -248,13 +256,14 @@ one and the other two move in the same step. The agent half needs a Hello capabi
 on: `cluster` (membership and relay dialing), so an agent from before it is named, never failed.
 
 The lease is a second contract of the same shape: the order each renewal carries and the 1 s / 3 s /
-5 s timings (`internal/lease` here and in `deplo-cluster`, `internal/clusterlink/lease` in
-`deplo-agent`). The 5 s fence travels in every renewal (`fenceSeconds`) and the member answers when its
+20 s timings (`internal/lease` here and in `deplo-cluster`, `internal/clusterlink/lease` in
+`deplo-agent`). The 20 s fence travels in every renewal (`fenceSeconds`) and the member answers when its
 stop is done (`stoppedWithin`): either side without the field keeps the 60 s fence and the 81 s wait, so
 a mixed fleet is never two writers. Also part of it is the leader's watch (`/watch`, the `ClusterWatch` RPC, `lib/data/clusters/watch.ts`).
-The probe and the stacks a member still has (§5) are part of it: an agent that renewed on a probe
+So is what a renewal tells the next leader (`Order.Heard`, the gone set) and what an heir's agent hands the leader beside it (`SucceedAsk.Gone`, `SucceedAsk.Heard`): either side without them hands nothing on, as before. So is the end of an extension (`Order.NoExtension`, leader v0.1.0-canary.17 and agent v0.5.3-canary.42): a member without it keeps an announcement its full 370 s, as before. **Every kind of order the leader sends is listed** in deplo-cluster's `internal/leader/testdata/orders.golden.json` (its tests record it, `UPDATE_ORDERS=1` rewrites it), kept in deplo-agent as `internal/server/testdata/leader-orders.golden.json`: the agent serves each through its own checks at the epoch it holds, and each CI runs the other repo's copy. The probe and the stacks a member still has (§5) are part of it: an agent that renewed on a probe
 would keep a replaced leader's members alive, so the agent ships first, as always. The beat is a
-third: `leader.beat`, 5 s apart, trusted for 20 s by the leader and waited out for 25 s by the panel.
+third: `leader.beat`, 2 s apart, asking `trustMs`; the leader holds it no longer than `DeploFor` (20 s) and answers
+`holdsMs`, which the panel waits out with 5 s more (25 s for a leader that answers no `holdsMs`).
 A member refuses an older epoch and keeps the one it holds across restarts, so never lower the epoch a
 leader sends; Deplo adopts a newer one the leader reports.
 
