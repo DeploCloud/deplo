@@ -660,3 +660,62 @@
     animation: none;
   }
 }
+
+/* Monitoring's status mark: the disc pops, the check draws, the rings keep rippling. */
+@keyframes status-pop {
+  from {
+    transform: scale(0.6);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes status-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes status-ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.status-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: status-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.status-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: status-draw 0.45s 0.3s ease-out forwards;
+}
+
+.status-ripple {
+  opacity: 0;
+  animation: status-ripple 2.4s 0.6s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+
+.status-ripple-late {
+  animation-delay: 1.8s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-pop,
+  .status-ripple {
+    animation: none;
+  }
+  .status-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

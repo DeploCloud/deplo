@@ -4,7 +4,10 @@ import * as React from "react";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Bone } from "@/components/ui/skeleton";
-import { FleetGraphic } from "@/components/monitoring/fleet-graphic";
+import {
+  StatusMark,
+  type StatusTone,
+} from "@/components/monitoring/status-mark";
 import type { FleetRow } from "@/components/monitoring/fleet-list";
 import type { ServerStatus } from "@/lib/types/server";
 import { serverLabel } from "@/lib/utils";
@@ -49,6 +52,9 @@ export function fleetProblems(
     .map(({ id, text }) => ({ id, text }));
 }
 
+const isOffline = (s: StatusServer) =>
+  s.status === "offline" || s.status === "error";
+
 export function FleetStatus({
   servers,
   rows,
@@ -65,7 +71,9 @@ export function FleetStatus({
   const more = problems.length - SHOWN;
   return (
     <FleetStatusFrame
-      attention={problems.length > 0}
+      tone={
+        problems.length === 0 ? "ok" : servers.some(isOffline) ? "bad" : "warn"
+      }
       title={
         problems.length === 0
           ? many
@@ -78,7 +86,7 @@ export function FleetStatus({
       action={
         many &&
         onSeeAll && (
-          <Button variant="ghost" size="sm" onClick={onSeeAll}>
+          <Button variant="outline" size="sm" onClick={onSeeAll}>
             See all servers
             <ChevronRight className="size-4" />
           </Button>
@@ -123,27 +131,44 @@ function ProblemLink({
   );
 }
 
+const TINT: Record<StatusTone, string> = {
+  ok: "var(--green)",
+  warn: "var(--warning)",
+  bad: "var(--destructive)",
+};
+
 function FleetStatusFrame({
-  attention = false,
+  tone,
   title,
   action,
   loading = false,
   children,
 }: {
-  attention?: boolean;
+  tone: StatusTone;
   title: string;
   action?: React.ReactNode;
   loading?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-wrap items-center gap-x-5 gap-y-3">
-      <FleetGraphic attention={attention} className="h-16 w-20 shrink-0" />
+    <section
+      className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-border px-6 py-5"
+      style={{
+        background: `linear-gradient(100deg, color-mix(in srgb, ${TINT[tone]} 9%, var(--card)), var(--card) 55%)`,
+      }}
+    >
+      {loading ? (
+        <Bone box className="size-20 rounded-full">
+          <span className="size-20" />
+        </Bone>
+      ) : (
+        <StatusMark key={tone} tone={tone} />
+      )}
       <div className="min-w-0 flex-1">
-        <h2 className="text-xl font-semibold tracking-tight">
+        <h2 className="text-2xl font-semibold tracking-tight">
           <Bone loading={loading}>{title}</Bone>
         </h2>
-        <div className="mt-1 text-sm text-muted-foreground">
+        <div className="mt-1.5 text-sm text-muted-foreground">
           <Bone loading={loading}>{children}</Bone>
         </div>
       </div>
@@ -154,7 +179,7 @@ function FleetStatusFrame({
 
 export function FleetStatusSkeleton() {
   return (
-    <FleetStatusFrame loading title="All servers are fine">
+    <FleetStatusFrame loading tone="ok" title="All servers are fine">
       4 servers, nothing needs you right now.
     </FleetStatusFrame>
   );

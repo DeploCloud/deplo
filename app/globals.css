@@ -71,6 +71,7 @@
      chart series on purpose - those five are a categorical set with a fixed slot
      order, and a sixth would offer itself to real data. */
   --violet: #7c3aed;
+  --green: #28b04f;
 
   /* Chart series - categorical, assigned in fixed slot order (1→5), stepped
      per theme and CVD-validated against the card surface. Marks only; text
@@ -154,6 +155,7 @@
   --warning: #f5a623;
   --info: #5b9dff;
   --violet: #8b5cf6;
+  --green: #30d158;
 
   --chart-1: #3987e5;
   --chart-2: #008300;
@@ -214,6 +216,7 @@
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-violet: var(--violet);
+  --color-green: var(--green);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

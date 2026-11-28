@@ -16,7 +16,14 @@ import {
 import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
+import {
+  METRIC_SERIES,
+  METRICS,
+  MetricDetail,
+  MetricTabs,
+  type Metric,
+} from "@/components/monitoring/metric-panel";
+import { TopApps } from "@/components/monitoring/top-apps";
 import {
   LiveStatusLine,
   MAX_POINTS,
@@ -29,7 +36,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types/server";
 import type { AgentReach } from "@/lib/version";
-import { friendlyBytes, serverLabel } from "@/lib/utils";
+import { serverLabel } from "@/lib/utils";
 
 interface ServerLite {
   id: string;
@@ -145,7 +152,10 @@ export function MonitoringDashboard({
     };
   }, [selectedId, online, pollMs]);
 
-  const samples = history[selectedId] ?? [];
+  const samples = React.useMemo(
+    () => history[selectedId] ?? [],
+    [history, selectedId],
+  );
   const cur = samples[samples.length - 1] ?? null;
   const stale = cur ? now - cur.ts > STALE_AFTER_MS : false;
 
@@ -163,6 +173,11 @@ export function MonitoringDashboard({
       })),
     [samples],
   );
+
+  const inWindow = React.useMemo(() => {
+    const from = (cur?.ts ?? 0) - windowMs;
+    return samples.filter((s) => s.ts >= from);
+  }, [samples, cur, windowMs]);
 
   if (!selected) {
     return (
@@ -270,30 +285,38 @@ export function MonitoringDashboard({
               <MetricTabs
                 active={metric}
                 onSelect={setMetric}
-                values={{
-                  cpu: pct(cur.cpu),
-                  memory: pct(cur.memPct),
-                  disk: pct(cur.diskPct),
-                  network: `${friendlyBytes(cur.netRx + cur.netTx)}/s`,
-                }}
+                samples={inWindow}
               />
-              {metric === "disk" && canManageServers && (
-                <div className="flex justify-end">
-                  <CleanupNowButton
-                    serverId={selected.id}
-                    serverName={serverLabel(selected)}
+              <MetricDetail
+                metric={metric}
+                window={inWindow}
+                chart={
+                  <TimeSeriesChart
+                    key={metric}
+                    height={240}
+                    unit={metric === "network" ? "bytesPerSec" : "percent"}
+                    windowMs={windowMs}
+                    points={points}
+                    series={METRIC_SERIES[metric]}
+                    ariaLabel={`${METRICS[metric].label} over time`}
                   />
-                </div>
-              )}
-              <TimeSeriesChart
-                key={metric}
-                height={240}
-                unit={metric === "network" ? "bytesPerSec" : "percent"}
-                windowMs={windowMs}
-                points={points}
-                series={METRIC_SERIES[metric]}
-                ariaLabel={`${METRIC_LABEL[metric]} over time`}
+                }
+                action={
+                  metric === "disk" &&
+                  canManageServers && (
+                    <CleanupNowButton
+                      serverId={selected.id}
+                      serverName={serverLabel(selected)}
+                    />
+                  )
+                }
               />
+              {canManageServers &&
+                (metric === "cpu" || metric === "memory") && (
+                  <div className="pt-3">
+                    <TopApps serverId={selected.id} metric={metric} />
+                  </div>
+                )}
             </>
           )}
         </div>
@@ -302,77 +325,12 @@ export function MonitoringDashboard({
   );
 }
 
-type Metric = "cpu" | "memory" | "disk" | "network";
-
-const METRIC_LABEL: Record<Metric, string> = {
-  cpu: "CPU",
-  memory: "Memory",
-  disk: "Disk",
-  network: "Network",
-};
-
-const METRIC_SERIES: Record<
-  Metric,
-  { key: string; label: string; color: string; fill?: boolean }[]
-> = {
-  cpu: [{ key: "cpu", label: "CPU", color: "var(--chart-1)", fill: true }],
-  memory: [
-    { key: "mem", label: "Memory", color: "var(--chart-1)", fill: true },
-  ],
-  disk: [{ key: "disk", label: "Disk", color: "var(--chart-1)", fill: true }],
-  network: [
-    { key: "rx", label: "Received", color: "var(--chart-1)" },
-    { key: "tx", label: "Sent", color: "var(--chart-2)" },
-  ],
-};
-
-const pct = (v: number) => `${Math.round(v)}%`;
-
 function upFor(sec: number): string {
   const days = Math.floor(sec / 86400);
   const hours = Math.floor(sec / 3600);
   if (days) return `Up for ${days} day${days === 1 ? "" : "s"}`;
   if (hours) return `Up for ${hours} hour${hours === 1 ? "" : "s"}`;
   return `Up for ${Math.max(1, Math.floor(sec / 60))} min`;
-}
-
-// The four numbers are the chart's tabs: one chart, the metric you picked.
-function MetricTabs({
-  active,
-  onSelect,
-  values,
-  loading = false,
-}: {
-  active: Metric;
-  onSelect: (m: Metric) => void;
-  values: Record<Metric, string>;
-  loading?: boolean;
-}) {
-  return (
-    <SlidingButtonGroup
-      aria-label="Metric"
-      className="grid grid-cols-2 gap-1 rounded-xl p-1 sm:grid-cols-4"
-    >
-      {(Object.keys(METRIC_LABEL) as Metric[]).map((m) => (
-        <button
-          key={m}
-          type="button"
-          aria-pressed={m === active}
-          onClick={() => onSelect(m)}
-          className="flex cursor-pointer flex-col items-start gap-1 rounded-md px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-        >
-          <span className="text-sm text-muted-foreground">
-            {METRIC_LABEL[m]}
-          </span>
-          <Bone loading={loading}>
-            <span className="text-2xl font-semibold tracking-tight tabular-nums">
-              {values[m]}
-            </span>
-          </Bone>
-        </button>
-      ))}
-    </SlidingButtonGroup>
-  );
 }
 
 /** A reporting server's dashboard, before its numbers arrive. */
@@ -390,12 +348,7 @@ export function MonitoringDashboardSkeleton() {
           </Bone>
           <WindowSelector windowMs={WINDOWS[0].ms} onChange={() => {}} />
         </div>
-        <MetricTabs
-          loading
-          active="cpu"
-          onSelect={() => {}}
-          values={{ cpu: "12%", memory: "12%", disk: "12%", network: "12%" }}
-        />
+        <MetricTabs loading active="cpu" onSelect={() => {}} samples={[]} />
         <Skeleton className="h-[240px] w-full rounded-lg" />
       </div>
     </div>
