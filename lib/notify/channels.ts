@@ -257,7 +257,7 @@ const WARN = new Set<AlertKey>([
 
 function embedColor(key: AlertKey): number {
   if (key.endsWith("_failed") || DANGER.has(key)) return 0xff5c5c;
-  if (key.endsWith("_succeeded") || GOOD.has(key)) return 0x50e3c2;
+  if (key.endsWith("_succeeded") || GOOD.has(key)) return 0x30d158;
   if (WARN.has(key)) return 0xf5a623;
   return 0x5b9dff;
 }
