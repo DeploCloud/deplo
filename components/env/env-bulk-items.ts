@@ -2,6 +2,22 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { BulkEnvItem } from "@/lib/env-bulk";
 import type { EnvVarDTO } from "@/lib/types/env";
 import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
+import type { EnvExampleKeyDTO } from "@/lib/data/env-example";
+
+// A name .env.example asks for: removing it dismisses it, copying gives its example.
+export function pendingBulkItem(item: EnvExampleKeyDTO): BulkEnvItem {
+  return {
+    id: `pending:${item.id}`,
+    key: item.key,
+    type: "plain",
+    value: item.example ?? "",
+    note: item.note,
+    remove: () =>
+      gqlAction(`mutation($id: String!) { dismissEnvExampleKey(id: $id) }`, {
+        id: item.id,
+      }),
+  };
+}
 
 export function standaloneBulkItem(
   row: EnvVarDTO,

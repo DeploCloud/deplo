@@ -190,6 +190,7 @@ export function PendingRow({
   onToggle: () => void;
   onDismiss: () => void;
 }) {
+  const selectId = `pending:${item.id}`;
   const router = useRouter();
   const [value, setValue] = React.useState(item.example ?? "");
   const [secret, setSecret] = React.useState(false);
@@ -230,6 +231,7 @@ export function PendingRow({
   return (
     <EnvListRow
       tone="pending"
+      select={<EnvSelectBox id={selectId} />}
       open={open}
       onToggle={onToggle}
       keyCell={

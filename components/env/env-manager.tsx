@@ -12,6 +12,7 @@ import {
   EnvSelectAll,
 } from "@/components/env/env-bulk-selection";
 import {
+  pendingBulkItem,
   standaloneBulkItem,
   sharedBulkItem,
   unlinkBulkItem,
@@ -232,23 +233,6 @@ export function EnvManager({
     counts,
   } = useEnvFilters(rows, facets);
 
-  const bulkItems = shownRows.map((row) => {
-    const id = rowKey(row);
-    if (row.kind === "standalone") return standaloneBulkItem(row, id);
-    const item = row.linked
-      ? unlinkBulkItem(row, appId, id)
-      : { ...row, id, scope: undefined };
-    const full = detailsById.get(row.id);
-    return {
-      ...item,
-      secretId: row.id,
-      makeSecret:
-        row.linked && canCreateShared && full
-          ? sharedBulkItem(full).makeSecret
-          : undefined,
-    };
-  });
-
   // A name to fill is no type, author or date a facet could match: facets hide it, search finds it.
   const faceted = Object.values(filters.facets).some((v) => v?.length);
   const needle = filters.q.trim().toLowerCase();
@@ -260,6 +244,26 @@ export function EnvManager({
           !drafted.has(p.key) &&
           p.key.toLowerCase().includes(needle),
       );
+
+  const bulkItems = [
+    ...toFill.map(pendingBulkItem),
+    ...shownRows.map((row) => {
+      const id = rowKey(row);
+      if (row.kind === "standalone") return standaloneBulkItem(row, id);
+      const item = row.linked
+        ? unlinkBulkItem(row, appId, id)
+        : { ...row, id, scope: undefined };
+      const full = detailsById.get(row.id);
+      return {
+        ...item,
+        secretId: row.id,
+        makeSecret:
+          row.linked && canCreateShared && full
+            ? sharedBulkItem(full).makeSecret
+            : undefined,
+      };
+    }),
+  ];
 
   const hasVars =
     loading || rows.length > 0 || drafts.length > 0 || pending.length > 0;
@@ -312,13 +316,20 @@ export function EnvManager({
       <EnvBulkSelection
         items={bulkItems}
         onRemoved={(ids) => {
+          const gone = ids.filter((id) => id.startsWith("pending:"));
+          if (gone.length)
+            setDismissed((prev) => {
+              const next = new Set(prev);
+              for (const id of gone) next.add(id.slice("pending:".length));
+              return next;
+            });
           for (const id of ids) {
             const row = shownRows.find((row) => rowKey(row) === id);
             if (row?.kind === "standalone" || (row && !row.autoInject))
               remove(id);
           }
         }}
-        removeConsequence="App variables are deleted. Shared variables are only unlinked here; automatically shared values still arrive."
+        removeConsequence="App variables are deleted. Shared variables are only unlinked here; automatically shared values still arrive. .env.example names leave the list."
       >
         {!hasVars ? (
           <EmptyState
