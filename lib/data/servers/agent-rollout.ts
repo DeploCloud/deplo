@@ -2,6 +2,7 @@ import "server-only";
 
 import { count, eq, inArray, sql } from "drizzle-orm";
 
+import { plural } from "../../utils";
 import { resolveAgentRelease } from "../../agent/release";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -37,6 +38,7 @@ import {
   type AgentUpdateDTO,
   type AgentUpdateFailure,
   type AgentUpdateRow,
+  STALE_RUNNING_MS,
   claimAgentUpdate,
   clearAgentUpdate,
   dropStaleAgentUpdates,
@@ -47,13 +49,23 @@ import {
 } from "./agent-update-state";
 import { listAllServers } from "./roster";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { readLeaderSnapshot } from "../clusters/leader-sync";
+import { handLeadersOff } from "../clusters/leader-move";
+import { getClusterById } from "../clusters/roster";
 
 const TICK_MS = 60_000;
 const FIRST_RUN_MS = 20_000;
 export const rolloutTiming = {
-  confirmTries: 20,
+  // Longer than the 30 s an agent gives a new binary before it goes back to the one before (ADR-0043).
+  confirmTries: 30,
   confirmDelayMs: 1500,
+  // Answers of the old version still expected: it execs only right after a renewal (agent #142).
+  oldTries: 6,
   nameServerMarginMs: 5000,
+  // A server is held this long on the new version, its renewals included, before the next one updates.
+  holdMs: 60_000,
+  holdEveryMs: 5000,
+  holdWait: (ms: number) => sleep(ms),
   wait: (ms: number) => sleep(ms),
 };
 
@@ -195,12 +207,13 @@ export async function unusableServers(): Promise<
 }
 
 /**
- * Remotes first, fewest Apps first, the Deplo host last: a bad release must break
- * a leaf before it breaks the machine that would tell you. See docs/agents/fleet-rollout.md.
+ * Remotes first, fewest Apps first, a cluster's leader after the servers in its line, the Deplo host last: a bad
+ * release must break a leaf before it breaks the machine that would tell you. See docs/agents/fleet-rollout.md.
  */
 export function rolloutOrder(
   servers: Server[],
   appsPerServer: ReadonlyMap<string, number>,
+  leaders: ReadonlySet<string> = new Set(),
 ): Server[] {
   const eligible = servers.filter(
     (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
@@ -208,10 +221,22 @@ export function rolloutOrder(
   const remotes = eligible
     .filter((s) => !isDeploHostServer(s))
     .sort(
-      (a, b) => (appsPerServer.get(a.id) ?? 0) - (appsPerServer.get(b.id) ?? 0),
+      (a, b) =>
+        Number(leaders.has(a.id)) - Number(leaders.has(b.id)) ||
+        (appsPerServer.get(a.id) ?? 0) - (appsPerServer.get(b.id) ?? 0),
     );
   return [...remotes, ...eligible.filter((s) => isDeploHostServer(s))];
 }
+
+async function clusterLeaders(): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ id: clustersTable.leaderServerId })
+    .from(clustersTable);
+  return new Set(rows.flatMap((r) => (r.id ? [r.id] : [])));
+}
+
+/** Seam: the leaders a server runs go to the next in line before its agent updates (ADR-0043). */
+export const leaderHandOff = { run: handLeadersOff };
 
 async function appsPerServer(): Promise<Map<string, number>> {
   const rows = await getDb()
@@ -245,19 +270,82 @@ async function helloVersion(serverId: string): Promise<string> {
   }
 }
 
+/** The version it came back on; `back` when it answers on the one it had, so the new one went back or never ran. */
 async function confirmUpdated(
   serverId: string,
   before: string,
-): Promise<string | null> {
+): Promise<{ version: string | null; back: boolean; seconds: string }> {
+  const start = Date.now();
+  const seconds = () =>
+    plural(
+      Math.max(1, Math.round((Date.now() - start) / 1000)),
+      "second",
+      "seconds",
+    );
+  let down = false;
   for (let i = 0; i < rolloutTiming.confirmTries; i++) {
     await sleep(rolloutTiming.confirmDelayMs);
     try {
       const version = await helloVersion(serverId);
       if (version !== before) {
         await markServerSeen(serverId, version);
-        return version;
+        return { version, back: false, seconds: seconds() };
       }
-    } catch {}
+      if (down || i >= rolloutTiming.oldTries)
+        return { version: null, back: true, seconds: seconds() };
+    } catch {
+      down = true;
+    }
+  }
+  return { version: null, back: false, seconds: seconds() };
+}
+
+function within<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("no answer in time")), ms).unref?.(),
+    ),
+  ]);
+}
+
+/**
+ * Why the server did not hold on `version` for its first minute, or null: it answers on it, and every cluster it is
+ * a member of keeps renewing it (ADR-0043). A leader that restarts or has not heard it yet is asked again.
+ */
+async function heldOn(server: Server, version: string): Promise<string | null> {
+  const memberOf = await getDb()
+    .select({ id: clusterMembers.clusterId })
+    .from(clusterMembers)
+    .where(eq(clusterMembers.serverId, server.id));
+  const renewed = new Set<string>();
+  let silent = 0;
+  const end = Date.now() + rolloutTiming.holdMs;
+  while (Date.now() < end) {
+    await rolloutTiming.holdWait(rolloutTiming.holdEveryMs);
+    try {
+      const now = await within(helloVersion(server.id), 5000);
+      if (now !== version) return `it answered on v${now}, not v${version}`;
+      silent = 0;
+    } catch {
+      if (++silent >= 2) return "it stopped answering";
+    }
+    for (const { id } of memberOf) {
+      const cluster = await getClusterById(id);
+      if (!cluster) continue;
+      const view = await within(readLeaderSnapshot(cluster), 5000)
+        .then((s) => s?.clusters[id]?.members.find((m) => m.id === server.id))
+        .catch(() => undefined);
+      if (!view || view.heard === false) continue;
+      if (view.state !== "ok")
+        return `the leader of cluster ${cluster.name} stopped renewing it`;
+      renewed.add(id);
+    }
+  }
+  const unsure = memberOf.find(({ id }) => !renewed.has(id));
+  if (unsure) {
+    const name = (await getClusterById(unsure.id))?.name ?? unsure.id;
+    return `Deplo could not see the leader of cluster ${name} renew it`;
   }
   return null;
 }
@@ -269,12 +357,19 @@ async function failAttempt(
   error: string,
   actor: string,
 ): Promise<void> {
-  const { firstFailure, gaveUp } = await recordAgentUpdateFailure(
-    row,
-    failure,
-    error,
-  );
-  if (firstFailure) {
+  const {
+    firstFailure,
+    gaveUp,
+    row: next,
+  } = await recordAgentUpdateFailure(row, failure, error);
+  const stopped = next.failure === "no_return";
+  if (stopped && row.failure !== "no_return")
+    await recordActivity(
+      "server",
+      `Could not update the server agent on ${server.name}: ${error}`,
+      actor,
+    );
+  if (firstFailure && !stopped) {
     await recordActivity(
       "server",
       `Could not update the server agent on ${server.name}: ${error} Deplo retries on its own.`,
@@ -295,7 +390,7 @@ async function failAttempt(
       });
     }
   }
-  if (gaveUp && row.nextRetryAt !== null)
+  if (gaveUp && row.nextRetryAt !== null && !stopped)
     await recordActivity(
       "server",
       `Stopped retrying the server agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
@@ -327,21 +422,30 @@ export async function attemptAgentUpdate(
       await markServerSeen(server.id, before);
       return clearAgentUpdate(server.id);
     }
+    await leaderHandOff.run(server.id);
     try {
       await selfUpdateServerAgent(server.id);
     } catch (e) {
       return fail("error", errorText(e));
     }
-    const version = await confirmUpdated(server.id, before);
+    const { version, back, seconds } = await confirmUpdated(server.id, before);
     if (!version)
       return fail(
         "no_return",
-        "It took the new server agent but did not come back on it. The other servers wait until it does.",
+        back
+          ? `It still ran v${before} ${seconds} after taking v${AGENT_VERSION}, so the new server agent did not start or went back. Deplo stopped updating the other servers.`
+          : `It took the new server agent but did not answer on it within ${seconds}. Deplo stopped updating the other servers.`,
       );
     if (agentUpdateAvailable(version, AGENT_VERSION))
       return fail(
         "error",
         `It came back on v${version}, not v${AGENT_VERSION}.`,
+      );
+    const why = await heldOn(server, version);
+    if (why)
+      return fail(
+        "no_return",
+        `It came back on v${version}, but ${why} within its first minute. Deplo stopped updating the other servers.`,
       );
     await clearAgentUpdate(server.id);
     await recordActivity(
@@ -349,7 +453,7 @@ export async function attemptAgentUpdate(
       `Updated the server agent on ${server.name} to v${version}`,
       actor,
     );
-    const settle = await nameServerSettleMs(server.id);
+    const settle = (await nameServerSettleMs(server.id)) - rolloutTiming.holdMs;
     if (settle > 0) await rolloutTiming.wait(settle);
   } catch (e) {
     await fail("error", errorText(e)).catch(() => {});
@@ -377,14 +481,27 @@ async function rolloutPass(): Promise<void> {
   // GitHub down: nothing is claimed, so no server's 24 hours run on an outage.
   if (!(await resolveAgentRelease())) return;
 
-  const suspect = pausedBy(behind, await listAgentUpdates());
+  const updates = await listAgentUpdates();
+  // An update under way elsewhere (Retry now) is still in its minute: the next server waits for it (ADR-0043).
+  const stale = Date.now() - STALE_RUNNING_MS;
+  if (
+    [...updates.values()].some(
+      (r) => r.status === "running" && Date.parse(r.updatedAt) > stale,
+    )
+  )
+    return;
+  const suspect = pausedBy(behind, updates);
   if (suspect) {
     const row = await claimAgentUpdate(suspect.id, false);
     if (!row) return;
     await attemptAgentUpdate(suspect, row, actor ?? "Deplo");
     if (await getAgentUpdate(suspect.id)) return;
   }
-  for (const server of rolloutOrder(behind, await appsPerServer())) {
+  for (const server of rolloutOrder(
+    behind,
+    await appsPerServer(),
+    await clusterLeaders(),
+  )) {
     const row = await claimAgentUpdate(server.id, false);
     if (!row) continue;
     await attemptAgentUpdate(server, row, actor ?? "Deplo");

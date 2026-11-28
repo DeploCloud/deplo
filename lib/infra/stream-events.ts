@@ -72,6 +72,8 @@ export function pumpClientStream<T>(
   chunks: AsyncIterable<Buffer>,
   dataFrame: (data: Buffer) => T,
   onError: (e: unknown) => void,
+  /** The frame that ends a whole stream, read once every chunk is written; a cut stream never sends it. */
+  lastFrame?: () => T,
 ): void {
   let settled = false;
   const fail = (e: unknown) => {
@@ -103,6 +105,7 @@ export function pumpClientStream<T>(
         if (settled) return;
         await writeFrame(dataFrame(buf));
       }
+      if (lastFrame) await writeFrame(lastFrame());
       call.end();
     } catch (e) {
       call.cancel();

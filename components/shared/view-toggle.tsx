@@ -42,11 +42,11 @@ export function ViewToggle({
     <div
       ref={ref}
       className={cn(
-        "relative isolate flex items-center gap-1 rounded-lg border border-border p-0.5",
+        "relative isolate flex items-center gap-1 rounded-full border border-border p-0.5",
         className,
       )}
     >
-      <SlidingBackground rect={rect} className="bg-secondary" />
+      <SlidingBackground rect={rect} className="rounded-full bg-secondary" />
       {options.map(([value, label, Icon]) => {
         const active = view === value;
         return (

@@ -142,6 +142,8 @@ export const backupRuns = pgTable(
     decryptedSizeBytes: bigint("decrypted_size_bytes", { mode: "number" }),
     // How long the App was paused for a consistent volume copy; NULL when it was not.
     heldMs: bigint("held_ms", { mode: "number" }),
+    // How it reached a server's disk: "direct" (server to server) or "relay" (through Deplo); NULL for a bucket.
+    path: text("path"),
     sha256: text("sha256"),
     orphanedAt: isoTimestamptz("orphaned_at"),
     // Data a returning cluster member had left (spec #176): the server it was on, and when the failover happened.

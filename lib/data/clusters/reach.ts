@@ -43,11 +43,16 @@ export const outOfReachSentence = (since: string, name?: string) =>
 /** Why a call to a cluster's server got no answer, when the truth is that Deplo reaches none of that cluster. */
 export async function outOfReachFailure(
   serverId: string,
-  what: string,
+  what?: string,
 ): Promise<string | null> {
   const cluster = serverId ? await clusterOfServer(serverId) : null;
   const since = cluster ? await clusterOutOfReach(cluster.id) : null;
-  return cluster && since
+  if (cluster && !since)
+    console.warn(
+      `[clusters] ${serverId} of ${cluster.name} is offline; answering: ${(await clusterMemberServerIds(cluster.id)).map((id) => `${id}=${serverAnswers(id)}`).join(" ")}`,
+    );
+  if (!cluster || !since) return null;
+  return what
     ? `Deplo cannot reach cluster ${cluster.name} since ${sinceClock(since)}, so it could not ${what}: its servers keep running without Deplo`
-    : null;
+    : `Deplo cannot reach cluster ${cluster.name} since ${sinceClock(since)}: its servers keep running without Deplo`;
 }

@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Network,
   Server as ServerIcon,
+  TriangleAlert,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,8 @@ export type ServerCardData = ServerFilterFields & {
   member: ServerMemberState | null;
   /** The cluster's leader runs on this server. */
   leader: boolean;
+  /** Its disk is past 90% used: how full, and what takes it; empty otherwise. */
+  diskWarning?: string;
 };
 
 /** A cluster this server could be moved into, with what stops it. */
@@ -317,7 +320,17 @@ export function ServerCard({
 
   const identity = (
     <div className="min-w-0 flex-1">
-      <span className="block truncate font-medium">{server.name}</span>
+      <span className="flex items-center gap-1.5 font-medium">
+        <span className="truncate">{server.name}</span>
+        {server.diskWarning && (
+          <SimpleTooltip content={server.diskWarning}>
+            <TriangleAlert
+              className="pointer-events-auto relative z-10 size-3.5 shrink-0 text-[var(--warning)]"
+              aria-label={server.diskWarning}
+            />
+          </SimpleTooltip>
+        )}
+      </span>
       <p className="mt-1 truncate text-xs text-muted-foreground">
         {server.ip ? (
           <span className="font-mono">{server.ip}</span>

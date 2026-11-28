@@ -242,6 +242,7 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
     sizeBytes: r.sizeBytes,
     decryptedSizeBytes: r.decryptedSizeBytes,
     heldMs: r.heldMs,
+    path: r.path ?? null,
     sha256: r.sha256,
     orphanedAt: r.orphanedAt,
     leftAt: r.leftAt ?? null,
@@ -251,7 +252,7 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,
   } satisfies Record<
-    Exclude<keyof BackupRun, "leftOnServer">,
+    Exclude<keyof BackupRun, "leftOnServer" | "queued">,
     unknown
   > as BackupRunInsert;
 }
@@ -270,6 +271,7 @@ export function assembleBackupRun(row: BackupRunRow): BackupRun {
     sizeBytes: row.sizeBytes,
     decryptedSizeBytes: row.decryptedSizeBytes ?? null,
     heldMs: row.heldMs ?? null,
+    path: row.path === "direct" || row.path === "relay" ? row.path : null,
     sha256: row.sha256 ?? null,
     orphanedAt: row.orphanedAt ?? null,
     leftAt: row.leftAt ?? null,

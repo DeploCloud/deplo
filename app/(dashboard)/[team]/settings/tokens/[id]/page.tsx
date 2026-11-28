@@ -14,7 +14,7 @@ export async function generateMetadata(
   props: PageProps<"/[team]/settings/tokens/[id]">,
 ) {
   const { id } = await props.params;
-  const token = await getToken(id);
+  const token = await getToken(id).catch(() => null);
   return {
     title: token ? `Settings · ${token.name}` : "Settings · API tokens",
   };

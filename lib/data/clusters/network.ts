@@ -12,9 +12,12 @@ import {
   planNetwork,
   type NetworkPath,
   type NetworkServer,
+  type NetworkTable,
 } from "../../deploy/cluster-network";
 import { nowIso } from "../../ids";
 import { setClusterNetwork } from "../../infra/agent-client/cluster-host";
+import { connectAgent } from "../../infra/agent-client/connect";
+import { NETWORK_ROTATE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { AgentClusterNetworkUnsupportedError } from "../../infra/agent-client/errors";
 import type { Server } from "../../types/server";
 import { messageOf } from "../../utils";
@@ -177,6 +180,34 @@ export async function retireNetworkKey(serverId: string): Promise<void> {
     await syncClusterNetwork(r.id).catch((e) => warn(r.id, e));
 }
 
+async function fingerprintsOf(servers: Server[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const s of servers) {
+    const fp = await fingerprintOf(s.id);
+    if (fp) out.set(s.id, fp);
+  }
+  return out;
+}
+
+/** Each server's table now, from the keys Deplo holds. */
+async function planOf(
+  clusterId: string,
+  servers: Server[],
+  fingerprints: Map<string, string>,
+) {
+  const keys = await keysOf(clusterId);
+  const input: NetworkServer[] = servers
+    .filter((s) => fingerprints.has(s.id))
+    .map((s) => ({
+      serverId: s.id,
+      fingerprint: fingerprints.get(s.id)!,
+      publicKey: keys.get(s.id)?.publicKey ?? null,
+      port: keys.get(s.id)?.port ?? 0,
+      addresses: [s.ip, s.host, ...(addresses().get(s.id) ?? [])],
+    }));
+  return { keys, tables: planNetwork(input) };
+}
+
 export async function syncClusterNetwork(clusterId: string): Promise<void> {
   if (await instanceFrozen()) return;
   const servers = await networkServers(clusterId);
@@ -186,25 +217,12 @@ export async function syncClusterNetwork(clusterId: string): Promise<void> {
   );
   if (stale.length) await takeOff(clusterId, stale);
   if (servers.length === 0) return;
-  const fingerprints = new Map<string, string>();
-  for (const s of servers) {
-    const fp = await fingerprintOf(s.id);
-    if (fp) fingerprints.set(s.id, fp);
-  }
+  const fingerprints = await fingerprintsOf(servers);
   const byFingerprint = new Map([...fingerprints].map(([id, fp]) => [fp, id]));
   for (let round = 0; round < 3; round++) {
-    const keys = await keysOf(clusterId);
-    const input: NetworkServer[] = servers
-      .filter((s) => fingerprints.has(s.id))
-      .map((s) => ({
-        serverId: s.id,
-        fingerprint: fingerprints.get(s.id)!,
-        publicKey: keys.get(s.id)?.publicKey ?? null,
-        port: keys.get(s.id)?.port ?? 0,
-        addresses: [s.ip, s.host, ...(addresses().get(s.id) ?? [])],
-      }));
+    const { keys, tables } = await planOf(clusterId, servers, fingerprints);
     let changed = false;
-    for (const [serverId, table] of planNetwork(input)) {
+    for (const [serverId, table] of tables) {
       if (await instanceFrozen()) return;
       try {
         const retire = retiring().has(serverId)
@@ -329,4 +347,90 @@ export async function clusterNetworkLinksOf(
     out.set(r.serverId, list);
   }
   return out;
+}
+
+/**
+ * Gives a server a new network key while its tunnels stay up (c46 printed eu-1's): it makes a next key, every peer
+ * holds it as that server's next one, then the server switches in place and the peers take it at once.
+ */
+export async function rotateNetworkKey(serverId: string): Promise<string> {
+  const clusterIds = (
+    await getDb()
+      .select({ id: clusterNetworkPeers.clusterId })
+      .from(clusterNetworkPeers)
+      .where(eq(clusterNetworkPeers.serverId, serverId))
+  ).map((r) => r.id);
+  if (clusterIds.length === 0)
+    throw new Error("This server is on no cluster's network.");
+  const plans: {
+    clusterId: string;
+    fingerprint: string;
+    own: NetworkTable;
+    tables: Map<string, NetworkTable>;
+  }[] = [];
+  for (const clusterId of clusterIds) {
+    const servers = await networkServers(clusterId);
+    const fingerprints = await fingerprintsOf(servers);
+    const { tables } = await planOf(clusterId, servers, fingerprints);
+    const own = tables.get(serverId);
+    if (own)
+      plans.push({
+        clusterId,
+        fingerprint: fingerprints.get(serverId)!,
+        own,
+        tables,
+      });
+  }
+  const ids = new Set(plans.flatMap((p) => [...p.tables.keys()]));
+  for (const id of ids) await mustRotate(id);
+  const first = plans[0];
+  if (!first)
+    throw new Error("This server has no place on its cluster's network yet.");
+  const made = await setClusterNetwork(serverId, {
+    clusterId: first.clusterId,
+    ...first.own,
+    nextKey: true,
+  });
+  const next = made.nextPublicKey;
+  if (!next) throw new Error("This server's agent made no next network key.");
+  // Every peer first: one that missed it would drop the server's packets until Deplo's next pass.
+  for (const p of plans)
+    for (const [id, table] of p.tables) {
+      if (id === serverId) continue;
+      await setClusterNetwork(id, {
+        clusterId: p.clusterId,
+        ...table,
+        peers: table.peers.map((peer) =>
+          peer.fingerprint === p.fingerprint
+            ? { ...peer, nextPublicKey: next }
+            : peer,
+        ),
+      });
+    }
+  const r = await setClusterNetwork(serverId, {
+    clusterId: first.clusterId,
+    ...first.own,
+    rotateToPublicKey: next,
+  });
+  if (r.publicKey !== next)
+    throw new Error("This server did not switch to its next network key.");
+  await getDb()
+    .update(clusterNetworkPeers)
+    .set({ publicKey: next, updatedAt: nowIso() })
+    .where(eq(clusterNetworkPeers.serverId, serverId));
+  for (const id of clusterIds) await syncClusterNetwork(id);
+  console.log(`[cluster-network] ${serverId}: network key rotated`);
+  return next;
+}
+
+async function mustRotate(serverId: string): Promise<void> {
+  const conn = await connectAgent(serverId);
+  try {
+    if (!(await conn.hello()).capabilities?.includes(NETWORK_ROTATE_CAPABILITY))
+      throw new Error(
+        `${(await getServerById(serverId))?.name ?? serverId}'s server agent is too old to take a new network key with its tunnels up: update it first.`,
+      );
+  } finally {
+    conn.close();
+  }
 }

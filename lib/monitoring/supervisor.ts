@@ -16,7 +16,7 @@ import {
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
-import { linkMayCome } from "../infra/agent-link/registry";
+import { linkMayCome, onAgentLink } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { applyRestartEvents } from "../data/restart-events";
 import { measureServerForCollector } from "../data/monitoring";
@@ -36,6 +36,7 @@ import type {
   MetricsSample,
 } from "../agent/gen/agent";
 import { checkResourceThresholds } from "../notify/thresholds";
+import { noteDiskUse } from "../data/servers/disk-full";
 import { pruneMetricsHistoryTo, recordMetricsSample } from "./history";
 import {
   clearMetricsStreamUnsupported,
@@ -82,6 +83,7 @@ interface ServerStream {
   mode: StreamMode;
   abort: AbortController;
   loop: Promise<void>;
+  wake?: () => void;
 }
 
 interface SupervisorState {
@@ -89,6 +91,7 @@ interface SupervisorState {
   timer: ReturnType<typeof setInterval> | null;
   servers: Map<string, ServerStream>;
   stopping: boolean;
+  offLink?: () => void;
 }
 
 const STATE_KEY = Symbol.for("deplo.monitoring.streams");
@@ -148,8 +151,14 @@ async function ingestFrame(
 ): Promise<Map<string, ContainerStat[]>> {
   const host = hostSampleFrom(serverId, frame, facts);
   // Above the save-metrics gate on purpose: turning charts off must not turn alerting off.
-  if (host)
+  if (host) {
     checkResourceThresholds(serverId, facts.serverName || serverId, host);
+    void noteDiskUse(
+      serverId,
+      facts.serverName || serverId,
+      host.diskPct,
+    ).catch(() => {});
+  }
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
 
   const byProject = new Map<string, ContainerStat[]>();
@@ -193,6 +202,22 @@ export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+// A link coming up cuts it short: a relinked server streams now, not after its backoff.
+async function backoff(
+  serverId: string,
+  ms: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const nap = new AbortController();
+  const stop = () => nap.abort();
+  signal.addEventListener("abort", stop, { once: true });
+  const entry = state.servers.get(serverId);
+  if (entry) entry.wake = stop;
+  await sleep(ms, nap.signal);
+  signal.removeEventListener("abort", stop);
+  if (entry?.wake === stop) entry.wake = undefined;
+}
+
 async function runStreamLoop(
   serverId: string,
   serverName: string,
@@ -234,6 +259,7 @@ async function runStreamLoop(
       );
       let lastHealthWriteAt = Date.now();
       let lastStatusReconcileAt = 0;
+      let capacityWritten = false;
       if (connHealth)
         await recordServerHealth(
           serverId,
@@ -254,7 +280,8 @@ async function runStreamLoop(
         await applyRestartEvents(serverId, frame.restartEvents);
 
         const now = Date.now();
-        if (now - lastHealthWriteAt >= HEALTH_WRITE_MS) {
+        const healthDue = now - lastHealthWriteAt >= HEALTH_WRITE_MS;
+        if (healthDue) {
           lastHealthWriteAt = now;
           if (connHealth)
             await recordServerHealth(
@@ -262,14 +289,16 @@ async function runStreamLoop(
               connHealth,
               new Date(now).toISOString(),
             );
-          const cap = frame.host;
-          if (cap && cap.cpuCores > 0) {
-            await markServerSeen(serverId, undefined, undefined, {
-              cpuCores: cap.cpuCores,
-              memoryMb: Math.round(Number(cap.memTotal) / (1024 * 1024)),
-              diskGb: Math.round(Number(cap.diskTotal) / (1024 * 1024 * 1024)),
-            });
-          }
+        }
+        // On the first frame too: a move onto a new member waits on its memory.
+        const cap = frame.host;
+        if ((healthDue || !capacityWritten) && cap && cap.cpuCores > 0) {
+          capacityWritten = true;
+          await markServerSeen(serverId, undefined, undefined, {
+            cpuCores: cap.cpuCores,
+            memoryMb: Math.round(Number(cap.memTotal) / (1024 * 1024)),
+            diskGb: Math.round(Number(cap.diskTotal) / (1024 * 1024 * 1024)),
+          });
         }
 
         if (now - lastStatusReconcileAt >= APP_STATUS_RECONCILE_MS) {
@@ -285,7 +314,7 @@ async function runStreamLoop(
       ) {
         const delay = backoffFor(attempt);
         attempt = Math.min(attempt + 1, 16);
-        await sleep(delay, signal);
+        await backoff(serverId, delay, signal);
       }
     } catch (e) {
       if (signal.aborted || state.stopping) return;
@@ -318,7 +347,7 @@ async function runStreamLoop(
         const delay = backoffFor(attempt);
         // Waiting for a link costs no dial, and the first failure after it still gets written.
         if (!undecided) attempt = Math.min(attempt + 1, 16);
-        await sleep(delay, signal);
+        await backoff(serverId, delay, signal);
       }
     } finally {
       signal.removeEventListener("abort", onAbort);
@@ -421,12 +450,22 @@ export function startMetricsStreams(): void {
   if (typeof timer.unref === "function") timer.unref();
   state.timer = timer;
 
+  // A new server's stream opens at its link, not at the next round.
+  state.offLink = onAgentLink((e) => {
+    if (e.type !== "up" || state.stopping) return;
+    const entry = state.servers.get(e.serverId);
+    if (entry) entry.wake?.();
+    else void reconcileMetricsStreams();
+  });
+
   void reconcileMetricsStreams();
   console.log("[deplo] metrics stream supervisor started");
 }
 
 export async function stopMetricsStreams(): Promise<void> {
   state.stopping = true;
+  state.offLink?.();
+  state.offLink = undefined;
   if (state.timer) clearInterval(state.timer);
   state.timer = null;
   const loops = [...state.servers.values()].map((e) => {

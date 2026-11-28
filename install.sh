@@ -2228,7 +2228,7 @@ write_traefik_compose() {
 cat > "$TRAEFIK_COMPOSE" <<YAML
 services:
   traefik:
-    image: traefik:v3.7.17
+    image: traefik:v3.7.20
     container_name: deplo-traefik
     restart: unless-stopped
     logging:
@@ -2267,6 +2267,7 @@ $TRAEFIK_FILE_PROVIDER
       # was displayed literally.
       - --certificatesresolvers.letsencrypt.acme.email=$ACME_EMAIL
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.keytype=EC256
     ports:
       - "$PROXY_BIND$HTTP_PORT:80"
       - "$PROXY_BIND$HTTPS_PORT:443"
@@ -3386,7 +3387,7 @@ takeover_uninstall() {
   if [ -x /usr/local/bin/deplo-agent ]; then
     systemctl disable --now deplo-agent >&9 2>&9 || true
     rm -f /usr/local/bin/deplo-agent /etc/systemd/system/deplo-agent.service
-    rm -rf /var/lib/deplo-agent
+    rm -rf /var/lib/deplo-agent /etc/systemd/system/deplo-agent.service.d
     systemctl daemon-reload >&9 2>&9 || true
   fi
   rm -f /usr/local/bin/deplo

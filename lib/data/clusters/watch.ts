@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { watchClusterLeader } from "../../infra/agent-client/cluster-host";
@@ -118,7 +118,35 @@ async function memberLeaseChanged(
   syncClusterAnswerDnsSoon(clusterId);
 }
 
-export type EventResult = "applied" | "skipped" | "frozen";
+export type EventResult = "applied" | "skipped" | "frozen" | "moved";
+
+/** The leader a watch reads, as stored when it opened: its server, null for Deplo's own. */
+export interface WatchedLeader {
+  server: string | null;
+}
+
+const watchedLeaderOf = (c: Cluster): WatchedLeader => ({
+  server: c.leaderTakeoverAt ? null : c.leaderServerId,
+});
+
+/** The row still names this leader: a write from the watch on one Deplo left changes nothing (c43). */
+const storedLeaderIs = ({ server }: WatchedLeader) =>
+  server === null
+    ? or(
+        isNotNull(clustersTable.leaderTakeoverAt),
+        isNull(clustersTable.leaderServerId),
+      )
+    : and(
+        eq(clustersTable.leaderServerId, server),
+        isNull(clustersTable.leaderTakeoverAt),
+      );
+
+interface ApplyOpts {
+  advance?: boolean;
+  after?: number;
+  /** Set by a watch: once another leader is stored, the one it reads speaks for the cluster no more. */
+  leader?: WatchedLeader;
+}
 
 /**
  * Applies one event of the leader once: an event at or below the stored sequence is skipped, and the sequence moves
@@ -127,23 +155,57 @@ export type EventResult = "applied" | "skipped" | "frozen";
 export async function applyLeaderEvent(
   clusterId: string,
   e: LeaderEvent,
-  opts: { advance?: boolean; after?: number } = {},
+  opts: ApplyOpts = {},
 ): Promise<EventResult> {
   if (await instanceFrozen()) return "frozen";
   const cluster = await getClusterById(clusterId);
+  if (
+    cluster &&
+    opts.leader &&
+    watchedLeaderOf(cluster).server !== opts.leader.server
+  )
+    return "moved";
   if (
     !cluster ||
     e.cluster !== clusterId ||
     e.seq <= (opts.after ?? cluster.eventSeq)
   )
     return "skipped";
-  return activityAt(e.at, () => applyOne(cluster, e, opts));
+  // Two watches can read the same event at once (a new leader's, a replay): it is said once (eu, 24 Nov 2026).
+  const release = claimEvent(clusterId, e);
+  if (!release) return "skipped";
+  try {
+    const r = await activityAt(e.at, () => applyOne(cluster, e, opts));
+    if (r === "frozen") release();
+    return r;
+  } catch (err) {
+    release();
+    throw err;
+  }
+}
+
+const CLAIMED = Symbol.for("deplo.cluster.watch.claimed");
+const claimedState = globalThis as unknown as {
+  [CLAIMED]?: Map<string, Set<string>>;
+};
+
+/** Claims one event for this process; null when it is applied or being applied already. */
+function claimEvent(clusterId: string, e: LeaderEvent): (() => void) | null {
+  const all = (claimedState[CLAIMED] ??= new Map());
+  let seen = all.get(clusterId);
+  if (!seen) all.set(clusterId, (seen = new Set()));
+  const id = JSON.stringify([e.seq, e.type, e.at ?? "", e.data]);
+  if (seen.has(id)) return null;
+  seen.add(id);
+  // ponytail: the newest 1000 per cluster; an older event is below the stored sequence by then.
+  if (seen.size > 1000) seen.delete(seen.values().next().value!);
+  return () => seen.delete(id);
 }
 
 async function applyOne(
   cluster: Cluster,
   e: LeaderEvent,
-  opts: { advance?: boolean; after?: number },
+  opts: ApplyOpts,
 ): Promise<EventResult> {
   // Read live while Deplo's machine stands in, an event is its leader's; a replay is the stored leader's own.
   const standIn = !!cluster.leaderTakeoverAt && opts.after === undefined;
@@ -154,7 +216,11 @@ async function applyOne(
       .update(clustersTable)
       .set({ eventSeq: e.seq, ...extra })
       .where(
-        and(eq(clustersTable.id, clusterId), lt(clustersTable.eventSeq, e.seq)),
+        and(
+          eq(clustersTable.id, clusterId),
+          lt(clustersTable.eventSeq, e.seq),
+          opts.leader ? storedLeaderIs(opts.leader) : undefined,
+        ),
       );
   };
   const d = e.data;
@@ -197,6 +263,7 @@ async function applyOne(
             workloadId: d.workloadId,
             members,
             epoch: Number(d.epoch) || cluster.leaderEpoch,
+            fromLeader: true,
           });
         } catch (err) {
           // A placement naming a server that has left is stale; it must not hold up what follows it.
@@ -261,7 +328,10 @@ async function applyOne(
     }
     case "superseded": {
       // Cut off from every server, Deplo cannot know which leader that was, nor that it matters.
-      if (!(await clusterOutOfReach(clusterId)))
+      if (
+        !(await epochDeploHanded(clusterId, d.epoch)) &&
+        !(await clusterOutOfReach(clusterId))
+      )
         await recordClusterActivity(
           clusterId,
           `Cluster ${cluster.name}'s leader stepped down: a server in it follows a newer one.`,
@@ -272,6 +342,30 @@ async function applyOne(
     default:
       await advance();
       return "applied";
+  }
+}
+
+// How long a leader that stepped down waits to be Deplo's own move: a hand-over stores the epoch once the new leader
+// leads, up to 5 s after the old one heard it from a member (c44, leader-move.ts).
+let HANDED_WAIT_MS = 6_000;
+
+/** Test seam: how long a step-down waits for Deplo to store the epoch it handed; null is the real wait. */
+export function __setHandedWaitForTest(ms: number | null): void {
+  HANDED_WAIT_MS = ms ?? 6_000;
+}
+
+/** Whether Deplo stores `epoch` as the cluster's own within the wait: a leader it moved, not one that stepped down. */
+async function epochDeploHanded(
+  clusterId: string,
+  epoch: unknown,
+): Promise<boolean> {
+  if (typeof epoch !== "number") return false;
+  const end = Date.now() + HANDED_WAIT_MS;
+  for (;;) {
+    const c = await getClusterById(clusterId);
+    if (!c || c.leaderEpoch >= epoch) return true;
+    if (Date.now() >= end) return false;
+    await new Promise((r) => setTimeout(r, 100));
   }
 }
 
@@ -383,13 +477,21 @@ export async function replayBeforeHandBack(
   return seq;
 }
 
-/** Moves the stored sequence up to `seq`, never down. */
-async function advanceTo(clusterId: string, seq: number): Promise<void> {
+/** Moves the stored sequence up to `seq`, never down, and only while the leader the watch reads is stored. */
+async function advanceTo(
+  clusterId: string,
+  seq: number,
+  leader?: WatchedLeader,
+): Promise<void> {
   await getDb()
     .update(clustersTable)
     .set({ eventSeq: seq })
     .where(
-      and(eq(clustersTable.id, clusterId), lt(clustersTable.eventSeq, seq)),
+      and(
+        eq(clustersTable.id, clusterId),
+        lt(clustersTable.eventSeq, seq),
+        leader ? storedLeaderIs(leader) : undefined,
+      ),
     );
 }
 
@@ -401,10 +503,11 @@ export class MoveBatch {
   private running = new Map<string, Promise<EventResult>>();
   private highest = 0;
   private failure: unknown = null;
-  private frozen = false;
+  private stopped: "frozen" | "moved" | null = null;
   constructor(
     private clusterId: string,
     private apply: typeof applyLeaderEvent = applyLeaderEvent,
+    private leader?: WatchedLeader,
   ) {}
 
   add(e: LeaderEvent): void {
@@ -415,12 +518,13 @@ export class MoveBatch {
     this.running.set(
       key,
       before.then(async (r) => {
-        if (r === "frozen") return r;
+        if (r === "frozen" || r === "moved") return r;
         try {
           const out = await this.apply(this.clusterId, e, {
             advance: false,
+            ...(this.leader ? { leader: this.leader } : {}),
           });
-          if (out === "frozen") this.frozen = true;
+          if (out === "frozen" || out === "moved") this.stopped ??= out;
           return out;
         } catch (err) {
           this.failure ??= err;
@@ -430,26 +534,26 @@ export class MoveBatch {
     );
   }
 
-  /** Waits for every move under way, then stores the sequence: "frozen" when a Deplo move stopped one. */
-  async settle(): Promise<"applied" | "frozen"> {
+  /** Waits for every move under way, then stores the sequence: "frozen" or "moved" when one was stopped. */
+  async settle(): Promise<"applied" | "frozen" | "moved"> {
     if (this.running.size === 0) return "applied";
     await Promise.all(this.running.values());
     this.running.clear();
     const failure = this.failure;
     this.failure = null;
     if (failure) throw failure;
-    if (this.frozen) return "frozen";
-    await advanceTo(this.clusterId, this.highest);
+    if (this.stopped) return this.stopped;
+    await advanceTo(this.clusterId, this.highest, this.leader);
     return "applied";
   }
 }
 
-export type WatchEnd = "ended" | "frozen" | "reset" | "no_leader";
+export type WatchEnd = "ended" | "frozen" | "reset" | "no_leader" | "moved";
 
 /**
- * Opens the watch from the stored sequence and applies every event in order until the stream ends. Once everything
- * up to the leader's newest sequence is applied, the cluster is reconciled. A leader that lost its buffer (its newest
- * sequence is below the stored one) makes the stored sequence start over.
+ * Opens the watch from the stored sequence and applies every event in order until the stream ends, or until another
+ * leader is stored. Once everything up to the leader's newest sequence is applied, the cluster is reconciled.
+ * A leader whose newest sequence is below the stored one is read from its snapshot and watched from its newest event.
  */
 export async function watchClusterOnce(
   clusterId: string,
@@ -459,6 +563,7 @@ export async function watchClusterOnce(
   if (!cluster) return "no_leader";
   const host = await leaderHost(cluster);
   if (!host) return "no_leader";
+  const bound = watchedLeaderOf(cluster);
   let seq = cluster.eventSeq;
   let head: number | null = null;
   let reconciled = false;
@@ -476,7 +581,7 @@ export async function watchClusterOnce(
     }
   };
   const stream = watchClusterLeader(host.id, seq);
-  const batch = new MoveBatch(clusterId);
+  const batch = new MoveBatch(clusterId, applyLeaderEvent, bound);
   try {
     for await (const raw of stream) {
       if (signal?.aborted) break;
@@ -492,20 +597,27 @@ export async function watchClusterOnce(
         batch.add(line.event);
         seq = Math.max(seq, line.event.seq);
         if (!reconciled && head !== null && seq >= head) {
-          if ((await batch.settle()) === "frozen") return "frozen";
+          const settled = await batch.settle();
+          if (settled !== "applied") return settled;
           await reconcile();
         }
         continue;
       }
       // Anything else waits for the moves before it: a placement or summary reads what they changed.
-      if ((await batch.settle()) === "frozen") return "frozen";
+      const settled = await batch.settle();
+      if (settled !== "applied") return settled;
       if (line.kind === "ping") continue;
       if (line.kind === "hello") {
+        // Its buffer is not the one the stored sequence counts: what it holds may be an older epoch's, so it is not replayed.
         if (line.head < seq) {
-          await getDb()
+          const moved = await getDb()
             .update(clustersTable)
-            .set({ eventSeq: 0 })
-            .where(eq(clustersTable.id, clusterId));
+            .set({ eventSeq: line.head })
+            .where(and(eq(clustersTable.id, clusterId), storedLeaderIs(bound)))
+            .returning({ id: clustersTable.id });
+          if (moved.length === 0) return "moved";
+          lost = { after: 0, before: line.head + 1 };
+          await reconcile();
           return "reset";
         }
         head = line.head;
@@ -515,16 +627,18 @@ export async function watchClusterOnce(
         if (lost && !sawEvent) lost.before = line.event.seq;
         sawEvent = true;
         // Another cluster's event on the same leader applies nothing here; only the position moves.
-        if (
-          line.event.cluster === clusterId &&
-          (await applyLeaderEvent(clusterId, line.event)) === "frozen"
-        )
-          return "frozen";
+        if (line.event.cluster === clusterId) {
+          const r = await applyLeaderEvent(clusterId, line.event, {
+            leader: bound,
+          });
+          if (r === "frozen" || r === "moved") return r;
+        }
         seq = Math.max(seq, line.event.seq);
       }
       if (!reconciled && head !== null && seq >= head) await reconcile();
     }
-    if ((await batch.settle()) === "frozen") return "frozen";
+    const settled = await batch.settle();
+    if (settled !== "applied") return settled;
   } finally {
     // What was applied before the stream broke keeps its place, so it is not said twice.
     await batch.settle().catch(() => undefined);
@@ -586,7 +700,7 @@ export async function runClusterWatch(
         await pauseUnlessLeaderMoves(clusterId, host, 15_000, signal);
       else {
         pause = 1000;
-        await sleep(end === "reset" ? 0 : 1000, signal);
+        await sleep(end === "reset" || end === "moved" ? 0 : 1000, signal);
       }
     } catch (e) {
       const message = messageOf(e);

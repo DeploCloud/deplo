@@ -18,11 +18,6 @@ import {
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { zoneCertNames, type CertChallenge } from "../../deploy/dns-challenge";
 import {
-  dnsChallengePresent,
-  hasDnsChallenge,
-  withDnsChallenge,
-} from "../../deploy/traefik-cluster";
-import {
   certKey,
   chooseRenewer,
   clusterCanCheckOverDns,
@@ -38,12 +33,6 @@ import {
   type ZonePlanZone,
 } from "../../deploy/zone-certs";
 import { nowIso } from "../../ids";
-import {
-  DNS_CERTIFICATES_CAPABILITY,
-  DNS_CHALLENGE_CAPABILITY,
-} from "../../infra/agent-client/hello-capabilities";
-import { connectAgent } from "../../infra/agent-client/connect";
-import { serverSupports } from "../../infra/agent-client/preflight";
 import type { ZoneCertificateView } from "../../types/cluster-dns";
 import { messageOf } from "../../utils";
 import { recordActivity } from "../activity";
@@ -53,6 +42,7 @@ import { requireAppCapability } from "../node-access";
 import { recordClusterActivity } from "./cluster-activity";
 import { getClusterById, requireClusterAdmin } from "./roster";
 import { refreshAcmeCnames } from "./zone-cnames";
+import { __forgetZoneCertProxies } from "./zone-cert-proxies";
 
 // A zone's own certificate and the certificate checks answered from it (ADR-0049 phase 3):
 // https://deplo.build/docs/operations/clusters/dns-zone
@@ -61,13 +51,15 @@ const g = globalThis as unknown as {
   [k: symbol]: Map<string, unknown> | undefined;
 };
 const REPORTED = Symbol.for("deplo.cluster.zone-certs.reported");
-const PROXIES = Symbol.for("deplo.cluster.dns-challenge.proxies");
 /** The zone certificate each member last said it holds, by `serverId zone`: its key goes only where it differs. */
 const reported = () => (g[REPORTED] ??= new Map()) as Map<string, string>;
-const proxies = () =>
-  (g[PROXIES] ??= new Map()) as Map<string, { on: boolean; at: number }>;
-// A proxy is read again after this long, in case it was put back by hand.
-const PROXY_KNOWN_FOR_MS = 60 * 60_000;
+const CHECKS = Symbol.for("deplo.cluster.zone-certs.checks");
+/** How each cluster's servers could check certificates at its zone's last pass that heard one of them. */
+const lastChecks = () =>
+  (g[CHECKS] ??= new Map()) as Map<
+    string,
+    { eligible: boolean; shared: boolean }
+  >;
 
 function heldBy(serverId: string, key: string, sha256: string): void {
   if (sha256) reported().set(`${serverId} ${key}`, sha256);
@@ -76,117 +68,8 @@ function heldBy(serverId: string, key: string, sha256: string): void {
 /** Test seam: forget what the members said and what their proxies were seen to have. */
 export function __forgetZoneCerts(): void {
   reported().clear();
-  proxies().clear();
-}
-
-/** Puts the resolver that checks over DNS in a server's proxy, or takes it out; answers whether the proxy changed. */
-export async function syncDnsChallengeProxy(
-  serverId: string,
-  on: boolean,
-  opts: { inZonePass?: boolean } = {},
-): Promise<boolean> {
-  const { fetchHostInfo, withTraefikStackLock, applyTraefikConfig } =
-    await import("../../infra/agent-client/host-ops");
-  return withTraefikStackLock(serverId, async () => {
-    const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
-    if (!yaml || (on ? hasDnsChallenge(yaml) : !dnsChallengePresent(yaml))) {
-      proxies().set(serverId, { on: Boolean(yaml) && on, at: Date.now() });
-      return false;
-    }
-    const res = await applyTraefikConfig(
-      serverId,
-      { composeYaml: withDnsChallenge(yaml, on) },
-      opts,
-    );
-    if (!res.ok)
-      throw new Error(
-        res.error || "The proxy on this server refused the change",
-      );
-    proxies().set(serverId, { on, at: Date.now() });
-    return true;
-  });
-}
-
-/** Whether a server's proxy has that resolver, read again after an hour; one that cannot be read keeps its last answer. */
-async function dnsChallengeOn(serverId: string): Promise<boolean> {
-  const seen = proxies().get(serverId);
-  if (seen && Date.now() - seen.at < PROXY_KNOWN_FOR_MS) return seen.on;
-  const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
-  try {
-    const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
-    const on = Boolean(yaml) && hasDnsChallenge(yaml);
-    proxies().set(serverId, { on, at: Date.now() });
-    return on;
-  } catch {
-    return seen?.on ?? false;
-  }
-}
-
-/**
- * Every member's proxy gets the resolver while its cluster has a zone and its agent can set checks: one server at a
- * time, as each change restarts its proxy. A member whose agent cannot gets nothing and holds its cluster on HTTP-01.
- */
-export async function zoneCertMembers(
-  members: {
-    serverId: string;
-    fingerprint: string | null;
-    joinedAt: string;
-    emptying: boolean;
-  }[],
-  reachable: (serverId: string) => boolean,
-): Promise<ZoneCertMember[]> {
-  const out: ZoneCertMember[] = [];
-  for (const m of members) {
-    if (!m.fingerprint) continue;
-    const caps = reachable(m.serverId)
-      ? await capabilitiesOf(m.serverId)
-      : null;
-    const up = caps !== null;
-    let capable = false;
-    if (caps?.includes(DNS_CHALLENGE_CAPABILITY)) {
-      capable = await dnsChallengeOn(m.serverId);
-      if (!capable && !(await instanceFrozen()))
-        capable = await syncDnsChallengeProxy(m.serverId, true, {
-          inZonePass: true,
-        })
-          .then(() => dnsChallengeOn(m.serverId))
-          .catch((e) => {
-            console.warn(
-              `[zone-certs] ${m.serverId}: ${messageOf(e).replace(/\s+/g, " ").slice(0, 300)}`,
-            );
-            return false;
-          });
-    } else if (!up) capable = proxies().get(m.serverId)?.on ?? true;
-    const shares = caps?.includes(DNS_CERTIFICATES_CAPABILITY) ?? false;
-    out.push({
-      ...m,
-      fingerprint: m.fingerprint,
-      capable,
-      reachable: up,
-      shares,
-    });
-  }
-  return out;
-}
-
-/** What a server's agent says it can do, or null when it does not answer. */
-async function capabilitiesOf(serverId: string): Promise<string[] | null> {
-  try {
-    const conn = await connectAgent(serverId);
-    try {
-      return (await conn.hello()).capabilities ?? [];
-    } finally {
-      conn.close();
-    }
-  } catch {
-    return null;
-  }
-}
-
-/** A server leaving its cluster's zone loses the resolver; it throws when its proxy could not be changed. */
-export async function dropDnsChallengeProxy(serverId: string): Promise<void> {
-  if (await serverSupports(serverId, DNS_CHALLENGE_CAPABILITY))
-    await syncDnsChallengeProxy(serverId, false);
+  lastChecks().clear();
+  __forgetZoneCertProxies();
 }
 
 export type ZoneCertDomainRow = {
@@ -218,6 +101,44 @@ export type ZoneCertPass = {
   modes: Map<string, CertChallenge>;
 };
 
+const certDomainOf = (d: ZoneCertDomainRow): ZoneCertDomain => ({
+  id: d.domainId,
+  name: d.name,
+  zoneId: d.zoneId,
+  zone: d.zone,
+  inside: d.inside,
+  cnameSeen: d.acmeCnameSeenAt != null,
+  serverId: d.serverId,
+});
+
+/** How each domain is checked; without the servers' word (null) each keeps its way. Only Let's Encrypt's ever change. */
+function modesOf(
+  rows: ZoneCertDomainRow[],
+  opts: { wildcard: boolean; eligible: boolean; shared: boolean } | null,
+): Map<string, CertChallenge> {
+  const all = opts ? domainModes(rows.map(certDomainOf), opts) : null;
+  return new Map(
+    rows.map((d) => {
+      const m =
+        all?.get(d.domainId) ??
+        (d.certChallenge as CertChallenge | null) ??
+        "http";
+      const managed = (d.certProvider ?? "letsencrypt") === "letsencrypt";
+      return [d.domainId, managed ? m : "http"] as const;
+    }),
+  );
+}
+
+/** How the zone's last pass that heard a server would check these domains now; null before any pass did. */
+export function lastPassModes(
+  clusterId: string,
+  wildcard: boolean,
+  rows: ZoneCertDomainRow[],
+): Map<string, CertChallenge> | null {
+  const checks = lastChecks().get(clusterId);
+  return checks ? modesOf(rows, { wildcard, ...checks }) : null;
+}
+
 /** Decides modes, renewers, checks and what each member is told, for one pass of a cluster's zone. */
 export async function zoneCertPass(input: {
   clusterId: string;
@@ -231,27 +152,15 @@ export async function zoneCertPass(input: {
   const rows = await certRows(input.zones.map((z) => z.id));
   const eligible = clusterCanCheckOverDns(input.members);
   const shared = eligible && clusterCanShareCerts(input.members);
-  const domains: ZoneCertDomain[] = input.domains.map((d) => ({
-    id: d.domainId,
-    name: d.name,
-    zoneId: d.zoneId,
-    zone: d.zone,
-    inside: d.inside,
-    cnameSeen: d.acmeCnameSeenAt != null,
-    serverId: d.serverId,
-  }));
-  const managed = new Set(
-    input.domains
-      .filter((d) => (d.certProvider ?? "letsencrypt") === "letsencrypt")
-      .map((d) => d.domainId),
-  );
-  const all = domainModes(domains, {
-    wildcard: input.wildcard,
-    eligible,
-    shared,
-  });
-  const modes = new Map(
-    [...all].map(([id, m]) => [id, managed.has(id) ? m : "http"] as const),
+  const domains = input.domains.map(certDomainOf);
+  // Hearing no server tells nothing of how they check: each name keeps its way, so no App is routed again.
+  const checks = input.members.some((m) => m.reachable)
+    ? { eligible, shared }
+    : null;
+  if (checks) lastChecks().set(input.clusterId, checks);
+  const modes = modesOf(
+    input.domains,
+    checks && { wildcard: input.wildcard, ...checks },
   );
   const zones: ZonePlanZone[] = [];
   for (const z of input.zones) {

@@ -8,6 +8,7 @@ import {
   flatPath,
   pickActiveTeam,
   pickTeamSlug,
+  TeamUnavailableError,
   teamSlugFromPath,
   withTeam,
   safeNext,
@@ -143,9 +144,26 @@ test("the URL's team wins over the last visited one", () => {
   assert.equal(pick(null, null), "team_a", "falls back to the first team");
   assert.equal(pick("team_b"), "team_b");
   assert.equal(pick(null, "team_b"), "team_b");
-  assert.equal(pick("team_stranger", "idra"), "team_b");
-  assert.equal(pick("stranger", null), "team_a");
+  assert.equal(pick(null, "stranger"), "team_a", "a stale cookie is forgotten");
   assert.equal(pick("", ""), "team_a");
+});
+
+test("a team the request names that is not the caller's is refused, never swapped", () => {
+  const teams = [
+    { id: "team_a", slug: "acme" },
+    { id: "team_b", slug: "idra" },
+  ];
+  for (const [url, cookie] of [
+    ["team_stranger", "idra"],
+    ["stranger", null],
+  ] as const)
+    assert.throws(
+      () => pickActiveTeam(teams, url, cookie),
+      (e: unknown) =>
+        e instanceof TeamUnavailableError &&
+        e.status === 403 &&
+        e.message.includes(`"${url}"`),
+    );
 });
 
 test("a path that already names a team is left alone", () => {

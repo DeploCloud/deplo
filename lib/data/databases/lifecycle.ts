@@ -14,7 +14,8 @@ import { dropStandbyCopy } from "./standby";
 import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { withKeyedLock } from "../keyed-mutex";
-import { enqueueTeardowns } from "../teardown-queue";
+import { enqueueTeardowns, teardownOrQueue } from "../teardown-queue";
+import { clusterMemberServerIds } from "../clusters/roster";
 import { assertDataCopyIntact, clearDataCopyError } from "../data-copy";
 import { changeLogBroken } from "../clusters/change-log";
 import { assertNotPausedForMove } from "../deplo-move/source-guard";
@@ -25,6 +26,7 @@ import {
   databaseStackYaml,
   rerouteDatabase,
   rerouteRequest,
+  dbVolumeHostName,
   teardownDatabaseStack,
 } from "./stack";
 import { REROUTE_PULL_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
@@ -280,6 +282,21 @@ export async function deleteDatabase(
         },
       ]);
     }
+    // A member that ran it before a failover, or held it through a hang, keeps nothing of it either (c44).
+    if (db.clusterId)
+      for (const serverId of await clusterMemberServerIds(db.clusterId).catch(
+        () => [],
+      ))
+        if (serverId !== db.serverId && serverId !== copyLeftOn)
+          await teardownOrQueue({
+            serverId,
+            deployKey: db.host,
+            projectLabel: db.id,
+            label: db.name,
+            teamId: db.teamId,
+            reclaimVolumes: [dbVolumeHostName(db.host)],
+            dropSetAside: true,
+          }).catch(() => false);
     await getDb().delete(databasesTable).where(eq(databasesTable.id, id));
     if (db.clusterId) {
       await clearPlacement("database", id).catch(() => {});

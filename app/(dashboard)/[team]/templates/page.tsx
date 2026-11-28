@@ -7,7 +7,8 @@ import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
 import { templateAccents } from "@/lib/templates/logo-color";
-import { listCatalog } from "@/lib/templates/catalog";
+import { FEATURED_LIMIT } from "@/components/templates/collections";
+import { listCatalog, listFeaturedTemplates } from "@/lib/templates/catalog";
 
 export const metadata = { title: "Templates" };
 
@@ -25,7 +26,10 @@ export default async function TemplatesPage(
     hasCapability("create_apps"),
   ]);
 
-  const templates = await listCatalog().catch(() => null);
+  const [templates, featured] = await Promise.all([
+    listCatalog().catch(() => null),
+    listFeaturedTemplates(FEATURED_LIMIT).catch(() => []),
+  ]);
   if (!templates)
     return (
       <div className="space-y-6">
@@ -38,10 +42,15 @@ export default async function TemplatesPage(
       </div>
     );
 
+  const featuredSlugs = new Set(featured.map(({ slug }) => slug));
   return (
     <TemplateStore
       templates={templates.map(toStoreTemplate)}
-      accents={templateAccents(templates).catch(() => ({}))}
+      featured={featured.map(toStoreTemplate)}
+      accents={templateAccents([
+        ...featured,
+        ...templates.filter(({ slug }) => !featuredSlugs.has(slug)),
+      ]).catch(() => ({}))}
       canDeploy={canDeploy}
       placement={placement}
       initialQuery={one(searchParams.q)}

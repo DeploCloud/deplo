@@ -43,6 +43,7 @@ import { listFolders } from "./folders";
 import { listMembers } from "./members/roster";
 import { membershipFor } from "../membership";
 import { authenticateToken } from "./tokens/authenticate";
+import { TeamUnavailableError } from "../team-path";
 import { listTokens } from "./tokens/listing";
 import { createToken } from "./tokens/mint";
 import { listScopeTree } from "./tokens/scope-tree";
@@ -259,7 +260,10 @@ test("a multi-team token resolves to the hinted team, and defaults deterministic
   assert.equal((await authenticateToken(raw))?.teamId, TEAM_A);
   assert.equal((await authenticateToken(raw, TEAM_B))?.teamId, TEAM_B);
   assert.equal((await authenticateToken(raw, "beta"))?.teamId, TEAM_B);
-  assert.equal((await authenticateToken(raw, "team_nope"))?.teamId, TEAM_A);
+  await assert.rejects(
+    authenticateToken(raw, "team_nope"),
+    TeamUnavailableError,
+  );
 
   const identity = await authenticateToken(raw, TEAM_B);
   assert.deepEqual(identity?.token?.scope?.wholeTeamIds.sort(), [
@@ -280,7 +284,8 @@ test("losing a membership narrows the token to the teams that are left", async (
       ).raw,
   );
   await pg.exec(`delete from memberships where id = 'mem_user_1_b';`);
-  assert.equal((await authenticateToken(raw, TEAM_B))?.teamId, TEAM_A);
+  await assert.rejects(authenticateToken(raw, TEAM_B), TeamUnavailableError);
+  assert.equal((await authenticateToken(raw))?.teamId, TEAM_A);
   await pg.exec(`delete from memberships where user_id = '${USER_1}';`);
   assert.equal(await authenticateToken(raw), null);
 });

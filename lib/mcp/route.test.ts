@@ -569,12 +569,11 @@ test("turning on the team two-factor policy stops an issued connection", async (
 test("X-Deplo-Team cannot move an OAuth connection to a team it was not granted", async () => {
   const conn = await connect(["view"]);
   const res = await mcp(conn.accessToken, { team: "beta" });
-  assert.equal(res.status, 200);
-  const text = JSON.stringify(res.body);
-  assert.ok(text.includes(TEAM_A), text);
+  assert.equal(res.status, 403);
+  assert.match(String(res.body.error), /cannot act in team "beta"/);
   assert.ok(
-    !text.includes(TEAM_B),
-    "the header moved the connection to team B",
+    !JSON.stringify(res.body).includes(TEAM_A),
+    "it answered in team A instead",
   );
 });
 
@@ -693,8 +692,10 @@ test("losing manage_tokens narrows the connection to the teams that still allow 
     `delete from membership_capabilities where membership_id = 'mem_user_1' and capability = 'manage_tokens'`,
   );
   const viaHeader = await mcp(conn.accessToken, { team: "alpha" });
-  assert.equal(viaHeader.status, 200, JSON.stringify(viaHeader.body));
-  assert.equal(toolJson(viaHeader.body).viewerTeam?.id, TEAM_B);
+  assert.equal(viaHeader.status, 403, JSON.stringify(viaHeader.body));
+  assert.match(String(viaHeader.body.error), /cannot act in team "alpha"/);
+  const unnamed = await mcp(conn.accessToken);
+  assert.equal(toolJson(unnamed.body).viewerTeam?.id, TEAM_B);
   const viaArg = await mcp(conn.accessToken, { toolArgs: { team: "alpha" } });
   assert.match(JSON.stringify(viaArg.body), /no access to the team/i);
   const teams = toolJson(
@@ -722,6 +723,16 @@ test("a team the connection was NOT granted is refused, never swapped", async ()
   const body = JSON.stringify(res.body);
   assert.match(body, /no access to the team/i, body);
   assert.ok(!body.includes(TEAM_B), "it answered about the other team anyway");
+});
+
+test("X-Deplo-Team naming a team the user is not in is a 403, never another team", async () => {
+  const { raw } = await runWithIdentity(
+    { userId: USER_1, teamId: TEAM_A },
+    () => createToken({ name: "lab", capabilities: ["view"] }),
+  );
+  const res = await mcp(raw, { team: "team_elsewhere" });
+  assert.equal(res.status, 403);
+  assert.match(String(res.body.error), /not a member of team "team_elsewhere"/);
 });
 
 test("a deplo_ token still honours X-Deplo-Team", async () => {

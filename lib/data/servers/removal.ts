@@ -3,6 +3,10 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import {
+  clusterMembers,
+  clusters,
+} from "../../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
 import { getCurrentUser } from "../../auth/current-user";
@@ -12,10 +16,13 @@ import { recordActivity } from "../activity";
 import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
+import { keptBackups } from "../clusters/member-backups";
 import { clustersOfServer, pushClusterRosters } from "../clusters/relay";
+import { syncClusterNetworkSoon } from "../clusters/network";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById, serverRole } from "./roster";
 import { blockingRows } from "./removal-blockers";
+import { dropDestination, removalImpactIn } from "../destinations/removal";
 
 export interface ServerRemoval {
   uninstallCommand: string;
@@ -74,9 +81,36 @@ export async function assertNoWorkloads(id: string): Promise<void> {
   if (why) throw new Error(why);
 }
 
-async function assertServerRemovable(id: string): Promise<void> {
-  const why = refusal(await blockingRows(id));
+/** Refuses while something still holds the server; a backup destination left empty is removed with it. */
+async function clearForRemoval(id: string, actorName: string): Promise<void> {
+  const b = await blockingRows(id);
+  // c49: after a member left its cluster, its destination, emptied by the move of its backups, still refused it.
+  const empty: typeof b.destinations = [];
+  for (const d of b.destinations) {
+    const i = await removalImpactIn(d.teamId, d.id);
+    if (i.schedules === 0 && i.artifacts === 0) empty.push(d);
+  }
+  const why = refusal({
+    ...b,
+    destinations: b.destinations.filter((d) => !empty.includes(d)),
+  });
   if (why) throw new Error(why);
+  for (const d of empty) await dropDestination(d.teamId, d.id, actorName);
+}
+
+// Removing its destination would delete them, as c48 lost 4 restore points of fise and memos with eu-4.
+async function assertNoClusterBackups(id: string, name: string): Promise<void> {
+  const [m] = await getDb()
+    .select({ clusterId: clusterMembers.clusterId, cluster: clusters.name })
+    .from(clusterMembers)
+    .innerJoin(clusters, eq(clusters.id, clusterMembers.clusterId))
+    .where(eq(clusterMembers.serverId, id));
+  const n = m ? (await keptBackups(m.clusterId, id)).length : 0;
+  if (m && n > 0)
+    throw new Error(
+      `${name} keeps ${n} backup${n === 1 ? "" : "s"} of the Apps and databases of cluster ${m.cluster}. ` +
+        `Remove it from the cluster first: Deplo moves them to its other servers.`,
+    );
 }
 
 export async function removeServer(id: string): Promise<ServerRemoval> {
@@ -101,7 +135,9 @@ async function removeServerRow(
         `because doing so would cut this dashboard off from its own server.`,
     );
 
-  await assertServerRemovable(id);
+  await assertNoWorkloads(id);
+  await assertNoClusterBackups(id, server.name);
+  await clearForRemoval(id, actorName);
 
   const stranded = await getDb()
     .select({ slug: appsTable.slug })
@@ -133,8 +169,9 @@ async function removeServerRow(
     );
   }
   dropAgentChannel(id);
-  // A removed server's certificate leaves every cluster relay's roster at once.
+  // A removed server's certificate leaves every cluster relay's roster at once, and every peer's network soon.
   await pushClusterRosters(clusterIds);
+  for (const c of clusterIds) syncClusterNetworkSoon(c);
   await recordActivity(
     "server",
     `Removed server ${server.name}`,
@@ -197,7 +234,7 @@ export async function uninstallMigrationSource(
         `Remove it from its own page if you want it gone.`,
     );
 
-  await assertServerRemovable(id);
+  await clearForRemoval(id, actorName);
 
   if (server.agent?.certFingerprint) {
     try {

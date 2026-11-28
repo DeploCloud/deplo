@@ -37,10 +37,11 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "deploy_apps" },
     description:
-      "Accept that the data a migration could not copy is not coming, and let " +
-      "this app deploy again: clears `dataCopyError`. The way out for an app " +
-      "whose source machine has since been turned off, which is how a migration " +
-      "normally ends. Recorded in Activity.",
+      "Accept that the data a migration or a move could not copy is not coming, " +
+      "and deploy this app now: clears `dataCopyError` and starts a deploy, once " +
+      "a move's old copy is stopped. The way out for an app whose source machine " +
+      "has since been turned off, which is how a migration normally ends. " +
+      'Recorded in Activity, with "Deployed" once that deploy is ready.',
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await acceptDataCopyLoss({ kind: "app", id });

@@ -10,7 +10,7 @@ import { requireAppCapability } from "../node-access";
 import { loadTeamApp } from "../app-graph-load";
 import { databaseFor, destinationExists, loadBackup } from "./target-lookup";
 import { requireBackupCapability } from "./target-access";
-import { executeBackup } from "./execute-backup";
+import { executeBackup, PauseMissedError } from "./execute-backup";
 import { MAX_RUNS_PER_TARGET } from "./retention";
 import type { Backup, BackupRun, BackupTargetKind } from "../../types/backup";
 
@@ -32,7 +32,11 @@ export async function runBackup(id: string): Promise<void> {
   });
 }
 
-export async function runScheduledBackup(backup: Backup): Promise<void> {
+/** Answers whether the run missed its pause and asks to be tried again; never throws. */
+export async function runScheduledBackup(
+  backup: Backup,
+  opts: { secondTry?: boolean } = {},
+): Promise<boolean> {
   try {
     await executeBackup(backup.teamId, "Scheduler", {
       backupId: backup.id,
@@ -42,8 +46,13 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
       destinationId: backup.destinationId,
       retentionCount: backup.retentionCount,
       baseBackup: backup.baseBackup,
+      retryMissedPause: !opts.secondTry,
+      secondTry: opts.secondTry,
     });
-  } catch {}
+  } catch (e) {
+    return e instanceof PauseMissedError;
+  }
+  return false;
 }
 
 async function runAdHocBackup(

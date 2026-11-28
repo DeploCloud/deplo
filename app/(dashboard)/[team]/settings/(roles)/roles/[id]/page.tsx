@@ -8,7 +8,7 @@ export async function generateMetadata(
   props: PageProps<"/[team]/settings/roles/[id]">,
 ) {
   const { id } = await props.params;
-  const role = await getRole(id);
+  const role = await getRole(id).catch(() => null);
   return { title: role ? `Settings · ${role.name}` : "Settings · Roles" };
 }
 

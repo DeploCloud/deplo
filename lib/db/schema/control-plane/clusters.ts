@@ -249,6 +249,8 @@ export const clusterAppReplicas = pgTable(
     synced: boolean("synced").notNull().default(false),
     appliedAt: isoTimestamptz("applied_at"),
     bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+    // A relay, so Deplo, carries its stream (ADR-0047).
+    relayed: boolean("relayed").notNull().default(false),
     error: text("error").notNull().default(""),
     checkedAt: isoTimestamptz("checked_at").notNull(),
   },

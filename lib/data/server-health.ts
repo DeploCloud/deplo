@@ -360,4 +360,7 @@ async function linkCameBack(
   );
   await markServerSeen(serverId, hello.agentVersion, observedTraefik(hello));
   await recordAgentHello(serverId, hello.agentVersion, hello.capabilities);
+  // What waited for it (a deleted App's copies) is torn down at the next drain, not after the backoff.
+  const { teardownsDueNow } = await import("./teardown-queue");
+  await teardownsDueNow(serverId).catch(() => {});
 }

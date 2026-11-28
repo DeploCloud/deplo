@@ -78,6 +78,8 @@ export interface BackupRun {
   sizeBytes: number;
   decryptedSizeBytes: number | null;
   heldMs: number | null;
+  /** How it reached another server's disk: "direct" (server to server) or "relay" (through Deplo); null otherwise. */
+  path?: "direct" | "relay" | null;
   sha256: string | null;
   orphanedAt: string | null;
   /** Data a returning cluster member had left: when the failover happened, and the server it was on. */
@@ -85,6 +87,8 @@ export interface BackupRun {
   leftOnServerId?: ID | null;
   /** That server's name; only the listing fills it in. */
   leftOnServer?: string | null;
+  /** While a running backup waits its turn: "eu-2 is busy with a copy of Fise". Only the listing fills it in. */
+  queued?: string | null;
   status: BackupRunStatus;
   error: string | null;
   startedAt: string;

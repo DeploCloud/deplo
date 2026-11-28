@@ -31,6 +31,10 @@ release would strand every server they manage.
    the process. `docker-image.yml` refuses to publish a panel whose pin has no `checksums.txt`.
 4. **Ship the panel.** Once it runs, it updates every server behind the pin by itself (§3). An
    agent-only re-cut goes out the same way, or through a server's Retry.
+   **A server downloads the pinned binary from the panel, not GitHub** (`/api/agent/release/<binary>`,
+   streamed from the release; its sha256 still comes from `checksums.txt`), whenever the panel has an
+   https address. An agent answers SelfUpdate only once the binary is staged, so a server slow to
+   reach GitHub missed the old 2-minute deadline on every try (canary.89); the call now waits 10.
 
 ## 2. The asset-name contract
 
@@ -77,9 +81,16 @@ process and can be taken back.
 apps.server_id)` - see §5) is a `busy` failure; **no Hello** is `unreachable`; a failed
   SelfUpdate, including `AgentUpdateUnsupportedError`, is `error`. Each is that server's own
   failure: the pass moves on.
-- **A host that took the binary and never came back** is `no_return`: the pass stops, and every
-  later pass tries only that server until it recovers. A release that breaks one agent must not
-  break four.
+- **A host that took the binary and did not stay on it** is `no_return`: it never came back, came
+  back on the version it had (its agent put the earlier binary back, §8), or stopped answering, or
+  its cluster's leader stopped renewing it, within the minute it is held on the new version. The
+  pass stops there, and nothing tries that server again on its own: an admin's **Retry now**, a Hello
+  on the pin or a new pin does. A release that breaks one agent must not break four. A later
+  failure of that server (unreachable, busy) keeps it `no_return` (eu, canary.47: a retry that found
+  the server unreachable wore the pause away, and the rollout went on).
+- **Every updated server is held a minute** (`rolloutTiming.holdMs`) before the next: it answers on
+  the new version every 5 s, and every cluster it is a member of keeps it `ok` in its leader's
+  snapshot (ADR-0043).
 - **A server that can never link** (its agent too old to link, or left behind at the first update
   stop on a version Deplo never read) is skipped: nothing reaches it, and only reinstalling its
   server agent brings it back. So is **one that has not linked yet**, which comes back once it
@@ -100,6 +111,20 @@ inside. The automatic pass runs with no identity, so it calls the infra seam dir
 
 **There is no scripted rollout any more**: a script runs in its own process, which no server links
 to, so it reaches none (§6). The panel's rollout and Retry now are the only paths.
+
+**A proxy change lands with the agent's update.** What Deplo changes in a server's Traefik when the
+server links (its pinned image, ECDSA keys since canary.91) is applied right after that server's agent
+comes back from its own update, on the same server. On eu-2 (one core, the leader's, running fise and
+memos) that pair delayed a lease renewal 5.3 s and the agent fenced both Apps (fise down 100 s, c38).
+A release that changes the proxy should not also move the agent pin, or it pays that once per server.
+Since agent canary.54 a proxy recreated on the leader's server, with its agent restarted at once and
+visitors arriving, costs no renewal (c39); its Apps are still unreachable there for a few seconds.
+Panel canary.95 did both (the routes-first flag, ADR-0043, and the agent canary.56 pin): the answer pass
+restarted each member's proxy one at a time ahead of the agent update, the worst renewal came 2.04 s
+after the one before (eu-1's own update), none fenced, and each App waited 8 to 10 s at its server's restart.
+Since agent canary.57 a server whose proxy restarts holds its own visitors meanwhile (ADR-0043, c42): an App
+another server runs is passed there at once, one this server alone runs waits for the restart (3 to 8 s on a
+one-core member) and is answered; a release that restarts proxies still costs those waits.
 
 ## 4. Order: canary → the rest → the Deplo host LAST
 
@@ -136,6 +161,18 @@ serves the Servers page, that every other server agent links to, and that hosts 
 forward. Break a leaf server and you have a healthy control plane and two good agents to compare
 against; break agent 0 first and you are debugging blind, on the box, over SSH - the exact failure
 mode the platform exists to avoid. It is also the biggest blast radius here (10 Apps).
+
+**A cluster's leader goes after the servers of its line, and steps aside first.** The rollout updates a
+server that leads a cluster after the other remotes, and right before that server's agent updates it
+hands each cluster it leads to the first in line, one already on the pin first (`handLeadersOff`,
+`lib/data/clusters/leader-move.ts`): the leader runs beside its agent and restarts with it, which held
+every member's renewal 2.4 s (c39). The hand-over itself cost none on eu: every member's renewal across
+the new epoch came 0.94 to 0.96 s after the one before (c40).
+
+**A new proxy image is not in this order.** A panel that moves Traefik recreates each server's proxy when that server
+links, so a panel restart updates them all within minutes, Deplo's machine first (canary.99, Traefik v3.7.20: four
+servers in 2 min 20 s, beside the agent rollout). Each recreate goes through the standby proxy; fise answered in 1.6 s
+once, at its own server's.
 
 **Why a canary at all.** `go test ./...` gates the release but proves nothing about _this_ fleet's
 kernels, Docker versions and install layouts. The canary is the smallest real host that can
@@ -242,7 +279,15 @@ the caller passes them.
    flushes) - `syscall.Exec(exePath, argv, env)`.
 
 `syscall.Exec` means **same PID, same argv, same env**. The process is _replaced_, not exited, so
-systemd's `Restart=on-failure` is irrelevant - there is no exit for it to react to. The new binary
+there is no exit for systemd to react to. **Any exit does restart it**: the unit says `Restart=always`,
+`RestartSec=1` and no start limit (install-agent.sh), and an agent on a server installed before
+writes `deplo-agent.service.d/restart.conf` itself at start (ADR-0043).
+
+**The binary before stays beside the new one** (`deplo-agent.previous`, a hard link) and runs, in a
+transient unit of its own, as `deplo-agent update-guard`: once the new run answers its first Hello it
+removes the previous binary; if none comes within 30 s it puts the previous binary back and restarts
+the service. The panel sees the server back on the version it had, and the rollout stops (§3). CI
+runs this path in a container whose PID 1 is systemd (`TestSystemd_`). The new binary
 finds the same `--agent-dir`, reuses the existing `agent.crt` / `agent.key` / `ca.crt`, skips
 bootstrap and serves. **mTLS material is never touched**: no new CSR, no token, no re-bootstrap, so
 the pinned fingerprint still matches and the server stays "online" with the same identity. That is
@@ -250,6 +295,13 @@ the entire reason to do this over the agent channel instead of re-running the in
 
 If `syscall.Exec` _does_ return (it only returns on failure), the agent logs loudly and keeps
 running the **old** code with the **new** binary already on disk - restart the service to apply.
+
+**The new run inherits every fd the old one did not mark close-on-exec, its stdout and stderr
+first.** canary.47 put a pipe of its own on stderr whose reader closes at the exec: the new run died
+on its first log line by SIGPIPE, which systemd takes as a clean stop, and nothing restarted it on
+eu-1..3 (24 Nov 2026). `logpipe.Restore` puts the real log back before the exec, and `logpipe.Revive`
+gives a run handed a dead one the journal again. A change to the agent's fds is tested across a
+self-update, not only across a `systemctl restart`.
 
 Control-plane side: `selfUpdateServerAgent` sends `Hello` first and requires the `"self-update"`
 capability (`SELF_UPDATE_CAPABILITY`); an agent too old gets `AgentUpdateUnsupportedError` ("re-run
