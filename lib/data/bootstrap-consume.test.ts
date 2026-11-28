@@ -73,6 +73,7 @@ async function seedProvisioning(
       buildOnly: false,
       buildFallback: null,
       generatedAddressFamily: null,
+      preferredAddress: null,
       importOnly: false,
       hostArch: "amd64",
       uninstallPending: false,

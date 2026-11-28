@@ -40,6 +40,8 @@ export type AddressRow = typeof addressesTable.$inferSelect;
 export type AddressView = {
   address: string;
   family: AddressFamily;
+  /** On a private network or VPN: only an admin picks it, Automatic never does. */
+  isPrivate: boolean;
   state: "inUse" | "leaving" | "checking" | "notChecked" | "notUsed";
   /** One short line: why it is not used, or why it is leaving. */
   problem: string;
@@ -51,6 +53,15 @@ export type AddressView = {
 const familyOf = (a: string): AddressFamily =>
   isIP(a) === 6 ? "ipv6" : "ipv4";
 const ms = (iso: string | null) => (iso ? Date.parse(iso) : NaN);
+
+/** RFC 1918, the 100.64.0.0/10 range VPNs use, and IPv6 unique local (fc00::/7). */
+export function isPrivateAddress(a: string): boolean {
+  if (isIP(a) === 4)
+    return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(
+      a,
+    );
+  return isIP(a) === 6 && /^f[cd]/i.test(a);
+}
 
 /** Whether Deplo names an address: proven and not failing for long, or, before Deplo could check it, on the machine. */
 export function addressPublished(row: AddressRow, now = Date.now()): boolean {
@@ -66,6 +77,7 @@ export function addressView(row: AddressRow, now = Date.now()): AddressView {
   const base = {
     address: row.address,
     family: familyOf(row.address),
+    isPrivate: isPrivateAddress(row.address),
     problem: row.problem,
     leavesAt: null as string | null,
     checkedAt: row.checkedAt,
@@ -94,10 +106,12 @@ const ORIGIN_RANK: Record<string, number> = {
   typed: 1,
 };
 
-/** The addresses Deplo names for a server, IPv4 and IPv6, or null while none was checked yet (the old rule holds). */
+/** The addresses Deplo names for a server, IPv4 and IPv6, or null while none was checked yet (the old rule holds).
+ *  Private ones only with includePrivate: Automatic never names one. */
 export async function publishedServerAddresses(
   serverId: string,
   now = Date.now(),
+  opts: { includePrivate?: boolean } = {},
 ): Promise<{ v4: string[]; v6: string[] } | null> {
   let rows: AddressRow[];
   try {
@@ -109,11 +123,14 @@ export async function publishedServerAddresses(
     // Unreadable (a unit with no database): the old rule holds, as before the first check.
     return null;
   }
+  if (!opts.includePrivate)
+    rows = rows.filter((r) => !isPrivateAddress(r.address));
   if (!rows.some((r) => r.checkedAt)) return null;
   const used = rows
     .filter((r) => addressPublished(r, now))
     .sort(
       (a, b) =>
+        Number(!!b.provenAt) - Number(!!a.provenAt) ||
         (ORIGIN_RANK[b.origin] ?? 0) - (ORIGIN_RANK[a.origin] ?? 0) ||
         a.address.localeCompare(b.address),
     )
@@ -288,18 +305,13 @@ export async function checkAddress(
   return { reaches: true };
 }
 
-function publicIp(raw: string | null | undefined): string | null {
+// Public and private (an admin may pick one); never loopback, link-local, mapped or deplo-clat's 192.0.0.0/24.
+function candidateIp(raw: string | null | undefined): string | null {
   const a = (raw ?? "").trim().replace(/^\[|\]$/g, "");
   const family = isIP(a);
   if (!family || isLoopbackIp(a)) return null;
-  if (
-    family === 4 &&
-    /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|192\.0\.0\.)/.test(
-      a,
-    )
-  )
-    return null;
-  if (family === 6 && /^(::1$|fe[89ab]|f[cd]|::ffff:)/i.test(a)) return null;
+  if (family === 4 && /^(127\.|169\.254\.|192\.0\.0\.)/.test(a)) return null;
+  if (family === 6 && /^(::1$|fe[89ab]|::ffff:)/i.test(a)) return null;
   return a;
 }
 
@@ -339,11 +351,11 @@ async function gather(server: Server): Promise<Gathered | null> {
       const r = await conn.proveAddresses(echoUrl());
       const found = new Map<string, AddressOrigin>();
       for (const a of [...r.trafficAddresses, server.connectedFrom]) {
-        const p = publicIp(a);
+        const p = candidateIp(a);
         if (p) found.set(p, "traffic");
       }
       for (const a of hello.publicAddresses ?? []) {
-        const p = publicIp(a);
+        const p = candidateIp(a);
         if (p) found.set(p, "machine");
       }
       return {
@@ -379,7 +391,7 @@ async function settle(
     .where(eq(addressesTable.serverId, id));
   // The upgrade: the addresses it was added at stay in use until their first check.
   if (rows.length === 0)
-    for (const a of new Set([g.server.ip, g.server.host].map(publicIp)))
+    for (const a of new Set([g.server.ip, g.server.host].map(candidateIp)))
       if (a)
         await db
           .insert(addressesTable)
@@ -489,10 +501,14 @@ export async function followAddresses(
   const to = await serverWildcardIp(server);
   // Generated names embed the address, so they move with it.
   if (from && to && from !== to) await rehostServerDomains(serverId, from, to);
-  if (to && to !== server.ip && !server.deploHost) {
+  // The row keeps the automatic one: relays dial it, and an admin's choice may be private.
+  const own = server.preferredAddress
+    ? await serverWildcardIp({ ...server, preferredAddress: null })
+    : to;
+  if (own && own !== server.ip && !server.deploHost) {
     await getDb()
       .update(serversTable)
-      .set({ ip: to, host: to })
+      .set({ ip: own, host: own })
       .where(eq(serversTable.id, serverId));
     // A relay beside a leader here is dialed at this address; its clusters hear the new one now.
     const { followServerAddress } = await import("../clusters/relay");

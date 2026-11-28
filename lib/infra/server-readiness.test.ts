@@ -103,6 +103,7 @@ function srv(over: Partial<Server> = {}): Server {
     buildOnly: false,
     buildFallback: null,
     generatedAddressFamily: null,
+    preferredAddress: null,
     importOnly: false,
     uninstallPending: false,
     uninstallError: "",

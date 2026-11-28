@@ -33,6 +33,10 @@ const ServerAddressRef = builder
     fields: (t) => ({
       address: t.exposeString("address"),
       family: t.field({ type: AddressFamilyEnum, resolve: (a) => a.family }),
+      isPrivate: t.exposeBoolean("isPrivate", {
+        description:
+          "On a private network or VPN (10/8, 172.16/12, 192.168/16, 100.64/10, fc00::/7): Automatic never uses it, setServerPreferredAddress may.",
+      }),
       state: t.field({
         type: AddressStateEnum,
         description:
@@ -159,6 +163,12 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       description:
         "Which addresses Deplo uses for this server: null is Automatic (every proven address; generated names on IPv4 when one is proven, IPv6 otherwise - and on the Deplo host, whichever the installer chose), ipv4 or ipv6 only. The generated names, the cluster zone's records and the domain hints follow it. setServerAddressFamily changes it.",
       resolve: (s) => s.generatedAddressFamily,
+    }),
+    preferredAddress: t.string({
+      nullable: true,
+      description:
+        "The one address an admin chose for this server's generated names; null is Automatic. Used while it still reaches the server, Automatic otherwise. setServerPreferredAddress changes it.",
+      resolve: (s) => s.preferredAddress,
     }),
     addresses: t.field({
       type: [ServerAddressRef],

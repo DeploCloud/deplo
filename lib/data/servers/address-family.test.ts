@@ -25,8 +25,12 @@ import {
   __resetAgentAddressesForTest,
   __setAgentAddressesForTest,
 } from "./addresses";
-import { setServerAddressFamily } from "./address-family";
-import { followAddresses } from "./address-checks";
+import { serverWildcardIp } from "./addresses";
+import {
+  setServerAddressFamily,
+  setServerPreferredAddress,
+} from "./address-family";
+import { followAddresses, isPrivateAddress } from "./address-checks";
 import { getServerById } from "./roster";
 
 const MEMBER = "usr_member";
@@ -182,4 +186,118 @@ test("under Automatic a proven IPv4 carries the names; with none proven, the IPv
   await db.delete(serverAddresses).where(eq(serverAddresses.address, V4));
   await asOwner(() => followAddresses(SERVER_1, V4));
   assert.deepEqual(await names(), [AUTO_V6, "web.example.com"]);
+});
+
+const SECOND = "198.51.100.9";
+const PRIVATE = "10.0.0.5";
+const nameAt = (ip: string) => `web-calm-fox-${ipToHex(ip)}.deplo.site`;
+
+test("choosing a proven address moves every generated name to it; Automatic brings them back", async () => {
+  await db.insert(serverAddresses).values([proven(V4), proven(SECOND)]);
+  await asOwner(async () => {
+    const { server, appsMoved } = await setServerPreferredAddress(
+      SERVER_1,
+      SECOND,
+    );
+    assert.equal(server.preferredAddress, SECOND);
+    assert.equal(appsMoved, 1);
+  });
+  assert.deepEqual(await names(), [nameAt(SECOND), "web.example.com"]);
+  await asOwner(() => setServerPreferredAddress(SERVER_1, null));
+  assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
+});
+
+test("Automatic never names a private address; an admin may, and the row keeps the public one", async () => {
+  await db.insert(serverAddresses).values([proven(V4), proven(PRIVATE)]);
+  await asOwner(() => followAddresses(SERVER_1, V4));
+  assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
+  await asOwner(() => setServerPreferredAddress(SERVER_1, PRIVATE));
+  assert.deepEqual(await names(), [nameAt(PRIVATE), "web.example.com"]);
+  assert.equal((await getServerById(SERVER_1))!.ip, V4);
+});
+
+test("a chosen address that stops reaching the server hands its names back to Automatic", async () => {
+  await db.insert(serverAddresses).values([proven(V4), proven(SECOND)]);
+  await asOwner(() => setServerPreferredAddress(SERVER_1, SECOND));
+  await db.delete(serverAddresses).where(eq(serverAddresses.address, SECOND));
+  await asOwner(() => followAddresses(SERVER_1, SECOND));
+  assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
+});
+
+test("an address that does not reach the server, or a private IPv6, is refused and moves nothing", async () => {
+  await db.insert(serverAddresses).values([proven(V4), proven("fd00::5")]);
+  await asOwner(async () => {
+    await assert.rejects(
+      () => setServerPreferredAddress(SERVER_1, SECOND),
+      /does not reach/,
+    );
+    await assert.rejects(
+      () => setServerPreferredAddress(SERVER_1, "fd00::5"),
+      /cannot carry/,
+    );
+    assert.equal((await getServerById(SERVER_1))!.preferredAddress, null);
+  });
+  await runWithIdentity({ userId: MEMBER, teamId: TEAM_A }, async () => {
+    await assert.rejects(() => setServerPreferredAddress(SERVER_1, V4));
+  });
+  assert.deepEqual(await names(), [AUTO_V4, "web.example.com"]);
+});
+
+test("IPv4 or IPv6 only clears a chosen address", async () => {
+  await db
+    .insert(serverAddresses)
+    .values([proven(V4), proven(SECOND), proven(V6)]);
+  await asOwner(() => setServerPreferredAddress(SERVER_1, SECOND));
+  await asOwner(async () => {
+    const { server } = await setServerAddressFamily(SERVER_1, "ipv6");
+    assert.equal(server.preferredAddress, null);
+  });
+  assert.deepEqual(await names(), [AUTO_V6, "web.example.com"]);
+});
+
+test("a server reached only on a private network keeps its generated names under Automatic", async () => {
+  await db
+    .update(serversTable)
+    .set({ ip: PRIVATE, host: PRIVATE })
+    .where(eq(serversTable.id, SERVER_1));
+  await db.insert(serverAddresses).values(proven(PRIVATE));
+  assert.equal(
+    await serverWildcardIp((await getServerById(SERVER_1))!),
+    PRIVATE,
+  );
+});
+
+test("on the Deplo host Automatic keeps the installer's address while proven, and takes the proven IPv6 once no IPv4 reaches it", async () => {
+  const PANEL = "203.0.113.200";
+  await db
+    .update(serversTable)
+    .set({ deploHost: true, ip: "127.0.0.1", host: "127.0.0.1" })
+    .where(eq(serversTable.id, SERVER_1));
+  const server = (await getServerById(SERVER_1))!;
+  assert.equal(
+    await serverWildcardIp(server),
+    PANEL,
+    "none proven: the installer's",
+  );
+  await db.insert(serverAddresses).values([proven(PANEL), proven(V6)]);
+  assert.equal(await serverWildcardIp(server), PANEL);
+  await db
+    .update(serverAddresses)
+    .set({ provenAt: null })
+    .where(eq(serverAddresses.address, PANEL));
+  assert.equal(await serverWildcardIp(server), V6);
+});
+
+test("private covers RFC 1918, the VPN range and IPv6 unique local, nothing public", () => {
+  for (const a of [
+    "10.1.2.3",
+    "172.16.0.1",
+    "192.168.1.1",
+    "100.64.0.1",
+    "100.127.255.1",
+    "fd7a::1",
+  ])
+    assert.ok(isPrivateAddress(a), a);
+  for (const a of ["172.32.0.1", "100.128.0.1", "198.51.100.1", "2001:db8::1"])
+    assert.ok(!isPrivateAddress(a), a);
 });

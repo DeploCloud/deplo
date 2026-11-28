@@ -5920,6 +5920,11 @@ type Mutation {
   setServerPlace(label: String, latitude: Float, longitude: Float, serverId: String!): Boolean
 
   """
+  Choose the one address (from server.addresses, in use) the generated .deplo.site names of apps on this server carry; omit it to go back to Automatic. Any IPv4, private ones included, or a public IPv6. Clears setServerAddressFamily. Every generated name already on the server moves at once; returns the count of apps whose names moved.
+  """
+  setServerPreferredAddress(address: String, id: String!): Int
+
+  """
   Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host. "import" is not settable and a migration source is not convertible: the install command is the way in and the way out.
   """
   setServerRole(id: String!, role: String!): Server
@@ -7851,6 +7856,11 @@ type Server {
   memoryMb: Int
   name: String
 
+  """
+  The one address an admin chose for this server's generated names; null is Automatic. Used while it still reaches the server, Automatic otherwise. setServerPreferredAddress changes it.
+  """
+  preferredAddress: String
+
   """True once the server's agent has called home and been trusted."""
   provisioned: Boolean
 
@@ -7895,6 +7905,11 @@ type ServerAddress {
   address: String
   checkedAt: String
   family: AddressFamily
+
+  """
+  On a private network or VPN (10/8, 172.16/12, 192.168/16, 100.64/10, fc00::/7): Automatic never uses it, setServerPreferredAddress may.
+  """
+  isPrivate: Boolean
   leavesAt: String
 
   """One short line: why it is not used or leaving. Empty otherwise."""

@@ -19,21 +19,21 @@ import { Countdown, useEvery } from "@/components/shared/live-state";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "../server-detail-tabs";
 
-// The server's addresses, found and proven by Deplo, and the one choice left: which family it uses (ADR-0050).
+// The server's addresses, found and proven by Deplo, and the one choice left: which one its generated addresses use (ADR-0050).
 
-type Family = "ipv4" | "ipv6";
 const AUTOMATIC = "__auto__";
 const LEAVES_AFTER_MS = 30 * 60_000;
 
-type Address = {
+export type ServerAddressView = {
   address: string;
-  family: Family;
+  family: "ipv4" | "ipv6";
+  isPrivate: boolean;
   state: "inUse" | "leaving" | "checking" | "notChecked" | "notUsed";
   problem: string;
   leavesAt: string | null;
 };
 
-const BADGE: Record<Address["state"], string> = {
+const BADGE: Record<ServerAddressView["state"], string> = {
   inUse: "In use",
   leaving: "Failing",
   checking: "Checking",
@@ -41,28 +41,31 @@ const BADGE: Record<Address["state"], string> = {
   notUsed: "Not used",
 };
 
-const CHOICE: Record<string, string> = {
-  [AUTOMATIC]: "Automatic",
-  ipv6: "IPv6 only",
-  ipv4: "IPv4 only",
-};
+// What a generated address can carry: any IPv4 it reaches, or a public IPv6.
+const canCarry = (a: ServerAddressView) =>
+  (a.state === "inUse" || a.state === "leaving") &&
+  (a.family === "ipv4" || !a.isPrivate);
 
 export function AddressFamilyPanel({ server }: { server: ServerSummary }) {
   const router = useRouter();
-  const [value, setValue] = React.useState<string>(
-    server.generatedAddressFamily ?? AUTOMATIC,
-  );
+  const current =
+    server.preferredAddress ?? server.generatedAddressFamily ?? AUTOMATIC;
   const [asked, setAsked] = React.useState<string | null>(null);
-  const [addresses, setAddresses] = React.useState<Address[] | null>(null);
+  const [addresses, setAddresses] = React.useState<ServerAddressView[] | null>(
+    server.addresses ?? null,
+  );
 
   const load = React.useCallback(async () => {
-    const res = await gqlAction<{ server: { addresses: Address[] } | null }>(
+    const res = await gqlAction<{
+      server: { addresses: ServerAddressView[] } | null;
+    }>(
       /* GraphQL */ `
         query ServerAddresses($id: String!) {
           server(id: $id) {
             addresses {
               address
               family
+              isPrivate
               state
               problem
               leavesAt
@@ -77,14 +80,15 @@ export function AddressFamilyPanel({ server }: { server: ServerSummary }) {
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+    if (!server.addresses) void load();
+  }, [load, server.addresses]);
   // Checked every 2 minutes on Deplo's side; the card follows on its own.
   useEvery(10_000, () => void load());
 
-  const has = (f: Family) =>
-    !addresses ||
-    addresses.some((a) => a.family === f && a.state !== "notUsed");
+  const choices = (addresses ?? []).filter(canCarry);
+  const askedPrivate = addresses?.some(
+    (a) => a.address === asked && a.isPrivate,
+  );
 
   return (
     <Card>
@@ -128,6 +132,10 @@ export function AddressFamilyPanel({ server }: { server: ServerSummary }) {
                     )}
                     {BADGE[a.state]}
                   </Badge>
+                  {a.address === server.generatedAddress && (
+                    <Badge variant="info">Primary</Badge>
+                  )}
+                  {a.isPrivate && <Badge variant="outline">Private</Badge>}
                 </div>
                 {a.problem && (
                   <p className="text-xs text-muted-foreground">{a.problem}</p>
@@ -144,51 +152,74 @@ export function AddressFamilyPanel({ server }: { server: ServerSummary }) {
           </ul>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-          <div className="text-sm">Use</div>
+          <div className="flex items-center gap-1.5 text-sm">
+            Generated addresses
+            <InfoTip content="The address in this server's generated addresses. Automatic uses a reachable IPv4, else IPv6. A private one answers only inside its network." />
+          </div>
           <Select
-            value={value}
-            onValueChange={(next) => next !== value && setAsked(next)}
+            value={current}
+            onValueChange={(next) => next !== current && setAsked(next)}
           >
             <SelectTrigger
-              className="w-full sm:w-56"
-              aria-label="Addresses to use"
+              className="w-full sm:w-72"
+              aria-label="Address its generated addresses use"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={AUTOMATIC}>Automatic</SelectItem>
-              <SelectItem value="ipv6" disabled={!has("ipv6")}>
-                IPv6 only
-              </SelectItem>
-              <SelectItem value="ipv4" disabled={!has("ipv4")}>
-                IPv4 only
-              </SelectItem>
+              {server.generatedAddressFamily && !server.preferredAddress && (
+                <SelectItem value={server.generatedAddressFamily} disabled>
+                  {server.generatedAddressFamily === "ipv6"
+                    ? "IPv6 only"
+                    : "IPv4 only"}
+                </SelectItem>
+              )}
+              {choices.map((a) => (
+                <SelectItem key={a.address} value={a.address}>
+                  <span className="font-mono">{a.address}</span>
+                  {a.isPrivate && <Badge variant="outline">Private</Badge>}
+                </SelectItem>
+              ))}
+              {server.preferredAddress &&
+                !choices.some((a) => a.address === server.preferredAddress) && (
+                  <SelectItem value={server.preferredAddress} disabled>
+                    <span className="font-mono">{server.preferredAddress}</span>
+                  </SelectItem>
+                )}
             </SelectContent>
           </Select>
         </div>
         <ConfirmAction
           open={asked !== null}
           onOpenChange={(v) => !v && setAsked(null)}
-          title={`Use ${CHOICE[asked ?? AUTOMATIC]} on ${server.name}?`}
-          description="Its generated names move to the new address, and its domains' records follow."
+          title={
+            asked === AUTOMATIC
+              ? `Pick ${server.name}'s address automatically?`
+              : `Use ${asked} on ${server.name}?`
+          }
+          description={
+            askedPrivate
+              ? "Its generated addresses move there now, and answer only inside its private network."
+              : "Its generated addresses move there now."
+          }
           confirmLabel="Change"
           variant="default"
           successMessage="Addresses updated"
           onConfirm={async () => {
             const next = asked ?? AUTOMATIC;
-            const res = await gqlAction<{ setServerAddressFamily: number }>(
+            const res = await gqlAction<{ setServerPreferredAddress: number }>(
               /* GraphQL */ `
-                mutation SetServerAddressFamily(
+                mutation SetServerPreferredAddress(
                   $id: String!
-                  $family: AddressFamily
+                  $address: String
                 ) {
-                  setServerAddressFamily(id: $id, family: $family)
+                  setServerPreferredAddress(id: $id, address: $address)
                 }
               `,
-              { id: server.id, family: next === AUTOMATIC ? null : next },
+              { id: server.id, address: next === AUTOMATIC ? null : next },
             );
             if (res.ok) {
-              setValue(next);
               setAsked(null);
               await load();
               router.refresh();

@@ -179,7 +179,16 @@ async function holdLink(
         m.pushRostersForServer(serverId),
       );
     // As the door admits it, before anyone hears it come up (ADR-0041).
-    await recordFirstLink(serverId);
+    const firstLink = await recordFirstLink(serverId);
+    // A new server's addresses are found now, not at the next 2-minute round.
+    if (firstLink)
+      setTimeout(
+        () =>
+          void import("../../data/servers/address-checks")
+            .then((m) => m.checkServerAddresses())
+            .catch((e) => console.error("[addresses] check failed:", e)),
+        5_000,
+      ).unref?.();
     await recordLinkOrigin(
       serverId,
       from,

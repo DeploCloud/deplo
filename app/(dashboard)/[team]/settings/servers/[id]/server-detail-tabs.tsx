@@ -57,6 +57,7 @@ import { ServerWorkloads } from "@/components/servers/server-workloads";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { AGENT_VERSION, type AgentReach } from "@/lib/version";
+import type { ServerAddressView } from "./advanced-tab/address-family-panel";
 
 export type ServerSummary = {
   id: string;
@@ -73,6 +74,11 @@ export type ServerSummary = {
   role: "everything" | "build" | "storage";
   buildFallback: boolean;
   generatedAddressFamily: "ipv4" | "ipv6" | null;
+  preferredAddress: string | null;
+  /** Read on the server, so Advanced shows them at once. */
+  addresses?: ServerAddressView[];
+  /** The address its generated addresses carry now. */
+  generatedAddress?: string | null;
   isDeploHost: boolean;
   provisioning: boolean;
   agentVersion: string | null;
@@ -203,6 +209,7 @@ const PLACEHOLDER: ServerSummary = {
   role: "everything",
   buildFallback: false,
   generatedAddressFamily: null,
+  preferredAddress: null,
   isDeploHost: false,
   provisioning: false,
   agentVersion: AGENT_VERSION,

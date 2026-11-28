@@ -24,6 +24,7 @@ const server: ServerSummary = {
   role: "everything",
   buildFallback: false,
   generatedAddressFamily: null,
+  preferredAddress: null,
   isDeploHost: false,
   provisioning: false,
   agentVersion: "1.0.0",

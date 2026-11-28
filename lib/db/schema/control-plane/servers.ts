@@ -66,6 +66,8 @@ export const servers = pgTable(
     buildFallback: boolean("build_fallback"),
     // "ipv4" | "ipv6"; null = automatic, IPv4 when the host has one.
     generatedAddressFamily: text("generated_address_family"),
+    // The one address its generated names carry, chosen by an admin; null = automatic.
+    preferredAddress: text("preferred_address"),
     importOnly: boolean("import_only").notNull().default(false),
     uninstallNextAt: isoTimestamptz("uninstall_next_at"),
     uninstallAttempts: integer("uninstall_attempts").notNull().default(0),

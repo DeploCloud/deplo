@@ -83,7 +83,7 @@ export async function completeBootstrap(
 }
 
 /** Its first verified link, kept for good; a Deplo move never inserts servers, so the freeze does not apply. */
-export async function recordFirstLink(serverId: string): Promise<void> {
+export async function recordFirstLink(serverId: string): Promise<boolean> {
   try {
     const [first] = await getDb()
       .update(serversTable)
@@ -107,9 +107,11 @@ export async function recordFirstLink(serverId: string): Promise<void> {
         team?.id ?? null,
       );
     }
+    return !!first;
   } catch (e) {
     // The next link it opens records it.
     console.error(`[deplo] could not record ${serverId}'s first link:`, e);
+    return false;
   }
 }
 

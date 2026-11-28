@@ -39,6 +39,7 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     buildOnly: opts.buildOnly ?? false,
     buildFallback: opts.buildFallback ?? null,
     generatedAddressFamily: opts.generatedAddressFamily ?? null,
+    preferredAddress: opts.preferredAddress ?? null,
     importOnly: opts.importOnly ?? false,
     uninstallPending: opts.uninstallPending ?? false,
     uninstallError: opts.uninstallError ?? "",

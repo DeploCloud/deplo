@@ -11,6 +11,7 @@ const SERVER_ROW = /* GraphQL */ `
   allTeams
   buildFallback
   generatedAddressFamily
+  preferredAddress
   deployConcurrency
   agentVersion
   isDeploHost
@@ -64,7 +65,7 @@ export const FLEET: McpToolDef[] = [
     name: "update_server",
     title: "Change a server's role, teams or limits",
     description:
-      "Any of: role, teams, build fallback, which addresses it uses (automatic, IPv4 or IPv6 only), deploy concurrency, timezone. Deplo finds its addresses; none is set here.",
+      "Any of: role, teams, build fallback, which addresses it uses (automatic, IPv4 or IPv6 only, or one of its found addresses for generated names), deploy concurrency, timezone. Deplo finds its addresses; none is typed here.",
     group: "Servers",
     requires: "instanceAdmin",
     idempotent: true,
@@ -80,6 +81,12 @@ export const FLEET: McpToolDef[] = [
         .describe(
           "The addresses Deplo uses for it: automatic (every proven one; generated names on IPv4 when proven), IPv4 only, or IPv6 only.",
         ),
+      preferredAddress: z
+        .string()
+        .optional()
+        .describe(
+          'An address Deplo found and proved on it, for its generated names; "automatic" lets Deplo pick.',
+        ),
       deployConcurrency: z.number().int().optional(),
       timezone: z.string().optional().describe("IANA zone."),
     }),
@@ -93,12 +100,14 @@ export const FLEET: McpToolDef[] = [
       },
       buildFallback: a.buildFallback,
       family: a.addressFamily === "automatic" ? null : a.addressFamily,
+      address: a.preferredAddress === "automatic" ? null : a.preferredAddress,
       concurrency: a.deployConcurrency ?? 1,
       timezone: a.timezone ?? "",
       setRole: a.role !== undefined,
       setTeams: a.allTeams !== undefined || a.teamIds !== undefined,
       setFallback: a.buildFallback !== undefined,
       setFamily: a.addressFamily !== undefined,
+      setAddress: a.preferredAddress !== undefined,
       setConcurrency: a.deployConcurrency !== undefined,
       setTimezone: a.timezone !== undefined,
     }),
@@ -109,12 +118,14 @@ export const FLEET: McpToolDef[] = [
         $teams: SetServerTeamsInput!
         $buildFallback: Boolean
         $family: AddressFamily
+        $address: String
         $concurrency: Int!
         $timezone: String!
         $setRole: Boolean!
         $setTeams: Boolean!
         $setFallback: Boolean!
         $setFamily: Boolean!
+        $setAddress: Boolean!
         $setConcurrency: Boolean!
         $setTimezone: Boolean!
       ) {
@@ -133,6 +144,8 @@ export const FLEET: McpToolDef[] = [
         }
         setServerAddressFamily(id: $id, family: $family)
           @include(if: $setFamily)
+        setServerPreferredAddress(id: $id, address: $address)
+          @include(if: $setAddress)
         setServerDeployConcurrency(id: $id, concurrency: $concurrency)
           @include(if: $setConcurrency) {
           id

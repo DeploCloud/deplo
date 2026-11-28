@@ -44,6 +44,8 @@ export interface Server {
   buildOnly: boolean;
   buildFallback: boolean | null;
   generatedAddressFamily: AddressFamily | null;
+  /** The address an admin chose for its generated names; null = automatic. */
+  preferredAddress: string | null;
   importOnly: boolean;
   uninstallPending: boolean;
   uninstallError: string;
