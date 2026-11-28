@@ -68,7 +68,7 @@ export function AppsSection({
                 aria-checked={on}
                 onClick={() => toggle(a.id)}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg border p-3 text-left transition-colors",
+                  "flex items-center gap-3 rounded-xl border p-3 text-left transition-colors",
                   "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
                   on
                     ? "border-primary bg-primary-wash ring-1 ring-primary/60"

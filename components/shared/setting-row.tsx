@@ -26,7 +26,7 @@ export function SettingRow({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-lg border border-border p-3",
+        "flex flex-col gap-2 rounded-xl border border-border p-3",
         "sm:flex-row sm:justify-between sm:gap-4",
         align === "center" ? "sm:items-center" : "sm:items-start",
         className,

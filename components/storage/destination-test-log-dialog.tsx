@@ -124,7 +124,7 @@ export function DestinationTestLogDialog({
           ) : (
             <>
               {runError && (
-                <p className="rounded-lg border border-destructive/30 bg-destructive-wash p-3 text-xs text-destructive">
+                <p className="rounded-xl border border-destructive/30 bg-destructive-wash p-3 text-xs text-destructive">
                   {runError}
                 </p>
               )}
@@ -180,7 +180,7 @@ function Verdict({ report }: { report: S3TestReportView }) {
     },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-border bg-surface p-4">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface p-4">
       <div>
         <p className="text-xs text-muted-foreground">Result</p>
         <Badge

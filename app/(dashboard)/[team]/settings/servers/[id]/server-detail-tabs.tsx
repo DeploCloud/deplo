@@ -596,7 +596,7 @@ function AccessCard({
                       })
                     }
                     className={cn(
-                      "rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50",
+                      "rounded-xl px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50",
                       access.allTeams === o.all
                         ? "text-foreground"
                         : "text-muted-foreground hover:text-foreground",

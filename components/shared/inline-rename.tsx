@@ -86,7 +86,7 @@ export function RenameInput({
         }
       }}
       className={cn(
-        "pointer-events-auto relative z-10 -mx-[7px] -my-0.5 block h-[calc(1lh+4px)] w-80 max-w-[calc(100%+14px)] min-w-0 rounded-md border border-input bg-background px-1.5 py-px shadow-sm ring-2 ring-ring ring-offset-1 ring-offset-background outline-none select-text",
+        "pointer-events-auto relative z-10 -mx-[7px] -my-0.5 block h-[calc(1lh+4px)] w-80 max-w-[calc(100%+14px)] min-w-0 rounded-xl border border-input bg-background px-1.5 py-px shadow-sm ring-2 ring-ring ring-offset-1 ring-offset-background outline-none select-text",
         className,
       )}
     />

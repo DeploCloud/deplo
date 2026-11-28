@@ -284,7 +284,7 @@ export function CreateDatabase({
                 />
               </div>
             </div>
-            <div className="space-y-3 rounded-lg border border-border p-3">
+            <div className="space-y-3 rounded-xl border border-border p-3">
               <p className="flex items-center gap-1.5 text-sm font-medium">
                 Credentials
                 <InfoTip content="Optional. Leave blank to use generated defaults. These are set only when the database is first created and can't be changed later." />
@@ -400,7 +400,7 @@ export function CreateDatabase({
               </div>
             )}
             {!onCluster && (
-              <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="space-y-3 rounded-xl border border-border p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">Expose publicly</p>

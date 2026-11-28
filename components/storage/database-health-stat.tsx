@@ -22,7 +22,7 @@ export function DatabaseRelabelNotice({
   if (!runtime || runtime.unreachable || runtime.total > 0) return null;
 
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-3 text-sm">
+    <div className="flex items-start gap-2 rounded-xl border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-3 text-sm">
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
       <div>
         <p className="font-medium">Redeploy to enable live tools</p>

@@ -170,7 +170,7 @@ function UsageReportDialog({
               <div className="absolute top-2 right-2 z-10">
                 <CopyButton value={preview.report.json} />
               </div>
-              <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-surface p-3 pr-12 font-mono text-xs text-muted-foreground">
+              <pre className="max-h-[50vh] overflow-auto rounded-xl border border-border bg-surface p-3 pr-12 font-mono text-xs text-muted-foreground">
                 {preview.report.json}
               </pre>
             </div>

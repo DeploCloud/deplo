@@ -545,7 +545,7 @@ function ServerFields({
 }) {
   if (servers.length === 0) {
     return (
-      <p className="rounded-lg border border-border bg-surface p-3 text-xs text-muted-foreground">
+      <p className="rounded-xl border border-border bg-surface p-3 text-xs text-muted-foreground">
         No server is connected yet. Connect one first, or use an S3 bucket.
       </p>
     );

@@ -93,7 +93,7 @@ export function ScopePicker({
           </div>
 
           {notice && !loading && (
-            <div className="flex items-start gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+            <div className="flex items-start gap-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
               <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--warning)]" />
               <div className="min-w-0 text-sm">{notice}</div>
             </div>
@@ -102,7 +102,7 @@ export function ScopePicker({
           {loading ? (
             <ScopeTreeSkeleton />
           ) : shown.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
               Nothing matches &ldquo;{query}&rdquo;.
             </div>
           ) : (

@@ -201,7 +201,7 @@ function CertificateRow({
 }) {
   const days = certificate.expiresInDays;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-border p-3">
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate text-sm font-medium">

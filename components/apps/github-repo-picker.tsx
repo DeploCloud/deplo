@@ -90,7 +90,7 @@ function AccountAvatar({
 
 function ConnectPanel({ onUsePublicUrl }: { onUsePublicUrl?: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border p-6 text-center">
       <GitHubIcon className="size-6 text-muted-foreground" />
       <div className="space-y-1">
         <p className="text-sm font-medium">Connect GitHub to pick a repo</p>

@@ -283,7 +283,7 @@ export function AddMemberDialog({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between rounded-xl border border-border p-3">
                   <div className="flex items-center gap-3">
                     <UserAvatar
                       name={picked.name}

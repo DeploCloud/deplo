@@ -271,7 +271,7 @@ export function CronJobDialog({
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-3">
               <FieldLabel
                 htmlFor="cron-enabled"
                 info="A disabled job keeps its settings and its history, and simply does not fire."

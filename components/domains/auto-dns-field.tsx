@@ -23,7 +23,7 @@ export function AutoDnsField({
   onProxied: (on: boolean) => void;
 }) {
   return (
-    <div className="space-y-2 rounded-md border border-[#f38020]/40 bg-[#f38020]/5 px-3 py-2">
+    <div className="space-y-2 rounded-xl border border-[#f38020]/40 bg-[#f38020]/5 px-3 py-2">
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <CloudflareIcon className="size-3.5 shrink-0 text-[#f38020]" />
         <span>

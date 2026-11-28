@@ -14,7 +14,7 @@ export function ComposeDomainPicker({
   onToggle: (service: string, on: boolean) => void;
 }) {
   return (
-    <div className="rounded-lg border border-border p-3">
+    <div className="rounded-xl border border-border p-3">
       <p className="text-sm font-medium">Domains</p>
       <p className="mt-1 text-xs text-muted-foreground">
         Every service you pick gets its own address.

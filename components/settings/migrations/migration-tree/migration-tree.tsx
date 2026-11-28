@@ -113,7 +113,7 @@ export function MigrationTree({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
           Nothing matches &ldquo;{query}&rdquo;.
         </div>
       ) : (

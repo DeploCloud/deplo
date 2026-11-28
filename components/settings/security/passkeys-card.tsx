@@ -131,7 +131,7 @@ export function PasskeysCard({
               return (
                 <li
                   key={p.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border p-3"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border p-3"
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
                     <kind.icon className="size-4 text-muted-foreground" />

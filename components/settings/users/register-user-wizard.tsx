@@ -307,7 +307,7 @@ export function RegisterUserWizard({
                     [0, 1].map((i) => (
                       <div
                         key={i}
-                        className="rounded-lg border border-border p-3"
+                        className="rounded-xl border border-border p-3"
                       >
                         <div className="flex items-center gap-2">
                           <Skeleton shimmer className="size-4 rounded" />
@@ -318,7 +318,7 @@ export function RegisterUserWizard({
                     ))}
 
                   {!loadingTeams && shownTeams.length === 0 && (
-                    <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                    <p className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
                       {teamFilter
                         ? "No team matches your search."
                         : "You are not in any team yet."}
@@ -331,7 +331,7 @@ export function RegisterUserWizard({
                       return (
                         <div
                           key={tm.id}
-                          className="rounded-lg border border-border p-3"
+                          className="rounded-xl border border-border p-3"
                         >
                           <label
                             htmlFor={`regteam-${tm.id}`}

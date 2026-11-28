@@ -170,7 +170,7 @@ function TakeoverConfirm({
       }
     >
       {error !== null && (
-        <div className="flex w-full items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-wash-strong p-3 text-left text-sm leading-relaxed">
+        <div className="flex w-full items-start gap-2 rounded-xl border border-destructive/40 bg-destructive-wash-strong p-3 text-left text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div className="min-w-0">
             <p className="font-medium">
@@ -478,7 +478,7 @@ function Working({
 
 function SlowNote({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong p-3 text-left text-sm leading-relaxed text-warning">
+    <div className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-wash-strong p-3 text-left text-sm leading-relaxed text-warning">
       <TriangleAlert className="mt-0.5 size-4 shrink-0" />
       <span className="min-w-0 text-foreground">{children}</span>
     </div>

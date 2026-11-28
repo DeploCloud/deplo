@@ -450,7 +450,7 @@ export function DomainConfigFields({
           <AccordionContent className="space-y-6 pt-2 text-foreground">
             {!managed && !autoDns && (
               <FieldGroup icon={Waypoints} title="Proxy">
-                <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
                   <FieldLabel
                     htmlFor={`${idPrefix}-proxied`}
                     className="cursor-pointer font-normal"
@@ -469,7 +469,7 @@ export function DomainConfigFields({
             )}
 
             <FieldGroup icon={ShieldCheck} title="Security">
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
                 <FieldLabel
                   htmlFor={`${idPrefix}-security-headers`}
                   className="cursor-pointer font-normal"
@@ -593,7 +593,7 @@ export function DomainConfigFields({
               </div>
 
               {hasPath && (
-                <div className="space-y-2 rounded-md border border-border px-3 py-2">
+                <div className="space-y-2 rounded-xl border border-border px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <FieldLabel
                       htmlFor={`${idPrefix}-strip`}

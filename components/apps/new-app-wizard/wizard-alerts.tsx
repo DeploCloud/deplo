@@ -72,7 +72,7 @@ export function WizardAlerts({ alerts }: { alerts: WizardAlert[] }) {
     return (
       <div
         className={cn(
-          "rounded-lg border px-3.5 py-2.5 text-sm",
+          "rounded-xl border px-3.5 py-2.5 text-sm",
           style.box,
           style.text,
         )}
@@ -90,7 +90,7 @@ export function WizardAlerts({ alerts }: { alerts: WizardAlert[] }) {
   const Icon = style.icon;
   return (
     <details
-      className={cn("group rounded-lg border px-3.5 py-2.5 text-sm", style.box)}
+      className={cn("group rounded-xl border px-3.5 py-2.5 text-sm", style.box)}
     >
       <summary
         className={cn(

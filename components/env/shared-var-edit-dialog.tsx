@@ -176,7 +176,7 @@ export function SharedVarEditDialog({
               )}
               <NoteField value={note} onChange={setNote} autoFocus={noteOnly} />
 
-              <div className="space-y-2 rounded-lg border border-border p-3">
+              <div className="space-y-2 rounded-xl border border-border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">Shared with</p>
                   {onChangeSharing && (

@@ -54,7 +54,7 @@ export function ReportBody({
       )}
 
       {uncovered.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
+        <div className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 flex-1 text-muted-foreground">
             Still on that panel: {uncovered.join(", ")}.

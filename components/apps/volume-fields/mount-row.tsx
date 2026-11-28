@@ -227,7 +227,7 @@ export function MountRow({
 
           <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2">
             {blockedBind && (
-              <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-wash-strong px-3 py-2 text-xs text-warning sm:col-span-2">
+              <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-wash-strong px-3 py-2 text-xs text-warning sm:col-span-2">
                 <ShieldAlert className="mt-px size-3.5 shrink-0" />
                 Your account can&apos;t save a Bind. An admin turns it on with
                 &quot;Bind server folders&quot; in Settings → Users. Volume and
@@ -358,7 +358,7 @@ export function MountRow({
               </div>
             )}
 
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 sm:col-span-2">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 sm:col-span-2">
               <FieldLabel
                 htmlFor={readOnlyId}
                 className="cursor-pointer text-xs font-normal"

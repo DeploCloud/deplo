@@ -43,7 +43,7 @@ export function KindCard({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "flex h-full items-start gap-2.5 rounded-lg border p-3 text-left transition-colors",
+        "flex h-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         selected
           ? "border-primary bg-primary-wash ring-1 ring-primary/60"

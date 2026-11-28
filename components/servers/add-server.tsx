@@ -211,7 +211,7 @@ export function AddServer({
         </DialogHeader>
 
         {joinCluster && joinWarning && !command && (
-          <div className="space-y-1 rounded-md border p-3 text-sm">
+          <div className="space-y-1 rounded-xl border p-3 text-sm">
             <p className="flex items-center gap-1.5 font-medium text-[var(--warning)]">
               <TriangleAlert className="size-4 shrink-0" />
               {joinWarning.title}

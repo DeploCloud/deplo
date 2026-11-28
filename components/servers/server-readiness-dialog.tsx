@@ -260,7 +260,7 @@ export function ServerReadinessDialog({
             <div className="space-y-4">
               <div
                 className={cn(
-                  "flex items-start gap-2 rounded-lg border p-3",
+                  "flex items-start gap-2 rounded-xl border p-3",
                   verdict.box,
                 )}
               >
@@ -320,7 +320,7 @@ export function ServerReadinessDialog({
                           return (
                             <li
                               key={c.id}
-                              className="flex items-start gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5"
+                              className="flex items-start gap-2 rounded-xl border border-border bg-background px-2.5 py-1.5"
                             >
                               <Icon
                                 className={cn(

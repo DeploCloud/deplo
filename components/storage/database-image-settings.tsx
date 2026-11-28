@@ -135,7 +135,7 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
             className="font-mono text-xs"
           />
           {redisCommandRisk && (
-            <p className="flex items-start gap-1.5 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2 text-xs text-foreground">
+            <p className="flex items-start gap-1.5 rounded-xl border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2 text-xs text-foreground">
               <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
               <span>
                 This command replaces Redis&apos;s default, which sets{" "}

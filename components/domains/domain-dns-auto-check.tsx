@@ -131,7 +131,7 @@ export function DomainDnsAutoCheck({
   }, [router, canVerify]);
 
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm">
+    <div className="flex items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm">
       <RefreshCw
         className={
           checking

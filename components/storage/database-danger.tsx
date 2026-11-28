@@ -42,7 +42,7 @@ export function DatabaseDanger({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 p-4">
           <div className="min-w-56 flex-1 space-y-1">
             <p className="text-sm font-medium">Transfer to another team</p>
             <p className="text-sm text-muted-foreground">
@@ -74,7 +74,7 @@ export function DatabaseDanger({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 p-4">
           <div className="min-w-56 flex-1 space-y-1">
             <p className="text-sm font-medium">Rebuild database</p>
             <p className="text-sm text-muted-foreground">
@@ -113,7 +113,7 @@ export function DatabaseDanger({
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 p-4">
           <div className="min-w-56 flex-1 space-y-1">
             <p className="text-sm font-medium">Delete database</p>
             <p className="text-sm text-muted-foreground">

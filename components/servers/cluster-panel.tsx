@@ -18,7 +18,7 @@ export function ClusterNoticeList({
       {warnings.map((w) => (
         <div
           key={w.key}
-          className="flex flex-col gap-3 rounded-lg border border-warning/40 bg-warning-wash-strong px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+          className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning-wash-strong px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
         >
           <div className="flex items-start gap-2.5 text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />

@@ -12,7 +12,7 @@ export function SecretRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
       <div className="flex items-start gap-2.5">
         <KeyRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div>

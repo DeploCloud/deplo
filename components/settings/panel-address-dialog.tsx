@@ -212,7 +212,7 @@ export function PanelAddressDialog({
             </DialogHeader>
 
             {failed && (
-              <p className="rounded-lg border border-destructive/40 bg-destructive-wash p-4 text-sm text-destructive">
+              <p className="rounded-xl border border-destructive/40 bg-destructive-wash p-4 text-sm text-destructive">
                 {failed}
               </p>
             )}
@@ -224,7 +224,7 @@ export function PanelAddressDialog({
               return (
                 <section
                   key={tier.severity}
-                  className={cn("rounded-lg border p-4", tier.box)}
+                  className={cn("rounded-xl border p-4", tier.box)}
                 >
                   <p
                     className={cn(
@@ -265,7 +265,7 @@ export function PanelAddressDialog({
             )}
 
             {impact?.panelFallbackUrl && (
-              <p className="flex items-start gap-2.5 rounded-lg bg-surface p-3 text-sm text-muted-foreground">
+              <p className="flex items-start gap-2.5 rounded-xl bg-surface p-3 text-sm text-muted-foreground">
                 <LifeBuoy className="mt-0.5 size-4 shrink-0" />
                 <span>
                   You can always get back in at{" "}

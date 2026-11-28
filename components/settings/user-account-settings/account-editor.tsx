@@ -305,7 +305,7 @@ export function UserAccountSettings({
         ) : (
           <>
             {ownerLocked && (
-              <p className="rounded-lg border border-border bg-surface-strong p-3 text-xs text-muted-foreground">
+              <p className="rounded-xl border border-border bg-surface-strong p-3 text-xs text-muted-foreground">
                 This account owns the instance. Only its owner can change it -
                 no other admin can demote, suspend, reset or delete them.
                 Ownership moves only when the owner transfers it.

@@ -74,7 +74,7 @@ export function ServerTeamAccess({
           value={value.teamIds}
           onChange={(teamIds) => onChange({ allTeams: false, teamIds })}
           disabled={disabled}
-          className="mt-2 rounded-lg border border-border p-2"
+          className="mt-2 rounded-xl border border-border p-2"
         />
       )}
       {!value.allTeams && count > 0 && (
@@ -165,7 +165,7 @@ export function AccessOption({
       onClick={onSelect}
       style={veil.style}
       className={cn(
-        "flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
+        "flex flex-col gap-1 rounded-xl border p-3 text-left transition-colors",
         selected
           ? accent
             ? "border-primary ring-1 ring-primary/60"

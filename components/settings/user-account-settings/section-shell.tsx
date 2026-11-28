@@ -8,11 +8,11 @@ import type { DocsTopic } from "@/lib/docs";
 import { cn } from "@/lib/utils";
 
 export const ROW_SHELL =
-  "flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5";
+  "flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2.5";
 
 export function sectionShell(tone: "default" | "destructive") {
   return cn(
-    "space-y-3 rounded-lg border p-3",
+    "space-y-3 rounded-xl border p-3",
     tone === "destructive"
       ? "border-destructive/40 bg-destructive-wash"
       : "border-border",

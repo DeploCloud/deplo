@@ -267,7 +267,7 @@ export function TwoFactorWizard({
             {error && step !== "password" && (
               <p
                 role="alert"
-                className="rounded-md border border-destructive/40 bg-destructive-wash-strong px-3 py-2 text-center text-sm text-destructive"
+                className="rounded-xl border border-destructive/40 bg-destructive-wash-strong px-3 py-2 text-center text-sm text-destructive"
               >
                 {error}
               </p>
@@ -289,7 +289,7 @@ export function TwoFactorWizard({
                     className={cn(fieldControl, error && invalidField)}
                   />
                 </Field>
-                <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
                   <AuthenticatorAppGraphic className="size-12 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-xs font-medium">
@@ -299,7 +299,7 @@ export function TwoFactorWizard({
                       {APPS.map((a) => (
                         <span
                           key={a}
-                          className="rounded-md bg-background px-2 py-0.5 text-xs text-muted-foreground ring-1 ring-border ring-inset"
+                          className="rounded-xl bg-background px-2 py-0.5 text-xs text-muted-foreground ring-1 ring-border ring-inset"
                         >
                           {a}
                         </span>
@@ -357,7 +357,7 @@ export function TwoFactorWizard({
 
             {step === "codes" && (
               <div className="space-y-4">
-                <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-surface p-3">
+                <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-xl border border-border bg-surface p-3">
                   {backupCodes.map((c, i) => (
                     <li
                       key={c}
@@ -390,7 +390,7 @@ export function TwoFactorWizard({
                     Download
                   </Button>
                 </div>
-                <label className="flex items-start gap-2 rounded-lg border border-border p-3 text-sm">
+                <label className="flex items-start gap-2 rounded-xl border border-border p-3 text-sm">
                   <Checkbox
                     checked={saved}
                     onCheckedChange={(v) => setSaved(v === true)}

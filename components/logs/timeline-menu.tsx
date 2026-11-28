@@ -132,7 +132,7 @@ export function TimelineMenu({
               onClick={() =>
                 onChange({ ...value, sinceMinutes: range.minutes })
               }
-              className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-accent"
+              className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-medium hover:bg-accent"
             >
               <span className="flex size-4 shrink-0 items-center justify-center">
                 {on && <Check className="size-3.5" />}

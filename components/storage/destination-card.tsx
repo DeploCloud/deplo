@@ -141,7 +141,7 @@ export function DestinationCard({
           </dl>
 
           {!encrypted && (
-            <div className="flex w-full items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left">
+            <div className="flex w-full items-start gap-2 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left">
               <ShieldOff className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
               <span className="min-w-0 flex-1 space-y-0.5">
                 <span className="block text-xs font-medium">

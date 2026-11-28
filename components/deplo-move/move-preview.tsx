@@ -105,7 +105,7 @@ export function MovePreview({
           {COUNTS.map(([key, one, many]) => (
             <div
               key={key}
-              className="flex flex-col-reverse rounded-lg border border-border bg-surface px-3 py-2"
+              className="flex flex-col-reverse rounded-xl border border-border bg-surface px-3 py-2"
             >
               <dt className="text-xs text-muted-foreground">
                 {preview.counts[key] === 1 ? one : many}

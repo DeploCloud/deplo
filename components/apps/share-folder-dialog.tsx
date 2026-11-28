@@ -315,7 +315,7 @@ export function ShareFolderDialog({
                 {grants.map((g) => (
                   <div
                     key={g.userId}
-                    className="flex items-center gap-3 rounded-lg border border-border px-2 py-2"
+                    className="flex items-center gap-3 rounded-xl border border-border px-2 py-2"
                   >
                     <UserAvatar
                       name={g.name}
@@ -420,7 +420,7 @@ export function ShareFolderDialog({
                 </>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between rounded-xl border border-border p-3">
                     <div className="flex items-center gap-3">
                       <UserAvatar
                         name={picked.name}
@@ -455,7 +455,7 @@ export function ShareFolderDialog({
                     >
                       What can they do?
                     </FieldLabel>
-                    <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
+                    <div className="flex items-start gap-3 rounded-xl px-1 py-1.5 opacity-70">
                       <input
                         type="checkbox"
                         checked

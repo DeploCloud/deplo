@@ -126,7 +126,7 @@ export function DatabaseLinkForm({
               </div>
             )}
             {blocked ? (
-              <p className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash p-3 text-sm">
+              <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-wash p-3 text-sm">
                 <AlertTriangle
                   className="mt-0.5 size-4 shrink-0 text-warning"
                   aria-hidden

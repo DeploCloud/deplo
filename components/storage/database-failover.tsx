@@ -29,7 +29,7 @@ export function FailoverPromises({
 /** What a database on a cluster relies on: the two promises, then loss and recovery. */
 export function FailoverNote({ promises, loss, recovery }: FailoverPreview) {
   return (
-    <div className="space-y-2 rounded-lg border border-border p-3">
+    <div className="space-y-2 rounded-xl border border-border p-3">
       <FailoverPromises promises={promises} />
       <p className="text-xs text-muted-foreground">
         {loss} {recovery} <DocsLink topic="clusters.databases" />
@@ -48,7 +48,7 @@ export function DatabaseFailoverCard({
   return (
     <div className="space-y-3">
       {failover.warning && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning-wash-strong px-4 py-3 text-sm">
+        <div className="flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning-wash-strong px-4 py-3 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
           <p>
             {failover.warning}

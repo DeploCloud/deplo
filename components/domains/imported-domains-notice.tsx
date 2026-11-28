@@ -36,7 +36,7 @@ export function ImportedDomainsNotice({
   }
 
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning-wash-strong px-3.5 py-2.5 text-sm">
+    <div className="flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning-wash-strong px-3.5 py-2.5 text-sm">
       <Import className="mt-0.5 size-4 shrink-0 text-warning" />
       <DomainNoticeContent action={action}>
         <p className="font-medium text-warning">

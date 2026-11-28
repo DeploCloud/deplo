@@ -113,7 +113,7 @@ export function RolesRail({
           const active = role.id === activeId;
           const granted = role.capabilities.filter((c) => c !== "view").length;
           const className = cn(
-            "flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
+            "flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors",
             active
               ? "border-primary bg-primary-wash"
               : "border-transparent hover:bg-accent",
@@ -188,7 +188,7 @@ export function RolesRail({
         })}
 
         {activeId === "new" && (
-          <div className="flex items-center gap-2.5 rounded-lg border border-dashed border-primary bg-primary-wash px-2.5 py-2">
+          <div className="flex items-center gap-2.5 rounded-xl border border-dashed border-primary bg-primary-wash px-2.5 py-2">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary-wash-strong text-primary">
               <Plus className="size-3.5" aria-hidden />
             </span>

@@ -22,7 +22,7 @@ export function ComposeMountList({ mounts }: { mounts: ComposeMount[] }) {
           return (
             <li
               key={`${m.kind}:${m.source}:${m.mountPath}`}
-              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2"
+              className="flex items-center gap-3 rounded-xl border border-border px-3 py-2"
             >
               <Badge variant="muted" className="shrink-0 gap-1.5">
                 <Icon className="size-3" />

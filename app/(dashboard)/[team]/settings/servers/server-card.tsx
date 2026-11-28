@@ -401,7 +401,7 @@ export function ServerCard({
             </div>
             {actions}
           </div>
-          <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+          <div className="space-y-2 rounded-xl border border-border bg-surface p-3">
             <OneRow items={badges} className="[&>*]:pointer-events-auto" />
             <StatusLine server={server} notes={notes} />
           </div>
@@ -452,7 +452,7 @@ export function ServerCardSkeleton() {
             </Button>
           </div>
         </div>
-        <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+        <div className="space-y-2 rounded-xl border border-border bg-surface p-3">
           <div className="flex items-center gap-1.5">
             <Bone box>
               <ServerUseBadge use="everything" />

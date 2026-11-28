@@ -116,7 +116,7 @@ export function DestinationCombobox({
       }}
       footer={
         sameDisk && selected ? (
-          <div className="mt-2 flex items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-xs font-medium">

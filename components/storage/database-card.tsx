@@ -223,7 +223,7 @@ function DatabaseCardGrid({
           />
         </div>
 
-        <div className="rounded-lg border border-border bg-surface p-3">
+        <div className="rounded-xl border border-border bg-surface p-3">
           <ConnectionChip db={db} canReveal={canReveal} />
           <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
             <ServerIcon className="size-3.5 shrink-0" />
@@ -581,7 +581,7 @@ export function DatabaseCardSkeleton() {
             </div>
           </div>
         </div>
-        <div className="rounded-lg border border-border bg-surface p-3">
+        <div className="rounded-xl border border-border bg-surface p-3">
           <Bone box className="w-full">
             <div className="pointer-events-auto relative z-10 w-full">
               <DatabaseConnectionString

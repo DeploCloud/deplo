@@ -65,7 +65,7 @@ export function TeamSecurityCard({
         <div className="flex min-h-0 flex-1 items-center justify-center py-2">
           <TwoFactorGraphic className="max-h-20" />
         </div>
-        <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-3">
           <div className="space-y-1">
             <p className="text-sm font-medium">
               Require two-factor authentication
@@ -86,7 +86,7 @@ export function TeamSecurityCard({
         {/* Always present, so the card keeps its height whatever the count. */}
         <Bone box loading={loading} className="w-full rounded-lg">
           {without > 0 ? (
-            <div className="flex w-full items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+            <div className="flex w-full items-center gap-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
               <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
               <p className="text-sm">
                 {without} of {total} member{total === 1 ? "" : "s"}{" "}
@@ -96,7 +96,7 @@ export function TeamSecurityCard({
               </p>
             </div>
           ) : (
-            <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface p-3">
+            <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-3">
               <ShieldCheck className="size-5 shrink-0 text-[var(--success)]" />
               <p className="text-sm">Everyone in this team has it set up.</p>
             </div>

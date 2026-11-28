@@ -23,7 +23,7 @@ export function GitAccessNotice({
   return (
     <div
       className={cn(
-        "rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3",
+        "rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3",
         className,
       )}
     >

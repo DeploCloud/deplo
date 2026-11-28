@@ -146,7 +146,7 @@ export function ChannelConfig(props: ChannelConfigProps) {
       const brand = CHANNEL_BRAND.push;
       return (
         <div
-          className="flex items-start gap-3 rounded-lg border p-3"
+          className="flex items-start gap-3 rounded-xl border p-3"
           style={{
             backgroundColor: `color-mix(in oklab, ${brand.bg} 10%, transparent)`,
             borderColor: `color-mix(in oklab, ${brand.bg} 35%, transparent)`,

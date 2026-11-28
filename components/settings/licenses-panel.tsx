@@ -251,7 +251,7 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
                   <SourceLinks notice={selected} labelled />
                 </div>
               </div>
-              <pre className="m-4 flex-1 overflow-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs break-words whitespace-pre-wrap">
+              <pre className="m-4 flex-1 overflow-auto rounded-xl border border-border bg-surface p-3 font-mono text-xs break-words whitespace-pre-wrap">
                 {selected.text ||
                   "No license file ships with this package; its source carries the license."}
               </pre>

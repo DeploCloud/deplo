@@ -84,7 +84,7 @@ export function TeamForm({
             : "Shown before the team's name everywhere it appears."}
         </p>
       </div>
-      <div className="space-y-2 rounded-lg border border-border p-3">
+      <div className="space-y-2 rounded-xl border border-border p-3">
         <Label htmlFor="team-name">Team name</Label>
         <div className="flex gap-2">
           {loading ? (

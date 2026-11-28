@@ -89,7 +89,7 @@ export function RegistrationLinkRow({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3",
+        "rounded-xl border p-3",
         expired ? "border-destructive/30 bg-destructive-wash" : "border-border",
       )}
     >

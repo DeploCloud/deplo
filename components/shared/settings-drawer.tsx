@@ -32,7 +32,7 @@ export function SettingsDrawer({
         aria-expanded={open}
         className={cn(
           "flex w-full cursor-pointer items-center justify-between gap-2 text-left text-sm transition-colors hover:bg-surface",
-          flush ? "px-6 py-4" : "rounded-lg px-4 py-3",
+          flush ? "px-6 py-4" : "rounded-xl px-4 py-3",
         )}
       >
         <span className="flex min-w-0 items-center gap-2">

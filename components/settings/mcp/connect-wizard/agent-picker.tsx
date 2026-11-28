@@ -92,7 +92,7 @@ export function AgentCard({
       onClick={onSelect}
       style={veil.style}
       className={cn(
-        "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+        "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors",
         manual && "border-dashed",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",

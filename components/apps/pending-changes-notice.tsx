@@ -38,7 +38,7 @@ export function PendingChangesNotice({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning-wash-strong px-3.5 py-2.5 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-wash-strong px-3.5 py-2.5 text-sm">
       <div className="flex items-start gap-2.5">
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
         <div>

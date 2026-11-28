@@ -369,7 +369,7 @@ function StandaloneTab({
           <EnvRowsEditor rows={rows} onChange={setRows} notes />
 
           {looksSecret && (
-            <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
+            <p className="flex items-start gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
               <Info className="mt-px size-3.5 shrink-0" />
               <span>
                 “{filled[0].key.trim()}” reads like a credential. Turn on Secret
@@ -379,7 +379,7 @@ function StandaloneTab({
           )}
 
           {filled.length > 1 ? (
-            <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
+            <p className="flex items-start gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
               <Info className="mt-px size-3.5 shrink-0" />
               <span>
                 Pasted variables are added as plain - flip individual ones to

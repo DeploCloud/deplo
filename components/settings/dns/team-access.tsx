@@ -100,7 +100,7 @@ export function TeamAccess({
         })}
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
         <FieldLabel
           htmlFor={`${idPrefix}-shared`}
           className="cursor-pointer font-normal"

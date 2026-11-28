@@ -158,7 +158,7 @@ export function TransferTeamDialog({
           )}
 
           {info && info.targets.length === 0 && (
-            <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
+            <p className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
               You don&apos;t belong to another team that could take this app. A
               destination team needs you as a member with permission to deploy
               in it.
@@ -197,7 +197,7 @@ export function TransferTeamDialog({
           )}
 
           {info && target && (
-            <ul className="grid gap-1.5 rounded-lg border border-border p-3 text-xs text-muted-foreground">
+            <ul className="grid gap-1.5 rounded-xl border border-border p-3 text-xs text-muted-foreground">
               {blocked ? (
                 <li className="text-destructive">
                   {target.name} can&apos;t use the server this app runs on (

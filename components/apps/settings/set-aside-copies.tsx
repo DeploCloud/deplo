@@ -37,7 +37,7 @@ export function SetAsideCopies({
   const router = useRouter();
   if (copies.length === 0) return null;
   return (
-    <div className="space-y-3 rounded-md border p-4">
+    <div className="space-y-3 rounded-xl border p-4">
       <div className="space-y-1">
         <h3 className="text-sm font-medium">Set-aside copies</h3>
         <p className="text-sm text-muted-foreground">

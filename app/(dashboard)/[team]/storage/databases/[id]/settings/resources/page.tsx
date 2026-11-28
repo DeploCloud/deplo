@@ -36,7 +36,7 @@ export default async function DatabaseResourcesSettingsPage(
         info="Cap how much RAM, CPU, disk and processes this database may use. Applied on the next redeploy."
       />
       {(db.type === "mysql" || db.type === "mariadb") && (
-        <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+        <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
           {db.type === "mysql" ? "MySQL" : "MariaDB"} generally needs at least{" "}
           <strong className="font-medium text-foreground">512 MB</strong> of
           memory - a smaller limit can send InnoDB into a restart loop.

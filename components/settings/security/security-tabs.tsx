@@ -257,7 +257,7 @@ function SecurityHero({
         <button
           type="button"
           onClick={act}
-          className="group mt-auto flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent"
+          className="group mt-auto flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent"
         >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
             {loading ? (

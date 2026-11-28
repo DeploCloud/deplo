@@ -77,7 +77,7 @@ export function BackupCard({
             </div>
           </div>
 
-          <div className="space-y-1.5 rounded-lg border border-border bg-surface p-3 text-xs">
+          <div className="space-y-1.5 rounded-xl border border-border bg-surface p-3 text-xs">
             {isRunning ? (
               <p className="flex items-center gap-1.5 text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />

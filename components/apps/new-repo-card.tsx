@@ -113,13 +113,13 @@ export function NewRepoCard({
     <div className="relative">
       <Card className="h-full bg-transparent p-2">
         {view === "list" ? (
-          <div className="flex items-center gap-4 rounded-lg border border-dashed px-4 py-3">
+          <div className="flex items-center gap-4 rounded-xl border border-dashed px-4 py-3">
             {marks}
             {text}
             {importButton("sm")}
           </div>
         ) : (
-          <div className="flex h-full flex-col justify-between gap-4 rounded-lg border border-dashed p-4">
+          <div className="flex h-full flex-col justify-between gap-4 rounded-xl border border-dashed p-4">
             <div className="flex items-center gap-3">
               {marks}
               {text}

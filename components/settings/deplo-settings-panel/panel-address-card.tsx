@@ -321,7 +321,7 @@ function PanelFallbackRow({
   const [revealed, setRevealed] = React.useState(false);
   if (!url || url === panelUrl) return null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-border p-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-sm font-medium">
           <LifeBuoy className="size-4 text-muted-foreground" />

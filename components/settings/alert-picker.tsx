@@ -122,7 +122,7 @@ export function AlertPicker({
       </div>
 
       {sections.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
+        <p className="rounded-xl border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
           No alert matches your search.
         </p>
       ) : (

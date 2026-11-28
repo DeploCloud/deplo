@@ -172,7 +172,7 @@ export function DetailsStep({
 
 function TemplateIntro({ logo }: { logo: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-border p-3">
+    <div className="flex items-center gap-4 rounded-xl border border-border p-3">
       {logo}
       <p className="min-w-0 flex-1 text-sm text-muted-foreground">
         Deplo sets it up on your server and gives it an address.{" "}

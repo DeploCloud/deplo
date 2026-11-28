@@ -424,7 +424,7 @@ export function RepoBrowser({
         </Select>
       </div>
       {unreachable && !loadingRepos && (
-        <p className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-xs text-muted-foreground">
+        <p className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{unreachable}</span> is
           not among the repositories this credential can reach. Grant it access,
           or pick another repository.

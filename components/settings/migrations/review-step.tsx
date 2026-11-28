@@ -367,7 +367,7 @@ export function ReviewStep({
               return (
                 <section
                   key={g.key}
-                  className="space-y-3 rounded-lg border border-border bg-background p-3"
+                  className="space-y-3 rounded-xl border border-border bg-background p-3"
                 >
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <TeamAvatar
@@ -457,7 +457,7 @@ export function ReviewStep({
       )}
 
       {chosenNames.length > 0 && !(kind === "deplo" && liveCopy) && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
+        <div className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 text-muted-foreground">
             <SimpleTooltip content={chosenNames.join(", ")}>
@@ -494,7 +494,7 @@ export function ReviewStep({
 
 function PortsNotice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed text-warning">
+    <div className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed text-warning">
       <TriangleAlert className="mt-0.5 size-4 shrink-0" />
       <span className="min-w-0 text-muted-foreground">{children}</span>
     </div>

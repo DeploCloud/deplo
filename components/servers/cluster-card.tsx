@@ -260,7 +260,7 @@ export function ClusterCard({
           {actions}
         </div>
         {view === "grid" && (
-          <div className="pointer-events-none relative z-[1] space-y-3.5 rounded-lg border border-border bg-surface p-3.5">
+          <div className="pointer-events-none relative z-[1] space-y-3.5 rounded-xl border border-border bg-surface p-3.5">
             <ClusterNumbers cluster={cluster} />
             <HealthStrip members={cluster.members} />
           </div>

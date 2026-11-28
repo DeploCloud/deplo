@@ -16,7 +16,7 @@ export function ComposeSummary({
 }) {
   const errors = diagnostics.filter((d) => d.severity === "error").length;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
       <div className="flex min-w-0 items-center gap-3">
         <FileText className="size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">

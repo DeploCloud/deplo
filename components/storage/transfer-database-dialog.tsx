@@ -150,7 +150,7 @@ export function TransferDatabaseDialog({
           )}
 
           {info && info.targets.length === 0 && (
-            <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
+            <p className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
               You don&apos;t belong to another team that could take this
               database. You need permission to move databases there too.
             </p>
@@ -188,7 +188,7 @@ export function TransferDatabaseDialog({
           )}
 
           {info && target && (
-            <ul className="grid gap-1.5 rounded-lg border border-border p-3 text-xs text-muted-foreground">
+            <ul className="grid gap-1.5 rounded-xl border border-border p-3 text-xs text-muted-foreground">
               {!target.serverAvailable ? (
                 <li className="text-destructive">
                   {target.name} can&apos;t use the server this database runs on

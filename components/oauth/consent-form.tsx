@@ -205,7 +205,7 @@ export function ConsentForm({
   return (
     <ConsentShell>
       {wrongOrigin ? (
-        <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+        <p className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-muted-foreground">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
           <span>
             You opened Deplo at a different address from the one it publishes (

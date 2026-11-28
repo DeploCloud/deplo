@@ -98,7 +98,7 @@ export function LimitGroup({
     <div
       role="group"
       aria-label={title}
-      className="rounded-lg border border-border px-4 py-3"
+      className="rounded-xl border border-border px-4 py-3"
     >
       <p className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
         <Icon className="size-3.5" />
@@ -125,7 +125,7 @@ export function LimitCell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
+    <div className="space-y-3 rounded-xl border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <FieldLabel
           htmlFor={id}

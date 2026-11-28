@@ -150,14 +150,14 @@ export function DeleteUserDialog({
             </div>
           )}
           {failed && (
-            <p className="rounded-lg border border-destructive/40 bg-destructive-wash p-3 text-xs text-destructive">
+            <p className="rounded-xl border border-destructive/40 bg-destructive-wash p-3 text-xs text-destructive">
               {failed}
             </p>
           )}
           {impact && !blocked && (
             <>
               {impact.soloTeams.length > 0 && (
-                <div className="rounded-lg border border-destructive/40 bg-destructive-wash p-3">
+                <div className="rounded-xl border border-destructive/40 bg-destructive-wash p-3">
                   <p className="flex items-center gap-1.5 font-medium text-destructive">
                     <AlertTriangle className="size-4 shrink-0" />
                     {impact.soloTeams.length === 1
@@ -277,7 +277,7 @@ export function DeleteUserDialog({
                 </Option>
               )}
 
-              <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+              <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
                 <p className="mb-1.5 font-medium text-foreground">
                   Always removed with the account
                 </p>

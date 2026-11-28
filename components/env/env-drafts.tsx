@@ -240,7 +240,7 @@ function DraftRow({
           {tag ? (
             <span
               className={cn(
-                "flex items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[11px] whitespace-nowrap",
+                "flex items-center gap-1 truncate rounded-xl px-1.5 py-0.5 text-[11px] whitespace-nowrap",
                 TAG[tag].className,
               )}
             >
@@ -250,7 +250,7 @@ function DraftRow({
           ) : (
             lines > 0 &&
             !d.open && (
-              <span className="flex items-center gap-1 truncate rounded-md bg-surface-strong px-1.5 py-0.5 text-[11px] whitespace-nowrap text-muted-foreground">
+              <span className="flex items-center gap-1 truncate rounded-xl bg-surface-strong px-1.5 py-0.5 text-[11px] whitespace-nowrap text-muted-foreground">
                 <MessageSquareText className="size-3" />
                 {lines === 1 ? "Note, 1 line" : `Note, ${lines} lines`}
               </span>

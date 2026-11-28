@@ -185,7 +185,7 @@ function PersonCard({
   const named = person.name.trim().length > 0;
 
   return (
-    <div className="flex h-full flex-col gap-3 rounded-lg border border-border bg-background p-4">
+    <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-background p-4">
       <div className="flex w-full items-center gap-3">
         <UserAvatar
           name={person.name}
@@ -285,7 +285,7 @@ function ExtraLinks({
   panel: string;
 }) {
   return (
-    <section className="space-y-3 rounded-lg border border-border bg-background p-3">
+    <section className="space-y-3 rounded-xl border border-border bg-background p-3">
       <p className="text-sm font-medium">Somebody who wasn&apos;t on {panel}</p>
       {groups.map((g) => (
         <div

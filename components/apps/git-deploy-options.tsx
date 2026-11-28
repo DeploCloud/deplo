@@ -94,7 +94,7 @@ export function GitDeployOptions({
         >
           Include submodules
         </FieldLabel>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between rounded-xl border border-border p-3">
           <p className="text-xs text-muted-foreground">
             Clone the repository&apos;s git submodules.
           </p>

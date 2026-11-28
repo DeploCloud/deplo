@@ -346,7 +346,7 @@ export function UsersPanelSkeleton() {
         {SKELETON_USERS.map((handle) => (
           <div
             key={handle}
-            className="flex items-center gap-3 rounded-lg border border-border p-3"
+            className="flex items-center gap-3 rounded-xl border border-border p-3"
           >
             <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
               <Skeleton className="size-8 shrink-0 rounded-full" />

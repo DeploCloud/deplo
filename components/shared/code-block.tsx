@@ -46,7 +46,7 @@ export function CommandLine({
   return (
     <div
       className={cn(
-        "flex gap-2 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2",
+        "flex gap-2 rounded-xl border border-border bg-[#0a0a0a] px-3 py-2",
         truncate ? "items-center" : "items-start",
       )}
     >

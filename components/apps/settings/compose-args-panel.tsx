@@ -102,7 +102,7 @@ export function ComposeArgsPanel({
             </Button>
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-border bg-surface px-3 py-2">
+          <div className="overflow-x-auto rounded-xl border border-border bg-surface px-3 py-2">
             <code className="flex items-baseline gap-1.5 font-mono text-[0.7rem] leading-relaxed whitespace-pre">
               <Terminal
                 aria-hidden

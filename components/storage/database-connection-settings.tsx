@@ -68,7 +68,7 @@ function ExposureCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="space-y-3 rounded-xl border border-border p-3">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Expose publicly</p>
@@ -163,7 +163,7 @@ function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
               <Eye className="size-3.5" />
               New connection string - shown once, copy it now.
             </p>
-            <div className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-1.5">
               <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap">
                 {newConn}
               </code>

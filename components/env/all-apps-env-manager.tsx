@@ -510,7 +510,7 @@ function ProjectSectionHeader({
     <div
       style={headerStyle}
       className={cn(
-        "flex w-full items-center gap-2 rounded-lg border border-border px-4 transition-colors",
+        "flex w-full items-center gap-2 rounded-xl border border-border px-4 transition-colors",
         !color && "hover:bg-surface",
       )}
     >

@@ -358,7 +358,7 @@ export function ServerCleanupTab({
               </p>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3">
                 <FieldLabel
                   htmlFor="cleanup-enabled"
                   info="Turning this off pauses the schedule for all servers. To skip only this server, turn off Include this server."
@@ -453,7 +453,7 @@ export function ServerCleanupTab({
                   <div
                     key={scope.id}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg border border-border px-3 py-2.5",
+                      "flex items-center gap-3 rounded-xl border border-border px-3 py-2.5",
                       selected && "bg-surface",
                     )}
                   >

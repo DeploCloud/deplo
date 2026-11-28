@@ -298,7 +298,7 @@ export function MemberDetailTabs({
         >
           <TabsContent value="permissions" className="space-y-4 pt-2">
             {lockReason && (
-              <div className="flex items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+              <div className="flex items-center gap-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
                 <Lock className="size-5 shrink-0 text-[var(--warning)]" />
                 <p className="text-sm">{lockReason}</p>
               </div>

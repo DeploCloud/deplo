@@ -260,7 +260,7 @@ function CronJobRow({
                 {job.description}
               </p>
             )}
-            <pre className="mb-3 overflow-x-auto rounded-md bg-surface p-2 font-mono text-xs">
+            <pre className="mb-3 overflow-x-auto rounded-xl bg-surface p-2 font-mono text-xs">
               {job.command}
             </pre>
             <CronRunHistory

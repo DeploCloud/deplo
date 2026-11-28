@@ -31,7 +31,7 @@ const COMPONENTS: Components = {
     </code>
   ),
   pre: ({ children }) => (
-    <pre className="overflow-x-auto rounded-md border border-border bg-surface p-3 font-mono text-xs">
+    <pre className="overflow-x-auto rounded-xl border border-border bg-surface p-3 font-mono text-xs">
       {children}
     </pre>
   ),

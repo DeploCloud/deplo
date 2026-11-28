@@ -309,7 +309,7 @@ function QueuedBanner({ position }: { position: number | null }) {
         </p>
       </div>
       {position != null && (
-        <span className="shrink-0 rounded-md border border-warning/40 bg-warning-wash px-2.5 py-1 text-xs font-medium text-[var(--warning)] tabular-nums">
+        <span className="shrink-0 rounded-xl border border-warning/40 bg-warning-wash px-2.5 py-1 text-xs font-medium text-[var(--warning)] tabular-nums">
           #{position} in queue
         </span>
       )}

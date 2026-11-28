@@ -86,7 +86,7 @@ export function ServerClock({
           <HostUnavailable what="Server time" reason={error} />
         ) : (
           <form className="space-y-4" onSubmit={save}>
-            <div className="rounded-lg border border-border bg-surface p-4">
+            <div className="rounded-xl border border-border bg-surface p-4">
               {hostNow && info ? (
                 <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
                   <div className="min-w-0">

@@ -139,14 +139,14 @@ export function DatabaseConfigFiles({
       </CardHeader>
       <CardContent className="space-y-4">
         {rows.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+          <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
             No config files. The engine runs on its own defaults.
           </p>
         ) : (
           rows.map((row, i) => (
             <div
               key={row.key}
-              className="space-y-3 rounded-lg border border-border p-3"
+              className="space-y-3 rounded-xl border border-border p-3"
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -202,7 +202,7 @@ export function DatabaseConfigFiles({
               </div>
 
               {problems[i] && (
-                <p className="flex items-start gap-1.5 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2 text-xs text-foreground">
+                <p className="flex items-start gap-1.5 rounded-xl border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2 text-xs text-foreground">
                   <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
                   <span>{problems[i]}</span>
                 </p>

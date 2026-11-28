@@ -252,7 +252,7 @@ export function ConnectStep({
         )}
 
         {!takeover && kind !== "deplo" && (
-          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div className="flex items-center justify-between gap-4 rounded-xl border p-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <ServerIcon className="size-4 text-muted-foreground" />
@@ -277,7 +277,7 @@ export function ConnectStep({
         )}
 
         {scanError && (
-          <div className="grid gap-3 rounded-lg border border-destructive/40 bg-destructive-wash p-3 leading-relaxed">
+          <div className="grid gap-3 rounded-xl border border-destructive/40 bg-destructive-wash p-3 leading-relaxed">
             <div className="flex items-start gap-2">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
               <div className="grid min-w-0 gap-1">

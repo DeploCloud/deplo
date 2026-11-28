@@ -108,7 +108,7 @@ export function ConfigureStep({
         </>
       )}
 
-      <div className="flex items-center justify-between rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between rounded-xl border border-border p-3">
         <div className="flex items-center gap-2">
           <GitBranch className="size-5 text-muted-foreground" />
           <div>

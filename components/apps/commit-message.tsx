@@ -67,7 +67,7 @@ export function CommitMessage({
               value={message}
               className="absolute top-2 right-2 z-10"
             />
-            <p className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-surface p-4 pr-12 text-sm leading-relaxed whitespace-pre-wrap">
+            <p className="max-h-[60vh] overflow-auto rounded-xl border border-border bg-surface p-4 pr-12 text-sm leading-relaxed whitespace-pre-wrap">
               {message}
             </p>
           </div>

@@ -634,7 +634,7 @@ export function AppCard({
           </div>
 
           {dep ? (
-            <div className="rounded-lg border border-border bg-surface p-3">
+            <div className="rounded-xl border border-border bg-surface p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {dep.commitSha && (
                   <code className="shrink-0 font-mono text-foreground">
@@ -670,7 +670,7 @@ export function AppCard({
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
               No deployments yet
               {identity && (
                 <div className="mt-2 flex items-center gap-1.5">{identity}</div>
@@ -760,7 +760,7 @@ export function AppCardSkeleton({ view = "grid" }: { view?: "grid" | "list" }) {
           </div>
           {actions}
         </div>
-        <div className="rounded-lg border border-border bg-surface p-3">
+        <div className="rounded-xl border border-border bg-surface p-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <code className="shrink-0 font-mono text-foreground">
               <Bone>0000000</Bone>

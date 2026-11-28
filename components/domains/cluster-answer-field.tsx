@@ -34,7 +34,7 @@ export function ClusterAnswerField({
       aria-pressed={way === value}
       onClick={() => onWay(value)}
       className={cn(
-        "flex-1 rounded-md px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50",
+        "flex-1 rounded-xl px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50",
         way === value
           ? "text-foreground"
           : "text-muted-foreground hover:text-foreground",
@@ -44,7 +44,7 @@ export function ClusterAnswerField({
     </button>
   );
   return (
-    <div className="space-y-2 rounded-md border border-[#f38020]/40 bg-[#f38020]/5 px-3 py-2">
+    <div className="space-y-2 rounded-xl border border-[#f38020]/40 bg-[#f38020]/5 px-3 py-2">
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <CloudflareIcon className="size-3.5 shrink-0 text-[#f38020]" />
         <span>

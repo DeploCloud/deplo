@@ -43,7 +43,7 @@ function SizeTile({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "flex h-full w-full flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors",
+        "flex h-full w-full flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:pointer-events-none disabled:opacity-50",
         selected
@@ -128,7 +128,7 @@ export function HostSummaryCell({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-lg border border-border p-4 sm:col-span-2 lg:col-span-1",
+        "flex flex-col gap-3 rounded-xl border border-border p-4 sm:col-span-2 lg:col-span-1",
         suggestion != null && "deplo-brand-wash",
       )}
     >

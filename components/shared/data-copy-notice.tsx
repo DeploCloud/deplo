@@ -51,7 +51,7 @@ export function DataCopyNotice({
   const verb = kind === "app" ? "Deploy" : "Start";
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex items-start gap-2.5 text-sm">
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
         <div className="space-y-1">

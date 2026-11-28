@@ -8,7 +8,7 @@ import { ROW_SHELL, sectionShell } from "./section-shell";
 export function EditorSkeleton({ withDanger }: { withDanger: boolean }) {
   return (
     <>
-      <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
+      <div className="grid grid-cols-3 gap-2 rounded-xl border border-border p-3">
         {[0, 1, 2].map((i) => (
           <div key={i}>
             <TextLine box="h-4" bar="h-3 w-12" />

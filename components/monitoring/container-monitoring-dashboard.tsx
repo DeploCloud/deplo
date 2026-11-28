@@ -419,7 +419,7 @@ export function ContainerMonitoringDashboard({
           </ul>
         )}
         {hasLimits && (
-          <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
             <Gauge className="mt-0.5 size-4 shrink-0" />
             <p>
               <span className="font-medium text-foreground">

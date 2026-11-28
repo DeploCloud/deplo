@@ -162,7 +162,7 @@ export function BuildServerPanel({
       }
     >
       {buildsElsewhere && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-surface px-3 py-2.5">
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2.5">
           <div className="space-y-0.5">
             <p className="flex items-center gap-1.5 text-sm font-medium">
               Build somewhere else if that server is down

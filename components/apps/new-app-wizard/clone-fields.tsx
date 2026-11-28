@@ -43,7 +43,7 @@ export function cloneTargetReady(
 
 export function CloneSourceCard({ clone }: { clone: WizardClone }) {
   return (
-    <div className="rounded-lg bg-surface p-4">
+    <div className="rounded-xl bg-surface p-4">
       <p className="text-sm text-muted-foreground">
         Cloning from {clone.hostLabel}
       </p>

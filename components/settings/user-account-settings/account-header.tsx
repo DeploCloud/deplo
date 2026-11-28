@@ -75,7 +75,7 @@ export function AccountMeta({
 }) {
   return (
     <>
-      <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
+      <div className="grid grid-cols-3 gap-2 rounded-xl border border-border p-3">
         <Meta label="Joined" value={createdAt ? timeAgo(createdAt) : "—"} />
         <Meta label="Teams" value={String(teamCount)} />
         <Meta label="Sign-in" value={suspended ? "Blocked" : "Allowed"} />

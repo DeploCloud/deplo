@@ -142,7 +142,7 @@ export function SourceStep({
     >
       <div className="grid gap-4">
         {incoming && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3">
             <p className="text-sm">A move into this Deplo is under way.</p>
             <Button size="sm" asChild>
               <Link href={`/moving/${move.activeTargetId}`}>Show progress</Link>

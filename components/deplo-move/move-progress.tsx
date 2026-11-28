@@ -441,7 +441,7 @@ function Note({
   return (
     <p
       className={cn(
-        "flex items-start gap-2 rounded-lg border p-3 text-sm",
+        "flex items-start gap-2 rounded-xl border p-3 text-sm",
         tone === "destructive"
           ? "border-destructive/40 bg-destructive-wash text-destructive"
           : "border-warning/40 bg-warning-wash text-warning",

@@ -85,7 +85,7 @@ export function UploadInput({
   return (
     <div className="space-y-3">
       {shown && (
-        <div className="flex items-center gap-3 rounded-md border border-border bg-surface p-3">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
           <FileArchive className="size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{shown.filename}</p>
