@@ -34,6 +34,7 @@ import {
 } from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, formatBytes } from "@/lib/utils";
+import { ariaSort, SortButton, useTableSort } from "@/components/ui/table-sort";
 import type { ResourceLimits } from "@/lib/types/container";
 
 function fmtCores(cores: number): string {
@@ -632,7 +633,36 @@ function stateOf(c: InstanceMetrics): { dot: string; label: string } {
   }
 }
 
+const BREAKDOWN_SORT = {
+  name: (c: InstanceMetrics) => c.replica ?? c.name,
+  status: (c: InstanceMetrics) => stateOf(c).label,
+  cpu: (c: InstanceMetrics) => (c.running ? c.cpu : null),
+  memory: (c: InstanceMetrics) => (c.running ? c.memUsed : null),
+  pids: (c: InstanceMetrics) => (c.running ? c.pids : null),
+  restarts: (c: InstanceMetrics) => c.restartCount,
+};
+
 function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
+  const { rows, sort, toggle } = useTableSort(instances, BREAKDOWN_SORT);
+  const head = (
+    column: keyof typeof BREAKDOWN_SORT,
+    label: string,
+    right?: boolean,
+  ) => (
+    <th
+      aria-sort={ariaSort(sort, column)}
+      className={cn("px-4 py-2 font-medium", right && "text-right")}
+    >
+      <SortButton
+        column={column}
+        sort={sort}
+        onSort={toggle}
+        align={right ? "right" : "left"}
+      >
+        {label}
+      </SortButton>
+    </th>
+  );
   return (
     <Card>
       <CardContent className="p-0">
@@ -640,16 +670,16 @@ function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2 font-medium">Container</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 text-right font-medium">CPU</th>
-                <th className="px-4 py-2 text-right font-medium">Memory</th>
-                <th className="px-4 py-2 text-right font-medium">PIDs</th>
-                <th className="px-4 py-2 text-right font-medium">Restarts</th>
+                {head("name", "Container")}
+                {head("status", "Status")}
+                {head("cpu", "CPU", true)}
+                {head("memory", "Memory", true)}
+                {head("pids", "PIDs", true)}
+                {head("restarts", "Restarts", true)}
               </tr>
             </thead>
             <tbody>
-              {instances.map((c) => (
+              {rows.map((c) => (
                 <tr
                   key={`${c.name}@${c.server ?? ""}`}
                   className="border-b last:border-0"
