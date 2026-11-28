@@ -29,6 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
@@ -125,6 +126,14 @@ function MemberNotes({ server }: { server: ServerCardData }) {
   );
 }
 
+const MEMBER_SORT = {
+  server: (s: ServerCardData) => s.name,
+  status: (s: ServerCardData) => s.health.status,
+  cpu: (s: ServerCardData) => s.usage?.cpu ?? null,
+  memory: (s: ServerCardData) => s.usage?.memUsed ?? null,
+  apps: (s: ServerCardData) => s.apps,
+};
+
 export function ClusterView({
   cluster,
   servers,
@@ -151,6 +160,7 @@ export function ClusterView({
   const [joinOpen, setJoinOpen] = React.useState(false);
   const [, startJoin] = React.useTransition();
   const [chosen, setChosen] = React.useState<Set<string>>(() => new Set());
+  const sorted = useTableSort(servers, MEMBER_SORT);
   const [bulkRemoveOpen, setBulkRemoveOpen] = React.useState(false);
   const [installOpen, setInstallOpen] = React.useState(false);
   const { checkOne } = useServerHealth();
@@ -289,18 +299,51 @@ export function ClusterView({
                         }
                       />
                     </TableHead>
-                    <TableHead>Server</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="max-md:hidden">CPU</TableHead>
-                    <TableHead className="max-md:hidden">Memory</TableHead>
-                    <TableHead className="max-md:hidden">Apps</TableHead>
+                    <SortableHead
+                      column="server"
+                      sort={sorted.sort}
+                      onSort={sorted.toggle}
+                    >
+                      Server
+                    </SortableHead>
+                    <SortableHead
+                      column="status"
+                      sort={sorted.sort}
+                      onSort={sorted.toggle}
+                    >
+                      Status
+                    </SortableHead>
+                    <SortableHead
+                      column="cpu"
+                      sort={sorted.sort}
+                      onSort={sorted.toggle}
+                      className="max-md:hidden"
+                    >
+                      CPU
+                    </SortableHead>
+                    <SortableHead
+                      column="memory"
+                      sort={sorted.sort}
+                      onSort={sorted.toggle}
+                      className="max-md:hidden"
+                    >
+                      Memory
+                    </SortableHead>
+                    <SortableHead
+                      column="apps"
+                      sort={sorted.sort}
+                      onSort={sorted.toggle}
+                      className="max-md:hidden"
+                    >
+                      Apps
+                    </SortableHead>
                     <TableHead className="w-0">
                       <span className="sr-only">Actions</span>
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {servers.map((s) => (
+                  {sorted.rows.map((s) => (
                     <TableRow
                       key={s.id}
                       data-state={chosen.has(s.id) ? "selected" : undefined}

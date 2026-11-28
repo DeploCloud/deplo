@@ -19,6 +19,7 @@ import { StatusIndicator } from "@/components/apps/app-status-dot/status-rendere
 import { DB_LOGOS, DB_NAMES } from "@/components/storage/db-engines";
 import { useUrlFacets } from "@/components/shared/filter-facet";
 import { countBy, teamFacetOptions } from "@/components/shared/facet-filtering";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
@@ -78,6 +79,18 @@ const FACETS = ["team", "status", "type"] as const;
 // Hidden below md so a phone keeps name, status and team.
 const WIDE = "hidden md:table-cell";
 
+const WORKLOAD_SORT = {
+  name: (w: ServerWorkload) => w.name,
+  type: (w: ServerWorkload) => w.kind,
+  team: (w: ServerWorkload) => w.teamName,
+  project: (w: ServerWorkload) =>
+    [w.project, w.environment].filter(Boolean).join(" / ") || null,
+  status: (w: ServerWorkload) => w.status,
+  cpu: (w: ServerWorkload) => w.cpu,
+  memory: (w: ServerWorkload) => w.memUsed,
+  restarts: (w: ServerWorkload) => w.restarts,
+};
+
 export function ServerWorkloads({
   serverId,
   initial,
@@ -122,6 +135,16 @@ export function ServerWorkloads({
     };
   }, [serverId]);
 
+  const sorted = useTableSort(
+    filterWorkloads(rows ?? PLACEHOLDER_WORKLOADS, {
+      query,
+      statuses: picked.status,
+      kinds: picked.type,
+      teams: picked.team,
+    }),
+    WORKLOAD_SORT,
+  );
+
   if (rows === null && error)
     return (
       <div role="alert">
@@ -146,12 +169,7 @@ export function ServerWorkloads({
       />
     );
 
-  const shown = filterWorkloads(list, {
-    query,
-    statuses: picked.status,
-    kinds: picked.type,
-    teams: picked.team,
-  });
+  const shown = sorted.rows;
   const teams = teamFacetOptions(
     list.map((w) => [
       { slug: w.teamSlug, name: w.teamName, avatarUrl: w.teamAvatarUrl },
@@ -218,18 +236,72 @@ export function ServerWorkloads({
           <TableHeader>
             <TableRow>
               <TableHead className="w-8" />
-              <TableHead>Name</TableHead>
-              <TableHead className="hidden w-28 sm:table-cell">Type</TableHead>
-              <TableHead className="hidden sm:table-cell">Team</TableHead>
-              <TableHead className={WIDE}>Project</TableHead>
-              <TableHead className="w-32">Status</TableHead>
-              <TableHead className={cn(WIDE, "w-16 text-right")}>CPU</TableHead>
-              <TableHead className={cn(WIDE, "w-20 text-right")}>
+              <SortableHead
+                column="name"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+              >
+                Name
+              </SortableHead>
+              <SortableHead
+                column="type"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+                className="hidden w-28 sm:table-cell"
+              >
+                Type
+              </SortableHead>
+              <SortableHead
+                column="team"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+                className="hidden sm:table-cell"
+              >
+                Team
+              </SortableHead>
+              <SortableHead
+                column="project"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+                className={WIDE}
+              >
+                Project
+              </SortableHead>
+              <SortableHead
+                column="status"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+                className="w-32"
+              >
+                Status
+              </SortableHead>
+              <SortableHead
+                column="cpu"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+                align="right"
+                className={cn(WIDE, "w-16")}
+              >
+                CPU
+              </SortableHead>
+              <SortableHead
+                column="memory"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+                align="right"
+                className={cn(WIDE, "w-20")}
+              >
                 Memory
-              </TableHead>
-              <TableHead className={cn(WIDE, "w-20 text-right")}>
+              </SortableHead>
+              <SortableHead
+                column="restarts"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+                align="right"
+                className={cn(WIDE, "w-20")}
+              >
                 Restarts
-              </TableHead>
+              </SortableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

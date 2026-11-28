@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
@@ -53,6 +54,18 @@ const TARGET_OPTIONS = [
   { value: "database", label: "Databases" },
 ];
 
+const BACKUP_SORT = {
+  name: (b: BackupDTO) => b.name,
+  target: (b: BackupDTO) =>
+    b.targetKind === "app" ? b.serviceName : b.databaseName,
+  destination: (b: BackupDTO) => b.destinationName,
+  schedule: (b: BackupDTO) => b.schedule,
+  retention: (b: BackupDTO) => b.retentionCount,
+  lastRun: (b: BackupDTO) =>
+    b.lastStatus === "never" || !b.lastRunAt ? null : Date.parse(b.lastRunAt),
+  enabled: (b: BackupDTO) => b.enabled,
+};
+
 export function BackupsView({
   backups,
   destinations,
@@ -89,6 +102,7 @@ export function BackupsView({
   const rowProps = { destinations, canManage, canRestore, canTestDestinations };
 
   const visibleIds = filtered.map((b) => b.id);
+  const sorted = useTableSort(filtered, BACKUP_SORT);
   const selection = useCardSelection(visibleIds);
   const {
     selected,
@@ -197,19 +211,61 @@ export function BackupsView({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Target</TableHead>
-                  <TableHead>Destination</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead>Retention</TableHead>
-                  <TableHead>Last run</TableHead>
-                  <TableHead>Enabled</TableHead>
+                  <SortableHead
+                    column="name"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Name
+                  </SortableHead>
+                  <SortableHead
+                    column="target"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Target
+                  </SortableHead>
+                  <SortableHead
+                    column="destination"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Destination
+                  </SortableHead>
+                  <SortableHead
+                    column="schedule"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Schedule
+                  </SortableHead>
+                  <SortableHead
+                    column="retention"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Retention
+                  </SortableHead>
+                  <SortableHead
+                    column="lastRun"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Last run
+                  </SortableHead>
+                  <SortableHead
+                    column="enabled"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Enabled
+                  </SortableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <OptimisticList>
-                  {filtered.map((b) => (
+                  {sorted.rows.map((b) => (
                     <BackupRow
                       key={b.id}
                       backup={b}

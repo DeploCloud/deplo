@@ -5,6 +5,11 @@ import { useRouter } from "@/lib/nav";
 import { Archive, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  SortableHead,
+  useTableSort,
+  type SortState,
+} from "@/components/ui/table-sort";
+import {
   Table,
   TableBody,
   TableHead,
@@ -27,6 +32,24 @@ import { BackUpNow } from "./back-up-now";
 import { ScheduleBackup } from "./schedule-wizard";
 import { ScheduleRow, ScheduleRowSkeleton } from "./schedule-row";
 import { PendingRunRow, RunRow, RunRowSkeleton } from "./run-row";
+
+const SCHEDULE_SORT = {
+  name: (b: BackupDTO) => b.name,
+  destination: (b: BackupDTO) => b.destinationName,
+  schedule: (b: BackupDTO) => b.schedule,
+  retention: (b: BackupDTO) => b.retentionCount,
+  lastRun: (b: BackupDTO) =>
+    b.lastStatus === "never" || !b.lastRunAt ? null : Date.parse(b.lastRunAt),
+  enabled: (b: BackupDTO) => b.enabled,
+};
+const RUN_SORT = {
+  backup: (r: BackupRun) => Date.parse(r.startedAt),
+  size: (r: BackupRun) => r.sizeBytes,
+};
+type Sorted<K extends string> = {
+  sort: SortState<K>;
+  toggle: (column: K) => void;
+};
 
 export function BackupsPanel({
   target,
@@ -57,6 +80,8 @@ export function BackupsPanel({
     [destinations],
   );
 
+  const sortedSchedules = useTableSort(schedules, SCHEDULE_SORT);
+  const sortedRuns = useTableSort(runs, RUN_SORT);
   const [pending, setPending] = React.useState<
     { id: number; destinationId: string; baseline: number }[]
   >([]);
@@ -156,10 +181,10 @@ export function BackupsPanel({
           ) : (
             <div className="rounded-xl border border-border">
               <Table>
-                <SchedulesHead />
+                <SchedulesHead sorted={sortedSchedules} />
                 <TableBody>
                   <OptimisticList>
-                    {schedules.map((s) => (
+                    {sortedSchedules.rows.map((s) => (
                       <ScheduleRow
                         key={s.id}
                         schedule={s}
@@ -190,7 +215,7 @@ export function BackupsPanel({
         ) : (
           <div className="rounded-xl border border-border">
             <Table>
-              <RunsHead />
+              <RunsHead sorted={sortedRuns} />
               <TableBody>
                 {pending.map((p) => (
                   <PendingRunRow
@@ -202,7 +227,7 @@ export function BackupsPanel({
                   />
                 ))}
                 <OptimisticList>
-                  {runs.map((run) => (
+                  {sortedRuns.rows.map((run) => (
                     <RunRow
                       key={run.id}
                       run={run}
@@ -243,28 +268,52 @@ function BackupsHeader({
   );
 }
 
-function SchedulesHead() {
+function headOf<K extends string>(sorted: Sorted<K> | undefined) {
+  return function Head(column: K, label: string, className?: string) {
+    return sorted ? (
+      <SortableHead
+        column={column}
+        sort={sorted.sort}
+        onSort={sorted.toggle}
+        align={className?.includes("text-right") ? "right" : "left"}
+        className={className}
+      >
+        {label}
+      </SortableHead>
+    ) : (
+      <TableHead className={className}>{label}</TableHead>
+    );
+  };
+}
+
+function SchedulesHead({
+  sorted,
+}: {
+  sorted?: Sorted<keyof typeof SCHEDULE_SORT>;
+}) {
+  const head = headOf(sorted);
   return (
     <TableHeader>
       <TableRow>
-        <TableHead>Name</TableHead>
-        <TableHead>Destination</TableHead>
-        <TableHead>Schedule</TableHead>
-        <TableHead>Retention</TableHead>
-        <TableHead>Last run</TableHead>
-        <TableHead>Enabled</TableHead>
+        {head("name", "Name")}
+        {head("destination", "Destination")}
+        {head("schedule", "Schedule")}
+        {head("retention", "Retention")}
+        {head("lastRun", "Last run")}
+        {head("enabled", "Enabled")}
         <TableHead className="text-right" />
       </TableRow>
     </TableHeader>
   );
 }
 
-function RunsHead() {
+function RunsHead({ sorted }: { sorted?: Sorted<keyof typeof RUN_SORT> }) {
+  const head = headOf(sorted);
   return (
     <TableHeader>
       <TableRow>
-        <TableHead>Backup</TableHead>
-        <TableHead className="text-right">Size</TableHead>
+        {head("backup", "Backup")}
+        {head("size", "Size", "text-right")}
         <TableHead className="w-px" />
       </TableRow>
     </TableHeader>
