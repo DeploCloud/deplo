@@ -100,7 +100,11 @@ test("a failed update shows its state and Retry now; a pause is named", () => {
       ],
     }),
   );
-  assert.ok(html.includes("Unusable - Update failed (gave up after 24 h)"));
+  assert.ok(
+    html.includes(
+      "Unusable - Update stopped: the new server agent did not stay up",
+    ),
+  );
   assert.ok(html.includes("Retry now"));
-  assert.ok(html.includes("Waiting for edge-2 to recover"));
+  assert.ok(html.includes("Updates stopped at edge-2"));
 });

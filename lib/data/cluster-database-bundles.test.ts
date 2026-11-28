@@ -143,6 +143,8 @@ test("the bundle is sent again when a new backup completes, and not when nothing
         sha256: "def456",
         decryptedSizeBytes: 0,
         heldMs: 0,
+        heldWhy: "",
+        path: "",
       },
     };
   };
@@ -175,6 +177,8 @@ test("the bundle is sent again when a new backup completes, and not when nothing
         sha256: "",
         decryptedSizeBytes: 0,
         heldMs: 0,
+        heldWhy: "",
+        path: "",
       },
     };
   };
@@ -366,6 +370,28 @@ test("the leader is told which member's agent stops its work on the short fence 
     [
       ["srv_2", true],
       ["srv_3", false],
+    ],
+  );
+});
+
+test("the leader is told which member's agent kills its stacks all at once", async () => {
+  const at = (id: string, agentVersion: string) =>
+    db
+      .update(serversTable)
+      .set({ agentVersion })
+      .where(eq(serversTable.id, id));
+  await at("srv_2", "0.5.3-canary.43");
+  await at("srv_3", "0.5.3-canary.42");
+  const cluster = await eu();
+  forgetLeaderRoster();
+  await pushLeaderRoster((await getClusterById(cluster.id))!);
+
+  const members = leader.rosters.at(-1)!.members;
+  assert.deepEqual(
+    members.map((m) => [m.id, m.shortFence ?? false, m.quickStop ?? false]),
+    [
+      ["srv_2", true, true],
+      ["srv_3", true, false],
     ],
   );
 });

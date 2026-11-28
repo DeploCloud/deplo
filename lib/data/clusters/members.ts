@@ -18,6 +18,7 @@ import {
 } from "../databases/failover";
 import { ensureVolumeAppBackups } from "./app-restore";
 import { joinAppTunnels } from "./app-tunnel";
+import { prepareJoiningProxy } from "./join-proxy";
 import { inBackground } from "./bundles";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
@@ -41,7 +42,7 @@ import {
   type ClusterMemberNetwork,
 } from "../../types/cluster";
 import { isDeploHostServer } from "../../deploy/domains";
-import { clusterNetworkLinksOf } from "./network";
+import { clusterNetworkLinksOf, syncClusterNetwork } from "./network";
 import { relayLevel, relayedServerWarning } from "../../clusters/direct-core";
 import { clusterHeirs } from "./succession";
 import type { ServerStatus } from "../../types/server";
@@ -55,6 +56,7 @@ import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
 import { getCluster, getClusterById, requireClusterAdmin } from "./roster";
 import { messageOf } from "../../utils";
+import { copiesWithoutRoom } from "./copy-room";
 
 /** A join refused: `reasons` lists every blocker found, so the admin fixes them in one pass. */
 export class ClusterJoinRefusedError extends Error {
@@ -289,9 +291,10 @@ async function toMember(
   r: MemberRow,
   viewer: Viewer,
   network: ClusterMemberNetwork = { relayed: [], unreachable: [] },
-  extra: Pick<ClusterMember, "relayWarning" | "nextInLine"> = {
+  extra: Pick<ClusterMember, "relayWarning" | "nextInLine" | "copyWarning"> = {
     relayWarning: "",
     nextInLine: 0,
+    copyWarning: "",
   },
 ): Promise<ClusterMember> {
   const held = await listMemberWorkloads(r.serverId);
@@ -389,6 +392,7 @@ async function readMembers(
   );
   const cluster = await getClusterById(clusterId);
   const heirs = cluster ? await clusterHeirs(cluster).catch(() => []) : [];
+  const noRoom = await copiesWithoutRoom(ids, viewer);
   return Promise.all(
     rows.map((r) =>
       toMember(r, viewer, network.get(r.serverId), {
@@ -396,6 +400,7 @@ async function readMembers(
           ? relayedServerWarning(r.serverName)
           : "",
         nextInLine: heirs.indexOf(r.serverId) + 1,
+        copyWarning: noRoom.get(r.serverId) ?? "",
       }),
     ),
   );
@@ -432,6 +437,7 @@ export async function addClusterMember(
 
   const reasons = await joinReasons(cluster, server);
   if (reasons.length > 0) throw new ClusterJoinRefusedError(reasons);
+  await prepareJoiningProxy(cluster, server);
 
   let cameApps: string[] = [];
   const came = await getDb().transaction(async (tx) => {
@@ -483,8 +489,27 @@ export async function addClusterMember(
     cameApps = apps.map((a) => a.id);
     return { apps: apps.length, databases: dbs.length };
   });
-
   const members = await readMembers(clusterId, { admin: true, teamId });
+  // The member's own change already happened: the sweep puts the roster right if a relay is down.
+  try {
+    const push = await pushClusterRoster(
+      clusterId,
+      members.map((m) => m.serverId),
+    );
+    for (const f of push.failed)
+      console.warn(`[cluster-relay] ${clusterId}: ${f.serverId} ${f.message}`);
+  } catch (e) {
+    console.warn(`[cluster-relay] ${clusterId}: ${messageOf(e)}`);
+  }
+  // c50: its peers learned it at the 2-minute network pass, and its agent refused routes handed before it was a member.
+  await syncClusterNetwork(clusterId).catch((e) =>
+    console.warn(`[cluster-join] ${clusterId}: ${messageOf(e)}`),
+  );
+  const { handForwarderTables } = await import("./forwarders");
+  await handForwarderTables(clusterId).catch((e) =>
+    console.warn(`[cluster-join] ${clusterId}: ${messageOf(e)}`),
+  );
+
   const member = members.find((m) => m.serverId === serverId)!;
   await recordActivity(
     "server",
@@ -531,17 +556,6 @@ export async function addClusterMember(
   await rehomeFailoverBackups(clusterId).catch((e) =>
     console.warn(`[cluster] ${clusterId}: ${messageOf(e)}`),
   );
-  // The member's own change already happened: the sweep puts the roster right if a relay is down.
-  try {
-    const push = await pushClusterRoster(
-      clusterId,
-      members.map((m) => m.serverId),
-    );
-    for (const f of push.failed)
-      console.warn(`[cluster-relay] ${clusterId}: ${f.serverId} ${f.message}`);
-  } catch (e) {
-    console.warn(`[cluster-relay] ${clusterId}: ${messageOf(e)}`);
-  }
   // A domain that answers on every server lists the new one too.
   syncClusterAnswerDnsSoon(clusterId);
   // An App that came along keeps its address wherever it runs from now: its domains switch without waiting for the sweep.

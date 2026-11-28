@@ -22,6 +22,7 @@ import { seedServerRow } from "../infra-test-helpers";
 import { retryServerAgentUpdate } from "./agent-maintenance";
 import {
   fleetAgentStatus,
+  leaderHandOff,
   rolloutTiming,
   runAgentRollout,
 } from "./agent-rollout";
@@ -38,29 +39,72 @@ interface FakeAgent {
   reachable: boolean;
   canSelfUpdate: boolean;
   comesBack: boolean;
+  // goesBack: the new binary does not answer and the agent puts the one before it back (ADR-0043).
+  goesBack?: boolean;
+  // hellos left before it stops answering: an agent that dies after it came back.
+  hellosLeft?: number;
+  // hellos still answered by the old process after the update: it execs after a renewal (agent #142).
+  oldHellos?: number;
+  staged?: string;
   updates: number;
 }
 const agents = new Map<string, FakeAgent>();
 const order: string[] = [];
 const waits: number[] = [];
+// What the leader on a server says of each member's lease, by cluster: its snapshot.
+const leaderSays = new Map<string, Record<string, string>>();
 
 function fakeConnector(id: string): Promise<AgentConnection> {
   const a = agents.get(id)!;
   return Promise.resolve({
     hello: async () => {
+      if (a.staged && !(a.oldHellos! > 0)) a.version = a.staged;
+      else if (a.staged) a.oldHellos!--;
+      if (a.hellosLeft !== undefined && a.hellosLeft-- <= 0)
+        a.reachable = false;
       if (!a.reachable) throw new Error("connect ECONNREFUSED");
       return {
         agentVersion: a.version,
         contractVersion: 1,
-        capabilities: a.canSelfUpdate ? ["self-update"] : [],
+        capabilities: a.canSelfUpdate ? ["self-update", "cluster.host"] : [],
       };
     },
     selfUpdate: async (version: string) => {
       a.updates++;
       order.push(id);
+      if (a.goesBack) return { version, restarting: true };
+      if (a.oldHellos !== undefined) {
+        a.staged = version;
+        return { version, restarting: true };
+      }
       if (a.comesBack) a.version = version;
       else a.reachable = false;
       return { version, restarting: true };
+    },
+    clusterStatus: async () => ({
+      installed: true,
+      running: true,
+      version: "9.9.9",
+      relay: false,
+      member: true,
+      relayLinks: 1,
+    }),
+    clusterCall: async () => {
+      const clusters = Object.fromEntries(
+        [...leaderSays].map(([c, states]) => [
+          c,
+          {
+            epoch: 1,
+            superseded: false,
+            members: Object.entries(states).map(([m, state]) => ({
+              id: m,
+              state,
+              heard: true,
+            })),
+          },
+        ]),
+      );
+      return new TextEncoder().encode(JSON.stringify({ head: 0, clusters }));
     },
     close: () => {},
   } as unknown as AgentConnection);
@@ -104,7 +148,12 @@ before(async () => {
   process.env.DEPLO_SERVER_IP = "192.0.2.250";
   rolloutTiming.confirmTries = 2;
   rolloutTiming.confirmDelayMs = 0;
+  rolloutTiming.oldTries = 0;
   rolloutTiming.wait = async (ms) => void waits.push(ms);
+  rolloutTiming.holdMs = 30;
+  rolloutTiming.holdWait = async () => {
+    await new Promise((r) => setTimeout(r, 5));
+  };
   (globalThis as Record<symbol, unknown>)[
     Symbol.for("deplo.agent.release.cache")
   ] = {
@@ -130,6 +179,7 @@ beforeEach(async () => {
   );
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A }] });
   agents.clear();
+  leaderSays.clear();
   order.length = 0;
   waits.length = 0;
   __setAgentConnectorForTest(fakeConnector);
@@ -244,9 +294,14 @@ test("a name server is given its silent time before the next server updates", as
   await server("srv_ns", BEHIND);
   await server("srv_alone", BEHIND);
   const at = new Date().toISOString();
-  await db
-    .insert(clusters)
-    .values({ id: "clu_1", name: "eu", createdAt: at, dnsDropAfter: 10 });
+  await db.insert(clusters).values({
+    id: "clu_1",
+    name: "eu",
+    createdAt: at,
+    dnsDropAfter: 70,
+    leaderServerId: "srv_alone",
+  });
+  leaderSays.set("clu_1", { srv_ns: "ok" });
   await db
     .insert(clusterMembers)
     .values({ serverId: "srv_ns", clusterId: "clu_1", joinedAt: at });
@@ -261,7 +316,149 @@ test("a name server is given its silent time before the next server updates", as
   assert.equal(agents.get("srv_alone")!.version, AGENT_VERSION);
   assert.deepEqual(
     waits,
-    [15_000],
-    "the removal time and a margin, after the name server only",
+    [75_000 - 30],
+    "the removal time and a margin past the minute it is held, after the name server only",
   );
+});
+
+const messagesNow = async () => (await messages()).join("\n");
+
+// ADR-0043: a new binary that does not answer goes back to the one before it, and the rollout stops there.
+test("a server back on the version it had stops the rollout, and is not tried again on its own", async () => {
+  await server("srv_a", BEHIND, { goesBack: true });
+  await server("srv_b", BEHIND);
+  await runAgentRollout();
+  assert.deepEqual(order, ["srv_a"], "nothing past the server that went back");
+  const row = (await getAgentUpdate("srv_a"))!;
+  assert.equal(row.failure, "no_return");
+  assert.equal(row.nextRetryAt, null, "no retry of the same release");
+  assert.match(
+    row.lastError,
+    /It still ran v0\.5\.1-canary\.10 1 second after taking v.+, so the new server agent did not start or went back/,
+  );
+  assert.equal((await asAdmin(() => fleetAgentStatus())).pausedBy, "srv_a");
+  assert.match(
+    await messagesNow(),
+    /Deplo stopped updating the other servers\.$/m,
+  );
+
+  await runAgentRollout();
+  assert.deepEqual(order, ["srv_a"], "a later pass tries nobody");
+});
+
+// c49: the old process answers until its exec, timed right after a renewal.
+test("an agent still answering on its old version just after the update is waited for", async () => {
+  rolloutTiming.confirmTries = 6;
+  rolloutTiming.oldTries = 4;
+  try {
+    await server("srv_a", BEHIND, { oldHellos: 3 });
+    await server("srv_b", BEHIND);
+    await runAgentRollout();
+    assert.equal(agents.get("srv_a")!.version, AGENT_VERSION);
+    assert.equal((await getAgentUpdate("srv_a"))?.failure ?? null, null);
+    assert.deepEqual(order, ["srv_a", "srv_b"], "the rollout goes on");
+  } finally {
+    rolloutTiming.confirmTries = 2;
+    rolloutTiming.oldTries = 0;
+  }
+});
+
+// eu, 24 Nov 2026: a rollout went on while canary.47 was down on the servers before, its no_return worn away by a
+// retry that found the server unreachable.
+test("a retry that cannot reach the server keeps the rollout stopped", async () => {
+  await server("srv_a", BEHIND, { comesBack: false });
+  await server("srv_b", BEHIND);
+  await runAgentRollout();
+  agents.get("srv_a")!.comesBack = false;
+  await db
+    .update(serverAgentUpdates)
+    .set({ nextRetryAt: new Date(0).toISOString() });
+  await runAgentRollout();
+  await runAgentRollout();
+  assert.equal((await getAgentUpdate("srv_a"))!.failure, "no_return");
+  assert.deepEqual(order, ["srv_a"], "srv_b waits");
+  assert.equal((await asAdmin(() => fleetAgentStatus())).pausedBy, "srv_a");
+});
+
+test("a server that stops answering within its first minute stops the rollout", async () => {
+  await server("srv_a", BEHIND, { hellosLeft: 3 });
+  await server("srv_b", BEHIND);
+  await runAgentRollout();
+  assert.deepEqual(order, ["srv_a"]);
+  const row = (await getAgentUpdate("srv_a"))!;
+  assert.equal(row.failure, "no_return");
+  assert.match(
+    row.lastError,
+    /but it stopped answering within its first minute/,
+  );
+  assert.doesNotMatch(await messagesNow(), /Updated the server agent on srv_a/);
+});
+
+test("a member whose leader stops renewing it within its first minute stops the rollout", async () => {
+  await server("srv_m", BEHIND);
+  await server("srv_lead", AGENT_VERSION);
+  await server("srv_z", BEHIND);
+  const at = new Date().toISOString();
+  await db.insert(clusters).values({
+    id: "clu_1",
+    name: "eu",
+    createdAt: at,
+    leaderServerId: "srv_lead",
+  });
+  await db
+    .insert(clusterMembers)
+    .values({ serverId: "srv_m", clusterId: "clu_1", joinedAt: at });
+  leaderSays.set("clu_1", { srv_m: "not_responding" });
+  await runAgentRollout();
+  assert.deepEqual(order, ["srv_m"]);
+  assert.match(
+    (await getAgentUpdate("srv_m"))!.lastError,
+    /the leader of cluster eu stopped renewing it/,
+  );
+});
+
+// eu, 24 Nov 2026: a Retry now on eu-4 was still in its minute when the pass updated eu-1.
+test("a pass updates nobody while another server's update is under way", async () => {
+  // srv_a already answers on the pin: it is in its minute, no longer behind.
+  await server("srv_a", AGENT_VERSION);
+  await server("srv_b", BEHIND);
+  await db.insert(serverAgentUpdates).values({
+    serverId: "srv_a",
+    status: "running",
+    failure: "no_return",
+    attempts: 1,
+    targetVersion: AGENT_VERSION,
+    updatedAt: new Date().toISOString(),
+  });
+  await runAgentRollout();
+  assert.deepEqual(order, [], "srv_b waits for srv_a's minute");
+});
+
+// c39: the leader restarted with its server's agent, and every member's renewal waited 2.4 s for it.
+test("a cluster's leader goes to the next in line before its server's agent updates, and that server updates last", async () => {
+  await server("srv_lead", BEHIND);
+  await server("srv_heir", BEHIND);
+  const at = new Date().toISOString();
+  await db.insert(clusters).values({
+    id: "clu_1",
+    name: "eu",
+    createdAt: at,
+    leaderServerId: "srv_lead",
+  });
+  const run = leaderHandOff.run;
+  leaderHandOff.run = async (id) => {
+    order.push(`hand-off:${id}`);
+    return [];
+  };
+  try {
+    await runAgentRollout();
+  } finally {
+    leaderHandOff.run = run;
+  }
+  assert.deepEqual(order, [
+    "hand-off:srv_heir",
+    "srv_heir",
+    "hand-off:srv_lead",
+    "srv_lead",
+  ]);
 });

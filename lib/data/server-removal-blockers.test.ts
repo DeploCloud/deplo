@@ -12,7 +12,7 @@ import { activities } from "../db/schema/control-plane/activity";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
-import { seedDatabase, seedDestination } from "./backup-test-helpers";
+import { seedDatabase, seedDestination, seedRun } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { removeServer } from "./servers/removal";
 import {
@@ -108,6 +108,19 @@ test("lists every team's workloads and destinations, with where each can go", as
     kind: "server",
     serverId: SERVER,
     teamId: TEAM_B,
+  });
+  await seedRun(db, {
+    id: "brun_b",
+    destinationId: "dst_b",
+    teamId: TEAM_B,
+    status: "success",
+  });
+  // c49: one that keeps nothing goes with the server, so it holds nothing up.
+  await seedDestination(db, {
+    id: "dst_empty",
+    name: "eu-4",
+    kind: "server",
+    serverId: SERVER,
   });
 
   const b = await asAdmin(() => serverRemovalBlockers(SERVER));

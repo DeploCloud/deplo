@@ -1,5 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import type { PGlite } from "@electric-sql/pglite";
 
@@ -273,4 +275,39 @@ test("schema: migration journal timestamps strictly increase", () => {
     const prev = journal.entries[i];
     assert.ok(entry.when > prev.when, `${entry.tag} is not after ${prev.tag}`);
   });
+});
+
+type Snapshot = {
+  tables: Record<
+    string,
+    { columns: Record<string, { notNull: boolean; default?: unknown }> }
+  >;
+};
+const snapshot = (tag: string): Snapshot["tables"] =>
+  JSON.parse(
+    readFileSync(
+      path.join(
+        process.cwd(),
+        "lib/db/migrations/meta",
+        `${tag.slice(0, 4)}_snapshot.json`,
+      ),
+      "utf8",
+    ),
+  ).tables;
+
+// Deplo 0.8.1's last migration: the installer rolls a failed update back onto this database.
+const PREVIOUS_STABLE_LAST = "0209";
+
+test("schema: the previous stable release still reads and writes this database", () => {
+  const now = snapshot(journal.entries.at(-1)!.tag);
+  const broken: string[] = [];
+  for (const [table, was] of Object.entries(snapshot(PREVIOUS_STABLE_LAST))) {
+    const is = now[table]?.columns ?? {};
+    for (const name of Object.keys(was.columns))
+      if (!is[name]) broken.push(`${table}.${name} is gone`);
+    for (const [name, c] of Object.entries(is))
+      if (!was.columns[name] && c.notNull && c.default === undefined)
+        broken.push(`${table}.${name} has no default`);
+  }
+  assert.deepEqual(broken, []);
 });

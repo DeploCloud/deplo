@@ -4,6 +4,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
+  clusterAppReplicas,
   clusterImageCopies,
   clusterMembers as membersTable,
   workloadPlacements,
@@ -11,6 +12,30 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { peakMemoryMb } from "../../monitoring/container-history";
+import { getMetricsHistory } from "../../monitoring/history";
+
+/**
+ * What a copy may still write on a disk: its free bytes less the ones kept for root, read back from the share
+ * the agent reports (used of used and available). The agent stops a copy on that same measure (ADR-0043).
+ */
+export function writableBytes(m: {
+  diskTotal: number;
+  diskUsed: number;
+  diskPct?: number;
+}): number {
+  const pct = m.diskPct ?? 0;
+  if (pct > 0 && pct < 100 && m.diskUsed > 0)
+    return Math.round((m.diskUsed * (100 - pct)) / pct);
+  return Math.max(m.diskTotal - m.diskUsed, 0);
+}
+
+/** A server's disk as its last metrics said, within two minutes; zeros are unknown, and fit anything. */
+export function latestDisk(serverId: string): { free: number; total: number } {
+  const last = getMetricsHistory(serverId).at(-1);
+  if (!last || Date.now() - last.ts > 120_000 || last.diskTotal <= 0)
+    return { free: 0, total: 0 };
+  return { free: writableBytes(last), total: last.diskTotal };
+}
 
 /** The least memory a workload is assumed to need; the leader's rule uses the same floor. */
 export const MIN_WORKLOAD_MB = 256;
@@ -33,6 +58,11 @@ export interface MemberFact {
   emptying: boolean;
   databaseEnvs: string[];
   workloads: number;
+  /** Its disk; a total of 0 is unknown. The leader never gives it data past a tenth free (ADR-0043). */
+  diskFree: number;
+  diskTotal: number;
+  /** The Apps whose data it holds whole already: they take no more of its disk. */
+  holds: string[];
 }
 
 export async function clusterMemberFacts(
@@ -52,7 +82,7 @@ export async function clusterMemberFacts(
     .orderBy(asc(membersTable.joinedAt), asc(membersTable.serverId));
   const ids = members.map((m) => m.id);
   if (ids.length === 0) return [];
-  const [copies, placed] = await Promise.all([
+  const [copies, placed, whole] = await Promise.all([
     db
       .select({
         serverId: clusterImageCopies.serverId,
@@ -73,6 +103,18 @@ export async function clusterMemberFacts(
       })
       .from(workloadPlacements)
       .where(inArray(workloadPlacements.memberServerId, ids)),
+    db
+      .select({
+        serverId: clusterAppReplicas.serverId,
+        appId: clusterAppReplicas.appId,
+      })
+      .from(clusterAppReplicas)
+      .where(
+        and(
+          inArray(clusterAppReplicas.serverId, ids),
+          eq(clusterAppReplicas.synced, true),
+        ),
+      ),
   ]);
   const appIds = placed.filter((p) => p.kind === "app").map((p) => p.id);
   const dbIds = placed.filter((p) => p.kind === "database").map((p) => p.id);
@@ -122,6 +164,8 @@ export async function clusterMemberFacts(
         ),
       ],
       workloads: mine.length,
+      ...((d) => ({ diskFree: d.free, diskTotal: d.total }))(latestDisk(m.id)),
+      holds: whole.filter((w) => w.serverId === m.id).map((w) => w.appId),
     };
   });
 }

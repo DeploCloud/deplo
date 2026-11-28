@@ -31,3 +31,30 @@ test("restore calls get the restore deadline, backups keep theirs", () => {
   assert.ok(Math.abs(seen.restoreFrom - RESTORE_DEADLINE_MS) < MINUTE);
   assert.ok(RESTORE_DEADLINE_MS > BACKUP_DEADLINE_MS);
 });
+
+// A connection over an agent link closes nothing: only cancelling the call stops the agent's copy (eu, 24 Nov 2026).
+test("an aborted backup cancels its calls to the agent", () => {
+  const cancelled: string[] = [];
+  const call = (name: string) => () => ({
+    on() {},
+    cancel: () => void cancelled.push(name),
+    write: () => true,
+    end() {},
+    once() {},
+    off() {},
+  });
+  const rpc = backupRpc({
+    client: {
+      backup: call("backup"),
+      writeStoreFile: call("writeStoreFile"),
+    },
+  } as unknown as AgentChannel);
+  const abort = new AbortController();
+  rpc.backup({} as BackupRequest, abort.signal);
+  void rpc
+    .writeStoreFile({} as never, false, (async function* () {})(), abort.signal)
+    .catch(() => {});
+  assert.deepEqual(cancelled, []);
+  abort.abort();
+  assert.deepEqual(cancelled.sort(), ["backup", "writeStoreFile"]);
+});

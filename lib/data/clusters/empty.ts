@@ -1,5 +1,6 @@
 import "server-only";
 
+import { appDataBytes } from "./data-size";
 import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -12,6 +13,7 @@ import { nowIso } from "../../ids";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { relocateClusterApp } from "../apps/source";
+import { rehomeFailoverBackups } from "../databases/failover";
 import { relocateClusterDatabase } from "../databases/server-move";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { hasPendingLock } from "../keyed-mutex";
@@ -19,6 +21,7 @@ import { getServerById } from "../servers/roster";
 import { redeployArchs } from "./architectures";
 import { neededMb } from "./facts";
 import { pushLeaderRoster } from "./leader-sync";
+import { keptBackups, moveKeptBackup } from "./member-backups";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import {
   askLeaderToPlace,
@@ -28,7 +31,7 @@ import {
   refusalSentence,
 } from "./placement";
 import { getClusterById, requireClusterAdmin } from "./roster";
-import { messageOf } from "../../utils";
+import { joinNames, messageOf, plural } from "../../utils";
 
 // https://deplo.build/docs/operations/clusters/manage-servers#remove-a-server
 
@@ -134,6 +137,19 @@ export async function startRemovingClusterMember(
   if (member.emptyingSince && !member.emptyingError) return;
   const held = await listMemberWorkloads(server.id);
   await assertRoomElsewhere(cluster, server.id, held);
+  const backups = (await keptBackups(cluster.id, server.id)).length;
+  const apps = held.filter((w) => w.kind === "app").length;
+  const counts = [
+    [apps, "App", "Apps"],
+    [held.length - apps, "database", "databases"],
+    [backups, "backup", "backups"],
+  ] as const;
+  const first =
+    joinNames(
+      counts
+        .filter(([n]) => n > 0)
+        .map(([n, one, many]) => plural(n, one, many)),
+    ) || "nothing";
   await getDb()
     .update(membersTable)
     .set({
@@ -148,12 +164,16 @@ export async function startRemovingClusterMember(
     "server",
     member.emptyingSince
       ? `Continued removing server ${server.name} from cluster ${cluster.name}`
-      : `Started removing server ${server.name} from cluster ${cluster.name}: ${held.length} to move first`,
+      : `Started removing server ${server.name} from cluster ${cluster.name}: ${first} to move first`,
     by.user.name,
     null,
     by.teamId,
   );
   await tellLeader(cluster);
+  // Deplo's own backups kept there go elsewhere now, so no run writes to a member on its way out.
+  await rehomeFailoverBackups(cluster.id).catch((e) =>
+    console.warn(`[cluster-empty] ${cluster.id}: backups: ${message(e)}`),
+  );
   // A preview is no workload of the cluster, so nothing else moves it (#212).
   await movePreviewsOff(server.id).catch((e) =>
     console.warn(`[cluster-empty] ${cluster.id}: previews: ${message(e)}`),
@@ -298,6 +318,7 @@ async function move(
     environmentId: w.environmentId,
     limitMb: w.limitMb,
     archs: await redeployArchs(w.kind, w.id),
+    diskBytes: w.kind === "app" ? await appDataBytes(w.id) : 0,
   });
   const placed = () =>
     recordPlacement({
@@ -321,7 +342,8 @@ async function move(
       .select({ serverId: appsTable.serverId })
       .from(appsTable)
       .where(eq(appsTable.id, w.id));
-    if (now?.serverId === to) await placed();
+    // A deploy that follows places it once its start has a lane: until then it runs here (c48).
+    if (now?.serverId === to && !deployed) await placed();
   }
   // Never deployed, so the old server holds no stack and no data to wait for.
   if (!deployed)
@@ -354,6 +376,60 @@ async function halt(m: Member, cluster: Cluster, why: string): Promise<void> {
     null,
     m.emptyingTeamId,
   );
+}
+
+// Cancelled or stopped meanwhile: what it keeps stays with it.
+async function stillEmptying(serverId: string): Promise<boolean> {
+  const [r] = await getDb()
+    .select({
+      since: membersTable.emptyingSince,
+      error: membersTable.emptyingError,
+    })
+    .from(membersTable)
+    .where(eq(membersTable.serverId, serverId))
+    .limit(1);
+  return Boolean(r?.since) && !r?.error;
+}
+
+/** Each backup the member keeps for its cluster moves to another member; false when one could not, and it stopped. */
+async function moveBackupsOff(cluster: Cluster, m: Member): Promise<boolean> {
+  const from = {
+    id: m.serverId,
+    name: (await getServerById(m.serverId))?.name ?? "this server",
+  };
+  const moved = new Map<
+    string,
+    { n: number; of: Set<string>; to: Set<string> }
+  >();
+  try {
+    for (const b of await keptBackups(cluster.id, m.serverId)) {
+      if ((await instanceFrozen()) || !(await stillEmptying(m.serverId)))
+        return false;
+      const to = await moveKeptBackup(cluster, from, b);
+      const t = moved.get(b.teamId) ?? { n: 0, of: new Set(), to: new Set() };
+      t.n++;
+      t.of.add(b.name);
+      t.to.add(to);
+      moved.set(b.teamId, t);
+    }
+  } catch (e) {
+    await halt(
+      m,
+      cluster,
+      `${message(e)} "Remove anyway" leaves its backups on ${from.name}.`,
+    );
+    return false;
+  } finally {
+    for (const [teamId, t] of moved)
+      await recordActivity(
+        "backup",
+        `Moved ${t.n} backup${t.n === 1 ? "" : "s"} of ${[...t.of].join(", ")} from ${from.name} to ${[...t.to].join(" and ")}, as ${from.name} leaves cluster ${cluster.name}.`,
+        ACTOR,
+        null,
+        teamId,
+      );
+  }
+  return true;
 }
 
 async function finish(cluster: Cluster, m: Member): Promise<void> {
@@ -393,15 +469,14 @@ async function step(serverId: string): Promise<boolean> {
       return false;
     }
     await setMoving();
-    const left = await listMemberWorkloads(serverId);
-    if (left.length === 0) await finish(cluster, m);
-    return left.length > 0;
+    // The next step moves the next one, or the backups and then it leaves.
+    return true;
   }
   const held = await listMemberWorkloads(serverId);
   // What is half-way goes first, so a member is never left holding only somebody's data.
   const next = held.find((w) => w.leaving) ?? held[0];
   if (!next) {
-    await finish(cluster, m);
+    if (await moveBackupsOff(cluster, m)) await finish(cluster, m);
     return false;
   }
   await setMoving(next);

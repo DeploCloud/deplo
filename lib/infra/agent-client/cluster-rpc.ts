@@ -23,6 +23,11 @@ export function clusterRpc(
   | "clusterWatch"
   | "copyClusterImage"
   | "expectClusterImage"
+  | "holdFailoverImages"
+  | "expectClusterBackup"
+  | "expectClusterFetch"
+  | "expectClusterVolume"
+  | "sendClusterVolume"
   | "setClusterForwarders"
   | "readProxyCertificates"
   | "setClusterNetwork"
@@ -31,6 +36,7 @@ export function clusterRpc(
   | "setGeoTable"
   | "setClusterReplicas"
   | "clusterReplicaStatus"
+  | "promoteClusterReplica"
 > {
   const { client } = channel;
   return {
@@ -46,7 +52,7 @@ export function clusterRpc(
       const r = await unary(
         client.removeCluster.bind(client),
         {},
-        CLUSTER_INSTALL_TIMEOUT_MS,
+        CLUSTER_CALL_TIMEOUT_MS,
       );
       return { removed: r.removed };
     },
@@ -99,12 +105,60 @@ export function clusterRpc(
         pruned: r.pruned,
       };
     },
+    async holdFailoverImages(images) {
+      const r = await unary(
+        client.holdFailoverImages.bind(client),
+        { images: images.map((i) => ({ ...i, held: false, error: "" })) },
+        HELLO_TIMEOUT_MS,
+      );
+      return r.images.map((i) => ({
+        imageRef: i.imageRef,
+        bytes: Number(i.bytes),
+        held: i.held,
+        error: i.error,
+      }));
+    },
     async expectClusterImage(imageRef, sourceFingerprint, keep) {
       await unary(
         client.expectClusterImage.bind(client),
         { imageRef, sourceFingerprint, keep },
         HELLO_TIMEOUT_MS,
       );
+    },
+    async expectClusterBackup(store, sourceFingerprint) {
+      await unary(
+        client.expectClusterBackup.bind(client),
+        { store, sourceFingerprint },
+        HELLO_TIMEOUT_MS,
+      );
+    },
+    async expectClusterFetch(store, readerFingerprint) {
+      await unary(
+        client.expectClusterFetch.bind(client),
+        { store, readerFingerprint },
+        HELLO_TIMEOUT_MS,
+      );
+    },
+    async expectClusterVolume(volumeName, wipeFirst, sourceFingerprint) {
+      await unary(
+        client.expectClusterVolume.bind(client),
+        { volumeName, wipeFirst, sourceFingerprint },
+        HELLO_TIMEOUT_MS,
+      );
+    },
+    async sendClusterVolume(volumeName, targetFingerprint) {
+      // As long as the copy takes: a move's copy has no deadline but its own.
+      const r = await unary(
+        client.sendClusterVolume.bind(client),
+        { volumeName, targetFingerprint },
+        6 * 3600_000,
+      );
+      return {
+        bytes: Number(r.bytes),
+        sha256: r.sha256,
+        path: r.path,
+        missing: r.missing,
+      };
     },
     async setClusterForwarders(table) {
       const r = await unary(
@@ -158,11 +212,22 @@ export function clusterRpc(
     async setClusterNetwork(table) {
       const r = await unary(
         client.setClusterNetwork.bind(client),
-        { ...table, retirePublicKey: table.retirePublicKey ?? "" },
+        {
+          clusterId: table.clusterId,
+          address: table.address,
+          peers: table.peers.map((p) => ({
+            ...p,
+            nextPublicKey: p.nextPublicKey ?? "",
+          })),
+          retirePublicKey: table.retirePublicKey ?? "",
+          nextKey: table.nextKey ?? false,
+          rotateToPublicKey: table.rotateToPublicKey ?? "",
+        },
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return {
         publicKey: r.publicKey,
+        nextPublicKey: r.nextPublicKey,
         port: r.port,
         addresses: r.addresses,
         peers: r.peers.map((p) => ({
@@ -209,7 +274,10 @@ export function clusterRpc(
     async setClusterReplicas(table) {
       const r = await unary(
         client.setClusterReplicas.bind(client),
-        table,
+        {
+          ...table,
+          entries: table.entries.map((e) => ({ ...e, hold: e.hold ?? "" })),
+        },
         CLUSTER_CALL_TIMEOUT_MS,
       );
       return { entries: r.entries };
@@ -230,7 +298,18 @@ export function clusterRpc(
         bytes: Number(s.bytes ?? 0),
         error: s.error,
         fromServerId: s.fromServerId,
+        relayed: s.relayed,
+        diskBytes: Number(s.diskBytes ?? 0),
       }));
+    },
+    async promoteClusterReplica(appId, fromServerId) {
+      // The App is down while it runs: its last changes only, but no deadline but their own.
+      const r = await unary(
+        client.promoteClusterReplica.bind(client),
+        { appId, fromServerId },
+        3600_000,
+      );
+      return { bytes: Number(r.bytes) };
     },
     async clusterCall(method, payload, timeoutMs = CLUSTER_CALL_TIMEOUT_MS) {
       const r = await unary(

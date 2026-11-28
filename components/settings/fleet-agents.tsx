@@ -112,7 +112,8 @@ export function FleetBehind({
         <p className="flex items-start gap-1.5 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
           <span>
-            Waiting for {fleet.pausedBy} to recover before updating the rest.
+            Updates stopped at {fleet.pausedBy}: its new server agent did not
+            stay up, so the other servers keep the version they run.
           </span>
         </p>
       )}

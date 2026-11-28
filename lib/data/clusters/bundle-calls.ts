@@ -24,6 +24,8 @@ export interface BundleMeta {
   archs: string[];
   limitMb: number;
   peakMb: number;
+  /** What its data takes; 0 is none, or unknown. */
+  diskBytes?: number;
   hasDomain: boolean;
   createdAt: string;
 }

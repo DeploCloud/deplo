@@ -12,7 +12,8 @@ import {
   runWithIdentity,
   type RequestIdentity,
 } from "@/lib/auth/request-context";
-import { TEAM_HEADER } from "@/lib/team-path";
+import { GraphQLError } from "graphql";
+import { TEAM_HEADER, TeamUnavailableError } from "@/lib/team-path";
 import type { Capability, PublicUser } from "@/lib/types/identity";
 
 export interface GraphQLContext {
@@ -33,7 +34,7 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     const identity = await authenticateToken(
       bearer,
       request.headers.get(TEAM_HEADER),
-    );
+    ).catch(forbidden);
     if (!identity) {
       return {
         viewer: null,
@@ -62,7 +63,7 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
       !(e instanceof TwoFactorRequiredError) &&
       !(e instanceof PasswordChangeRequiredError)
     )
-      throw e;
+      forbidden(e);
     teamId = null;
     capabilities = [];
   }
@@ -73,4 +74,13 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     via: viewer ? "cookie" : "anonymous",
     identity: null,
   };
+}
+
+// A GraphQLError leaves yoga as it is: a raw error is masked and logged, and Next's patched inspect crashed that log (c42: a 500).
+function forbidden(e: unknown): never {
+  if (e instanceof TeamUnavailableError)
+    throw new GraphQLError(e.message, {
+      extensions: { code: "FORBIDDEN", http: { status: 403 } },
+    });
+  throw e;
 }

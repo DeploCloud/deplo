@@ -40,6 +40,7 @@ import { clusterRotations } from "./rotations";
 import { getServerById } from "../servers/roster";
 import { messageOf } from "../../utils";
 import {
+  AGENT_QUICK_STOP_VERSION,
   AGENT_SHORT_FENCE_VERSION,
   reportedAgentVersion,
   versionAtLeast,
@@ -61,6 +62,8 @@ export interface LeaderEntry {
   singleWriter: boolean;
   /** An App the cluster load-balances: a server back from a failover gets its copy again. */
   balanced?: true;
+  /** The leader epoch that decided where it runs: a leader holding a newer decision keeps that one (c43). */
+  epoch?: number;
 }
 
 /** The mirror of the leader's placement, with the stack name and whether the workload is single-writer. */
@@ -145,6 +148,7 @@ export async function placementEntries(
       slug: slugOf.get(r.workloadId) ?? "",
       singleWriter: kind === "database" || withVolume.has(r.workloadId),
       ...(balanced.has(r.workloadId) ? { balanced: true as const } : {}),
+      ...(r.epoch > 0 ? { epoch: r.epoch } : {}),
     });
   }
   return out.sort((a, b) =>
@@ -197,10 +201,14 @@ export interface LeaderSnapshot {
     {
       epoch: number;
       superseded: boolean;
+      /** Enough members took its epoch for it to renew and move work right now. */
+      leads?: boolean;
       /** heard: false is a member the leader has not heard since it took the epoch; an older leader omits it. */
       members: { id: string; state: string; heard?: boolean }[];
       placement?: LeaderEntry[];
       moves?: LeaderMove[];
+      /** The members its renewals name to lead next, heir first. */
+      line?: string[];
     }
   >;
 }
@@ -226,8 +234,16 @@ async function nameOldAgent(
     .where(eq(serversTable.id, serverId))
     .limit(1);
   if (!server) return;
-  const message = sentence(server.name, cluster.name);
-  const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  await sayOnce(cluster.id, sentence(server.name, cluster.name));
+}
+
+/** Says a sentence about a cluster unless Activity said it within `withinMs`: a pass that retries is read once. */
+export async function sayOnce(
+  clusterId: string,
+  message: string,
+  withinMs = 24 * 3_600_000,
+): Promise<void> {
+  const since = new Date(Date.now() - withinMs).toISOString();
   const seen = await getDb()
     .select({ id: activities.id })
     .from(activities)
@@ -235,7 +251,7 @@ async function nameOldAgent(
       and(eq(activities.message, message), gte(activities.createdAt, since)),
     )
     .limit(1);
-  if (seen.length === 0) await recordClusterActivity(cluster.id, message);
+  if (seen.length === 0) await recordClusterActivity(clusterId, message);
 }
 
 const pushed = new Map<string, string>();
@@ -254,8 +270,24 @@ export async function pushLeaderRoster(
   cluster: Cluster,
   opts: { onlyIfChanged?: boolean; requireRotations?: boolean } = {},
 ): Promise<boolean> {
+  const send = await prepareLeaderRoster(cluster, opts);
+  return send ? send() : false;
+}
+
+/**
+ * Builds the roster `pushLeaderRoster` sends, and returns what sends it: a hand-over spends no time on reads. With
+ * `adopt: false` a leader that refuses it is not adopted at its newer epoch: a move only records one that leads.
+ */
+export async function prepareLeaderRoster(
+  cluster: Cluster,
+  opts: {
+    onlyIfChanged?: boolean;
+    requireRotations?: boolean;
+    adopt?: boolean;
+  } = {},
+): Promise<(() => Promise<boolean>) | null> {
   const host = await leaderHost(cluster);
-  if (!host) return false;
+  if (!host) return null;
   const members: Record<string, unknown>[] = [];
   const facts = new Map(
     (await clusterMemberFacts(cluster.id)).map((f) => [f.id, f]),
@@ -280,6 +312,10 @@ export async function pushLeaderRoster(
       images: f?.images ?? [],
       emptying: f?.emptying ?? false,
       databaseEnvs: f?.databaseEnvs ?? [],
+      // A failover never takes data to a disk it would leave under a tenth free (ADR-0043).
+      ...(f?.diskTotal
+        ? { diskFree: f.diskFree, diskTotal: f.diskTotal, holds: f.holds }
+        : {}),
       // The leader never hands a moved workload to an agent that would not start it.
       ...(tooOld ? { noFailover: true } : {}),
       // Nor a database to an agent that would start it empty.
@@ -287,6 +323,10 @@ export async function pushLeaderRoster(
       // A leader that takes over waits less for a dead member whose agent stops its work on the short fence.
       ...(agent && versionAtLeast(agent, AGENT_SHORT_FENCE_VERSION)
         ? { shortFence: true }
+        : {}),
+      // And less again when it kills its stacks all at once.
+      ...(agent && versionAtLeast(agent, AGENT_QUICK_STOP_VERSION)
+        ? { quickStop: true }
         : {}),
       // Only an agent that answers a pre-vote is asked one: an older one would take the epoch.
       ...((await memberSucceeds(id)) ? { succession: true } : {}),
@@ -329,53 +369,56 @@ export async function pushLeaderRoster(
     );
   const epoch = Math.max(cluster.leaderEpoch, 1);
   const signature = JSON.stringify({ epoch, ...roster });
-  if (
-    opts.onlyIfChanged &&
-    !opts.requireRotations &&
-    pushed.get(cluster.id) === signature
-  )
-    return false;
-  let reply: Uint8Array;
-  try {
-    reply = await body(epoch);
-    pushed.set(cluster.id, signature);
-  } catch (e) {
-    const snap = await readLeaderSnapshot(cluster).catch(() => null);
-    const held = snap?.clusters[cluster.id]?.epoch ?? 0;
-    if (held <= epoch) throw e;
-    await getDb()
-      .update(clustersTable)
-      .set({ leaderEpoch: held })
-      .where(eq(clustersTable.id, cluster.id));
-    reply = await body(held);
-    pushed.delete(cluster.id);
-  }
-  if (opts.requireRotations && !keptRotations(reply))
-    throw new Error(
-      `The cluster leader on ${host.name} is too old to keep a key rotation. Deplo updates it on its own.`,
+  return async () => {
+    if (
+      opts.onlyIfChanged &&
+      !opts.requireRotations &&
+      pushed.get(cluster.id) === signature
+    )
+      return false;
+    let reply: Uint8Array;
+    try {
+      reply = await body(epoch);
+      pushed.set(cluster.id, signature);
+    } catch (e) {
+      if (opts.adopt === false) throw e;
+      const snap = await readLeaderSnapshot(cluster).catch(() => null);
+      const held = snap?.clusters[cluster.id]?.epoch ?? 0;
+      if (held <= epoch) throw e;
+      await getDb()
+        .update(clustersTable)
+        .set({ leaderEpoch: held })
+        .where(eq(clustersTable.id, cluster.id));
+      reply = await body(held);
+      pushed.delete(cluster.id);
+    }
+    if (opts.requireRotations && !keptRotations(reply))
+      throw new Error(
+        `The cluster leader on ${host.name} is too old to keep a key rotation. Deplo updates it on its own.`,
+      );
+    // Each heir's leader keeps the roster to take the cluster over from, with Deplo down.
+    const epochNow = Math.max(
+      (await getClusterById(cluster.id))?.leaderEpoch ?? epoch,
+      epoch,
     );
-  // Each heir's leader keeps the roster to take the cluster over from, with Deplo down.
-  const epochNow = Math.max(
-    (await getClusterById(cluster.id))?.leaderEpoch ?? epoch,
-    1,
-  );
-  for (const heir of heirs)
-    await callClusterLeader(
-      heir,
-      "leader.standby",
-      enc({
-        cluster: cluster.id,
-        epoch: epochNow,
-        ...roster,
-        self: heir,
-        succeed: false,
-      }),
-    ).catch((e) =>
-      console.warn(
-        `[cluster-leader] ${cluster.id}: standby on ${heir}: ${e instanceof Error ? e.message : e}`,
-      ),
-    );
-  return true;
+    for (const heir of heirs)
+      await callClusterLeader(
+        heir,
+        "leader.standby",
+        enc({
+          cluster: cluster.id,
+          epoch: epochNow,
+          ...roster,
+          self: heir,
+          succeed: false,
+        }),
+      ).catch((e) =>
+        console.warn(
+          `[cluster-leader] ${cluster.id}: standby on ${heir}: ${e instanceof Error ? e.message : e}`,
+        ),
+      );
+    return true;
+  };
 }
 
 /**
@@ -389,17 +432,18 @@ export async function placeAtLeaderFirst(
   member: string,
   opts: { within?: number; every?: number } = {},
 ): Promise<boolean> {
+  // Decided at the epoch led now: a move outlives a hand-over, and an older epoch moves nothing on the leader.
+  const now = (await getClusterById(cluster.id)) ?? cluster;
   await recordPlacement({
     clusterId: cluster.id,
     kind,
     workloadId: id,
     members: [member],
-    epoch: cluster.leaderEpoch,
+    epoch: now.leaderEpoch,
   });
   const end = Date.now() + (opts.within ?? 15_000);
   let why = "it did not show the new placement in time";
   try {
-    const now = (await getClusterById(cluster.id)) ?? cluster;
     await pushLeaderRoster(now);
     for (;;) {
       const view = (await readLeaderSnapshot(now))?.clusters[cluster.id];

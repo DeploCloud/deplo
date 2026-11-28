@@ -67,6 +67,13 @@ export interface FakeClusterHost {
   imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
   /** Every image this host's agent was told to expect from another member, in order. */
   imageExpects: { imageRef: string; sourceFingerprint: string; keep: number }[];
+  /** Every list of failover images this host's agent was handed, in order, and what it says it holds. */
+  failoverHolds: { imageRef: string; bytes: number }[][];
+  failoverHeld: (ref: string) => {
+    held: boolean;
+    bytes: number;
+    error: string;
+  };
   /** Every name-forwarder table this host's agent was handed, in order (#200). */
   forwarders: ClusterForwarderTable[];
   /** What this host's agent says it turned away, with the next table; handed once (ADR-0048). */
@@ -89,14 +96,17 @@ export interface FakeClusterHost {
   zoneReport: (
     table: SetClusterZoneRequest,
   ) => Omit<ClusterZoneReport, "geoSha256">;
-  /** Its agent's network key, as setClusterNetwork answers it. */
+  /** Its agent's network key, as setClusterNetwork answers it, and the next one it made. */
   networkKey: string;
+  nextNetworkKey: string;
   /** The location table its agent holds, by digest, and every one it was handed (ADR-0049 phase 2). */
   geoSha256: string;
   geoTables: { sha256: string; bytes: number }[];
   /** Every replication table this host's agent was handed, in order, and what it says of its copies (ADR-0046). */
   replicaTables: ClusterReplicaTable[];
   replicaReports: ClusterReplicaReport[];
+  /** Each move's copy put in place here: the App and the member it left. */
+  promotions: { appId: string; from: string }[];
   /** Every deploy request this host's agent was handed, answered ready. */
   deploys: DeployRequest[];
   /** Every backup this host's agent was asked for, answered with an artifact of `backupBytes` (0: nothing to write). */
@@ -308,12 +318,14 @@ export function fakeClusterHosts(): {
             sha256: "",
             decryptedSizeBytes: h.backupBytes,
             heldMs: 0,
+            heldWhy: "",
+            path: "",
           },
         };
       },
       restore: async function* (req: RestoreRequest) {
         h.restores.push(req);
-        yield { result: { ok: true, error: "" } };
+        yield { result: { ok: true, error: "", path: "" } };
       },
       writeStoreFile: async (store, _overwrite, chunks) => {
         let bytesWritten = 0;
@@ -398,6 +410,14 @@ export function fakeClusterHosts(): {
         guard(() => {
           h.imageExpects.push({ imageRef, sourceFingerprint, keep });
         }),
+      holdFailoverImages: (images) =>
+        guard(() => {
+          h.failoverHolds.push(images);
+          return images.map((i) => ({
+            imageRef: i.imageRef,
+            ...h.failoverHeld(i.imageRef),
+          }));
+        }),
       setClusterForwarders: (table) =>
         guard(() => {
           h.forwarders.push(table);
@@ -433,8 +453,18 @@ export function fakeClusterHosts(): {
           // A key Deplo retires is replaced, once.
           if (table.retirePublicKey && table.retirePublicKey === h.networkKey)
             h.networkKey = `${h.networkKey}+`;
+          if (table.nextKey && !h.nextNetworkKey)
+            h.nextNetworkKey = `${h.networkKey}-next`;
+          if (
+            table.rotateToPublicKey &&
+            table.rotateToPublicKey === h.nextNetworkKey
+          ) {
+            h.networkKey = h.nextNetworkKey;
+            h.nextNetworkKey = "";
+          }
           return {
             publicKey: h.networkKey,
+            nextPublicKey: h.nextNetworkKey,
             port: table.peers.length > 0 ? 51820 : 0,
             addresses: [`192.168.7.${hosts.size}`],
             peers: table.peers.map((p) => ({
@@ -465,9 +495,26 @@ export function fakeClusterHosts(): {
           return { entries: table.entries.length };
         }),
       clusterReplicaStatus: () => guard(() => [...h.replicaReports]),
+      promoteClusterReplica: (appId, from) =>
+        guard(() => {
+          h.promotions.push({ appId, from });
+          return { bytes: 4096 };
+        }),
       close: () => void h.closed++,
     };
-    return { ...conn, ...h.extra } as AgentConnection;
+    // A test that sizes the volumes sizes them for both reads; its biggest file is none unless it says.
+    const merged = {
+      ...conn,
+      volumeSizes: async (names: string[]) => ({
+        bytes: [...(await merged.volumeUsage(names)).values()].reduce(
+          (a, b) => a + b,
+          0,
+        ),
+        largest: 0,
+      }),
+      ...h.extra,
+    } as AgentConnection;
+    return merged;
   });
   return {
     host(serverId, over = {}) {
@@ -501,12 +548,15 @@ export function fakeClusterHosts(): {
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],
         imageExpects: [],
+        failoverHolds: [],
+        failoverHeld: () => ({ held: false, bytes: 0, error: "" }),
         forwarders: [],
         networkTables: [],
         rotationTables: [],
         networkPath: () => "direct",
         zoneTables: [],
         networkKey: `key-${serverId}`,
+        nextNetworkKey: "",
         zoneReport: (table) =>
           table.zones.length > 0
             ? {
@@ -527,6 +577,7 @@ export function fakeClusterHosts(): {
         geoTables: [],
         replicaTables: [],
         replicaReports: [],
+        promotions: [],
         deploys: [],
         backups: [],
         backupBytes: 2048,

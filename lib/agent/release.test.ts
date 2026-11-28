@@ -115,3 +115,46 @@ test("the cluster release comes from its own repo and asset names; an unset pin 
     restore();
   }
 });
+
+test("a pinned release is served from Deplo's https address with the release's checksums, and from GitHub without one", async () => {
+  const { servedByDeplo } = await import("./release");
+  const gh = {
+    amd64: { url: `${base}/deplo-agent-linux-amd64`, sha256: "a".repeat(64) },
+  };
+  assert.deepEqual(
+    servedByDeplo(gh, "deplo-agent", "https://deplo.example.com"),
+    {
+      amd64: {
+        url: "https://deplo.example.com/api/agent/release/deplo-agent-linux-amd64",
+        sha256: "a".repeat(64),
+      },
+    },
+  );
+  assert.deepEqual(
+    servedByDeplo(gh, "deplo-agent", "http://10.0.0.5:3000"),
+    gh,
+  );
+  assert.deepEqual(servedByDeplo(gh, "deplo-agent", null), gh);
+});
+
+test("only the pinned agent and leader binaries are served, never another file", async () => {
+  const { pinnedBinaryUpstream } = await import("./release");
+  const { restore } = stub(
+    () => new Response(`${"a".repeat(64)}  deplo-agent-linux-amd64\n`),
+  );
+  try {
+    assert.equal(
+      await pinnedBinaryUpstream("deplo-agent-linux-amd64"),
+      `${base}/deplo-agent-linux-amd64`,
+    );
+    for (const f of [
+      "checksums.txt",
+      "../x",
+      "deplo-agent-linux-amd64?x",
+      "deplo-agent-linux-riscv64",
+    ])
+      assert.equal(await pinnedBinaryUpstream(f), null, f);
+  } finally {
+    restore();
+  }
+});

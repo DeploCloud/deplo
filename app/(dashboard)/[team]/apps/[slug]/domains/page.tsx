@@ -32,6 +32,7 @@ import {
   PendingRows,
 } from "@/components/shared/pending-create";
 import { isInstanceAdmin } from "@/lib/membership";
+import { experimentOn } from "@/lib/data/experiments";
 
 export const metadata = { title: "App Domains" };
 
@@ -58,6 +59,7 @@ export default async function AppDomainsPage(
       : d,
   );
   const autoDns = zones.map((z) => z.zoneName);
+  const tunnels = await experimentOn("tunnels");
   const canAddZone = project.clusterId != null && (await isInstanceAdmin());
   // A domain that answers on every server with records a person keeps: one per healthy server (ADR-0048).
   const everyServer =
@@ -101,6 +103,7 @@ export default async function AppDomainsPage(
               }}
               suggestedDomain={suggestedDomain}
               autoDnsZones={autoDns}
+              tunnels={tunnels}
               cluster={
                 project.clusterId
                   ? { zones: dnsZones.map((z) => z.name), canAddZone }
@@ -134,6 +137,7 @@ export default async function AppDomainsPage(
           <DomainTable
             domains={domains}
             autoDnsZones={autoDns}
+            tunnels={tunnels}
             compose={composeForBrowser}
             isCompose={isComposeStack}
             showContainer={showContainer}

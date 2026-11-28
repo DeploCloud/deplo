@@ -156,7 +156,15 @@ function message(e: unknown): string {
 
 /** Hands each member of the cluster its table; one that cannot be reached is named in the log and left for the next sweep. */
 export async function syncNameForwarders(clusterId: string): Promise<void> {
-  if (await instanceFrozen()) return;
+  const answering = await handForwarderTables(clusterId);
+  if (answering !== null) await syncAnswerTail(clusterId, answering);
+}
+
+/** Every member's table, to all of them at once; whether any App answers everywhere, null when frozen. */
+export async function handForwarderTables(
+  clusterId: string,
+): Promise<boolean | null> {
+  if (await instanceFrozen()) return null;
   const members = await clusterMemberServerIds(clusterId);
   const plan = await planClusterForwarding(clusterId);
   // Every member answers for every App with a domain that answers everywhere (ADR-0048).
@@ -172,36 +180,46 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
     const fingerprint = await fingerprintOf(serverId);
     if (fingerprint) roster.push({ serverId, fingerprint });
   }
-  for (const serverId of members) {
-    if (await instanceFrozen()) return;
-    const mine = plan.get(serverId);
-    try {
-      const res = await setClusterForwarders(serverId, {
-        clusterId,
-        members: roster,
-        hold: mine?.hold ?? [],
-        serve: mine?.serve ?? [],
-        ...passOn,
-        proxyRestartsSeenMs: proxyRestartsSeen(serverId),
-      });
-      if (res.answerRefusals.length > 0)
-        await recordAnswerRefusals(clusterId, serverId, res.answerRefusals);
-      await recordProxyRestarts(serverId, res.proxyRestarts ?? []);
-    } catch (e) {
-      // A member with nothing to run and an agent too old to take the table is not a problem.
-      if (
-        !mine?.involved &&
-        answers.length === 0 &&
-        e instanceof AgentClusterForwardersUnsupportedError
-      )
-        continue;
-      console.warn(
-        `[cluster-forwarders] ${clusterId} -> ${serverId}: ${message(e)}`,
-      );
-    }
-  }
-  // After the tables: a proxy that mounts the routes file finds it written.
-  await syncAnswerProxies(clusterId, answers.length > 0);
+  if (await instanceFrozen()) return null;
+  // At once: one after another, a new domain waited for every member in turn before its route (c39).
+  await Promise.all(
+    members.map(async (serverId) => {
+      const mine = plan.get(serverId);
+      try {
+        const res = await setClusterForwarders(serverId, {
+          clusterId,
+          members: roster,
+          hold: mine?.hold ?? [],
+          serve: mine?.serve ?? [],
+          ...passOn,
+          proxyRestartsSeenMs: proxyRestartsSeen(serverId),
+        });
+        if (res.answerRefusals.length > 0)
+          await recordAnswerRefusals(clusterId, serverId, res.answerRefusals);
+        await recordProxyRestarts(serverId, res.proxyRestarts ?? []);
+      } catch (e) {
+        // A member with nothing to run and an agent too old to take the table is not a problem.
+        if (
+          !mine?.involved &&
+          answers.length === 0 &&
+          e instanceof AgentClusterForwardersUnsupportedError
+        )
+          return;
+        console.warn(
+          `[cluster-forwarders] ${clusterId} -> ${serverId}: ${message(e)}`,
+        );
+      }
+    }),
+  );
+  return answers.length > 0;
+}
+
+/** After the tables: a proxy that mounts the routes file finds it written, and each App's certificates follow it. */
+async function syncAnswerTail(
+  clusterId: string,
+  answering: boolean,
+): Promise<void> {
+  await syncAnswerProxies(clusterId, answering);
   // Each App's certificates follow it into its bundle; a switch turned off takes them out (ADR-0048).
   await syncAnswerCertificates(clusterId).catch((e) =>
     console.warn(`[answer-certs] ${clusterId}: ${message(e)}`),
@@ -217,17 +235,29 @@ export async function routeAfterAnswers(
   clusterId: string,
   appId: string,
   deps: {
-    sync?: (clusterId: string) => Promise<void>;
+    sync?: (clusterId: string) => Promise<unknown>;
+    settle?: (clusterId: string, appId: string) => Promise<void>;
     reroute?: (appId: string) => Promise<unknown>;
+    tail?: (clusterId: string) => Promise<void>;
   } = {},
 ): Promise<void> {
-  const sync = deps.sync ?? syncNameForwarders;
+  const sync = deps.sync ?? handForwarderTables;
+  const settle =
+    deps.settle ??
+    (async (c: string, a: string) =>
+      (await import("./dns-zone")).settleCertModes(c, a));
   const reroute =
     deps.reroute ??
     (async (id: string) =>
       (await import("../../deploy/build/reroute")).rerouteApp(id));
+  const tail = deps.tail ?? ((id: string) => syncAnswerTail(id, true));
   await sync(clusterId);
+  await settle(clusterId, appId).catch((e) =>
+    console.warn(`[answer-switch] ${appId}: ${message(e)}`),
+  );
+  // The route before the proxies and certificates: they took 15 s, every server answering 404 meanwhile (c39).
   await reroute(appId);
+  await tail(clusterId);
 }
 
 export function syncNameForwardersSoon(clusterId: string): void {

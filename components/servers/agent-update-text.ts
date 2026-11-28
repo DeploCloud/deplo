@@ -14,6 +14,8 @@ export function agentUpdateText(
   const prefix = reach === "usable" ? "" : "Unusable - ";
   if (!update) return prefix ? `${prefix}Deplo is updating it` : null;
   if (update.running) return `${prefix}Updating the server agent`;
+  if (update.failure === "no_return")
+    return `${prefix}Update stopped: the new server agent did not stay up`;
   if (update.gaveUp) return `${prefix}Update failed (gave up after 24 h)`;
   const left = update.nextRetryAt ? Date.parse(update.nextRetryAt) - now : 0;
   const when =

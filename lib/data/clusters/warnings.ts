@@ -29,6 +29,10 @@ import { clusterOutOfReach, outOfReachSentence, sinceClock } from "./reach";
 import { NOT_FOR_PRODUCTION, relayLevel } from "../../clusters/direct-core";
 import { sharedClusterAddresses } from "./dns-zone";
 import { sharedAddressWarnings } from "../../clusters/shared-addresses";
+import { keepLeadersHome } from "./leader-move";
+import { pushLeaderRoster, readLeaderSnapshot } from "./leader-sync";
+import { clusterHeirs } from "./succession";
+import { getServerById } from "../servers/roster";
 
 // A leader that hangs is a warning, not a stuck pass.
 const READ_DEADLINE_MS = 15_000;
@@ -74,9 +78,7 @@ export async function refreshClusterWarnings(cluster: Cluster): Promise<void> {
         ),
       )
     : [];
-  const notForProduction = n >= 2 && (await relayLevelOf(cluster.id)) === 2;
-  if (notForProduction)
-    found.unshift({ key: NOT_FOR_PRODUCTION_KEY, ...NOT_FOR_PRODUCTION });
+  const relayed = n >= 2 && (await relayLevelOf(cluster.id)) === 2;
   const had = await getDb()
     .select({ key: clusterWarningsTable.key })
     .from(clusterWarningsTable)
@@ -86,6 +88,15 @@ export async function refreshClusterWarnings(cluster: Cluster): Promise<void> {
         eq(clusterWarningsTable.key, NOT_FOR_PRODUCTION_KEY),
       ),
     );
+  // OK again only once the leader names who leads next: a cut right after would find nobody to take over.
+  const line =
+    !relayed && had.length > 0 ? await nameTheLine(cluster) : { full: true };
+  const notForProduction = relayed || !line.full;
+  if (notForProduction)
+    found.unshift({
+      key: NOT_FOR_PRODUCTION_KEY,
+      ...(relayed ? NOT_FOR_PRODUCTION : LINE_NOT_NAMED),
+    });
   const at = nowIso();
   await getDb().transaction(async (tx) => {
     await tx
@@ -110,8 +121,40 @@ export async function refreshClusterWarnings(cluster: Cluster): Promise<void> {
       cluster.id,
       notForProduction
         ? `Cluster ${cluster.name} is not OK for production: fewer than half of its servers reach each other directly, so if Deplo's machine stops, every App and database of it stops`
-        : `Cluster ${cluster.name} is OK for production again: more than half of its servers reach each other directly`,
+        : `Cluster ${cluster.name} is OK for production again: more than half of its servers reach each other directly${line.heirs ? `, and ${line.heirs} ${line.many ? "lead" : "leads"} it next if its leader's server stops` : ""}`,
     );
+}
+
+const LINE_NOT_NAMED = {
+  title: "Not OK for production",
+  body: "This cluster's servers reach each other directly again. Deplo is naming the servers that lead it next if its leader's server stops; until they are named, its Apps would wait for that server to come back.",
+};
+
+/** Names the heirs now, and says whether the leader's renewals carry every one of them. Never throws. */
+async function nameTheLine(
+  cluster: Cluster,
+): Promise<{ full: boolean; heirs?: string; many?: boolean }> {
+  try {
+    const want = await clusterHeirs(cluster);
+    if (want.length === 0) return { full: true };
+    await keepLeadersHome([cluster.id]);
+    const now = (await getClusterById(cluster.id)) ?? cluster;
+    await pushLeaderRoster(now).catch(() => false);
+    const named = await clusterHeirs(now);
+    const line =
+      (await readLeaderSnapshot(now))?.clusters[cluster.id]?.line ?? [];
+    if (named.length === 0 || !named.every((id) => line.includes(id)))
+      return { full: false };
+    // In the order the leader's renewals name them: the first of them leads next.
+    const names = await Promise.all(
+      line
+        .filter((id) => named.includes(id))
+        .map(async (id) => (await getServerById(id))?.name ?? id),
+    );
+    return { full: true, heirs: names.join(" then "), many: names.length > 1 };
+  } catch {
+    return { full: false };
+  }
 }
 
 export const NOT_FOR_PRODUCTION_KEY = "not_for_production";

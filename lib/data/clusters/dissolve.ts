@@ -42,6 +42,7 @@ import { planClusterForwarding } from "./forwarders";
 import { leaderHostOf } from "./host";
 import { reconcileRetiredLeaders, retireLeaderOrQueue } from "./leader-move";
 import { forgetLeaderRoster, type LeaderSnapshot } from "./leader-sync";
+import { keptBackups } from "./member-backups";
 import { clusterOfServer } from "./members";
 import { listMemberWorkloads } from "./member-workloads";
 import { listStandbys, type WorkloadKind } from "./placement";
@@ -439,12 +440,13 @@ async function dropBundlesAtLeaders(
 /**
  * "Remove": the server leaves the cluster. What it runs moves to the other servers first, one at a time in the
  * background, and it leaves once nothing is left; with `keepWorkloads` it leaves at once and its Apps and databases
- * stay on it, as ordinary ones that no cluster moves. Called again on a removal that stopped, it continues.
+ * stay on it, as ordinary ones that no cluster moves. Called again on a removal that stopped, it continues; with
+ * `leaveBackups`, one with nothing left to move leaves with the backups it keeps for the cluster still on it.
  */
 export async function removeClusterMember(
   clusterId: string,
   serverId: string,
-  opts: { keepWorkloads?: boolean } = {},
+  opts: { keepWorkloads?: boolean; leaveBackups?: boolean } = {},
 ): Promise<Cluster> {
   const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
@@ -458,7 +460,12 @@ export async function removeClusterMember(
   const last = members.length === 1;
   const held = await listMemberWorkloads(serverId);
   const keep = opts.keepWorkloads === true;
-  if (held.length > 0 && !keep) {
+  // c48: a member left with 4 restore points of fise and memos on its disk; what it keeps moves first.
+  const backups =
+    keep || last || opts.leaveBackups
+      ? 0
+      : (await keptBackups(clusterId, serverId)).length;
+  if ((held.length > 0 && !keep) || backups > 0) {
     if (last)
       throw new Error(
         `${server.name} is the last server of ${cluster.name} and still runs ${workloadCount(held)}. Choose "Keep its Apps on this server" to remove it.`,
@@ -477,6 +484,10 @@ export async function removeClusterMember(
     last,
     teamId,
     actor: user,
+    backupsLeft:
+      opts.leaveBackups && !keep && !last
+        ? (await keptBackups(clusterId, serverId)).length
+        : 0,
   });
   syncClusterAnswerDnsSoon(clusterId);
   return (await getClusterById(clusterId))!;
@@ -509,6 +520,7 @@ async function leaveCluster(
     last: boolean;
     teamId: string | null;
     actor: { id: string; name: string };
+    backupsLeft?: number;
   },
 ): Promise<void> {
   const clusterId = cluster.id;
@@ -569,9 +581,11 @@ async function leaveCluster(
     `Removed server ${server.name} from cluster ${cluster.name}` +
       (released.length > 0
         ? `, keeping ${workloadCount(released)} on it`
-        : o.actor.id === ""
-          ? ": everything it ran moved to the other servers"
-          : ""),
+        : o.backupsLeft
+          ? `, leaving ${o.backupsLeft} backup${o.backupsLeft === 1 ? "" : "s"} of the cluster's Apps and databases on it`
+          : o.actor.id === ""
+            ? ": everything it ran moved to the other servers"
+            : ""),
     o.actor.name,
     null,
     o.teamId,

@@ -54,6 +54,7 @@ import {
 import { RefreshFleetButton } from "./check-status-button";
 import { experimentOn } from "@/lib/data/experiments";
 import { serverUsages } from "@/lib/data/monitoring";
+import { diskWarnings } from "@/lib/data/servers/disk-full";
 import { appCounts } from "@/lib/data/servers/workloads";
 import { usageTotals } from "@/components/servers/server-usage";
 import { ClusterView } from "./cluster-view";
@@ -97,12 +98,14 @@ export default async function ServersPage(
     avatarUrl: t.avatarUrl,
   }));
 
-  const [usages, counts, joinRequests, positions] = await Promise.all([
-    serverUsages(serversRaw.map((s) => s.id)),
-    appCounts(),
-    listClusterJoinRequests(),
-    displayPositions(),
-  ]);
+  const [usages, counts, joinRequests, positions, fullDisks] =
+    await Promise.all([
+      serverUsages(serversRaw.map((s) => s.id)),
+      appCounts(),
+      listClusterJoinRequests(),
+      displayPositions(),
+      diskWarnings(serversRaw.map((s) => ({ id: s.id, name: serverLabel(s) }))),
+    ]);
   const servers = inDisplayOrder(serversRaw, positions.servers, (s) =>
     isDeploHostServer(s),
   );
@@ -196,6 +199,7 @@ export default async function ServersPage(
         clusterRows.find((r) => r.cluster.id === held.cluster.id)?.leaderId ===
           server.id,
       ),
+      diskWarning: fullDisks.get(server.id) ?? "",
     };
   });
 

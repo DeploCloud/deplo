@@ -1,5 +1,12 @@
 import "server-only";
 
+import { eq } from "drizzle-orm";
+
+import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+
 import { connectAgent } from "../../infra/agent-client/connect";
 import { getCurrentUser } from "../../auth/current-user";
 import { recordActivity } from "../activity";
@@ -12,8 +19,11 @@ import { filesAsideOf } from "../clusters/copy-aside";
 import { getServerById } from "../servers/roster";
 import { clusterMemberServerIds } from "../clusters/roster";
 import { getAppById } from "./listing";
+import { loadAppGraph } from "../app-graph-load";
+import { diskFull, FULL_SHARE } from "../backups/room";
 import { formatBytes } from "../../utils";
 import type { App } from "../../types/app";
+import { dbVolumeHostName } from "../databases/stack";
 
 // What a cluster server that came back held of an App and its copy may not have sent: set aside, never deleted.
 // https://deplo.build/docs/operations/clusters/failover#set-aside-copies
@@ -111,7 +121,7 @@ export async function removeSetAsideCopiesOfDeleted(
   const left = [...new Set(silent)];
   const note =
     left.length > 0
-      ? ` ${left.join(" and ")} did not answer, so what ${left.length === 1 ? "it holds" : "they hold"} of it stays there.`
+      ? ` ${left.join(" and ")} did not answer: what ${left.length === 1 ? "it holds" : "they hold"} of it goes once ${left.length === 1 ? "it answers" : "they answer"}.`
       : "";
   if (gone.size === 0) return note ? note.trim() : null;
   const n = [...gone.values()].reduce((a, b) => a + b, 0);
@@ -150,4 +160,129 @@ export async function removeAppSetAsideCopy(
     teamId,
   );
   return true;
+}
+
+const DAY_MS = 24 * 60 * 60_000;
+
+/** An App or database whose data its cluster servers may have set aside. */
+interface AsideOwner {
+  name: string;
+  teamId: string;
+  appId: string | null;
+  databaseId: string | null;
+  names: string[];
+}
+
+/** The volume a dated copy is a copy of, read from its own name, so two Apps' Files never share one "newest". */
+const copyOf = (volumeName: string) =>
+  volumeName.replace(/-aside-\d{8}T\d{6}Z$/, "");
+
+/**
+ * Keeps the newest set-aside copy of each owner's data on the server, and removes an older one after 7 days, or after
+ * 1 once that server is past 80% used; one Activity line each.
+ */
+async function expireOn(
+  serverId: string,
+  owners: AsideOwner[],
+  now: number,
+): Promise<void> {
+  const names = owners.flatMap((o) => o.names);
+  if (names.length === 0) return;
+  const full = diskFull(serverId);
+  const before = now - (full ? 1 : 7) * DAY_MS;
+  const newest = new Set<string>();
+  const old = (await copiesOn(serverId, names))
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .filter((c) => {
+      const of = copyOf(c.volumeName);
+      if (newest.has(of)) return Date.parse(c.at) < before;
+      newest.add(of);
+      return false;
+    });
+  if (old.length === 0) return;
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      for (const c of old) {
+        const owner = owners.find((o) =>
+          o.names.includes(copyOf(c.volumeName)),
+        );
+        if (!owner || !(await conn.removeSetAside(c.volumeName)).ok) continue;
+        await recordActivity(
+          owner.appId ? "app" : "database",
+          `Removed the copy of ${owner.name}'s data that ${c.serverName} set aside on ${c.at.slice(0, 16).replace("T", " ")} UTC (${formatBytes(c.bytes)}): ` +
+            (full
+              ? `${c.serverName} is more than ${FULL_SHARE * 100}% full, and a newer copy is kept.`
+              : "it was older than 7 days, and a newer copy is kept."),
+          "Deplo",
+          owner.appId,
+          owner.teamId,
+          null,
+          owner.databaseId,
+        );
+      }
+    } finally {
+      conn.close();
+    }
+  } catch {
+    // A server that does not answer keeps its copies until the next pass.
+  }
+}
+
+/** The set-aside expiry for one App, run after each of its backups. */
+export async function expireSetAsideCopies(
+  appId: string,
+  now = Date.now(),
+): Promise<void> {
+  const app = await loadAppGraph(appId).catch(() => null);
+  if (!app?.clusterId) return;
+  const owner = appOwner(app);
+  for (const serverId of await clusterMemberServerIds(app.clusterId))
+    await expireOn(serverId, [owner], now);
+}
+
+const appOwner = (app: App): AsideOwner => ({
+  name: app.name,
+  teamId: app.teamId,
+  appId: app.id,
+  databaseId: null,
+  names: asideNames(app),
+});
+
+/**
+ * The maintenance sweep's pass: every App and database of every cluster, backed up or not, on each of its servers
+ * (c50: a database's copies, or an App's with no backup, were never expired).
+ */
+export async function expireAllSetAsideCopies(now = Date.now()): Promise<void> {
+  const db = getDb();
+  for (const { id } of await db
+    .select({ id: clustersTable.id })
+    .from(clustersTable)) {
+    const owners: AsideOwner[] = [];
+    for (const a of await db
+      .select({ id: appsTable.id })
+      .from(appsTable)
+      .where(eq(appsTable.clusterId, id))) {
+      const app = await loadAppGraph(a.id).catch(() => null);
+      if (app) owners.push(appOwner(app));
+    }
+    for (const d of await db
+      .select({
+        id: databasesTable.id,
+        name: databasesTable.name,
+        teamId: databasesTable.teamId,
+        host: databasesTable.host,
+      })
+      .from(databasesTable)
+      .where(eq(databasesTable.clusterId, id)))
+      owners.push({
+        name: d.name,
+        teamId: d.teamId,
+        appId: null,
+        databaseId: d.id,
+        names: [dbVolumeHostName(d.host), filesAsideOf(d.host)],
+      });
+    for (const serverId of await clusterMemberServerIds(id))
+      await expireOn(serverId, owners, now);
+  }
 }

@@ -56,7 +56,7 @@ async function firstTeamId(): Promise<string[]> {
   const rows = await getDb()
     .select({ id: teamsTable.id })
     .from(teamsTable)
-    .orderBy(teamsTable.createdAt)
+    .orderBy(teamsTable.createdAt, teamsTable.id)
     .limit(1);
   return rows[0] ? [rows[0].id] : [];
 }

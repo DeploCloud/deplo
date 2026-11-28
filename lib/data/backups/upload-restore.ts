@@ -128,7 +128,8 @@ export async function prepareUploadRestore(input: {
       } catch (e) {
         failure = (mapBackupUnsupported(e) as Error).message;
       }
-      if (failure && !settled) yield { result: { ok: false, error: failure } };
+      if (failure && !settled)
+        yield { result: { ok: false, error: failure, path: "" } };
     } finally {
       await finish(failure ?? (settled ? null : INTERRUPTED));
     }

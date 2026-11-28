@@ -18,7 +18,11 @@ import { reconcileClusterImages } from "./images";
 import { runLoadBalancingPass } from "./load-balancing";
 import { runReplicationPass } from "./replication";
 import { leaderHost } from "./host";
-import { BEAT_EVERY_MS, beatClusterLeaders } from "./leader-beat";
+import {
+  BEAT_EVERY_MS,
+  beatClusterLeaders,
+  leadersMissingBeats,
+} from "./leader-beat";
 import { keepLeadersHome } from "./leader-move";
 import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
@@ -27,7 +31,7 @@ import { getClusterById } from "./roster";
 import { refreshAllClusterWarnings } from "./warnings";
 import { runClusterWatch } from "./watch";
 import { messageOf } from "../../utils";
-import { joinWaitingServers } from "./join-requests";
+import { joinOnLink, joinWaitingServers } from "./join-requests";
 
 // Starts a watch on every cluster's leader and keeps the leader's roster current; one Deplo instance holds the lease.
 export const CLUSTER_WATCH_LEASE = "cluster-watch";
@@ -243,6 +247,14 @@ export async function runClusterBeat(): Promise<void> {
   await beatClusterLeaders().catch((e) =>
     console.error("[deplo] naming the cluster leaders failed:", e),
   );
+  // A leader that missed its beat is checked now: the 15 s tick would leave its Apps waiting.
+  await Promise.all(
+    leadersMissingBeats().map((id) =>
+      superviseClusterLeader(id).catch((e) =>
+        console.warn(`[cluster-leader] ${id}: ${messageOf(e)}`),
+      ),
+    ),
+  );
 }
 
 /** A deleted cluster's watch ends now, not at the next tick. */
@@ -260,6 +272,7 @@ export function startClusterWatch(): void {
   state.timer.unref?.();
   state.beatTimer = setInterval(() => void runClusterBeat(), BEAT_EVERY_MS);
   state.beatTimer.unref?.();
+  joinOnLink(() => state.holds === true);
 }
 
 export async function releaseClusterWatchLease(): Promise<void> {

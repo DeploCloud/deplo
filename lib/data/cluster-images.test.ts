@@ -17,7 +17,11 @@ import {
 } from "./app-graph-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import { clusterImageCopies } from "../db/schema/control-plane/clusters";
+import {
+  clusterImageCopies,
+  failoverBundlePushes,
+} from "../db/schema/control-plane/clusters";
+import { encryptSecret } from "../crypto";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { nowIso } from "../ids";
@@ -36,6 +40,7 @@ import {
   copyImagesToMembers,
   copyImageAfterDeploy,
   copyReleaseToMembers,
+  holdClusterFailoverImages,
   stackImages,
   isBuiltImage,
   listClusterImageProgress,
@@ -566,4 +571,98 @@ test("the images of a rendered stack are what a copy asks for", () => {
     "",
   ].join("\n");
   assert.deepEqual(stackImages(stack), ["postgres:17", "ghcr.io/o/a:1"]);
+});
+
+async function seedBundle(kind: string, id: string, stack: object) {
+  await db.delete(failoverBundlePushes);
+  await db.insert(failoverBundlePushes).values({
+    workloadKind: kind,
+    workloadId: id,
+    keyFingerprint: "f".repeat(64),
+    deploymentId: "dpl_1",
+    bundleEnc: encryptSecret(JSON.stringify({ stack })),
+  });
+}
+
+const FISE_LIKE = [
+  "services:",
+  "  web:",
+  "    image: ghcr.io/acme/web:2",
+  "  db:",
+  "    image: postgres:17",
+  "  app:",
+  `    image: ${REL1}`,
+  "",
+].join("\n");
+
+// c41: fise's new server pulled its 3.3 GB of registry images at the failover (76 s). Every member that may take a
+// cluster workload over now holds them ahead, and a size one member reports goes with the next list.
+test("every member holds a cluster workload's registry images ahead of a failover, never a built one", async () => {
+  __forgetAgentHellos();
+  __forgetRegistryCopies();
+  await db.delete(serverAgentCapabilities);
+  const cluster = await clusterWithApp();
+  await Promise.all(
+    ["srv_2", "srv_3", "srv_4"].map((id) =>
+      recordAgentHello(id, "0.5.3-canary.57", [
+        "cluster.images.registry",
+        "cluster.failover.images",
+      ]),
+    ),
+  );
+  await seedBundle("app", "app_web", {
+    imageRef: "",
+    composeYaml: FISE_LIKE,
+    registryAuth: [],
+  });
+  hostOf("srv_2").failoverHeld = (ref) =>
+    ref === "postgres:17"
+      ? { held: true, bytes: 671, error: "" }
+      : { held: true, bytes: 2540, error: "" };
+  await holdClusterFailoverImages(cluster.id);
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.deepEqual(
+      hostOf(id)
+        .failoverHolds.at(-1)
+        ?.map((i) => i.imageRef),
+      ["ghcr.io/acme/web:2", "postgres:17"],
+      `${id} holds every registry image of the stack`,
+    );
+  await reconcileClusterImages();
+  assert.deepEqual(hostOf("srv_4").failoverHolds.at(-1), [
+    { imageRef: "ghcr.io/acme/web:2", bytes: 2540 },
+    { imageRef: "postgres:17", bytes: 671 },
+  ]);
+  assert.deepEqual(
+    hostOf("srv_2").imageCopies,
+    [],
+    "a member that pulls for itself is sent no copy",
+  );
+});
+
+test("an image behind registry credentials is copied from the server that runs it instead", async () => {
+  __forgetAgentHellos();
+  __forgetRegistryCopies();
+  await db.delete(serverAgentCapabilities);
+  const cluster = await clusterWithApp();
+  await Promise.all(
+    ["srv_2", "srv_3", "srv_4"].map((id) =>
+      recordAgentHello(id, "0.5.3-canary.57", [
+        "cluster.images.registry",
+        "cluster.failover.images",
+      ]),
+    ),
+  );
+  await seedBundle("app", "app_web", {
+    imageRef: "",
+    composeYaml: "services:\n  web:\n    image: ghcr.io/acme/private:1\n",
+    registryAuth: [{ host: "ghcr.io", username: "u", password: "p" }],
+  });
+  await holdClusterFailoverImages(cluster.id);
+  assert.deepEqual(
+    hostOf("srv_2")
+      .imageCopies.map((c) => c.targetFingerprint)
+      .sort(),
+    ["3".repeat(64), "4".repeat(64)],
+  );
 });

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { appDataBytes } from "./data-size";
 import { and, desc, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
 import { peakMemoryMb } from "../../monitoring/container-history";
 import { getDb } from "../../db/client";
@@ -32,9 +33,9 @@ import {
   putLeaderBundle,
 } from "./bundle-calls";
 import { leaderHostOf } from "./host";
-import { clusterHeirs } from "./succession";
-import { isBuiltImage } from "./images";
+import { holdClusterFailoverImages, isBuiltImage } from "./images";
 import { clusterOutOfReach } from "./reach";
+import { clusterHeirs, silentMembers } from "./succession";
 import { getClusterById } from "./roster";
 import { messageOf } from "../../utils";
 
@@ -182,9 +183,13 @@ async function refreshKeyOf(
  * answer keeps the key it had; the key of a server the leader left is retired.
  */
 export async function refreshLeaderKeys(cluster: Cluster): Promise<void> {
-  // The line holds the bundles too: an heir that takes over fails over without Deplo (ADR-0045).
+  // The line holds the bundles too: an heir that takes over fails over without Deplo (ADR-0045). A member that is off
+  // keeps its key, or it leads later with a stale bundle (eu, 23 Nov 2026: memos had no restore there and waited).
   const heirs = await clusterHeirs(cluster).catch(() => []);
-  const wanted = [...new Set([cluster.leaderServerId, ...heirs, null])];
+  const silent = await silentMembers(cluster.id);
+  const wanted = [
+    ...new Set([cluster.leaderServerId, ...heirs, ...silent, null]),
+  ];
   for (const serverId of wanted)
     await refreshKeyOf(cluster, serverId).catch(() => {});
   for (const k of await keyRows(cluster.id))
@@ -287,6 +292,8 @@ export async function bundleMeta(
     peakMb: peakMemoryMb(appId, app?.replicas),
     hasDomain: Boolean(dom),
     createdAt: app?.createdAt ?? "",
+    // No member is given its data past a tenth of its disk free (ADR-0043).
+    diskBytes: await appDataBytes(appId),
   };
 }
 
@@ -459,6 +466,8 @@ export async function pushFailoverBundle(input: {
     keys,
     await bundleMeta(app.id, bundle.stack.imageRef),
   );
+  // Every member that may take it over pulls its registry images now, not at the failover.
+  void holdClusterFailoverImages(cluster.id).catch(() => undefined);
   await db.delete(pushes).where(
     and(
       eq(pushes.workloadKind, KIND),
@@ -479,6 +488,14 @@ const tails = new Map<string, Promise<void>>();
 
 /** Runs a bundle's push in the background, after the workload's earlier ones: a later push always lands last. */
 export function inBackground(id: string, push: () => Promise<void>): void {
+  void inLine(id, push);
+}
+
+/**
+ * Runs a bundle's push after the workload's earlier ones and resolves once it is done. Every push that reads the
+ * stored bundle goes through here: two that overlap would each send what the other did not read (eu, 24 Nov 2026).
+ */
+export function inLine(id: string, push: () => Promise<void>): Promise<void> {
   const p: Promise<void> = (tails.get(id) ?? Promise.resolve())
     .then(push)
     .catch((e) => console.warn(`[failover-bundle] ${id}: ${messageOf(e)}`))
@@ -488,6 +505,7 @@ export function inBackground(id: string, push: () => Promise<void>): void {
     });
   tails.set(id, p);
   inFlight.add(p);
+  return p;
 }
 
 /** Fire-and-forget after a successful deploy. */

@@ -128,7 +128,7 @@ test("a member that still runs work starts moving it off, and stays in the clust
   assert.equal((await appRow("web")).clusterId, cluster.id);
   assert.equal(
     (await activity()).at(-1),
-    "user_1: Started removing server srv_3 from cluster eu: 3 to move first",
+    "user_1: Started removing server srv_3 from cluster eu: 2 Apps and 1 database to move first",
   );
 });
 

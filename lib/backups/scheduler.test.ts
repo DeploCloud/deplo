@@ -22,6 +22,13 @@ import {
   resumeMoveSchedules,
 } from "../data/deplo-move/schedules";
 import { runBackup } from "../data/backups/run-now";
+import { activities } from "../db/schema/control-plane/activity";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
+import {
+  BACKUP_CAPABILITY,
+  BACKUP_ENCRYPT_S3_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
 
 let db: TestDb;
 let pg: PGlite;
@@ -219,4 +226,51 @@ test("after a Deplo move, no backup schedule fires until an admin turns them on"
     await db.delete(deploMoves);
     invalidateSchedulesPaused();
   }
+});
+
+// c49: lab-kit-c's backup missed its 1 s pause on a busy one-core member and simply failed.
+test("a scheduled backup that missed its pause is tried once more later in the hour; only a second miss fails", async (t) => {
+  let missed = 0;
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        missed++;
+        yield {
+          result: {
+            ok: false,
+            error: "its data could not be copied within 1s of pausing it",
+            sizeBytes: 0,
+            sha256: "",
+            heldMs: 1004,
+          },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await seedDue("bkp_1", { schedule: "0 * * * *" });
+  const said = async () =>
+    (
+      await db
+        .select({ message: activities.message })
+        .from(activities)
+        .orderBy(activities.seq)
+    ).map((r) => r.message);
+  const at = (min: number) => new Date(NOW.getTime() + min * 60_000);
+
+  await tick(NOW);
+  assert.equal(missed, 1);
+  assert.match((await said()).at(-1)!, /will be tried again later this hour/);
+  await tick(at(10));
+  assert.equal(missed, 1, "not yet");
+  await tick(at(15));
+  assert.equal(missed, 2, "the second try");
+  assert.match((await said()).at(-1)!, /^Backup of .* failed a second time: /);
+  await tick(at(30));
+  assert.equal(missed, 2, "no third try");
 });

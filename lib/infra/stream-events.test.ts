@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 
-import { DEFAULT_PAUSE_ABOVE, streamEvents } from "./stream-events";
+import {
+  DEFAULT_PAUSE_ABOVE,
+  pumpClientStream,
+  streamEvents,
+} from "./stream-events";
 import type { ClientReadableStream } from "@grpc/grpc-js";
 
 class FakeStream<E> extends EventEmitter {
@@ -155,4 +159,51 @@ test("with no bound given, a slow consumer pauses the producer instead of queuei
   assert.equal(sent, DEFAULT_PAUSE_ABOVE);
   assert.equal((await first).value, 0);
   await gen.return(undefined);
+});
+
+class FakeWriteCall extends EventEmitter {
+  frames: string[] = [];
+  write(v: string): boolean {
+    this.frames.push(v);
+    return true;
+  }
+  end(): void {
+    this.frames.push("end");
+  }
+  cancel(): void {
+    this.frames.push("cancel");
+  }
+}
+
+// eu, 24 Nov 2026: a relayed backup cut after its age header looked whole to the destination, which kept it.
+test("the last frame goes only after every chunk, and a cut stream never sends it", async () => {
+  const whole = new FakeWriteCall();
+  pumpClientStream<string>(
+    whole,
+    "header",
+    (async function* () {
+      yield Buffer.from("a");
+      yield Buffer.from("b");
+    })(),
+    (b) => b.toString(),
+    () => {},
+    () => "trailer",
+  );
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(whole.frames, ["header", "a", "b", "trailer", "end"]);
+
+  const cut = new FakeWriteCall();
+  pumpClientStream<string>(
+    cut,
+    "header",
+    (async function* () {
+      yield Buffer.from("a");
+      throw new Error("the source failed");
+    })(),
+    (b) => b.toString(),
+    () => {},
+    () => "trailer",
+  );
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(cut.frames, ["header", "a", "cancel"]);
 });

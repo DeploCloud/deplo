@@ -14,7 +14,7 @@ const stack = (image: string) => `services:
 `;
 
 test("a stack on the floating tag or an older patch is moved to the pin", () => {
-  for (const image of ["traefik:v3.7", "traefik:v3.7.16", "traefik:v3.7.10"]) {
+  for (const image of ["traefik:v3.7", "traefik:v3.7.17", "traefik:v3.7.10"]) {
     const next = withTraefikImage(stack(image));
     assert.ok(next, image);
     assert.match(next, new RegExp(`image: ${TRAEFIK_IMAGE} # the proxy\\n`));

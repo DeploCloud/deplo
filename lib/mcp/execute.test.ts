@@ -13,6 +13,7 @@ import {
 } from "../data/leaf-test-helpers";
 import { runWithIdentity } from "../auth/request-context";
 import { authenticateToken } from "../data/tokens/authenticate";
+import { TeamUnavailableError } from "../team-path";
 import { createToken } from "../data/tokens/mint";
 import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
@@ -91,16 +92,13 @@ test("a capability the token was not granted is refused, not silently allowed", 
   );
 });
 
-test("the team hint decides which team a document resolves in", async () => {
+test("an unreachable team hint is refused, never swapped for another team", async () => {
   const raw = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     createToken({ name: "mcp", capabilities: ["view"] }),
   );
-  const identity = await authenticateToken(raw.raw, TEAM_B);
-  assert.ok(identity);
-  assert.equal(
-    identity.teamId,
-    TEAM_A,
-    "an unreachable hint falls back, never through",
+  await assert.rejects(
+    authenticateToken(raw.raw, TEAM_B),
+    TeamUnavailableError,
   );
 });
 

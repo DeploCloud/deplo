@@ -18,7 +18,7 @@ export async function generateMetadata(
   props: LayoutProps<"/[team]/storage/databases/[id]">,
 ): Promise<Metadata> {
   const { id } = await props.params;
-  const db = await getDatabase(id);
+  const db = await getDatabase(id).catch(() => null);
   if (!db) return { title: "Database" };
   const name = truncate(db.name, DB_TITLE_MAX);
   return {

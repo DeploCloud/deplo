@@ -34,6 +34,7 @@ import { ServerDetailHeader } from "./server-detail-header";
 import { ServerClusterState } from "./server-cluster-state";
 import { LeftByAnotherDeploNote } from "./left-by-another-deplo";
 import { leftByAnotherDeplo } from "@/lib/data/servers/panel-claim";
+import { diskWarnings } from "@/lib/data/servers/disk-full";
 
 export async function generateMetadata(
   props: PageProps<"/[team]/settings/servers/[id]">,
@@ -71,6 +72,8 @@ export default async function ServerDetailPage(
     ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
+  const diskWarning =
+    (await diskWarnings([{ id, name: serverLabel(server) }])).get(id) ?? "";
   const isDeploHost = isDeploHostServer(server);
   const teams: TeamOption[] = teamsRaw.map((t) => ({
     id: t.id,
@@ -130,6 +133,27 @@ export default async function ServerDetailPage(
                   >
                     <TriangleAlert className="size-3" />
                     Needs Deplo&apos;s relay
+                  </Badge>
+                </SimpleTooltip>
+              )}
+              {diskWarning && (
+                <SimpleTooltip content={diskWarning}>
+                  <Badge
+                    variant="warning"
+                    className="shrink-0 gap-1 whitespace-nowrap"
+                  >
+                    <TriangleAlert className="size-3" />
+                    Disk almost full
+                  </Badge>
+                </SimpleTooltip>
+              )}
+              {asMember?.copyWarning && (
+                <SimpleTooltip content={asMember.copyWarning}>
+                  <Badge
+                    variant="warning"
+                    className="shrink-0 gap-1 whitespace-nowrap"
+                  >
+                    <TriangleAlert className="size-3" />A copy does not fit
                   </Badge>
                 </SimpleTooltip>
               )}
