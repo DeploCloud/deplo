@@ -5,7 +5,11 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SheetHandle } from "@/components/ui/sheet-chrome";
-import { MENU_ITEM, MENU_SURFACE } from "@/components/ui/menu-styles";
+import {
+  MENU_ITEM,
+  MENU_MOTION,
+  MENU_SURFACE,
+} from "@/components/ui/menu-styles";
 import {
   blockPressOutside,
   swallowGhostClick,
@@ -50,20 +54,23 @@ const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
 >(({ className, children, ...props }, ref) => (
-  <DropdownMenuPrimitive.SubContent
-    ref={ref}
-    data-slot="dropdown-menu-content"
-    className={cn(
-      "z-50 min-w-[8rem] animate-in overflow-hidden data-[side=bottom]:slide-in-from-top-2",
-      MENU_SURFACE,
-      ACTION_SHEET,
-      className,
-    )}
-    {...props}
-  >
-    <SheetHandle />
-    {children}
-  </DropdownMenuPrimitive.SubContent>
+  <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.SubContent
+      ref={ref}
+      data-slot="dropdown-menu-content"
+      className={cn(
+        "z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden",
+        MENU_MOTION,
+        MENU_SURFACE,
+        ACTION_SHEET,
+        className,
+      )}
+      {...props}
+    >
+      <SheetHandle />
+      {children}
+    </DropdownMenuPrimitive.SubContent>
+  </DropdownMenuPrimitive.Portal>
 ));
 DropdownMenuSubContent.displayName =
   DropdownMenuPrimitive.SubContent.displayName;
@@ -100,7 +107,8 @@ const DropdownMenuContent = React.forwardRef<
           sideOffset={sideOffset}
           data-slot="dropdown-menu-content"
           className={cn(
-            "z-50 min-w-[10rem] animate-in overflow-hidden fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
+            "z-50 min-w-[10rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden",
+            MENU_MOTION,
             MENU_SURFACE,
             ACTION_SHEET,
             className,

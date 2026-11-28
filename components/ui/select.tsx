@@ -4,7 +4,11 @@ import * as React from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MENU_ITEM, MENU_SURFACE } from "@/components/ui/menu-styles";
+import {
+  MENU_ITEM,
+  MENU_MOTION,
+  MENU_SURFACE,
+} from "@/components/ui/menu-styles";
 
 const Select = SelectPrimitive.Root;
 const SelectGroup = SelectPrimitive.Group;
@@ -73,7 +77,8 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "z-50 max-h-96 min-w-[8rem] animate-in overflow-hidden fade-in-0 zoom-in-95",
+        "z-50 max-h-96 min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden",
+        MENU_MOTION,
         MENU_SURFACE,
         "p-0",
         position === "popper" &&
