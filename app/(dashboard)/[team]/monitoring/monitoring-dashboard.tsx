@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Cpu,
-  MemoryStick,
-  HardDrive,
-  Network,
-  ServerOff,
-  ChevronsUpDown,
-} from "lucide-react";
+import { ChevronLeft, ChevronsUpDown, Search, ServerOff } from "lucide-react";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -16,10 +9,14 @@ import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
 import { CleanupNowButton } from "@/components/monitoring/cleanup-now-button";
 import { ManageServerButton } from "@/components/monitoring/host-chip";
 import { ServerPicker } from "@/components/monitoring/server-picker";
-import { ServerWorkloads } from "@/components/servers/server-workloads";
-import { PageHeader } from "@/components/shared/page-header";
+import {
+  FleetStatus,
+  FleetStatusSkeleton,
+} from "@/components/monitoring/fleet-status";
 import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
 import {
   LiveStatusLine,
   MAX_POINTS,
@@ -32,7 +29,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types/server";
 import type { AgentReach } from "@/lib/version";
-import { cn, friendlyBytes, serverLabel } from "@/lib/utils";
+import { friendlyBytes, serverLabel } from "@/lib/utils";
 
 interface ServerLite {
   id: string;
@@ -74,6 +71,8 @@ export function MonitoringDashboard({
   );
   const [now, setNow] = React.useState<number>(() => Date.now());
   const [metric, setMetric] = React.useState<Metric>("cpu");
+  const [view, setView] = React.useState<"server" | "all">("server");
+  const [query, setQuery] = React.useState("");
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
   const showFleet = servers.length > 1;
@@ -93,21 +92,15 @@ export function MonitoringDashboard({
       busy = true;
       try {
         const res = await gqlAction<
-          {
-            serverMetricsHistory: ServerMetrics[];
-            fleetMetrics?: FleetRow[];
-          },
+          { serverMetricsHistory: ServerMetrics[]; fleetMetrics: FleetRow[] },
           { history: ServerMetrics[]; fleet: FleetRow[] }
         >(
-          `query MonitoringTick($serverId: String!, $withFleet: Boolean!) {
+          `query MonitoringTick($serverId: String!) {
             serverMetricsHistory(serverId: $serverId) { ${SERVER_FIELDS} }
-            fleetMetrics @include(if: $withFleet) { ${FLEET_FIELDS} }
+            fleetMetrics { ${FLEET_FIELDS} }
           }`,
-          { serverId: selectedId, withFleet: showFleet },
-          (d) => ({
-            history: d.serverMetricsHistory,
-            fleet: d.fleetMetrics ?? [],
-          }),
+          { serverId: selectedId },
+          (d) => ({ history: d.serverMetricsHistory, fleet: d.fleetMetrics }),
         );
         if (!active || !res.ok || !res.data) return;
         if (res.data.fleet.length)
@@ -150,7 +143,7 @@ export function MonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [selectedId, online, pollMs, showFleet]);
+  }, [selectedId, online, pollMs]);
 
   const samples = history[selectedId] ?? [];
   const cur = samples[samples.length - 1] ?? null;
@@ -181,115 +174,129 @@ export function MonitoringDashboard({
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {showFleet ? (
-            <ServerPicker
-              servers={servers}
-              rows={fleet}
-              selectedId={selected.id}
-              onSelect={setSelectedId}
-            />
-          ) : (
-            <>
-              <span
-                className="max-w-full truncate text-sm font-medium"
-                title={serverLabel(selected)}
-              >
-                {serverLabel(selected)}
-              </span>
-              {canManageServers && (
-                <ManageServerButton id={selected.id} className="mr-0" />
-              )}
-            </>
-          )}
-          {cur && <LiveStatusLine stale={stale} asOf={cur.ts} />}
-          {cur && cur.uptimeSec > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {upFor(cur.uptimeSec)}
-            </span>
-          )}
-        </div>
-        {online && cur && (
-          <WindowSelector windowMs={windowMs} onChange={setWindowMs} />
-        )}
-      </div>
+  const openServer = (id: string) => {
+    setSelectedId(id);
+    setView("server");
+  };
+  const q = query.trim().toLowerCase();
+  const listed = q
+    ? servers.filter((s) => serverLabel(s).toLowerCase().includes(q))
+    : servers;
 
-      {!online || !cur ? (
-        <EmptyState
-          graphic={<MonitoringGraphic />}
-          title="No live metrics"
-          docs="monitoring.overview"
-          description={
-            selected.status === "provisioning"
-              ? "This server is still provisioning. Metrics appear once its agent is online."
-              : "Nothing has arrived from this server yet. Metrics appear as soon as it starts reporting."
-          }
-        />
-      ) : (
-        <div className="space-y-6">
-          <MetricTabs
-            active={metric}
-            onSelect={setMetric}
-            values={{
-              cpu: { value: pct(cur.cpu), note: `${cur.cpuCores} cores` },
-              memory: {
-                value: pct(cur.memPct),
-                note: `of ${friendlyBytes(cur.memTotal)}`,
-              },
-              disk: {
-                value: pct(cur.diskPct),
-                note: `of ${friendlyBytes(cur.diskTotal)}`,
-              },
-              network: {
-                value: `${friendlyBytes(cur.netRx + cur.netTx)}/s`,
-                note: "In and out",
-              },
-            }}
-          />
-          {metric === "disk" && canManageServers && (
-            <div className="flex justify-end">
-              <CleanupNowButton
-                serverId={selected.id}
-                serverName={serverLabel(selected)}
+  return (
+    <div className="space-y-8">
+      <FleetStatus
+        servers={servers}
+        rows={fleet}
+        onOpen={openServer}
+        onSeeAll={view === "server" ? () => setView("all") : undefined}
+      />
+
+      {view === "all" ? (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => setView("server")}>
+              <ChevronLeft className="size-4" />
+              {serverLabel(selected)}
+            </Button>
+            <div className="relative ml-auto w-full sm:w-72">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search servers"
+                aria-label="Search servers"
+                className="pl-9"
               />
             </div>
-          )}
-          <TimeSeriesChart
-            key={metric}
-            unit={metric === "network" ? "bytesPerSec" : "percent"}
-            windowMs={windowMs}
-            points={points}
-            series={METRIC_SERIES[metric]}
-            ariaLabel={`${METRIC_LABEL[metric]} over time`}
-          />
-        </div>
-      )}
-
-      {showFleet && (
-        <section className="space-y-3">
-          <PageHeader level="section" title="Servers" />
+          </div>
           <FleetList
-            servers={servers}
+            servers={listed}
             rows={fleet}
             selectedId={selected.id}
-            onSelect={setSelectedId}
+            onSelect={openServer}
             canManageServers={canManageServers}
           />
         </section>
-      )}
+      ) : (
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {showFleet ? (
+                <ServerPicker
+                  servers={servers}
+                  rows={fleet}
+                  selectedId={selected.id}
+                  onSelect={setSelectedId}
+                />
+              ) : (
+                <>
+                  <span
+                    className="max-w-full truncate text-sm font-medium"
+                    title={serverLabel(selected)}
+                  >
+                    {serverLabel(selected)}
+                  </span>
+                  {canManageServers && (
+                    <ManageServerButton id={selected.id} className="mr-0" />
+                  )}
+                </>
+              )}
+              {cur && <LiveStatusLine stale={stale} asOf={cur.ts} />}
+              {cur && cur.uptimeSec > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {upFor(cur.uptimeSec)}
+                </span>
+              )}
+            </div>
+            {online && cur && (
+              <WindowSelector windowMs={windowMs} onChange={setWindowMs} />
+            )}
+          </div>
 
-      {canManageServers && (
-        <section className="space-y-3">
-          <PageHeader
-            level="section"
-            title="Apps"
-            description={serverLabel(selected)}
-          />
-          <ServerWorkloads key={selected.id} serverId={selected.id} />
-        </section>
+          {!online || !cur ? (
+            <EmptyState
+              graphic={<MonitoringGraphic />}
+              title="No live metrics"
+              docs="monitoring.overview"
+              description={
+                selected.status === "provisioning"
+                  ? "This server is still provisioning. Metrics appear once its agent is online."
+                  : "Nothing has arrived from this server yet. Metrics appear as soon as it starts reporting."
+              }
+            />
+          ) : (
+            <>
+              <MetricTabs
+                active={metric}
+                onSelect={setMetric}
+                values={{
+                  cpu: pct(cur.cpu),
+                  memory: pct(cur.memPct),
+                  disk: pct(cur.diskPct),
+                  network: `${friendlyBytes(cur.netRx + cur.netTx)}/s`,
+                }}
+              />
+              {metric === "disk" && canManageServers && (
+                <div className="flex justify-end">
+                  <CleanupNowButton
+                    serverId={selected.id}
+                    serverName={serverLabel(selected)}
+                  />
+                </div>
+              )}
+              <TimeSeriesChart
+                key={metric}
+                height={240}
+                unit={metric === "network" ? "bytesPerSec" : "percent"}
+                windowMs={windowMs}
+                points={points}
+                series={METRIC_SERIES[metric]}
+                ariaLabel={`${METRIC_LABEL[metric]} over time`}
+              />
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -303,11 +310,6 @@ const METRIC_LABEL: Record<Metric, string> = {
   disk: "Disk",
   network: "Network",
 };
-
-const METRIC_ICON: Record<
-  Metric,
-  React.ComponentType<{ className?: string }>
-> = { cpu: Cpu, memory: MemoryStick, disk: HardDrive, network: Network };
 
 const METRIC_SERIES: Record<
   Metric,
@@ -343,79 +345,59 @@ function MetricTabs({
 }: {
   active: Metric;
   onSelect: (m: Metric) => void;
-  values: Record<Metric, { value: string; note: string }>;
+  values: Record<Metric, string>;
   loading?: boolean;
 }) {
   return (
-    <div
-      role="tablist"
+    <SlidingButtonGroup
       aria-label="Metric"
-      className="grid grid-cols-2 border-b border-border sm:grid-cols-4"
+      className="grid grid-cols-2 gap-1 rounded-xl p-1 sm:grid-cols-4"
     >
-      {(Object.keys(METRIC_LABEL) as Metric[]).map((m) => {
-        const Icon = METRIC_ICON[m];
-        const on = m === active;
-        return (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={on}
-            onClick={() => onSelect(m)}
-            className={cn(
-              "-mb-px flex cursor-pointer flex-col items-start gap-1 border-b-2 px-1 pt-1 pb-4 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:px-4",
-              on
-                ? "border-foreground"
-                : "border-transparent hover:border-border",
-            )}
-          >
-            <span
-              className={cn(
-                "flex items-center gap-1.5 text-xs",
-                on ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              <Icon className="size-3.5" />
-              {METRIC_LABEL[m]}
+      {(Object.keys(METRIC_LABEL) as Metric[]).map((m) => (
+        <button
+          key={m}
+          type="button"
+          aria-pressed={m === active}
+          onClick={() => onSelect(m)}
+          className="flex cursor-pointer flex-col items-start gap-1 rounded-md px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <span className="text-sm text-muted-foreground">
+            {METRIC_LABEL[m]}
+          </span>
+          <Bone loading={loading}>
+            <span className="text-2xl font-semibold tracking-tight tabular-nums">
+              {values[m]}
             </span>
-            <Bone loading={loading}>
-              <span className="text-2xl font-semibold tracking-tight tabular-nums">
-                {values[m].value}
-              </span>
-            </Bone>
-            <span className="text-xs text-muted-foreground">
-              {values[m].note}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+          </Bone>
+        </button>
+      ))}
+    </SlidingButtonGroup>
   );
 }
 
 /** A reporting server's dashboard, before its numbers arrive. */
 export function MonitoringDashboardSkeleton() {
-  const sample = { value: "12%", note: "of 8 GB" };
   return (
-    <div className="space-y-6" aria-busy inert>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <div className="space-y-8" aria-busy inert>
+      <FleetStatusSkeleton />
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Bone box>
             <Button variant="outline" size="sm" className="max-w-full gap-2">
               <span className="truncate font-medium">server-name</span>
               <ChevronsUpDown className="size-3.5" />
             </Button>
           </Bone>
+          <WindowSelector windowMs={WINDOWS[0].ms} onChange={() => {}} />
         </div>
-        <WindowSelector windowMs={WINDOWS[0].ms} onChange={() => {}} />
+        <MetricTabs
+          loading
+          active="cpu"
+          onSelect={() => {}}
+          values={{ cpu: "12%", memory: "12%", disk: "12%", network: "12%" }}
+        />
+        <Skeleton className="h-[240px] w-full rounded-lg" />
       </div>
-      <MetricTabs
-        loading
-        active="cpu"
-        onSelect={() => {}}
-        values={{ cpu: sample, memory: sample, disk: sample, network: sample }}
-      />
-      <Skeleton className="h-[200px] w-full rounded-lg" />
     </div>
   );
 }

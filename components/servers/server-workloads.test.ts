@@ -88,7 +88,7 @@ test("a viewer without a seed shows loading rather than an empty server", () => 
   assert.ok(!html.includes("Nothing on this server"));
 });
 
-test("Monitoring shows the selected server viewer only to instance admins", () => {
+test("Monitoring leads with how the servers are and leaves their apps to the server page", () => {
   const props = {
     servers: [
       {
@@ -106,11 +106,6 @@ test("Monitoring shows the selected server viewer only to instance admins", () =
     canManageServers: true,
   };
   const admin = render(createElement(MonitoringDashboard, props));
-  assert.match(admin, /<h2[^>]*>Apps<\/h2>/);
-  assert.ok(admin.includes("Loading apps"));
-  const member = render(
-    createElement(MonitoringDashboard, { ...props, canManageServers: false }),
-  );
-  assert.doesNotMatch(member, /<h2[^>]*>Apps<\/h2>/);
-  assert.ok(!member.includes("Loading apps"));
+  assert.match(admin, /<h2[^>]*>Your server is fine<\/h2>/);
+  assert.ok(!admin.includes("Loading apps"));
 });

@@ -33,8 +33,6 @@ export interface FleetRow {
 
 const WARN_PCT = 80;
 
-const MAX_ROWS = 6;
-
 function severity(row: FleetRow | undefined): number {
   if (!row || row.ts <= 0) return -1;
   return Math.max(row.cpu, row.memPct, row.diskPct);
@@ -87,19 +85,6 @@ export function FleetList({
     [servers, rows],
   );
 
-  const listRef = React.useRef<HTMLUListElement>(null);
-  const selectedRef = React.useRef<HTMLLIElement>(null);
-  React.useEffect(() => {
-    // Only the list scrolls: scrollIntoView would drag the whole page down to the row.
-    const list = listRef.current;
-    const row = selectedRef.current;
-    if (!list || !row) return;
-    const l = list.getBoundingClientRect();
-    const r = row.getBoundingClientRect();
-    if (r.top < l.top) list.scrollTop -= l.top - r.top;
-    else if (r.bottom > l.bottom) list.scrollTop += r.bottom - l.bottom;
-  }, [selectedId]);
-
   return (
     <div className="border-y border-border">
       <div className="flex items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
@@ -111,13 +96,7 @@ export function FleetList({
         <span className="hidden w-14 text-right sm:block">Disk</span>
         {canManageServers && <span className="w-[5.25rem]" aria-hidden />}
       </div>
-      <ul
-        ref={listRef}
-        className={cn(
-          "divide-y divide-border",
-          servers.length > MAX_ROWS && "max-h-[21.5rem] overflow-y-auto",
-        )}
-      >
+      <ul className="divide-y divide-border">
         {ordered.map((s) => {
           const row = rows[s.id];
           const measured = Boolean(row && row.ts > 0);
@@ -130,7 +109,6 @@ export function FleetList({
           return (
             <li
               key={s.id}
-              ref={selected ? selectedRef : undefined}
               className={cn(
                 "relative flex items-center transition-colors",
                 selected ? "bg-surface" : "hover:bg-surface",
