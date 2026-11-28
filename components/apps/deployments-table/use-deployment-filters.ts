@@ -274,6 +274,7 @@ export function useDeploymentFilters({
     hasClientNarrower,
     hasFilter,
     visible,
+    sorted,
     paged,
     hasMore,
     sentinelRef,

@@ -31,6 +31,11 @@ import {
 import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
+  SortableHead,
+  useTableSort,
+  type SortState,
+} from "@/components/ui/table-sort";
+import {
   Table,
   TableBody,
   TableCell,
@@ -102,6 +107,14 @@ export function PreviewStatus({
   );
 }
 
+const PREVIEW_SORT = {
+  pr: (p: AppPreviewDTO) => p.prNumber,
+  status: (p: AppPreviewDTO) => (p.closed ? "closed" : p.status),
+  preview: (p: AppPreviewDTO) => p.host || null,
+  updated: (p: AppPreviewDTO) => Date.parse(p.updatedAt),
+};
+type PreviewColumn = keyof typeof PREVIEW_SORT;
+
 export function PreviewsTable({
   appSlug,
   previews,
@@ -122,6 +135,7 @@ export function PreviewsTable({
     remove,
     restore,
   } = useOptimisticRemove(previews, (p) => p.id);
+  const sorted = useTableSort(rows, PREVIEW_SORT);
 
   const inFlight = rows.some(
     (p) => p.status === "queued" || p.status === "building",
@@ -161,8 +175,8 @@ export function PreviewsTable({
 
   return (
     <div className="space-y-3">
-      <PreviewsTableFrame>
-        {rows.map((p) => {
+      <PreviewsTableFrame sort={sorted.sort} onSort={sorted.toggle}>
+        {sorted.rows.map((p) => {
           const blocked = p.isFork && !p.approved;
           const review = blocked && canDeploy;
           const openUrl =
@@ -426,16 +440,37 @@ export function PreviewsTable({
   );
 }
 
-function PreviewsTableFrame({ children }: { children: React.ReactNode }) {
+function PreviewsTableFrame({
+  sort = null,
+  onSort,
+  children,
+}: {
+  sort?: SortState<PreviewColumn>;
+  onSort?: (column: PreviewColumn) => void;
+  children: React.ReactNode;
+}) {
+  const head = (column: PreviewColumn, label: string, className?: string) =>
+    onSort ? (
+      <SortableHead
+        column={column}
+        sort={sort}
+        onSort={onSort}
+        className={className}
+      >
+        {label}
+      </SortableHead>
+    ) : (
+      <TableHead className={className}>{label}</TableHead>
+    );
   return (
     <Card className="overflow-hidden p-0">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Pull request</TableHead>
-            <TableHead className="w-[140px]">Status</TableHead>
-            <TableHead>Preview</TableHead>
-            <TableHead className="w-[120px]">Updated</TableHead>
+            {head("pr", "Pull request")}
+            {head("status", "Status", "w-[140px]")}
+            {head("preview", "Preview")}
+            {head("updated", "Updated", "w-[120px]")}
             <TableHead className="w-[120px] text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>

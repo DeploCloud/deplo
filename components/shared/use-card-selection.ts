@@ -50,7 +50,7 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
     ): boolean => {
       if (!idsRef.current.includes(id)) return false;
       if (e.shiftKey) {
-        const ids = idsRef.current;
+        const ids = onScreenOrder(idsRef.current);
         const anchor = anchorRef.current ?? id;
         const a = ids.indexOf(anchor);
         const b = ids.indexOf(id);
@@ -179,4 +179,20 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
     selectAll,
     setSelected,
   };
+}
+
+// A range runs in the order the user sees, which a sorted table changes.
+export function screenOrder(ids: string[], onScreen: string[]): string[] {
+  const known = new Set(ids);
+  const shown = onScreen.filter((id) => known.delete(id));
+  return [...shown, ...known];
+}
+
+function onScreenOrder(ids: string[]): string[] {
+  if (typeof document === "undefined") return ids;
+  const cards = document.querySelectorAll("[data-card-id]");
+  return screenOrder(
+    ids,
+    [...cards].map((el) => el.getAttribute("data-card-id") ?? ""),
+  );
 }

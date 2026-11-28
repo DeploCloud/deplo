@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RowActions } from "@/components/shared/row-actions";
 import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   EnvSelectionCell,
   EnvSelectionHead,
@@ -50,6 +51,18 @@ type SharedVar = AppliedSharedVarDTO & { type: "plain" | "secret" };
 export type EnvRow =
   | ({ kind: "standalone"; app: RowApp; projectName: string } & EnvVarDTO)
   | ({ kind: "shared"; app: RowApp; projectName: string } & SharedVar);
+
+const authorOf = (row: EnvRow) =>
+  row.kind === "standalone" ? (row.updatedBy ?? row.createdBy) : row.updatedBy;
+
+const APP_VARS_SORT = {
+  key: (row: EnvRow) => row.key,
+  value: (row: EnvRow) =>
+    row.masked || row.type === "secret" ? null : row.value,
+  modified: (row: EnvRow) => Date.parse(row.updatedAt),
+  author: (row: EnvRow) =>
+    authorOf(row)?.name.trim() || authorOf(row)?.username,
+};
 
 export const rowKey = (row: EnvRow) =>
   row.kind === "standalone"
@@ -94,7 +107,8 @@ export function AppVarsCard({
   editableSharedIds: Set<string>;
   loading?: boolean;
 }) {
-  const { app, rows } = card;
+  const { app } = card;
+  const { rows, sort, toggle } = useTableSort(card.rows, APP_VARS_SORT);
   const subtitle = appSubtitle(app, environmentName);
   const bodyId = `vars-app-${app.id}`;
 
@@ -166,16 +180,38 @@ export function AppVarsCard({
               <TableHeader>
                 <TableRow>
                   <EnvSelectionHead ids={rows.map(rowKey)} />
-                  <TableHead className="whitespace-nowrap max-md:w-full">
+                  <SortableHead
+                    column="key"
+                    sort={sort}
+                    onSort={toggle}
+                    className="whitespace-nowrap max-md:w-full"
+                  >
                     Key
-                  </TableHead>
-                  <TableHead className="w-full max-md:hidden">Value</TableHead>
-                  <TableHead className="whitespace-nowrap max-md:hidden">
+                  </SortableHead>
+                  <SortableHead
+                    column="value"
+                    sort={sort}
+                    onSort={toggle}
+                    className="w-full max-md:hidden"
+                  >
+                    Value
+                  </SortableHead>
+                  <SortableHead
+                    column="modified"
+                    sort={sort}
+                    onSort={toggle}
+                    className="whitespace-nowrap max-md:hidden"
+                  >
                     Last modified
-                  </TableHead>
-                  <TableHead className="whitespace-nowrap max-md:hidden">
+                  </SortableHead>
+                  <SortableHead
+                    column="author"
+                    sort={sort}
+                    onSort={toggle}
+                    className="whitespace-nowrap max-md:hidden"
+                  >
                     Modified by
-                  </TableHead>
+                  </SortableHead>
                   <TableHead className="text-right whitespace-nowrap">
                     <span className="max-md:sr-only">Actions</span>
                   </TableHead>

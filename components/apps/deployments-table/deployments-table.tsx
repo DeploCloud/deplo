@@ -20,7 +20,12 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
-import { IN_PROGRESS, useLiveDeploymentStatuses } from "./deployment-status";
+import {
+  IN_PROGRESS,
+  STATUS_LABELS,
+  useLiveDeploymentStatuses,
+} from "./deployment-status";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   DeploymentTableRow,
   useOpenDeployment,
@@ -33,6 +38,15 @@ const DELETE_DEPLOYMENTS = `mutation ($ids: [ID!]!) { deleteDeployments(ids: $id
 const DELETE_ALL = `mutation ($appId: ID, $serverId: ID, $status: String) { deleteAllDeployments(appId: $appId, serverId: $serverId, status: $status) }`;
 const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID, $status: String) { cancelAllDeployments(appId: $appId, serverId: $serverId, status: $status) }`;
 const CANCEL_ONE = `mutation ($id: String!) { cancelDeployment(id: $id) }`;
+
+const DEPLOYMENT_SORT = {
+  deployment: (d: DeploymentRow) => d.commitMessage,
+  app: (d: DeploymentRow) => d.serviceName,
+  server: (d: DeploymentRow) => d.serverName ?? null,
+  status: (d: DeploymentRow) => STATUS_LABELS[d.status] ?? d.status,
+  branch: (d: DeploymentRow) => d.branch || null,
+  created: (d: DeploymentRow) => Date.parse(d.createdAt),
+};
 
 export function DeploymentsTable({
   deployments,
@@ -86,6 +100,9 @@ export function DeploymentsTable({
     sweepStatus,
   } = filters;
   const openDeployment = useOpenDeployment();
+  // Sorted before the page is cut, so scrolling for more keeps the order.
+  const columnSort = useTableSort(filters.sorted, DEPLOYMENT_SORT);
+  const pageRows = columnSort.rows.slice(0, paged.length);
 
   const selectableIds = React.useMemo(
     () =>
@@ -297,12 +314,52 @@ export function DeploymentsTable({
                   </SimpleTooltip>
                 </TableHead>
               )}
-              <TableHead>Deployment</TableHead>
-              {showApp && <TableHead>App</TableHead>}
-              {showServer && <TableHead>Server</TableHead>}
-              <TableHead>Status</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Created</TableHead>
+              <SortableHead
+                column="deployment"
+                sort={columnSort.sort}
+                onSort={columnSort.toggle}
+              >
+                Deployment
+              </SortableHead>
+              {showApp && (
+                <SortableHead
+                  column="app"
+                  sort={columnSort.sort}
+                  onSort={columnSort.toggle}
+                >
+                  App
+                </SortableHead>
+              )}
+              {showServer && (
+                <SortableHead
+                  column="server"
+                  sort={columnSort.sort}
+                  onSort={columnSort.toggle}
+                >
+                  Server
+                </SortableHead>
+              )}
+              <SortableHead
+                column="status"
+                sort={columnSort.sort}
+                onSort={columnSort.toggle}
+              >
+                Status
+              </SortableHead>
+              <SortableHead
+                column="branch"
+                sort={columnSort.sort}
+                onSort={columnSort.toggle}
+              >
+                Branch
+              </SortableHead>
+              <SortableHead
+                column="created"
+                sort={columnSort.sort}
+                onSort={columnSort.toggle}
+              >
+                Created
+              </SortableHead>
               <TableHead className="w-28 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -319,7 +376,7 @@ export function DeploymentsTable({
                 </TableCell>
               </TableRow>
             ) : (
-              paged.map((d) => (
+              pageRows.map((d) => (
                 <DeploymentTableRow
                   key={d.id}
                   d={d}

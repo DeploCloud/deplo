@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
@@ -39,6 +40,12 @@ type BackupRunLite = {
   verified: boolean;
   leftAt: string | null;
   leftOnServer: string | null;
+};
+
+const RUN_SORT = {
+  when: (r: BackupRunLite) => Date.parse(r.startedAt),
+  size: (r: BackupRunLite) => r.sizeBytes,
+  status: (r: BackupRunLite) => r.status,
 };
 
 export function RestoreRunsDialog({
@@ -88,6 +95,7 @@ export function RestoreRunsDialog({
   };
 
   const successfulRuns = (runs ?? []).filter((r) => r.status === "success");
+  const sorted = useTableSort(successfulRuns, RUN_SORT);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -117,14 +125,32 @@ export function RestoreRunsDialog({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableHead
+                    column="when"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    When
+                  </SortableHead>
+                  <SortableHead
+                    column="size"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Size
+                  </SortableHead>
+                  <SortableHead
+                    column="status"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Status
+                  </SortableHead>
                   <TableHead className="text-right" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {successfulRuns.map((run) => (
+                {sorted.rows.map((run) => (
                   <RestoreRunRow
                     key={run.id}
                     run={run}

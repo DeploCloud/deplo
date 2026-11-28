@@ -27,11 +27,11 @@ import {
 import { DocsLink } from "@/components/ui/docs-link";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -105,6 +105,13 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 /** The records to add at the registrar for one zone, and a check that they are there. */
+type ZoneRecord = ClusterDnsView["zones"][number]["records"][number];
+const RECORD_SORT = {
+  name: (r: ZoneRecord) => r.name,
+  type: (r: ZoneRecord) => r.type,
+  value: (r: ZoneRecord) => r.value,
+};
+
 function DelegateDialog({
   zone,
   dns,
@@ -118,6 +125,7 @@ function DelegateDialog({
 }) {
   const [checking, setChecking] = React.useState(false);
   const [check, setCheck] = React.useState<DelegationCheck | null>(null);
+  const records = useTableSort(zone.records, RECORD_SORT);
   const run = async (e: React.FormEvent) => {
     e.preventDefault();
     setChecking(true);
@@ -162,13 +170,31 @@ function DelegateDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Value</TableHead>
+                    <SortableHead
+                      column="name"
+                      sort={records.sort}
+                      onSort={records.toggle}
+                    >
+                      Name
+                    </SortableHead>
+                    <SortableHead
+                      column="type"
+                      sort={records.sort}
+                      onSort={records.toggle}
+                    >
+                      Type
+                    </SortableHead>
+                    <SortableHead
+                      column="value"
+                      sort={records.sort}
+                      onSort={records.toggle}
+                    >
+                      Value
+                    </SortableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {zone.records.map((r) => (
+                  {records.rows.map((r) => (
                     <TableRow key={`${r.name}-${r.type}-${r.value}`}>
                       <TableCell className="font-mono text-xs">
                         {r.name}

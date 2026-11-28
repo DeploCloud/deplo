@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import { StatusDot } from "@/components/shared/status-badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { OptimisticList } from "@/components/shared/optimistic-list";
@@ -24,6 +25,15 @@ import {
   type DestinationCardView,
 } from "@/components/storage/destination-actions";
 import { cn, timeAgo } from "@/lib/utils";
+
+const DESTINATION_SORT = {
+  name: (d: DestinationCardView) => d.name,
+  kind: (d: DestinationCardView) => (d.kind === "server" ? "Server" : "S3"),
+  where: (d: DestinationCardView) => d.where,
+  space: (d: DestinationCardView) => d.storedBytes,
+  lastTest: (d: DestinationCardView) =>
+    d.lastTestAt ? Date.parse(d.lastTestAt) : null,
+};
 
 export function DestinationsTable({
   destinations,
@@ -39,22 +49,33 @@ export function DestinationsTable({
     e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean },
   ) => boolean;
 }) {
+  const { rows, sort, toggle } = useTableSort(destinations, DESTINATION_SORT);
   return (
     <div className="rounded-xl border border-border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Kind</TableHead>
-            <TableHead>Where</TableHead>
-            <TableHead>Space</TableHead>
-            <TableHead>Last test</TableHead>
+            <SortableHead column="name" sort={sort} onSort={toggle}>
+              Name
+            </SortableHead>
+            <SortableHead column="kind" sort={sort} onSort={toggle}>
+              Kind
+            </SortableHead>
+            <SortableHead column="where" sort={sort} onSort={toggle}>
+              Where
+            </SortableHead>
+            <SortableHead column="space" sort={sort} onSort={toggle}>
+              Space
+            </SortableHead>
+            <SortableHead column="lastTest" sort={sort} onSort={toggle}>
+              Last test
+            </SortableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           <OptimisticList>
-            {destinations.map((dest) => (
+            {rows.map((dest) => (
               <DestinationRow
                 key={dest.id}
                 dest={dest}

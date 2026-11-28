@@ -64,6 +64,13 @@ type Row = Domain & {
   autoDns?: boolean;
 };
 
+export const DOMAIN_SORT = {
+  domain: (d: Row) => `${d.name}${d.pathPrefix ?? ""}`,
+  container: (d: Row) => (d.service ?? "").trim() || d.serviceName,
+  status: (d: Row) =>
+    d.proxied && d.status !== "valid" ? "cloudflare" : d.status,
+};
+
 // Keyed here, not in the page: keys don't survive the RSC boundary, so a row could never hide.
 const ROW =
   "max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:px-3 max-md:py-3 max-md:[&>td]:p-0";

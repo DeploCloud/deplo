@@ -16,7 +16,7 @@ test("on a phone a variable's value rides under its key, never in a column of it
     assert.equal(src.match(/<EnvValueUnderKey/g)?.length, cells.length, name);
     assert.match(
       src,
-      /<TableHead className="[^"]*max-md:hidden[^"]*">\s*Value\s*</,
+      /<(?:TableHead|SortableHead)\b[^>]*className="[^"]*max-md:hidden[^"]*"[^>]*>\s*Value\s*</,
       name,
     );
   }

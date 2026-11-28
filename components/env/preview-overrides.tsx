@@ -51,6 +51,7 @@ import { clashingKeys } from "@/components/env/env-parse";
 import { ReplaceExistingConfirm } from "@/components/env/replace-existing-confirm";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { TimeAgo } from "@/components/shared/time-ago";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +60,11 @@ export interface PreviewOverride {
   type: string;
   updatedAt: string;
 }
+
+const OVERRIDE_SORT = {
+  key: (o: PreviewOverride) => o.key,
+  modified: (o: PreviewOverride) => Date.parse(o.updatedAt),
+};
 
 export function PreviewOverrides({
   appId,
@@ -74,6 +80,7 @@ export function PreviewOverrides({
     remove: hideOverride,
     restore: restoreOverride,
   } = useOptimisticRemove(overrides, (o) => o.key);
+  const sorted = useTableSort(visibleOverrides, OVERRIDE_SORT);
   const [pending, startTransition] = React.useTransition();
   const [addOpen, setAddOpen] = React.useState(false);
   const [rows, setRows] = React.useState<EnvRow[]>([{ key: "", value: "" }]);
@@ -222,22 +229,32 @@ export function PreviewOverrides({
                   <TableHeader>
                     <TableRow>
                       <EnvSelectionHead />
-                      <TableHead className="whitespace-nowrap max-md:w-full">
+                      <SortableHead
+                        column="key"
+                        sort={sorted.sort}
+                        onSort={sorted.toggle}
+                        className="whitespace-nowrap max-md:w-full"
+                      >
                         Key
-                      </TableHead>
+                      </SortableHead>
                       <TableHead className="w-full max-md:hidden">
                         Value
                       </TableHead>
-                      <TableHead className="whitespace-nowrap max-md:hidden">
+                      <SortableHead
+                        column="modified"
+                        sort={sorted.sort}
+                        onSort={sorted.toggle}
+                        className="whitespace-nowrap max-md:hidden"
+                      >
                         Last modified
-                      </TableHead>
+                      </SortableHead>
                       <TableHead className="text-right whitespace-nowrap">
                         Actions
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {visibleOverrides.map((o) => (
+                    {sorted.rows.map((o) => (
                       <TableRow key={o.key}>
                         <EnvSelectionCell id={o.key} />
                         <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">

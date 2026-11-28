@@ -29,6 +29,7 @@ import { RowActions } from "@/components/shared/row-actions";
 import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   EnvBulkSelection,
   EnvSelectionCell,
@@ -73,6 +74,25 @@ function matchSharing(v: SharedVarDTO, value: string): boolean {
   if (value === "environment") return v.environmentIds.length > 0;
   return v.appIds.length > 0;
 }
+
+// Shared with: the first chip the row shows, in the same order.
+const SHARED_SORT = {
+  key: (v: SharedVarDTO) => v.key,
+  value: (v: SharedVarDTO) =>
+    v.masked || v.type === "secret" ? null : v.value,
+  sharedWith: (v: SharedVarDTO) =>
+    [
+      ...v.teams.map((t) => t.name),
+      ...v.projects.map((p) => p.name),
+      ...v.environments.map((e) => `${e.projectName} · ${e.name}`),
+      ...v.apps.map((a) => a.name),
+    ][0] ?? null,
+  modified: (v: SharedVarDTO) => Date.parse(v.updatedAt),
+  author: (v: SharedVarDTO) => {
+    const a = v.updatedBy ?? v.createdBy;
+    return a?.name.trim() || a?.username;
+  },
+};
 
 export function SharedVarsManager({
   vars,
@@ -196,6 +216,7 @@ export function SharedVarsManager({
       ...v.environments.map((e) => `${e.projectName} ${e.name}`),
     ].join(" "),
   );
+  const sorted = useTableSort(shown, SHARED_SORT);
 
   return (
     <div className="space-y-4">
@@ -247,26 +268,53 @@ export function SharedVarsManager({
               <TableHeader>
                 <TableRow>
                   <EnvSelectionHead />
-                  <TableHead className="whitespace-nowrap max-md:w-full">
+                  <SortableHead
+                    column="key"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                    className="whitespace-nowrap max-md:w-full"
+                  >
                     Key
-                  </TableHead>
-                  <TableHead className="w-full max-md:hidden">Value</TableHead>
-                  <TableHead className="whitespace-nowrap max-md:hidden">
+                  </SortableHead>
+                  <SortableHead
+                    column="value"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                    className="w-full max-md:hidden"
+                  >
+                    Value
+                  </SortableHead>
+                  <SortableHead
+                    column="sharedWith"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                    className="whitespace-nowrap max-md:hidden"
+                  >
                     Shared with
-                  </TableHead>
-                  <TableHead className="whitespace-nowrap max-md:hidden">
+                  </SortableHead>
+                  <SortableHead
+                    column="modified"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                    className="whitespace-nowrap max-md:hidden"
+                  >
                     Last modified
-                  </TableHead>
-                  <TableHead className="whitespace-nowrap max-md:hidden">
+                  </SortableHead>
+                  <SortableHead
+                    column="author"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                    className="whitespace-nowrap max-md:hidden"
+                  >
                     Modified by
-                  </TableHead>
+                  </SortableHead>
                   <TableHead className="text-right whitespace-nowrap">
                     <span className="max-md:sr-only">Actions</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {shown.map((v) => (
+                {sorted.rows.map((v) => (
                   <TableRow key={v.id}>
                     <EnvSelectionCell id={v.id} />
                     <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
