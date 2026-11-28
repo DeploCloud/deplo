@@ -32,7 +32,7 @@ const QUERY = /* GraphQL */ `
 `;
 
 const POLL_MS = 10_000;
-const SHOWN = 5;
+const SHOWN = 6;
 
 // The apps behind the chart: who is using this server's CPU or memory right now.
 export function TopApps({
