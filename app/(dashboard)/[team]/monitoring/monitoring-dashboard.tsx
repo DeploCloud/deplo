@@ -6,17 +6,10 @@ import {
   MemoryStick,
   HardDrive,
   Network,
-  Clock,
-  Boxes,
-  Gauge,
   ServerOff,
-  ArrowDown,
-  ArrowUp,
   ChevronsUpDown,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
-import { GaugeTile } from "@/components/monitoring/radial-gauge";
 import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
@@ -28,8 +21,6 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
-  ChartCard,
-  InfoItem,
   LiveStatusLine,
   MAX_POINTS,
   pollIntervalFor,
@@ -41,7 +32,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types/server";
 import type { AgentReach } from "@/lib/version";
-import { formatBytes, serverLabel } from "@/lib/utils";
+import { cn, friendlyBytes, serverLabel } from "@/lib/utils";
 
 interface ServerLite {
   id: string;
@@ -82,6 +73,7 @@ export function MonitoringDashboard({
     Object.fromEntries(initialFleet.map((r) => [r.serverId, r])),
   );
   const [now, setNow] = React.useState<number>(() => Date.now());
+  const [metric, setMetric] = React.useState<Metric>("cpu");
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
   const showFleet = servers.length > 1;
@@ -171,11 +163,9 @@ export function MonitoringDashboard({
         values: {
           cpu: s.cpu,
           mem: s.memPct,
+          disk: s.diskPct,
           rx: s.netRx,
           tx: s.netTx,
-          load1: s.load[0],
-          load5: s.load[1],
-          load15: s.load[2],
         },
       })),
     [samples],
@@ -216,6 +206,11 @@ export function MonitoringDashboard({
             </>
           )}
           {cur && <LiveStatusLine stale={stale} asOf={cur.ts} />}
+          {cur && cur.uptimeSec > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {upFor(cur.uptimeSec)}
+            </span>
+          )}
         </div>
         {online && cur && (
           <WindowSelector windowMs={windowMs} onChange={setWindowMs} />
@@ -234,158 +229,56 @@ export function MonitoringDashboard({
           }
         />
       ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <GaugeTile
-              icon={Cpu}
-              label="CPU"
-              value={cur.cpu}
-              full={100}
-              display={`${cur.cpu.toFixed(1)}%`}
-              caption={`${cur.cpuCores} cores · load ${cur.load[0].toFixed(2)}`}
-            />
-            <GaugeTile
-              icon={MemoryStick}
-              label="Memory"
-              value={cur.memPct}
-              full={100}
-              display={`${cur.memPct.toFixed(1)}%`}
-              caption={`${formatBytes(cur.memUsed)} of ${formatBytes(cur.memTotal)}`}
-              info={
-                cur.memCache > 0 ? (
-                  <>
-                    <p>
-                      processes{" "}
-                      {formatBytes(
-                        Math.max(0, cur.memTotal - cur.memFree - cur.memCache),
-                      )}{" "}
-                      · cache {formatBytes(cur.memCache)} · free{" "}
-                      {formatBytes(cur.memFree)}
-                    </p>
-                    <p className="mt-1">
-                      The figure above counts cache the kernel cannot reclaim as
-                      used, the same way `free` does. htop counts all cache as
-                      free, so it reads lower.
-                    </p>
-                  </>
-                ) : undefined
-              }
-            />
-            <GaugeTile
-              icon={HardDrive}
-              label="Disk"
-              value={cur.diskPct}
-              full={100}
-              display={`${cur.diskPct.toFixed(1)}%`}
-              caption={`${formatBytes(cur.diskUsed)} of ${formatBytes(cur.diskTotal)}`}
-              action={
-                canManageServers && (
-                  <CleanupNowButton
-                    serverId={selected.id}
-                    serverName={serverLabel(selected)}
-                  />
-                )
-              }
-            />
-            <NetworkTile rx={cur.netRx} tx={cur.netTx} />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard
-              title="CPU usage"
-              caption={`${cur.cpu.toFixed(1)}% of ${cur.cpuCores} cores`}
-            >
-              <TimeSeriesChart
-                unit="percent"
-                windowMs={windowMs}
-                points={points}
-                series={[
-                  {
-                    key: "cpu",
-                    label: "CPU",
-                    color: "var(--chart-1)",
-                    fill: true,
-                  },
-                ]}
-                ariaLabel={`CPU usage over time, currently ${cur.cpu.toFixed(1)}%`}
+        <div className="space-y-6">
+          <MetricTabs
+            active={metric}
+            onSelect={setMetric}
+            values={{
+              cpu: { value: pct(cur.cpu), note: `${cur.cpuCores} cores` },
+              memory: {
+                value: pct(cur.memPct),
+                note: `of ${friendlyBytes(cur.memTotal)}`,
+              },
+              disk: {
+                value: pct(cur.diskPct),
+                note: `of ${friendlyBytes(cur.diskTotal)}`,
+              },
+              network: {
+                value: `${friendlyBytes(cur.netRx + cur.netTx)}/s`,
+                note: "In and out",
+              },
+            }}
+          />
+          {metric === "disk" && canManageServers && (
+            <div className="flex justify-end">
+              <CleanupNowButton
+                serverId={selected.id}
+                serverName={serverLabel(selected)}
               />
-            </ChartCard>
-
-            <ChartCard
-              title="Memory usage"
-              caption={`${formatBytes(cur.memUsed)} of ${formatBytes(cur.memTotal)} · ${cur.memPct.toFixed(1)}%`}
-            >
-              <TimeSeriesChart
-                unit="percent"
-                windowMs={windowMs}
-                points={points}
-                series={[
-                  {
-                    key: "mem",
-                    label: "Memory",
-                    color: "var(--chart-1)",
-                    fill: true,
-                  },
-                ]}
-                ariaLabel={`Memory usage over time, currently ${cur.memPct.toFixed(1)}%`}
-              />
-            </ChartCard>
-
-            <ChartCard title="Network I/O">
-              <TimeSeriesChart
-                unit="bytesPerSec"
-                windowMs={windowMs}
-                points={points}
-                series={[
-                  { key: "rx", label: "↓ Received", color: "var(--chart-1)" },
-                  { key: "tx", label: "↑ Sent", color: "var(--chart-2)" },
-                ]}
-                ariaLabel="Network throughput over time, received and sent bytes per second"
-              />
-            </ChartCard>
-
-            <ChartCard title="Load average">
-              <TimeSeriesChart
-                unit="count"
-                windowMs={windowMs}
-                points={points}
-                series={[
-                  { key: "load1", label: "1m", color: "var(--chart-1)" },
-                  { key: "load5", label: "5m", color: "var(--chart-2)" },
-                  { key: "load15", label: "15m", color: "var(--chart-3)" },
-                ]}
-                ariaLabel={`System load average over time, 1, 5 and 15 minutes, across ${cur.cpuCores} cores`}
-              />
-            </ChartCard>
-          </div>
-        </>
+            </div>
+          )}
+          <TimeSeriesChart
+            key={metric}
+            unit={metric === "network" ? "bytesPerSec" : "percent"}
+            windowMs={windowMs}
+            points={points}
+            series={METRIC_SERIES[metric]}
+            ariaLabel={`${METRIC_LABEL[metric]} over time`}
+          />
+        </div>
       )}
 
-      {online && cur && (
-        <Card>
-          <CardContent className="grid grid-cols-2 gap-4 py-4 sm:grid-cols-4">
-            <InfoItem
-              icon={Clock}
-              label="Uptime"
-              value={fmtUptime(cur.uptimeSec)}
-            />
-            <InfoItem
-              icon={Boxes}
-              label="Containers"
-              value={`${cur.containers}`}
-            />
-            <InfoItem
-              icon={Gauge}
-              label="Load (1/5/15m)"
-              value={cur.load.map((l) => l.toFixed(2)).join(" / ")}
-            />
-            <InfoItem
-              icon={Cpu}
-              label="Docker"
-              value={selected.dockerVersion || "—"}
-            />
-          </CardContent>
-        </Card>
+      {showFleet && (
+        <section className="space-y-3">
+          <PageHeader level="section" title="Servers" />
+          <FleetList
+            servers={servers}
+            rows={fleet}
+            selectedId={selected.id}
+            onSelect={setSelectedId}
+            canManageServers={canManageServers}
+          />
+        </section>
       )}
 
       {canManageServers && (
@@ -398,70 +291,111 @@ export function MonitoringDashboard({
           <ServerWorkloads key={selected.id} serverId={selected.id} />
         </section>
       )}
-
-      {showFleet && (
-        <FleetList
-          servers={servers}
-          rows={fleet}
-          selectedId={selected.id}
-          onSelect={setSelectedId}
-          canManageServers={canManageServers}
-        />
-      )}
     </div>
   );
 }
 
-function fmtUptime(sec: number): string {
-  if (sec <= 0) return "—";
-  const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${m}m`;
-  return `${m}m`;
+type Metric = "cpu" | "memory" | "disk" | "network";
+
+const METRIC_LABEL: Record<Metric, string> = {
+  cpu: "CPU",
+  memory: "Memory",
+  disk: "Disk",
+  network: "Network",
+};
+
+const METRIC_ICON: Record<
+  Metric,
+  React.ComponentType<{ className?: string }>
+> = { cpu: Cpu, memory: MemoryStick, disk: HardDrive, network: Network };
+
+const METRIC_SERIES: Record<
+  Metric,
+  { key: string; label: string; color: string; fill?: boolean }[]
+> = {
+  cpu: [{ key: "cpu", label: "CPU", color: "var(--chart-1)", fill: true }],
+  memory: [
+    { key: "mem", label: "Memory", color: "var(--chart-1)", fill: true },
+  ],
+  disk: [{ key: "disk", label: "Disk", color: "var(--chart-1)", fill: true }],
+  network: [
+    { key: "rx", label: "Received", color: "var(--chart-1)" },
+    { key: "tx", label: "Sent", color: "var(--chart-2)" },
+  ],
+};
+
+const pct = (v: number) => `${Math.round(v)}%`;
+
+function upFor(sec: number): string {
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor(sec / 3600);
+  if (days) return `Up for ${days} day${days === 1 ? "" : "s"}`;
+  if (hours) return `Up for ${hours} hour${hours === 1 ? "" : "s"}`;
+  return `Up for ${Math.max(1, Math.floor(sec / 60))} min`;
 }
 
-function NetworkTile({
-  rx,
-  tx,
+// The four numbers are the chart's tabs: one chart, the metric you picked.
+function MetricTabs({
+  active,
+  onSelect,
+  values,
   loading = false,
 }: {
-  rx: number;
-  tx: number;
+  active: Metric;
+  onSelect: (m: Metric) => void;
+  values: Record<Metric, { value: string; note: string }>;
   loading?: boolean;
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-1.5 p-4">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Network className="size-4" />
-          <span className="text-xs">Network</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-lg font-semibold tracking-tight">
-          <ArrowDown className="size-4 text-[var(--success)]" />
-          <Bone loading={loading}>{formatBytes(rx)}/s</Bone>
-        </div>
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <ArrowUp className="size-4" />
-          <Bone loading={loading}>{formatBytes(tx)}/s</Bone>
-        </div>
-      </CardContent>
-    </Card>
+    <div
+      role="tablist"
+      aria-label="Metric"
+      className="grid grid-cols-2 border-b border-border sm:grid-cols-4"
+    >
+      {(Object.keys(METRIC_LABEL) as Metric[]).map((m) => {
+        const Icon = METRIC_ICON[m];
+        const on = m === active;
+        return (
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onSelect(m)}
+            className={cn(
+              "-mb-px flex cursor-pointer flex-col items-start gap-1 border-b-2 px-1 pt-1 pb-4 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:px-4",
+              on
+                ? "border-foreground"
+                : "border-transparent hover:border-border",
+            )}
+          >
+            <span
+              className={cn(
+                "flex items-center gap-1.5 text-xs",
+                on ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              <Icon className="size-3.5" />
+              {METRIC_LABEL[m]}
+            </span>
+            <Bone loading={loading}>
+              <span className="text-2xl font-semibold tracking-tight tabular-nums">
+                {values[m].value}
+              </span>
+            </Bone>
+            <span className="text-xs text-muted-foreground">
+              {values[m].note}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-const CHARTS = ["CPU usage", "Memory usage", "Network I/O", "Load average"];
-const CAPTIONED = new Set(["CPU usage", "Memory usage"]);
-
 /** A reporting server's dashboard, before its numbers arrive. */
 export function MonitoringDashboardSkeleton() {
-  const gauge = {
-    value: 0,
-    full: 100,
-    display: "12.3%",
-    caption: "4.1 GB of 8 GB",
-  };
+  const sample = { value: "12%", note: "of 8 GB" };
   return (
     <div className="space-y-6" aria-busy inert>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -475,37 +409,13 @@ export function MonitoringDashboardSkeleton() {
         </div>
         <WindowSelector windowMs={WINDOWS[0].ms} onChange={() => {}} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <GaugeTile loading icon={Cpu} label="CPU" {...gauge} />
-        <GaugeTile loading icon={MemoryStick} label="Memory" {...gauge} />
-        <GaugeTile loading icon={HardDrive} label="Disk" {...gauge} />
-        <NetworkTile loading rx={1024} tx={1024} />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {CHARTS.map((title) => (
-          <ChartCard
-            key={title}
-            loading
-            title={title}
-            caption={CAPTIONED.has(title) ? "12.3% of 4 cores" : undefined}
-          >
-            <Skeleton className="h-[200px] w-full rounded-lg" />
-          </ChartCard>
-        ))}
-      </div>
-      <Card>
-        <CardContent className="grid grid-cols-2 gap-4 py-4 sm:grid-cols-4">
-          <InfoItem loading icon={Clock} label="Uptime" value="12d 4h" />
-          <InfoItem loading icon={Boxes} label="Containers" value="12" />
-          <InfoItem
-            loading
-            icon={Gauge}
-            label="Load (1/5/15m)"
-            value="0.12 / 0.10 / 0.08"
-          />
-          <InfoItem loading icon={Cpu} label="Docker" value="27.3.1" />
-        </CardContent>
-      </Card>
+      <MetricTabs
+        loading
+        active="cpu"
+        onSelect={() => {}}
+        values={{ cpu: sample, memory: sample, disk: sample, network: sample }}
+      />
+      <Skeleton className="h-[200px] w-full rounded-lg" />
     </div>
   );
 }

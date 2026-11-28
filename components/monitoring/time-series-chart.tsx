@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { cn, formatBytes } from "@/lib/utils";
+import { cn, friendlyBytes } from "@/lib/utils";
 import { GAP_MS, isInGap, visibleGapSpans } from "@/lib/monitoring/chart-gaps";
 import {
   areaPath,
@@ -60,13 +60,13 @@ function yTicksFor(unit: ChartUnit, dataMax: number): number[] {
 
 function fmtAxis(v: number, unit: ChartUnit): string {
   if (unit === "percent") return `${Math.round(v)}%`;
-  if (unit === "bytesPerSec") return v === 0 ? "0" : `${formatBytes(v)}/s`;
+  if (unit === "bytesPerSec") return v === 0 ? "0" : `${friendlyBytes(v)}/s`;
   return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(2)));
 }
 
 function fmtValue(v: number, unit: ChartUnit): string {
   if (unit === "percent") return `${v.toFixed(1)}%`;
-  if (unit === "bytesPerSec") return `${formatBytes(v)}/s`;
+  if (unit === "bytesPerSec") return `${friendlyBytes(v)}/s`;
   return v.toFixed(2);
 }
 

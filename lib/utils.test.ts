@@ -351,3 +351,13 @@ test("appBuildsItsOwnImage picks the app header's first action", () => {
     true,
   );
 });
+
+test("friendlyBytes reads like a computer's file sizes, one decimal at most", async () => {
+  const { friendlyBytes } = await import("./utils");
+  assert.equal(friendlyBytes(512), "512 B");
+  assert.equal(friendlyBytes(1536), "1.5 KB");
+  assert.equal(friendlyBytes(17.34 * 1024 ** 3), "17.3 GB");
+  assert.equal(friendlyBytes(246 * 1024 ** 3), "246 GB");
+  assert.equal(friendlyBytes(-5), "0 B");
+  assert.equal(friendlyBytes(Number.NaN), "");
+});

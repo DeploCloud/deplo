@@ -12,6 +12,19 @@ export function formatBytes(bytes: number): string {
   return prettyBytes(Math.max(0, bytes), { binary: true });
 }
 
+/** A size the way a computer shows it to anyone: steps of 1024, KB/MB/GB, one decimal at most. */
+export function friendlyBytes(bytes: number): string {
+  if (!Number.isFinite(bytes)) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = Math.max(0, bytes);
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v >= 100 || i === 0 ? Math.round(v) : Math.round(v * 10) / 10} ${units[i]}`;
+}
+
 export function timeAgo(input: Date | string | number): string {
   const date = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(date.getTime())) return "";

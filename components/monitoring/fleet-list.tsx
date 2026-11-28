@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { ManageServerButton } from "@/components/monitoring/host-chip";
 import { Badge } from "@/components/ui/badge";
 import { Info } from "lucide-react";
@@ -76,7 +75,6 @@ export function FleetList({
     id: string;
     name: string;
     status: ServerStatus;
-    ip: string;
     agentReach: AgentReach;
   }[];
   rows: Record<string, FleetRow>;
@@ -103,124 +101,110 @@ export function FleetList({
   }, [selectedId]);
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="flex items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
-          <span className="size-2.5 shrink-0" aria-hidden />
-          <span className="flex-1">Server</span>
-          <span className="hidden w-[72px] sm:block" aria-hidden />
-          <span className="w-14 text-right">CPU</span>
-          <span className="w-14 text-right">RAM</span>
-          <span className="hidden w-14 text-right sm:block">Disk</span>
-          <span className="hidden w-20 text-right lg:block">Containers</span>
-          {canManageServers && <span className="w-[5.25rem]" aria-hidden />}
-        </div>
-        <ul
-          ref={listRef}
-          className={cn(
-            "divide-y divide-border",
-            servers.length > MAX_ROWS && "max-h-[21.5rem] overflow-y-auto",
-          )}
-        >
-          {ordered.map((s) => {
-            const row = rows[s.id];
-            const measured = Boolean(row && row.ts > 0);
-            const selected = s.id === selectedId;
-            const outdated = Boolean(
-              row?.expectedAgentVersion &&
-              row.agentVersion &&
-              agentUpdateAvailable(row.agentVersion, row.expectedAgentVersion),
-            );
-            return (
-              <li
-                key={s.id}
-                ref={selected ? selectedRef : undefined}
-                className={cn(
-                  "relative flex items-center transition-colors",
-                  selected ? "bg-surface" : "hover:bg-surface",
-                )}
+    <div className="border-y border-border">
+      <div className="flex items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
+        <span className="size-2.5 shrink-0" aria-hidden />
+        <span className="flex-1">Server</span>
+        <span className="hidden w-[72px] sm:block" aria-hidden />
+        <span className="w-14 text-right">CPU</span>
+        <span className="w-16 text-right">Memory</span>
+        <span className="hidden w-14 text-right sm:block">Disk</span>
+        {canManageServers && <span className="w-[5.25rem]" aria-hidden />}
+      </div>
+      <ul
+        ref={listRef}
+        className={cn(
+          "divide-y divide-border",
+          servers.length > MAX_ROWS && "max-h-[21.5rem] overflow-y-auto",
+        )}
+      >
+        {ordered.map((s) => {
+          const row = rows[s.id];
+          const measured = Boolean(row && row.ts > 0);
+          const selected = s.id === selectedId;
+          const outdated = Boolean(
+            row?.expectedAgentVersion &&
+            row.agentVersion &&
+            agentUpdateAvailable(row.agentVersion, row.expectedAgentVersion),
+          );
+          return (
+            <li
+              key={s.id}
+              ref={selected ? selectedRef : undefined}
+              className={cn(
+                "relative flex items-center transition-colors",
+                selected ? "bg-surface" : "hover:bg-surface",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => onSelect(s.id)}
+                aria-pressed={selected}
+                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
               >
-                <button
-                  type="button"
-                  onClick={() => onSelect(s.id)}
-                  aria-pressed={selected}
-                  className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
-                >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute inset-y-0 left-0 w-0.5",
-                      selected && "bg-primary",
-                    )}
-                  />
-                  <StatusDot status={s.status} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{s.name}</p>
-                    <p className="truncate font-mono text-xs text-muted-foreground">
-                      {s.ip}
-                    </p>
-                  </div>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute inset-y-0 left-0 w-0.5",
+                    selected && "bg-primary",
+                  )}
+                />
+                <StatusDot status={s.status} />
+                <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {s.name}
+                </p>
 
-                  {outdated && !agentUsable(row?.agentVersion) ? (
-                    <SimpleTooltip
-                      content={
-                        stuckAgentMessage(s.agentReach) ?? AGENT_TOO_OLD_MESSAGE
-                      }
+                {outdated && !agentUsable(row?.agentVersion) ? (
+                  <SimpleTooltip
+                    content={
+                      stuckAgentMessage(s.agentReach) ?? AGENT_TOO_OLD_MESSAGE
+                    }
+                  >
+                    <Badge
+                      variant="destructive"
+                      className="hidden sm:inline-flex"
                     >
-                      <Badge
-                        variant="destructive"
-                        className="hidden sm:inline-flex"
-                      >
-                        Agent too old
-                      </Badge>
-                    </SimpleTooltip>
-                  ) : (
-                    outdated && (
-                      <Badge
-                        variant="outline"
-                        className="hidden sm:inline-flex"
-                      >
-                        Agent outdated
-                      </Badge>
-                    )
-                  )}
-                  {row?.source === "docker-stats" && (
-                    <SimpleTooltip content="This host samples through docker stats instead of cgroups, which costs the machine noticeably more CPU. Updating the agent usually switches it back.">
-                      <span
-                        role="img"
-                        aria-label="Sampling through docker stats, the slower path"
-                      >
-                        <Info className="size-3.5 text-muted-foreground" />
-                      </span>
-                    </SimpleTooltip>
-                  )}
-
-                  {measured ? (
-                    <>
-                      <Sparkline
-                        values={row.spark.map((p) => p.cpu)}
-                        ariaLabel={`${s.name} CPU trend`}
-                        className="hidden sm:block"
-                      />
-                      <Pct value={row.cpu} />
-                      <Pct value={row.memPct} />
-                      <Pct value={row.diskPct} className="hidden sm:block" />
-                      <p className="hidden w-20 text-right text-sm font-medium tabular-nums lg:block">
-                        {row.containers}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
-                      No data
+                      Agent too old
+                    </Badge>
+                  </SimpleTooltip>
+                ) : (
+                  outdated && (
+                    <Badge variant="outline" className="hidden sm:inline-flex">
+                      Agent outdated
+                    </Badge>
+                  )
+                )}
+                {row?.source === "docker-stats" && (
+                  <SimpleTooltip content="This host samples through docker stats instead of cgroups, which costs the machine noticeably more CPU. Updating the agent usually switches it back.">
+                    <span
+                      role="img"
+                      aria-label="Sampling through docker stats, the slower path"
+                    >
+                      <Info className="size-3.5 text-muted-foreground" />
                     </span>
-                  )}
-                </button>
-                {canManageServers && <ManageServerButton id={s.id} />}
-              </li>
-            );
-          })}
-        </ul>
-      </CardContent>
-    </Card>
+                  </SimpleTooltip>
+                )}
+
+                {measured ? (
+                  <>
+                    <Sparkline
+                      values={row.spark.map((p) => p.cpu)}
+                      ariaLabel={`${s.name} CPU trend`}
+                      className="hidden sm:block"
+                    />
+                    <Pct value={row.cpu} />
+                    <Pct value={row.memPct} className="w-16" />
+                    <Pct value={row.diskPct} className="hidden sm:block" />
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">No data</span>
+                )}
+              </button>
+              {canManageServers && <ManageServerButton id={s.id} />}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
