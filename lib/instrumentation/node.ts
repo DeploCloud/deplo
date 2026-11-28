@@ -161,6 +161,15 @@ export async function register(): Promise<void> {
     console.error("[deplo] app delete reconcile failed to start:", e);
   }
   try {
+    const { shrinkStoredLogos } = await import("@/lib/data/logos");
+    if (!frozenAtBoot)
+      void shrinkStoredLogos().catch((e) =>
+        console.error("[deplo] stored logos could not be shrunk:", e),
+      );
+  } catch (e) {
+    console.error("[deplo] logo shrink sweep failed to start:", e);
+  }
+  try {
     const { runNetworkIsolationSweep } =
       await import("@/lib/deploy/network-migration");
     if (!frozenAtBoot)

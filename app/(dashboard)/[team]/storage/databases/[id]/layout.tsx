@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { logoSrc } from "@/lib/apps/logo-src";
 import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases/rows";
 import { truncate } from "@/lib/utils";
@@ -40,6 +41,7 @@ export default async function DatabaseLayout(
     experiments(),
   ]);
   if (!db) notFound();
+  const logo = logoSrc("database", db.id, db.logo);
 
   const initialLive: LiveDatabase = {
     id: db.id,
@@ -53,7 +55,7 @@ export default async function DatabaseLayout(
       <DbNavSync
         id={db.id}
         cronsEnabled={db.cronEnabled && flags.crons}
-        logo={db.logo}
+        logo={logo}
         type={db.type}
       />
       <DetailFrame
@@ -69,7 +71,7 @@ export default async function DatabaseLayout(
               id: db.id,
               name: db.name,
               type: db.type,
-              logo: db.logo,
+              logo,
               version: db.version,
               status: db.status,
             }}

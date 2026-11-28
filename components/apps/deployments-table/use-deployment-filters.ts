@@ -92,11 +92,16 @@ export function useDeploymentFilters({
   remaining,
   scopeAppId,
   showServer,
+  complete = true,
+  onNeedAll,
 }: {
   deployments: DeploymentRow[];
   remaining: DeploymentRow[];
   scopeAppId?: string;
   showServer: boolean;
+  // False while the server sent only the first page: any filter or scroll past it asks for the rest.
+  complete?: boolean;
+  onNeedAll?: () => void;
 }) {
   const [picked, setPicked] = React.useState<Picked>(NONE);
   const [now] = React.useState(() => Date.now());
@@ -196,21 +201,23 @@ export function useDeploymentFilters({
   );
 
   const paged = sorted.slice(0, Math.min(shown, sorted.length));
-  const hasMore = sorted.length > paged.length;
+  const hasMore = sorted.length > paged.length || !complete;
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasMore) return;
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) setShown((n) => n + PAGE_SIZE);
+        if (!entry.isIntersecting) return;
+        if (sorted.length > shown) setShown((n) => n + PAGE_SIZE);
+        else onNeedAll?.();
       },
       { rootMargin: "400px" },
     );
     io.observe(el);
     return () => io.disconnect();
     // `shown` is a dep on purpose: a sentinel still in view never crosses the threshold again.
-  }, [hasMore, shown]);
+  }, [hasMore, shown, sorted.length, onNeedAll]);
 
   const nameOf = (opts: { id: string; name: string }[], id: string) =>
     opts.find((o) => o.id === id)?.name ?? id;
@@ -246,14 +253,17 @@ export function useDeploymentFilters({
       : scopeWho;
 
   function applyFacet(key: DeploymentFacet, values: string[]) {
+    onNeedAll?.();
     setPicked((p) => ({ ...p, [key]: values }));
     setShown(PAGE_SIZE);
   }
   function applyQuery(v: string) {
+    onNeedAll?.();
     setQuery(v);
     setShown(PAGE_SIZE);
   }
   function applySort(v: string) {
+    onNeedAll?.();
     setSortDir(v as SortDir);
     setShown(PAGE_SIZE);
   }

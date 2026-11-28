@@ -1,5 +1,6 @@
 import { History as ActivityIcon } from "lucide-react";
 
+import { withLogoSrc } from "@/lib/apps/logo-src";
 import {
   activityCountsByActor,
   activityCountsByType,
@@ -64,14 +65,16 @@ export default async function ActivityPage(
     listActivity(ACTIVITY_PAGE_SIZE, filter),
     activityMonths(filter),
     listActivityActors(),
-    listApps(),
+    listApps().then((rows) => withLogoSrc("app", rows)),
     listFolders(),
     listProjects(),
     reachesWholeTeam(),
     activityCountsByType({ ...counted, types: [] }),
     activityCountsByActor({ ...counted, actorUserIds: [] }),
   ]);
-  const databases = teamWide ? await listDatabases() : [];
+  const databases = teamWide
+    ? withLogoSrc("database", await listDatabases())
+    : [];
 
   const byType = Object.fromEntries(typeCounts.map((c) => [c.type, c.count]));
   const byActor = Object.fromEntries(

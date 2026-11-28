@@ -74,6 +74,7 @@ import {
 } from "../../deploy/domains";
 import { serverWildcardIp } from "../servers/addresses";
 import { isValidLogoValue } from "../../apps/logo-shared";
+import { shrinkLogo } from "../../apps/logo-shrink";
 import { logoToneFromDataUri } from "../../apps/logo-tone";
 import { getTemplateBlueprint } from "../../templates-blueprint";
 import { DEFAULT_VARIANT_SLUG } from "@/lib/templates/types";
@@ -429,7 +430,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const isUpload = input.source === "upload";
   const imagePort = await imagePortFor(input);
 
-  const logo = input.logo && isValidLogoValue(input.logo) ? input.logo : null;
+  const logo =
+    input.logo && isValidLogoValue(input.logo)
+      ? await shrinkLogo(input.logo)
+      : null;
 
   const project: App = {
     id: appId,

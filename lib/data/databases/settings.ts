@@ -8,6 +8,7 @@ import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability, requireMountHostVolumes } from "../../membership";
 import { recordActivity } from "../activity";
 import { isValidLogoValue } from "../../apps/logo-shared";
+import { shrinkLogo } from "../../apps/logo-shrink";
 import {
   cleanResourceLimits,
   type ResourceLimitsInput,
@@ -69,9 +70,10 @@ export async function updateDatabaseLogo(
 ): Promise<void> {
   const { membership } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
-  const next = logo?.trim() ? logo.trim() : null;
-  if (next && !isValidLogoValue(next))
+  const given = logo?.trim() ? logo.trim() : null;
+  if (given && !isValidLogoValue(given))
     throw new Error("Unsupported logo image");
+  const next = given ? await shrinkLogo(given) : null;
 
   const updated = await getDb()
     .update(databasesTable)

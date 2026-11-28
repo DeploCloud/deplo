@@ -1,4 +1,5 @@
 import { Database } from "lucide-react";
+import { withLogoSrc } from "@/lib/apps/logo-src";
 import { listDatabases } from "@/lib/data/databases/rows";
 import { databaseSecurityCounts } from "@/lib/data/security-updates/read";
 import { ensureDefaultDestination } from "@/lib/data/destinations/create";
@@ -95,11 +96,11 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     canRestoreBackups,
     mayUseCustomPath,
   ] = await Promise.all([
-    listDatabases(),
+    listDatabases().then((rows) => withLogoSrc("database", rows)),
     listDestinations(),
     listBackups(),
     listServersForCurrentTeam(),
-    listApps(),
+    listApps().then((rows) => withLogoSrc("app", rows)),
     canExposePorts(),
     hasCapability("configure_databases"),
     hasCapability("control_databases"),

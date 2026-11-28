@@ -53,8 +53,6 @@ export interface AppRuntimeView extends RuntimeSnapshot {
 type Response = { appRuntime: AppRuntimeView | null };
 
 const POLL_MS = 5_000;
-// Wide enough for a slow first load; a tab opened later than this asks again.
-const SEED_MS = 15_000;
 
 export function useAppRuntime(
   appId: string,
@@ -62,10 +60,8 @@ export function useAppRuntime(
 ): AppRuntimeView | null {
   const live = useLiveApp();
   const seed = live?.id === appId ? live.runtime : undefined;
-  // The server's own read while it is fresh: never a stored status shown as live.
-  const [runtime, setRuntime] = React.useState<AppRuntimeView | null>(() =>
-    seed && Date.now() - seed.at < SEED_MS ? seed.value : null,
-  );
+  // Undefined until the first poll answers; until then the server's own fresh read, never a stored status.
+  const [runtime, setRuntime] = React.useState<AppRuntimeView | null>();
 
   React.useEffect(() => {
     if (!enabled) return;
@@ -89,5 +85,6 @@ export function useAppRuntime(
     };
   }, [appId, enabled]);
 
-  return enabled ? runtime : null;
+  if (!enabled) return null;
+  return runtime !== undefined ? runtime : (seed?.value ?? null);
 }

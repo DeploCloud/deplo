@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { withLogoSrc } from "@/lib/apps/logo-src";
 import { cn } from "@/lib/utils";
 import Link from "@/components/ui/link";
 import { Plus, Rocket, Folder, Boxes, ArrowUpRight } from "lucide-react";
@@ -93,7 +94,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     canMoveApps,
     firstRun,
   ] = await Promise.all([
-    listApps(),
+    listApps().then((apps) => withLogoSrc("app", apps)),
     listFolders(),
     listProjects(),
     listActivity(6),
@@ -107,7 +108,9 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     hasCapabilityAnywhere("move_apps"),
     welcomePending(),
   ]);
-  const activityDatabases = teamWideReach ? await listDatabases() : [];
+  const activityDatabases = teamWideReach
+    ? withLogoSrc("database", await listDatabases())
+    : [];
   const securityList = securitySubjects(
     services,
     activityDatabases,

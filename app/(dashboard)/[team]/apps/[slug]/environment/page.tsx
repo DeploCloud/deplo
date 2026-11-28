@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { withLogoSrc } from "@/lib/apps/logo-src";
 import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { listEnv, listEnvManageableApps } from "@/lib/data/env";
@@ -56,12 +57,16 @@ export default async function AppEnvPage(
   ] = await Promise.all([
     listEnv(project.id),
     listSharedVarsForApp(project.id),
-    teamWideEnv ? listSharedVars() : Promise.resolve([]),
+    (teamWideEnv ? listSharedVars() : Promise.resolve([])).then((rows) =>
+      rows.map((v) => ({ ...v, apps: withLogoSrc("app", v.apps) })),
+    ),
     previews ? listPreviewEnvVars(project.id) : [],
     teamWideEnv ? listProjects() : Promise.resolve([]),
     teamWideEnv ? listAllEnvironmentsForTeam() : Promise.resolve([]),
     teamWideEnv ? listSharedVarTeams() : Promise.resolve([]),
-    teamWideEnv ? listEnvManageableApps() : Promise.resolve([]),
+    (teamWideEnv ? listEnvManageableApps() : Promise.resolve([])).then((rows) =>
+      withLogoSrc("app", rows),
+    ),
     listEnvExampleKeys(project.id),
   ]);
   const projects = projectSummaries.map((p) => ({

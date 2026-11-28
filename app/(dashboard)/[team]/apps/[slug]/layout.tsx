@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { logoSrc } from "@/lib/apps/logo-src";
 import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { appCapabilities } from "@/lib/data/node-access";
@@ -33,7 +34,7 @@ import { experiments } from "@/lib/data/experiments";
 
 const PROJECT_TITLE_MAX = 24;
 
-// The server reads the App's containers as it renders, so its status never starts from the stored one.
+// Streamed, never awaited: the page shows at once and the containers' state follows when the agent answers.
 async function runtimeSeed(appId: string) {
   const value = await Promise.race([
     getAppRuntime(appId).catch(() => null),
@@ -64,6 +65,7 @@ export default async function AppLayout(
   const project = await getAppBySlug(slug);
   if (!project || project.deletingAt) notFound();
   const buildsOwnImage = appBuildsItsOwnImage(project);
+  const logo = logoSrc("app", project.id, project.logo);
   const [capabilities, rollback, latestScreenshotAt, waiting, flags] =
     await Promise.all([
       appCapabilities(project.id),
@@ -75,8 +77,7 @@ export default async function AppLayout(
       experiments(),
     ]);
 
-  const runtime =
-    project.status === "active" ? await runtimeSeed(project.id) : null;
+  const runtime = project.status === "active" ? runtimeSeed(project.id) : null;
   const initialLive: LiveApp = {
     id: project.id,
     slug: project.slug,
@@ -87,11 +88,14 @@ export default async function AppLayout(
     latestDeploymentId: project.latestDeployment?.id ?? null,
     latestDeploymentStatus: project.latestDeployment?.status ?? null,
     latestScreenshotAt,
-    ...(runtime ? { runtime } : {}),
   };
 
   return (
-    <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
+    <AppLiveStatusProvider
+      key={initialLive.slug}
+      initial={initialLive}
+      runtimeSeed={runtime}
+    >
       <AppCapabilitiesProvider capabilities={capabilities}>
         <DetailFrame
           locked={Boolean(project.migrationRunId)}
@@ -101,7 +105,7 @@ export default async function AppLayout(
             parent: { href: "/", label: "Overview" },
             nav: {
               slug,
-              logo: project.logo,
+              logo,
               running: project.status === "active",
               capabilities,
               isGithubApp: project.source === "github",
@@ -119,11 +123,7 @@ export default async function AppLayout(
                     href={`/apps/${slug}/settings`}
                     label="General settings"
                   >
-                    <AppLogo
-                      logo={project.logo}
-                      tone={project.logoTone}
-                      size={44}
-                    />
+                    <AppLogo logo={logo} tone={project.logoTone} size={44} />
                   </LogoEditLink>
                 }
                 name={<AppTitle />}
@@ -181,7 +181,7 @@ export default async function AppLayout(
           sidecars={
             <AppNavSync
               slug={slug}
-              logo={project.logo}
+              logo={logo}
               running={project.status === "active"}
               capabilities={capabilities}
               isGithubApp={project.source === "github"}

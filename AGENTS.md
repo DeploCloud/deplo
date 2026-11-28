@@ -413,7 +413,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     `backups/[runId]/download`, `backups/restore-upload`, `node-versions`,
     `database-versions`, `registry/images`, `github/callback|setup`,
     `deployments/[id]/screenshot` (run under the deployment's own team, so a tab on another team
-    still loads it).
+    still loads it), `logo/[kind]/[id]` (an uploaded App or database logo, same rule; pages carry
+    its URL from `logoSrc`, never the image, and an SVG answers under a sandbox CSP).
   - **A signature or a URL token, never a cookie**: `github/webhook` (HMAC over the body),
     `git/webhook/[token]` (the URL token names the provider - sniffing headers would let the
     caller pick the verification rule), `agent/bootstrap` (one-shot enrollment token),

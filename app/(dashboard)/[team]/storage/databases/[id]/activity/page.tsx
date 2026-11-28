@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { logoSrc } from "@/lib/apps/logo-src";
 import { getDatabase } from "@/lib/data/databases/rows";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScopedActivity } from "@/components/activity/scoped-activity";
@@ -27,7 +28,11 @@ export default async function DatabaseActivityPage(
         searchParams={await props.searchParams}
         emptyDescription="Every change made here shows up in this list."
         databaseLinks={{
-          [db.id]: { name: db.name, logo: db.logo, type: db.type },
+          [db.id]: {
+            name: db.name,
+            logo: logoSrc("database", db.id, db.logo),
+            type: db.type,
+          },
         }}
       />
     </div>

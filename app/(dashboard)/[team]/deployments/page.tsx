@@ -7,13 +7,21 @@ import { DeploymentsHeader } from "./header";
 
 export const metadata = { title: "Deployments" };
 
-export default async function DeploymentsPage() {
-  const [deployments, canDeploy, canRollback, isAdmin] = await Promise.all([
-    listDeployments(),
+const FIRST_PAGE = 25;
+
+export default async function DeploymentsPage(
+  props: PageProps<"/[team]/deployments">,
+) {
+  // The first page only, until scrolling, a filter or a search asks for the rest (`?all=1`).
+  const full = (await props.searchParams).all === "1";
+  const [rows, canDeploy, canRollback, isAdmin] = await Promise.all([
+    listDeployments(full ? undefined : { limit: FIRST_PAGE + 1 }),
     hasCapability("deploy_apps"),
     hasCapability("rollback_apps"),
     isInstanceAdmin(),
   ]);
+  const complete = full || rows.length <= FIRST_PAGE;
+  const deployments = complete ? rows : rows.slice(0, FIRST_PAGE);
   const canManage = canDeploy || isAdmin;
 
   const header = <DeploymentsHeader />;
@@ -37,6 +45,7 @@ export default async function DeploymentsPage() {
           showServer
           canManage={canManage}
           canRollbackApps={canRollback || isAdmin}
+          complete={complete}
           deployments={deployments.map((d) => ({
             id: d.id,
             appId: d.appId,

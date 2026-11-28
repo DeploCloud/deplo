@@ -27,6 +27,7 @@ import {
 } from "./rollback";
 import { IN_PROGRESS } from "./cancel-and-delete";
 import type { Deployment, DeploymentEnvironment } from "../../types/deployment";
+import { logoSrc } from "../../apps/logo-src";
 
 export async function listDeployments(filter?: {
   appId?: string;
@@ -83,6 +84,10 @@ export async function listDeployments(filter?: {
   // A deployment names its app, its commit and its URL, so an app in a folder the caller cannot see contributes none.
   const teamApps = scopedApps.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
   const byId = new Map(teamApps.map((p) => [p.id, p] as const));
+  // One URL per App, not its image on every row: 200 rows carried 761 KB of logos.
+  const logoOf = new Map(
+    teamApps.map((p) => [p.id, logoSrc("app", p.id, p.logo)] as const),
+  );
   const appIds = filter?.appId
     ? byId.has(filter.appId)
       ? [filter.appId]
@@ -151,7 +156,7 @@ export async function listDeployments(filter?: {
         appMigrating: Boolean(p?.migrationRunId),
         serviceName: p?.name ?? "",
         appSlug: p?.slug ?? "",
-        appLogo: p?.logo ?? null,
+        appLogo: logoOf.get(dep.appId) ?? null,
         serverId,
         serverName: serverId ? (serverNameById.get(serverId) ?? null) : null,
         buildServerName:

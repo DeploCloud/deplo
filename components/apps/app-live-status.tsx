@@ -55,18 +55,35 @@ type SubResult = {
   };
 };
 
+// Wide enough for a slow first load; a page reopened later than this asks the agent again.
+const SEED_MS = 15_000;
+
 const LiveAppContext = React.createContext<LiveApp | null>(null);
 
 export function AppLiveStatusProvider({
   initial,
+  runtimeSeed,
   children,
 }: {
   initial: LiveApp;
+  runtimeSeed?: Promise<LiveApp["runtime"] | null> | null;
   children: React.ReactNode;
 }) {
   // Keyed by slug in the layout, so it remounts and re-seeds from `initial`; no re-seed effect.
   const [live, setLive] = React.useState<LiveApp>(initial);
   const router = useRouter();
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void runtimeSeed?.then((runtime) => {
+      // A page reopened from the router cache replays an old read: only a fresh one counts as live.
+      if (cancelled || !runtime || Date.now() - runtime.at >= SEED_MS) return;
+      setLive((prev) => ({ ...prev, runtime }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [runtimeSeed]);
   // The pages under it are server-rendered: re-read them when the latest deploy moves on.
   const seenDeploy = React.useRef(
     `${initial.latestDeploymentId}:${initial.latestDeploymentStatus}:${initial.latestScreenshotAt}`,

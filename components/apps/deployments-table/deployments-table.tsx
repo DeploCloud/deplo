@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "@/lib/nav";
+import { useFlatPathname, useRouter, useSearchParams } from "@/lib/nav";
 import { toast } from "sonner";
 import { Trash2, CircleStop, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,7 @@ export function DeploymentsTable({
   canManage,
   canRollbackApps = false,
   loading = false,
+  complete = true,
 }: {
   deployments: DeploymentRow[];
   header?: React.ReactNode;
@@ -68,8 +69,18 @@ export function DeploymentsTable({
   canManage: boolean;
   canRollbackApps?: boolean;
   loading?: boolean;
+  complete?: boolean;
 }) {
   const router = useRouter();
+  const path = useFlatPathname();
+  const search = useSearchParams();
+  const [loadingAll, startLoadingAll] = React.useTransition();
+  const loadAll = React.useCallback(() => {
+    if (complete || loadingAll) return;
+    const next = new URLSearchParams(search);
+    next.set("all", "1");
+    startLoadingAll(() => router.replace(`${path}?${next}`, { scroll: false }));
+  }, [complete, loadingAll, search, path, router]);
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
   const {
     visible: remaining,
@@ -86,6 +97,8 @@ export function DeploymentsTable({
     remaining,
     scopeAppId,
     showServer,
+    complete,
+    onNeedAll: loadAll,
   });
   const {
     visible,
@@ -131,6 +144,7 @@ export function DeploymentsTable({
   const someSelected = selectedCount > 0 && !allSelected;
 
   function toggleAll(checked: boolean) {
+    if (checked) loadAll();
     setSelected(checked ? new Set(selectableIds) : new Set());
   }
   function toggleRow(id: string, checked: boolean) {
@@ -231,6 +245,8 @@ export function DeploymentsTable({
 
   const colSpan =
     5 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
+  // Their counts and sweeps read every row, so they wait for the rest of the list.
+  const bulkReady = complete;
   const showStopAll = canManage && inProgressCount > 0;
   const showDeleteAll = canManage && selectableIds.length > 0;
 
@@ -256,10 +272,15 @@ export function DeploymentsTable({
         action={
           (showStopAll || showDeleteAll) && (
             <Bone box loading={loading}>
-              <div className="flex items-center gap-2">
+              <div
+                className="flex items-center gap-2"
+                onPointerEnter={loadAll}
+                onFocus={loadAll}
+              >
                 {showStopAll && (
                   <Button
                     variant="outline"
+                    disabled={!bulkReady}
                     onClick={() => setCancelAllOpen(true)}
                   >
                     <CircleStop />
@@ -272,6 +293,7 @@ export function DeploymentsTable({
                 {showDeleteAll && (
                   <Button
                     variant="destructive"
+                    disabled={!bulkReady}
                     onClick={() => setDeleteAllOpen(true)}
                   >
                     <Trash2 />
@@ -403,7 +425,18 @@ export function DeploymentsTable({
           <div ref={sentinelRef} aria-hidden className="h-px w-px" />
           <span className="text-sm text-muted-foreground">
             <Bone loading={loading}>
-              Showing {paged.length} of {visible.length}
+              {complete ? (
+                `Showing ${paged.length} of ${visible.length}`
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingAll}
+                  onClick={loadAll}
+                >
+                  {loadingAll ? "Loading more" : "Load more"}
+                </Button>
+              )}
             </Bone>
           </span>
         </div>

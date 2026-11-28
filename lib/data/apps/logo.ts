@@ -7,6 +7,7 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
 import { isValidLogoValue } from "../../apps/logo-shared";
+import { shrinkLogo } from "../../apps/logo-shrink";
 import { detectAppFavicon } from "../../apps/favicon-detect";
 import { faviconSourceKind } from "../../apps/favicon-shared";
 import { AgentUnreachableError } from "../../infra/agent-client/errors";
@@ -21,10 +22,11 @@ export async function updateAppLogo(
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
-  const next = logo?.trim() ? logo.trim() : null;
-  if (next && !isValidLogoValue(next)) {
+  const given = logo?.trim() ? logo.trim() : null;
+  if (given && !isValidLogoValue(given)) {
     throw new Error("Unsupported logo image");
   }
+  const next = given ? await shrinkLogo(given) : null;
 
   const updated = await getDb()
     .update(appsTable)
@@ -75,7 +77,7 @@ export async function redetectAppLogo(id: string): Promise<string> {
   const primaryHost =
     domains.find((d) => d.primary)?.name ?? domains[0]?.name ?? "";
 
-  const logo = await detectAppFavicon(project, routes, primaryHost).catch(
+  const detected = await detectAppFavicon(project, routes, primaryHost).catch(
     (e) => {
       if (e instanceof AgentUnreachableError) {
         throw new Error(
@@ -86,9 +88,10 @@ export async function redetectAppLogo(id: string): Promise<string> {
       throw e;
     },
   );
-  if (!logo || !isValidLogoValue(logo)) {
+  if (!detected || !isValidLogoValue(detected)) {
     throw new Error(noIconFoundMessage(project));
   }
+  const logo = await shrinkLogo(detected);
   await getDb()
     .update(appsTable)
     .set({ logo, logoTone: null, updatedAt: nowIso() })

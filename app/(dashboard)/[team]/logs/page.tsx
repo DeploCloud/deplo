@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { withLogoSrc } from "@/lib/apps/logo-src";
 import { withTeam } from "@/lib/team-path";
 import { cookies } from "next/headers";
 import { listApps } from "@/lib/data/apps/listing";
@@ -35,14 +36,16 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
   const { team } = await props.params;
   const params = await props.searchParams;
 
-  const apps = await listApps();
+  const apps = withLogoSrc("app", await listApps());
   const readableApps = apps.filter((a) =>
     a.capabilities?.includes("view_logs"),
   );
 
   const canReadDatabases =
     (await hasCapability("view_logs")) && (await reachesWholeTeam());
-  const databases = canReadDatabases ? await listDatabases() : [];
+  const databases = canReadDatabases
+    ? withLogoSrc("database", await listDatabases())
+    : [];
 
   const targets: LogTarget[] = [
     ...readableApps.map((a) => ({

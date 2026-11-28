@@ -42,6 +42,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: devOrigins(),
   env: { DEPLO_COMMIT: buildCommit() },
+  experimental: {
+    // A page seen in the last 2 minutes reopens with no request; every router.refresh() clears it.
+    staleTimes: { dynamic: 120 },
+  },
   serverExternalPackages: [
     "pg",
     "better-auth",

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { logoSrc } from "@/lib/apps/logo-src";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { AppActivityHeader } from "@/components/apps/app-tab-headers";
 import { ScopedActivity } from "@/components/activity/scoped-activity";
@@ -21,7 +22,13 @@ export default async function AppActivityPage(
         base={`/apps/${slug}/activity`}
         searchParams={await props.searchParams}
         emptyDescription="Every change made here shows up in this list."
-        appLinks={{ [app.id]: { name: app.name, slug, logo: app.logo } }}
+        appLinks={{
+          [app.id]: {
+            name: app.name,
+            slug,
+            logo: logoSrc("app", app.id, app.logo),
+          },
+        }}
       />
     </div>
   );

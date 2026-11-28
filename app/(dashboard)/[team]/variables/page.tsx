@@ -1,4 +1,5 @@
 import { Lock } from "lucide-react";
+import { logoSrc, withLogoSrc } from "@/lib/apps/logo-src";
 import { listAllAppEnv } from "@/lib/data/env";
 import { listAppliedSharedVarsByApp } from "@/lib/data/shared-vars/app-view";
 import { listSharedVarTeams } from "@/lib/data/shared-vars/authoring";
@@ -40,8 +41,15 @@ export default async function VariablesPage(
     teamEnvironments,
     shareableTeams,
   ] = await Promise.all([
-    listAllAppEnv(),
-    wholeTeam ? listSharedVars() : Promise.resolve([]),
+    listAllAppEnv().then((groups) =>
+      groups.map((g) => ({
+        ...g,
+        app: { ...g.app, logo: logoSrc("app", g.app.id, g.app.logo) },
+      })),
+    ),
+    (wholeTeam ? listSharedVars() : Promise.resolve([])).then((vars) =>
+      vars.map((v) => ({ ...v, apps: withLogoSrc("app", v.apps) })),
+    ),
     wholeTeam ? listAppliedSharedVarsByApp() : Promise.resolve([]),
     listProjects(),
     listAllEnvironmentsForTeam(),

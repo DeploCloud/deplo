@@ -12,6 +12,7 @@ import { appCapabilitiesForTeam } from "./node-access";
 import { listProjects } from "./projects/read";
 import { experiments } from "./experiments";
 import type { BreadcrumbGraph } from "../breadcrumb-model";
+import { logoSrc } from "../apps/logo-src";
 
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
@@ -74,7 +75,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         folderId: s.folderId ?? null,
         projectId: s.projectId ?? null,
         environmentId: s.environmentId ?? null,
-        logo: s.logo ?? null,
+        logo: logoSrc("app", s.id, s.logo),
         features: {
           pullRequests:
             s.source === "github" && s.previewEnabled && flags.pullRequests,
@@ -87,7 +88,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
       id: d.id,
       name: d.name,
       type: d.type,
-      logo: d.logo ?? null,
+      logo: logoSrc("database", d.id, d.logo),
     })),
   };
 }
