@@ -36,16 +36,21 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
   const { team } = await props.params;
   const params = await props.searchParams;
 
-  const apps = withLogoSrc("app", await listApps());
+  const [apps, databases, jar, projects, environments, folders] =
+    await Promise.all([
+      listApps().then((rows) => withLogoSrc("app", rows)),
+      Promise.all([hasCapability("view_logs"), reachesWholeTeam()]).then(
+        async ([canView, wide]) =>
+          canView && wide ? withLogoSrc("database", await listDatabases()) : [],
+      ),
+      cookies(),
+      listProjects(),
+      listAllEnvironmentsForTeam(),
+      listFolders(),
+    ]);
   const readableApps = apps.filter((a) =>
     a.capabilities?.includes("view_logs"),
   );
-
-  const canReadDatabases =
-    (await hasCapability("view_logs")) && (await reachesWholeTeam());
-  const databases = canReadDatabases
-    ? withLogoSrc("database", await listDatabases())
-    : [];
 
   const targets: LogTarget[] = [
     ...readableApps.map((a) => ({
@@ -70,7 +75,7 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     })),
   ];
 
-  const remembered = (await cookies()).get(LOG_TARGET_COOKIE)?.value;
+  const remembered = jar.get(LOG_TARGET_COOKIE)?.value;
   const target = resolveLogTarget(targets, {
     app: params.app,
     db: params.db,
@@ -82,11 +87,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
   if (!target && !pick && targets.length === 1)
     redirect(withTeam(logTargetHref(targets[0]!.key), team));
 
-  const [projects, environments, folders] = await Promise.all([
-    listProjects(),
-    listAllEnvironmentsForTeam(),
-    listFolders(),
-  ]);
   const rows = buildLogTree(targets, { projects, environments, folders });
 
   if (!target) return <LogChooser rows={rows} />;

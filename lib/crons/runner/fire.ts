@@ -12,6 +12,7 @@ import { startAttempt } from "./attempt";
 import { settle, settleOrRetry } from "./outcome";
 import type { InFlightRun, SchedulableJob } from "./targets";
 import { listSchedulableJobs, serverOf } from "./targets";
+import { publishTeamChanged } from "../../graphql/pubsub";
 
 async function hasOtherRunningRun(
   jobId: string,
@@ -66,7 +67,9 @@ export async function claimRun(
     .onConflictDoNothing()
     .returning();
   const run = inserted[0];
-  return run ? { run, job, target } : null;
+  if (!run) return null;
+  publishTeamChanged(job.teamId, "cron");
+  return { run, job, target };
 }
 
 // Reap must run before this: the overlap rule reads the running rows. Several matching minutes fire once, on the last.

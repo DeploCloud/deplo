@@ -8460,6 +8460,24 @@ input ShellLabelInput {
   containerName: String
 }
 
+"""
+What the dashboard shell follows on its one stream: the in-flight deployment count, and a note whenever something in the active team changed.
+"""
+type ShellPulse {
+  """
+  Deployments queued or building across the active team, counting only the apps the caller can reach.
+  """
+  activeDeployments: Int
+
+  """
+  Set when the team changed: "activity" (someone's action or a finished deploy), "backup" or "cron" (a run started or ended). Null when only the count moved.
+  """
+  changed: String
+
+  """The user whose action it was, when a person made the change."""
+  changedBy: String
+}
+
 """This Deplo's side of a Deplo move, as the old Deplo."""
 type SourceMove {
   createdAt: String
@@ -8531,6 +8549,11 @@ type Subscription {
   Emits the whole cleanup history whenever it changes - a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.
   """
   dockerCleanupRuns: [DockerCleanupRun!]
+
+  """
+  Fires once with the in-flight deployment count, then whenever that count moves or something in the active team changes. One stream per open dashboard tab.
+  """
+  shellPulse: ShellPulse
 }
 
 """

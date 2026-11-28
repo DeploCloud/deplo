@@ -10,6 +10,7 @@ import { ScrollToTop } from "./scroll-to-top";
 import { MobileNav } from "./mobile-nav";
 import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
+import { TeamPulseProvider } from "./team-pulse";
 import { MigrationActivityProvider } from "./migration-activity";
 import { LogsDisplayVars } from "@/components/shared/logs-display";
 import { CommandPalette } from "@/components/command-palette/command-palette/palette-dialog";
@@ -47,55 +48,57 @@ export function AppShell({
         <NavProgress />
         <ScrollToTop />
       </React.Suspense>
-      <DeployActivityProvider key={team.id}>
-        <MigrationActivityProvider key={team.id}>
-          <UpdateProvider enabled={isAdmin}>
-            <ShellFrame
-              contentKey={team.id}
-              banner={banner}
-              sidebar={
-                <>
-                  <NavigationHistoryTracker />
-                  <GitConnectToast />
-                  <Sidebar
+      <TeamPulseProvider key={team.id} userId={user.id}>
+        <DeployActivityProvider key={team.id}>
+          <MigrationActivityProvider key={team.id}>
+            <UpdateProvider enabled={isAdmin}>
+              <ShellFrame
+                contentKey={team.id}
+                banner={banner}
+                sidebar={
+                  <>
+                    <NavigationHistoryTracker />
+                    <GitConnectToast />
+                    <Sidebar
+                      capabilities={capabilities}
+                      isAdmin={isAdmin}
+                      hasSecondFactor={user.twoFactorEnabled || hasPasskey}
+                    />
+                  </>
+                }
+                header={
+                  <Topbar
+                    user={user}
+                    team={team}
+                    teams={teams}
+                    breadcrumb={breadcrumb}
                     capabilities={capabilities}
                     isAdmin={isAdmin}
-                    hasSecondFactor={user.twoFactorEnabled || hasPasskey}
                   />
-                </>
-              }
-              header={
-                <Topbar
-                  user={user}
-                  team={team}
-                  teams={teams}
-                  breadcrumb={breadcrumb}
-                  capabilities={capabilities}
-                  isAdmin={isAdmin}
-                />
-              }
-            >
-              {children}
-            </ShellFrame>
-            <MobileNav
-              user={user}
-              team={team}
-              teams={teams}
-              capabilities={capabilities}
-              isAdmin={isAdmin}
-              hasSecondFactor={user.twoFactorEnabled || hasPasskey}
-            />
-            <CommandPalette
-              userId={user.id}
-              team={team}
-              teams={teams}
-              breadcrumb={breadcrumb}
-              capabilities={capabilities}
-              isAdmin={isAdmin}
-            />
-          </UpdateProvider>
-        </MigrationActivityProvider>
-      </DeployActivityProvider>
+                }
+              >
+                {children}
+              </ShellFrame>
+              <MobileNav
+                user={user}
+                team={team}
+                teams={teams}
+                capabilities={capabilities}
+                isAdmin={isAdmin}
+                hasSecondFactor={user.twoFactorEnabled || hasPasskey}
+              />
+              <CommandPalette
+                userId={user.id}
+                team={team}
+                teams={teams}
+                breadcrumb={breadcrumb}
+                capabilities={capabilities}
+                isAdmin={isAdmin}
+              />
+            </UpdateProvider>
+          </MigrationActivityProvider>
+        </DeployActivityProvider>
+      </TeamPulseProvider>
     </SidebarProvider>
   );
 }

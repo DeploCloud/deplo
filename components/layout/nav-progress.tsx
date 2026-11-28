@@ -3,6 +3,7 @@
 import * as React from "react";
 import { usePathname, useSearchParams } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { BACKGROUND_REFRESH_EVENT } from "./team-pulse";
 
 const APPEAR_AFTER_MS = 500;
 const FADE_OUT_MS = 250;
@@ -67,9 +68,19 @@ export function NavProgress() {
       after(APPEAR_AFTER_MS, () => setPhase("running"));
       after(GIVE_UP_MS, finish);
     };
+    // A refresh the team pulse runs in the background shows the same bar, never a skeleton.
+    const onRefresh = (e: Event) => {
+      if (!(e as CustomEvent<boolean>).detail) return finish();
+      if (inFlight.current) return;
+      inFlight.current = true;
+      after(APPEAR_AFTER_MS, () => setPhase("running"));
+      after(GIVE_UP_MS, finish);
+    };
     document.addEventListener("click", onClick);
+    window.addEventListener(BACKGROUND_REFRESH_EVENT, onRefresh);
     return () => {
       document.removeEventListener("click", onClick);
+      window.removeEventListener(BACKGROUND_REFRESH_EVENT, onRefresh);
       clear();
     };
   }, [after, clear, finish]);

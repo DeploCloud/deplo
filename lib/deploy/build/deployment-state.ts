@@ -13,7 +13,7 @@ import {
   deployments as deploymentsTable,
   appPreviews as appPreviewsTable,
 } from "../../db/schema/control-plane/deployments";
-import { publishAppChanged } from "../../graphql/pubsub";
+import { publishAppChanged, publishTeamChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
 import { dispatchAlert } from "../../notify/dispatch";
 import type { Deployment, LogLine } from "../../types/deployment";
@@ -281,6 +281,8 @@ export async function commitOutcome(
         : `/apps/${target.slug}`,
     appId: target.appId,
   });
+  // Lists and counts on the team's open pages read the outcome.
+  publishTeamChanged(target.teamId, "activity");
   if (target.kind === "preview" && depPatch.status) {
     const kind =
       depPatch.status === "ready"

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { publishTeamChanged } from "../graphql/pubsub";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
@@ -355,6 +356,7 @@ export async function recordActivity(
     };
     await insertActivityRow(activity, opts.serverChange === true);
     written = true;
+    publishTeamChanged(resolved, "activity", activity.actorUserId);
     await flushDroppedMarker(resolved);
     if (alert)
       dispatchAlert({

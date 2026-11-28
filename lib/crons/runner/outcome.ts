@@ -13,6 +13,7 @@ import { dispatchAlert } from "../../notify/dispatch";
 import type { CronRunStatus } from "../../types/cron";
 import { RETRY_BACKOFF_MS } from "./deadlines";
 import type { InFlightRun } from "./targets";
+import { publishTeamChanged } from "../../graphql/pubsub";
 
 export const CRON_OUTPUT_TAIL_BYTES = 16 * 1024;
 
@@ -68,6 +69,7 @@ export async function settle(
 
   await pruneRuns(r.job.id, r.job.keepRuns);
   raiseAlert(r, status, fields);
+  publishTeamChanged(r.run.teamId, "cron");
   return true;
 }
 

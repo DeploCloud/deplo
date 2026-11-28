@@ -84,7 +84,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     folders,
     projects,
     activity,
-    teamWideReach,
     isAdmin,
     canManageTeam,
     canDeploy,
@@ -93,12 +92,13 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     canCreateProject,
     canMoveApps,
     firstRun,
+    activityDatabases,
+    networkSweepFailed,
   ] = await Promise.all([
     listApps().then((apps) => withLogoSrc("app", apps)),
     listFolders(),
     listProjects(),
     listActivity(6),
-    reachesWholeTeam(),
     isInstanceAdmin(),
     hasCapability("manage_team"),
     hasCapabilityAnywhere("create_apps"),
@@ -107,16 +107,11 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     hasCapability("create_projects"),
     hasCapabilityAnywhere("move_apps"),
     welcomePending(),
+    reachesWholeTeam().then(async (wide) =>
+      wide ? withLogoSrc("database", await listDatabases()) : [],
+    ),
+    networkSweepFailures(),
   ]);
-  const activityDatabases = teamWideReach
-    ? withLogoSrc("database", await listDatabases())
-    : [];
-  const securityList = securitySubjects(
-    services,
-    activityDatabases,
-    await databaseSecurityCounts(activityDatabases.map((d) => d.id)),
-  );
-  const networkSweepFailed = await networkSweepFailures();
   const canManageOrder = isAdmin || canManageTeam;
   const noCreateAppsNote =
     "You don't have permission to create apps. Ask a team admin for the “Create apps” permission.";
@@ -131,9 +126,19 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
       ? (projects.find((p) => p.id === projectId) ?? null)
       : null;
 
-  const environments = openProject
-    ? await listEnvironmentsForProject(openProject.id)
-    : [];
+  const [securityCounts, environments] = await Promise.all([
+    databaseSecurityCounts(activityDatabases.map((d) => d.id)),
+    openProject
+      ? listEnvironmentsForProject(openProject.id)
+      : Promise.resolve(
+          [] as Awaited<ReturnType<typeof listEnvironmentsForProject>>,
+        ),
+  ]);
+  const securityList = securitySubjects(
+    services,
+    activityDatabases,
+    securityCounts,
+  );
   const defaultEnv =
     environments.find((e) => e.isDefault) ?? environments[0] ?? null;
   const selectedEnv =
@@ -169,27 +174,28 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         : folders.filter((f) => (f.parentId ?? null) === null);
   const visibleProjects = flat || openFolder || openProject ? [] : projects;
 
-  const initialStates = (
-    await getOverviewAppStates(visibleApps.map((p) => p.id)).catch(() => [])
-  ).map((s) => ({
+  const [appStates, enrichedFolders, enrichedProjects] = await Promise.all([
+    getOverviewAppStates(visibleApps.map((p) => p.id)).catch(() => []),
+    Promise.all(
+      visibleFolders.map(async (f) => {
+        const [capabilities, isOwner] = await Promise.all([
+          folderCapabilities(f.id),
+          folderIsOwnerOrAdmin(f.id),
+        ]);
+        return { ...f, capabilities, isOwner };
+      }),
+    ),
+    Promise.all(
+      visibleProjects.map(async (p) => ({
+        ...p,
+        capabilities: await nodeCapabilities({ kind: "project", id: p.id }),
+      })),
+    ),
+  ]);
+  const initialStates = appStates.map((s) => ({
     ...s,
     runtime: s.runtime ? { ...s.runtime, missing: [] } : null,
   }));
-
-  const enrichedFolders = await Promise.all(
-    visibleFolders.map(async (f) => ({
-      ...f,
-      capabilities: await folderCapabilities(f.id),
-      isOwner: await folderIsOwnerOrAdmin(f.id),
-    })),
-  );
-
-  const enrichedProjects = await Promise.all(
-    visibleProjects.map(async (p) => ({
-      ...p,
-      capabilities: await nodeCapabilities({ kind: "project", id: p.id }),
-    })),
-  );
 
   const folderById = new Map(folders.map((f) => [f.id, f]));
   const folderPath: { id: string; name: string }[] = [];

@@ -42,3 +42,13 @@ test("anything that is not one of ours is ignored", () => {
   ])
     assert.equal(decodeRemote(raw), null, `should refuse ${raw}`);
 });
+
+test("a team change made on another control plane reaches this one", () => {
+  const p = JSON.stringify({ k: "activity", a: "usr_1" });
+  assert.deepEqual(decodeRemote(peer({ c: "teamChanged", k: "team_a", p })), {
+    i: "some-other-control-plane",
+    c: "teamChanged",
+    k: "team_a",
+    p,
+  });
+});

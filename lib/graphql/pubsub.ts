@@ -13,6 +13,7 @@ type Channels = {
   migrationActivity: [topic: string, payload: string];
   databaseChanged: [id: string, payload: string];
   cleanupRunsChanged: [id: string, payload: string];
+  teamChanged: [teamId: string, payload: string];
 };
 type ServicePubSub = ReturnType<typeof createPubSub<Channels>>;
 
@@ -46,6 +47,18 @@ export function publishCleanupRunsChanged(): void {
   emit("cleanupRunsChanged", CLEANUP_RUNS_TOPIC, CLEANUP_RUNS_TOPIC);
 }
 
+/** What changed: someone's action or a finished deploy, a backup run, a cron run. */
+export type TeamChangeKind = "activity" | "backup" | "cron";
+
+/** Tells the team's open tabs their cached pages may be stale; they refresh on their own pace. */
+export function publishTeamChanged(
+  teamId: string,
+  kind: TeamChangeKind,
+  actorUserId: string | null = null,
+): void {
+  emit("teamChanged", teamId, JSON.stringify({ k: kind, a: actorUserId }));
+}
+
 const NOTIFY_CHANNEL = "deplo_pubsub";
 
 export const PUBSUB_INSTANCE = `${process.pid}-${randomUUID()}`;
@@ -56,6 +69,7 @@ const CHANNELS: readonly (keyof Channels)[] = [
   "migrationActivity",
   "databaseChanged",
   "cleanupRunsChanged",
+  "teamChanged",
 ];
 
 interface RemoteMessage {

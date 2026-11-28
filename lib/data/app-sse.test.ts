@@ -10,7 +10,7 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-sse-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
   seedApp,
@@ -18,7 +18,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { eq } from "drizzle-orm";
-import { publishAppChanged } from "../graphql/pubsub";
+import { publishAppChanged, publishTeamChanged } from "../graphql/pubsub";
 import { setFolderGrant } from "./folder-access";
 import { runWithIdentity } from "../auth/request-context";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
@@ -31,6 +31,7 @@ import {
   appStatusStream,
   appsStatusStream,
   activeDeploymentsStream,
+  shellPulseStream,
 } from "../graphql/types/app/app-subscriptions";
 
 let db: TestDb;
@@ -445,4 +446,44 @@ test("appsStatusStream refuses no team and ends at once when nothing is visible"
     (await appsStatusStream(["alpha"], "team_other", USER_1).next()).done,
     true,
   );
+});
+
+test("shellPulse carries the deploy count and only the active team's changes", async () => {
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
+  await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
+
+  const gen = shellPulseStream(TEAM_A, USER_1);
+  assert.deepEqual((await gen.next()).value, {
+    activeDeployments: 1,
+    changed: null,
+    changedBy: null,
+  });
+
+  const next = gen.next();
+  publishTeamChanged(TEAM_B, "activity", "u_other");
+  publishTeamChanged(TEAM_A, "backup");
+  assert.deepEqual((await next).value, {
+    activeDeployments: 1,
+    changed: "backup",
+    changedBy: null,
+  });
+
+  const counted = gen.next();
+  await pg.exec(`update deployments set status = 'ready' where id = 'dep_1';`);
+  publishAppChanged("prj_1");
+  assert.deepEqual((await counted).value, {
+    activeDeployments: 0,
+    changed: null,
+    changedBy: null,
+  });
+
+  const acted = gen.next();
+  publishTeamChanged(TEAM_A, "activity", USER_1);
+  assert.equal((await acted).value.changedBy, USER_1);
+  await gen.return(undefined as never);
 });

@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
-import { AutoRefresh } from "@/components/shared/auto-refresh";
+import { LivePulse } from "@/components/layout/team-pulse";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import {
   useBackupActions,
@@ -46,7 +46,7 @@ export function BackupCard({
   return (
     <>
       <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
-        <AutoRefresh active={isRunning} />
+        <LivePulse kind="backup" />
         {href && <OverlayLink href={href} label={backup.name} />}
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
           <div className="flex items-start justify-between gap-3">

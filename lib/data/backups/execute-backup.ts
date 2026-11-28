@@ -54,6 +54,7 @@ import {
   READ_BACK_MAX_BYTES,
 } from "./empty-archive";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
+import { publishTeamChanged } from "../../graphql/pubsub";
 
 // The agent's errNoVolumeFiles, word for word (deplo-agent internal/server/backup_project.go).
 const AGENT_NO_VOLUME_FILE =
@@ -173,6 +174,7 @@ export async function executeBackup(
       return prev;
     }
   });
+  publishTeamChanged(teamId, "backup");
 
   let label = await targetLabel(teamId, opts.kind, opts.databaseId, opts.appId);
   let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;

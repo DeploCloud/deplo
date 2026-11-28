@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { StatusDot } from "@/components/shared/status-badge";
-import { AutoRefresh } from "@/components/shared/auto-refresh";
+import { LivePulse } from "@/components/layout/team-pulse";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import { BackupTarget } from "@/components/storage/backup-target";
 import { selectableProps } from "@/components/shared/card-selection";
@@ -30,7 +30,7 @@ export function BackupRow({
     e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean },
   ) => boolean;
 }) {
-  const { isRunning, toggle, pending, menu, dialogs } = useBackupActions({
+  const { toggle, pending, menu, dialogs } = useBackupActions({
     backup,
     destinations,
     canManage,
@@ -45,7 +45,7 @@ export function BackupRow({
         selected && "bg-primary-wash-strong hover:bg-primary-wash-strong",
       )}
     >
-      <AutoRefresh active={isRunning} />
+      <LivePulse kind="backup" />
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
         <BackupTarget backup={backup} size={18} />

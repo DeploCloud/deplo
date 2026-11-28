@@ -29,7 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { AutoRefresh } from "@/components/shared/auto-refresh";
+import { LivePulse } from "@/components/layout/team-pulse";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
@@ -45,8 +45,6 @@ import { CRON_RUN_STATUS } from "@/lib/crons/run-status";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { CronJobDTO } from "@/lib/data/crons/dto";
-
-const AFTER_FIRE_MS = 8_000;
 
 const RUN_NOW = /* GraphQL */ `
   mutation ($id: ID!) {
@@ -328,7 +326,6 @@ export function CronJobsList({
   canManage: boolean;
   settingsHref: string;
 }) {
-  const router = useRouter();
   const [creating, setCreating] = React.useState(false);
 
   const [now, setNow] = React.useState(() => Date.now());
@@ -343,18 +340,6 @@ export function CronJobsList({
         null)
       : null,
   );
-
-  // ponytail: a fire is the only trigger, so a run somebody ELSE starts by hand
-  const soonest = Math.min(...nextRuns.filter((n): n is number => n !== null));
-  const lastSoonest = React.useRef(soonest);
-  React.useEffect(() => {
-    const rolledOver =
-      Number.isFinite(soonest) && lastSoonest.current !== soonest;
-    lastSoonest.current = soonest;
-    if (!rolledOver) return;
-    const timer = setTimeout(() => router.refresh(), AFTER_FIRE_MS);
-    return () => clearTimeout(timer);
-  }, [soonest, router]);
 
   if (!enabled) {
     return (
@@ -414,7 +399,7 @@ export function CronJobsList({
         </Card>
       )}
 
-      <AutoRefresh active={jobs.some((j) => j.running)} intervalMs={10_000} />
+      <LivePulse kind="cron" />
 
       {creating && (
         <CronJobDialog

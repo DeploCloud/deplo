@@ -20,7 +20,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { BackupGraphic } from "@/components/apps/backup-graphic";
 import { BackupScheduleGraphic } from "@/components/storage/backup-schedule-graphic";
-import { AutoRefresh } from "@/components/shared/auto-refresh";
+import { LivePulse } from "@/components/layout/team-pulse";
 import { RecoveryKeyNudge } from "@/components/storage/recovery-key";
 import { RestoreFromFile } from "@/components/storage/restore-from-file";
 import { OptimisticList } from "@/components/shared/optimistic-list";
@@ -103,11 +103,6 @@ export function BackupsPanel({
     [runningNow],
   );
 
-  const anythingRunning =
-    pending.length > 0 ||
-    runningNow > 0 ||
-    schedules.some((s) => s.lastStatus === "running");
-
   const unsavedKeyDestinations = React.useMemo(() => {
     if (!canTestDestinations) return [];
     const used = new Set([
@@ -121,10 +116,7 @@ export function BackupsPanel({
 
   return (
     <div className="space-y-8">
-      <AutoRefresh
-        active={anythingRunning}
-        intervalMs={pending.length > 0 ? 2_000 : 5_000}
-      />
+      <LivePulse kind="backup" />
       <BackupsHeader
         kind={target.kind}
         actions={
