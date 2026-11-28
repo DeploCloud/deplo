@@ -82,3 +82,20 @@ test("catalog responses ignore new fields without changing known data", () => {
     templatesResponseSchema.parse(response),
   );
 });
+
+test("a logo's accent is read when sound and dropped when not", () => {
+  const accent = (value?: unknown) =>
+    apiTemplateVariantSchema.parse(
+      value === undefined ? variant : { ...variant, accent: value },
+    ).accent;
+  assert.deepEqual(accent({ hue: 212 }), { hue: 212 });
+  assert.deepEqual(accent({ tone: "dark" }), { tone: "dark" });
+  for (const unsound of [
+    undefined,
+    null,
+    { hue: 400 },
+    { tone: "red" },
+    "blue",
+  ])
+    assert.equal(accent(unsound), null);
+});

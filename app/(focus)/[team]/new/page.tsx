@@ -29,10 +29,8 @@ import {
 } from "@/lib/overview-links";
 import {
   getTemplateVariant,
-  templateAssetUrl,
   templateLogoDataUri,
 } from "@/lib/templates/catalog";
-import { templateAccent } from "@/lib/templates/logo-color";
 import { loadComposeFromUrl } from "@/lib/templates/from-url";
 import {
   cloneHostLabel,
@@ -197,12 +195,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const logo = template
     ? await templateLogoDataUri(template.variant.logo)
     : (imported?.logo ?? null);
-  const veil = template
-    ? await templateAccent(
-        template.slug,
-        template.variant.logo ? templateAssetUrl(template.variant.logo) : null,
-      )
-    : undefined;
+  const veil = template?.variant.accent ?? undefined;
 
   const [
     servers,

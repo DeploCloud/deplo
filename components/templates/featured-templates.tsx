@@ -6,7 +6,6 @@ import { CategoryIcon } from "@/components/templates/category-icon";
 import { LogoTile } from "@/components/templates/logo-tile";
 import { veilProps } from "@/components/templates/veil";
 import type { StoreTemplate } from "@/components/templates/template-card";
-import type { LogoAccent } from "@/lib/templates/logo-color";
 import { titleClass } from "@/components/shared/page-header";
 import {
   newAppHref,
@@ -17,12 +16,10 @@ import { cn } from "@/lib/utils";
 
 export function FeaturedTemplates({
   templates,
-  accents,
   canDeploy,
   placement,
 }: {
   templates: StoreTemplate[];
-  accents: Record<string, LogoAccent>;
   canDeploy: boolean;
   placement: OverviewPlacement | null;
 }) {
@@ -33,20 +30,10 @@ export function FeaturedTemplates({
     <section className="space-y-3">
       <h2 className={titleClass.section}>Featured</h2>
       <div className="grid gap-3 xl:grid-cols-3">
-        <Hero
-          template={hero}
-          accent={accents[hero.slug]}
-          canDeploy={canDeploy}
-          placement={placement}
-        />
+        <Hero template={hero} canDeploy={canDeploy} placement={placement} />
         <div className="grid gap-3 sm:grid-cols-2 xl:col-span-2">
           {rest.map((t) => (
-            <Sidekick
-              key={t.slug}
-              template={t}
-              accent={accents[t.slug]}
-              placement={placement}
-            />
+            <Sidekick key={t.slug} template={t} placement={placement} />
           ))}
         </div>
       </div>
@@ -56,15 +43,14 @@ export function FeaturedTemplates({
 
 function Hero({
   template,
-  accent,
   canDeploy,
   placement,
 }: {
   template: StoreTemplate;
-  accent?: LogoAccent;
   canDeploy: boolean;
   placement: OverviewPlacement | null;
 }) {
+  const { accent } = template;
   const veil = veilProps(accent, "on");
   const page = templateHref(template.slug, placement);
   const deploy =
@@ -126,13 +112,12 @@ function Hero({
 
 function Sidekick({
   template,
-  accent,
   placement,
 }: {
   template: StoreTemplate;
-  accent?: LogoAccent;
   placement: OverviewPlacement | null;
 }) {
+  const { accent } = template;
   const veil = veilProps(accent, "hover");
   return (
     <Link

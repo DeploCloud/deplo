@@ -12,7 +12,7 @@ export function LogoTile({
   className,
 }: {
   src: string | null;
-  accent?: LogoAccent;
+  accent?: LogoAccent | null;
   size: number;
   logoSize: number;
   className?: string;

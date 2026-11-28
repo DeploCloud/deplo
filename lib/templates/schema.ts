@@ -62,6 +62,15 @@ const apiTemplateVariantFilesSchema = z.object({
     ),
 });
 
+// Worked out by the catalog from the logo; anything unreadable is no accent.
+const apiAccentSchema = z
+  .union([
+    z.object({ hue: z.number().min(0).max(360) }),
+    z.object({ tone: z.enum(["dark", "light"]) }),
+  ])
+  .nullable()
+  .catch(null);
+
 export const apiTemplateVariantSchema = z.object({
   name: z.string().min(2).max(80),
   shortDescription: z.string().min(20).max(240),
@@ -80,6 +89,7 @@ export const apiTemplateVariantSchema = z.object({
       /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/,
     )
     .nullable(),
+  accent: apiAccentSchema,
   images: z.array(
     z
       .string()
@@ -98,6 +108,7 @@ export const apiTemplateSchema = z
       .string()
       .regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/)
       .nullable(),
+    accent: apiAccentSchema,
     variants: z.array(apiTemplateVariantSchema).min(1),
   })
   .refine(

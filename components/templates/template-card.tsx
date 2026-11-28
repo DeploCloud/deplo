@@ -10,6 +10,7 @@ export interface StoreTemplate {
   name: string;
   shortDescription: string;
   logo: string | null;
+  accent: LogoAccent | null;
   variants: number;
   category: { slug: string; name: string; icon: string };
 }
@@ -21,6 +22,7 @@ export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
     name: t.name,
     shortDescription: variant.shortDescription,
     logo: t.logo,
+    accent: t.accent,
     variants: t.variants.length,
     category: {
       slug: variant.category.slug,
@@ -32,15 +34,14 @@ export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
 
 export function TemplateCard({
   template,
-  accent,
   href,
   className,
 }: {
   template: StoreTemplate;
-  accent?: LogoAccent;
   href: string;
   className?: string;
 }) {
+  const { accent } = template;
   const veil = veilProps(accent, "hover");
   return (
     <Link

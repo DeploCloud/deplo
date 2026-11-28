@@ -6,15 +6,10 @@ import { CatalogOfflineGraphic } from "@/components/templates/catalog-offline-gr
 import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
-import { templateAccents } from "@/lib/templates/logo-color";
 import { FEATURED_LIMIT } from "@/components/templates/collections";
 import { listCatalog, listFeaturedTemplates } from "@/lib/templates/catalog";
 
 export const metadata = { title: "Templates" };
-
-function one(value: string | string[] | undefined): string {
-  return (Array.isArray(value) ? value[0] : value) ?? "";
-}
 
 export default async function TemplatesPage(
   props: PageProps<"/[team]/templates">,
@@ -42,19 +37,12 @@ export default async function TemplatesPage(
       </div>
     );
 
-  const featuredSlugs = new Set(featured.map(({ slug }) => slug));
   return (
     <TemplateStore
       templates={templates.map(toStoreTemplate)}
       featured={featured.map(toStoreTemplate)}
-      accents={templateAccents([
-        ...featured,
-        ...templates.filter(({ slug }) => !featuredSlugs.has(slug)),
-      ]).catch(() => ({}))}
       canDeploy={canDeploy}
       placement={placement}
-      initialQuery={one(searchParams.q)}
-      initialCategory={one(searchParams.category)}
     />
   );
 }

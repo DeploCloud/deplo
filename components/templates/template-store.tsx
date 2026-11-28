@@ -2,7 +2,7 @@
 
 import { Bone } from "@/components/ui/skeleton";
 import * as React from "react";
-import { useRouter } from "@/lib/nav";
+import { useRouter, useSearchParams } from "@/lib/nav";
 import { toast } from "sonner";
 import { ArrowRight, RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";
@@ -14,7 +14,6 @@ import { CategoryChips } from "@/components/templates/category-chips";
 import { CategoryIcon } from "@/components/templates/category-icon";
 import { FeaturedTemplates } from "@/components/templates/featured-templates";
 import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
-import { StoreRailsSkeleton } from "@/components/templates/store-skeleton";
 import { TemplateSearchField } from "@/components/templates/template-search";
 import { TrademarkNote } from "@/components/templates/trademark-note";
 import { TemplatesGraphic } from "@/components/templates/templates-graphic";
@@ -29,14 +28,13 @@ import {
   MIN_COLLECTION_SIZE,
 } from "@/components/templates/collections";
 import { templatesHref, type OverviewPlacement } from "@/lib/overview-links";
-import type { LogoAccent } from "@/lib/templates/logo-color";
 import { titleClass } from "@/components/shared/page-header";
 
 const MIN_RAIL_SIZE = 4;
 const RAIL_LIMIT = 12;
 const GRID_LIMIT = 12;
-
-type Accents = Record<string, LogoAccent>;
+const RESULTS_PAGE = 48;
+const MORE = 48;
 
 interface Category {
   slug: string;
@@ -48,57 +46,44 @@ interface Category {
 export function TemplateStore({
   templates,
   featured,
-  accents,
   canDeploy,
   placement = null,
-  initialQuery,
-  initialCategory,
 }: {
   templates: StoreTemplate[];
   featured: StoreTemplate[];
-  accents: Promise<Accents>;
   canDeploy: boolean;
   placement?: OverviewPlacement | null;
-  initialQuery: string;
-  initialCategory: string;
 }) {
-  const router = useRouter();
-  const [q, setQ] = React.useState(initialQuery);
-  const [category, setCategory] = React.useState(initialCategory);
-
-  const href = React.useCallback(
-    (nextQ: string, nextCategory: string) => {
-      const base = templatesHref(placement);
-      const params = new URLSearchParams(base.split("?")[1] ?? "");
-      if (nextQ.trim()) params.set("q", nextQ.trim());
-      if (nextCategory) params.set("category", nextCategory);
-      const qs = params.toString();
-      return qs ? `/templates?${qs}` : "/templates";
-    },
-    [placement],
+  const searchParams = useSearchParams();
+  const [q, setQ] = React.useState(() => searchParams.get("q") ?? "");
+  const [category, setCategory] = React.useState(
+    () => searchParams.get("category") ?? "",
   );
 
-  const categoryRef = React.useRef(category);
+  // The address follows the filters without asking the server again.
   React.useEffect(() => {
-    categoryRef.current = category;
-  }, [category]);
-  const typed = React.useRef(false);
-  React.useEffect(() => {
-    if (!typed.current) return;
     const id = setTimeout(() => {
-      router.replace(href(q, categoryRef.current), { scroll: false });
+      const params = new URLSearchParams(window.location.search);
+      for (const [key, value] of [
+        ["q", q.trim()],
+        ["category", category],
+      ] as const)
+        if (value) params.set(key, value);
+        else params.delete(key);
+      const next = params.toString();
+      if (next !== window.location.search.slice(1))
+        window.history.replaceState(
+          null,
+          "",
+          next ? `?${next}` : window.location.pathname,
+        );
     }, 250);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, category]);
 
-  const selectCategory = React.useCallback(
-    (next: string) => {
-      setCategory(next);
-      router.replace(href(q, next), { scroll: false });
-    },
-    [href, q, router],
-  );
+  // Typing stays instant while the results catch up.
+  const deferredQ = React.useDeferredValue(q);
+  const deferredCategory = React.useDeferredValue(category);
 
   const categories = React.useMemo<Category[]>(() => {
     const seen = new Map<string, Category>();
@@ -121,32 +106,26 @@ export function TemplateStore({
       <StoreHero
         count={templates.length}
         query={q}
-        onQuery={(next) => {
-          typed.current = true;
-          setQ(next);
-        }}
+        onQuery={setQ}
         canDeploy={canDeploy}
       />
 
       <CategoryChips
         categories={categories}
         active={category}
-        onSelect={selectCategory}
+        onSelect={setCategory}
       />
 
-      <React.Suspense fallback={<StoreRailsSkeleton />}>
-        <StoreResults
-          templates={templates}
-          featured={featured}
-          accents={accents}
-          categories={categories}
-          category={category}
-          q={q}
-          canDeploy={canDeploy}
-          placement={placement}
-          onSelectCategory={selectCategory}
-        />
-      </React.Suspense>
+      <StoreResults
+        templates={templates}
+        featured={featured}
+        categories={categories}
+        category={deferredCategory}
+        q={deferredQ}
+        canDeploy={canDeploy}
+        placement={placement}
+        onSelectCategory={setCategory}
+      />
 
       <TrademarkNote />
     </div>
@@ -185,10 +164,9 @@ function TemplateRefreshButton() {
   );
 }
 
-function StoreResults({
+const StoreResults = React.memo(function StoreResults({
   templates,
   featured,
-  accents: pending,
   categories,
   category,
   q,
@@ -198,7 +176,6 @@ function StoreResults({
 }: {
   templates: StoreTemplate[];
   featured: StoreTemplate[];
-  accents: Promise<Accents>;
   categories: Category[];
   category: string;
   q: string;
@@ -206,18 +183,16 @@ function StoreResults({
   placement: OverviewPlacement | null;
   onSelectCategory: (slug: string) => void;
 }) {
-  const accents = React.use(pending);
-  const [showAll, setShowAll] = React.useState(false);
-
   const bySlug = React.useMemo(
     () => new Map(templates.map((t) => [t.slug, t])),
     [templates],
   );
+  const sorted = React.useMemo(() => [...templates].sort(byName), [templates]);
 
   const query = q.trim().toLowerCase();
   const filtered = React.useMemo(
     () =>
-      templates.filter((t) => {
+      sorted.filter((t) => {
         if (category && t.category.slug !== category) return false;
         if (!query) return true;
         return (
@@ -226,7 +201,7 @@ function StoreResults({
           t.category.name.toLowerCase().includes(query)
         );
       }),
-    [templates, category, query],
+    [sorted, category, query],
   );
 
   const browsing = !query && !category;
@@ -238,7 +213,6 @@ function StoreResults({
     <TemplateCard
       key={t.slug}
       template={t}
-      accent={accents[t.slug]}
       href={cardHref(t.slug)}
       className={className}
     />
@@ -251,7 +225,12 @@ function StoreResults({
           {filtered.length} {filtered.length === 1 ? "template" : "templates"}
         </p>
         {filtered.length ? (
-          <Grid>{[...filtered].sort(byName).map((t) => card(t))}</Grid>
+          <PagedGrid
+            key={`${category} ${query}`}
+            items={filtered}
+            first={RESULTS_PAGE}
+            card={card}
+          />
         ) : (
           <EmptyState
             graphic={<NoResultsGraphic />}
@@ -263,14 +242,11 @@ function StoreResults({
     );
 
   const featuredSlugs = new Set(featured.map(({ slug }) => slug));
-  const sorted = [...templates].sort(byName);
-  const shown = showAll ? sorted : sorted.slice(0, GRID_LIMIT);
 
   return (
     <div className="space-y-10">
       <FeaturedTemplates
         templates={featured}
-        accents={accents}
         canDeploy={canDeploy}
         placement={placement}
       />
@@ -345,18 +321,35 @@ function StoreResults({
             Everything in the catalogue, A to Z.
           </p>
         </div>
-        <Grid>{shown.map((t) => card(t))}</Grid>
-        {sorted.length > GRID_LIMIT && (
-          <div className="flex justify-center pt-1">
-            <Button variant="outline" onClick={() => setShowAll(!showAll)}>
-              {showAll
-                ? "Show less"
-                : `Show ${sorted.length - GRID_LIMIT} more`}
-            </Button>
-          </div>
-        )}
+        <PagedGrid items={sorted} first={GRID_LIMIT} card={card} />
       </section>
     </div>
+  );
+});
+
+// Cards arrive a page at a time: a grid of the whole catalogue is what made the store slow.
+function PagedGrid({
+  items,
+  first,
+  card,
+}: {
+  items: StoreTemplate[];
+  first: number;
+  card: (t: StoreTemplate) => React.ReactNode;
+}) {
+  const [shown, setShown] = React.useState(first);
+  const rest = items.length - shown;
+  return (
+    <>
+      <Grid>{items.slice(0, shown).map((t) => card(t))}</Grid>
+      {rest > 0 && (
+        <div className="flex justify-center pt-1">
+          <Button variant="outline" onClick={() => setShown(shown + MORE)}>
+            Show {Math.min(rest, MORE)} more
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
 

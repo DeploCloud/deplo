@@ -1,16 +1,10 @@
 import "server-only";
 
-import { templateImageBytes } from "@/lib/templates/catalog";
-import type { CatalogTemplate } from "@/lib/templates/types";
-
 const MIN_CHROMA = 0.04;
 const BUCKETS = 24;
 const MIN_SHARE = 0.15;
 const MIN_COLOURED_PIXELS = 4;
 const MID_LIGHTNESS = 0.5;
-
-const CONCURRENCY = 16;
-const BUDGET_MS = 8000;
 
 type Sharp = (typeof import("sharp"))["default"];
 let sharpModule: Promise<Sharp | null> | undefined;
@@ -105,55 +99,4 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
   if (black > white) return { tone: "dark" };
   if (white > black) return { tone: "light" };
   return {};
-}
-
-const memo = new Map<string, Promise<LogoAccent>>();
-
-export function templateAccent(
-  slug: string,
-  logoUrl: string | null,
-): Promise<LogoAccent> {
-  const cached = memo.get(slug);
-  if (cached) return cached;
-  if (!logoUrl) {
-    const none = Promise.resolve({});
-    memo.set(slug, none);
-    return none;
-  }
-
-  const pending = templateImageBytes(logoUrl)
-    .then((bytes) => (bytes ? analyseLogo(bytes) : {}))
-    .catch(() => {
-      memo.delete(slug);
-      return {};
-    });
-  memo.set(slug, pending);
-  return pending;
-}
-
-export async function templateAccents(
-  templates: CatalogTemplate[],
-): Promise<Record<string, LogoAccent>> {
-  const settled = new Map<string, LogoAccent>();
-  const deadline = Date.now() + BUDGET_MS;
-  let next = 0;
-
-  const worker = async () => {
-    while (next < templates.length && Date.now() < deadline) {
-      const t = templates[next];
-      next += 1;
-      settled.set(t.slug, await templateAccent(t.slug, t.logo));
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, templates.length) }, worker),
-  );
-
-  const accents: Record<string, LogoAccent> = {};
-  for (const t of templates) {
-    const accent = settled.get(t.slug);
-    if (accent && (accent.hue !== undefined || accent.tone !== undefined))
-      accents[t.slug] = accent;
-  }
-  return accents;
 }

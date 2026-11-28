@@ -23,7 +23,6 @@ import {
   templateHref,
   templatesHref,
 } from "@/lib/overview-links";
-import { templateAccent, templateAccents } from "@/lib/templates/logo-color";
 import { pickRelated } from "@/lib/templates/related";
 import {
   getTemplate,
@@ -86,7 +85,6 @@ export default async function TemplatePage(
 
   const logo = variant.logo ? templateAssetUrl(variant.logo) : null;
   const images = variant.images.map(templateAssetUrl);
-  const accent = await templateAccent(template.slug, logo);
 
   const catalog = await listCatalog().catch(() => []);
   const related = pickRelated(
@@ -96,7 +94,6 @@ export default async function TemplatePage(
     RELATED_MIN,
     RELATED_MAX,
   );
-  const relatedAccents = await templateAccents(related);
 
   const deployHref = newAppHref(placement, {
     template: template.slug,
@@ -111,7 +108,7 @@ export default async function TemplatePage(
         <div className="flex min-w-0 items-center gap-4">
           <LogoTile
             src={logo}
-            accent={accent}
+            accent={variant.accent}
             size={72}
             logoSize={48}
             className="rounded-2xl"
@@ -202,7 +199,6 @@ export default async function TemplatePage(
               <TemplateCard
                 key={t.slug}
                 template={toStoreTemplate(t)}
-                accent={relatedAccents[t.slug]}
                 href={templateHref(t.slug, placement)}
                 className="w-72 shrink-0 snap-start"
               />
