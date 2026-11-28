@@ -63,6 +63,25 @@ export function __setAgentConnectorForTest(
 
 // The sole entry to a host (ADR-0006), over its agent link (ADR-0040): an unreachable agent throws, there is no fallback.
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
+  return explained(serverId, () => reachAgent(serverId));
+}
+
+// A cluster server Deplo cannot reach is not "offline" while the cluster runs on without Deplo: say that instead.
+async function explained<T>(
+  serverId: string,
+  call: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await call();
+  } catch (e) {
+    if (!(e instanceof AgentOfflineError) || e.outOfReach) throw e;
+    const { outOfReachFailure } = await import("../../data/clusters/reach");
+    const why = await outOfReachFailure(serverId).catch(() => null);
+    throw why ? new AgentOfflineError(serverId, why) : e;
+  }
+}
+
+async function reachAgent(serverId: string): Promise<AgentConnection> {
   const stub = await connector?.(serverId);
   if (stub) return stub;
   const pin = await agentPin(serverId);
@@ -80,10 +99,13 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
 
 /** For what only reads (logs, containers): a server that is not answering fails now, not after waiting for its link. */
 export async function readAgent(serverId: string): Promise<AgentConnection> {
-  const stub = await connector?.(serverId);
-  if (stub) return stub;
-  if (serverAnswers(serverId) === false) throw new AgentOfflineError(serverId);
-  return connectAgent(serverId);
+  return explained(serverId, async () => {
+    const stub = await connector?.(serverId);
+    if (stub) return stub;
+    if (serverAnswers(serverId) === false)
+      throw new AgentOfflineError(serverId);
+    return reachAgent(serverId);
+  });
 }
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */

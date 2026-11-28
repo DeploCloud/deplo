@@ -150,3 +150,35 @@ test("an install that uses none of them gets no settings row from the upgrade", 
   await pg.exec(upgradeDefaults);
   assert.equal((await db.select().from(instanceSettings)).length, 0);
 });
+
+test("a panel tunnel keeps Tunnels on", async () => {
+  await as(ADMIN, () => setExperiment("tunnels", true));
+  await db
+    .update(instanceSettings)
+    .set({ panelTunnelHostname: "panel.example.com" });
+  await assert.rejects(
+    () => as(ADMIN, () => setExperiment("tunnels", false)),
+    /The panel is still reached through a tunnel/,
+  );
+});
+
+const tunnelsInUse = readFileSync(
+  new URL(
+    "../db/migrations/0280_tunnels_experiment_in_use.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+test("an upgrade turns Tunnels back on only where a tunnel is in use", async () => {
+  await db
+    .insert(instanceSettings)
+    .values({ id: "default", updatedAt: T0, panelTunnelHostname: null });
+  await pg.exec(tunnelsInUse);
+  assert.equal(await as(MEMBER, () => experimentOn("tunnels")), false);
+  await db
+    .update(instanceSettings)
+    .set({ panelTunnelHostname: "panel.example.com" });
+  await pg.exec(tunnelsInUse);
+  assert.equal(await as(MEMBER, () => experimentOn("tunnels")), true);
+});

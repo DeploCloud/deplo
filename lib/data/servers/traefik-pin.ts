@@ -1,6 +1,10 @@
 import "server-only";
 
-import { TRAEFIK_IMAGE, withTraefikImage } from "../../deploy/traefik-stack";
+import {
+  TRAEFIK_IMAGE,
+  withEcdsaKeys,
+  withTraefikImage,
+} from "../../deploy/traefik-stack";
 import {
   applyTraefikConfig,
   fetchHostInfo,
@@ -54,10 +58,14 @@ async function reconcile(serverId: string): Promise<void> {
   const server = await getServerById(serverId);
   if (!server || server.importOnly) return;
 
+  let imaged = false;
   const res = await withTraefikStackLock(serverId, async () => {
     // Empty: Deplo did not install this server's Traefik, so it is not Deplo's to move.
     const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
-    const next = yaml ? withTraefikImage(yaml) : null;
+    if (!yaml) return null;
+    const image = withTraefikImage(yaml);
+    imaged = image !== null;
+    const next = withEcdsaKeys(image ?? yaml) ?? image;
     return next ? applyTraefikConfig(serverId, { composeYaml: next }) : null;
   });
   const version = TRAEFIK_IMAGE.slice(TRAEFIK_IMAGE.indexOf(":") + 1);
@@ -77,7 +85,9 @@ async function reconcile(serverId: string): Promise<void> {
   if (res)
     await recordActivity(
       "server",
-      `Updated Traefik on ${server.name} to ${version}`,
+      imaged
+        ? `Updated Traefik on ${server.name} to ${version}`
+        : `Traefik on ${server.name} now asks for ECDSA certificates, which cost its server far less per new connection`,
       "Deplo",
     );
 }

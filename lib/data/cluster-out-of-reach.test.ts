@@ -13,6 +13,13 @@ import {
 } from "../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { doorClosed, doorOpened } from "../infra/agent-link/registry";
+import {
+  __setAgentConnectorForTest,
+  connectAgent,
+  readAgent,
+} from "../infra/agent-client/connect";
+import { AgentOfflineError } from "../infra/agent-client/errors";
+import { unreachableMessage } from "../infra/server-health";
 import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
 import { OUT_OF_REACH } from "../apps/display-status";
 import { sayCannotFailOver } from "./clusters/bundles";
@@ -269,6 +276,36 @@ test("a backup Deplo could not take while it reaches no server of the cluster sa
     // A server of no cluster is simply offline.
     assert.equal(await outOfReachFailure("srv_4", "take this backup"), null);
   } finally {
+    doorClosed();
+  }
+});
+
+test("any call that finds a cluster server offline while Deplo reaches none of its cluster says so", async () => {
+  await runningApp("web", "srv_2");
+  const cluster = (await getClusterById((await eu()).id))!;
+  const since = new Date(Date.now() - 4 * 60_000).toISOString();
+  await lastSeen("srv_2", since);
+  await lastSeen("srv_3", since);
+  __setAgentConnectorForTest(async (id) => {
+    throw new AgentOfflineError(id);
+  });
+  doorOpened(Date.now() - LINK_SETTLE_MS - 1000);
+  try {
+    for (const reach of [connectAgent, readAgent])
+      await assert.rejects(reach("srv_2"), (e) => {
+        assert.equal(
+          unreachableMessage(e),
+          `Deplo cannot reach cluster ${cluster.name} since ${sinceClock(since)}: its servers keep running without Deplo`,
+        );
+        return true;
+      });
+    // A server of no cluster is simply offline.
+    await assert.rejects(connectAgent("srv_4"), (e) => {
+      assert.match(unreachableMessage(e) ?? "", /^This server is offline/);
+      return true;
+    });
+  } finally {
+    __setAgentConnectorForTest();
     doorClosed();
   }
 });

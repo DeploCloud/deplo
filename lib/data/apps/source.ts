@@ -1,6 +1,7 @@
 import { authorizeComposeTraefik } from "./traefik-labels";
 import "server-only";
 
+import { appDataBytes } from "../clusters/data-size";
 import { answerArrivingDomains } from "../domains/cluster-answer";
 
 import { and, eq, sql } from "drizzle-orm";
@@ -26,6 +27,8 @@ import { assertMemberTakes } from "../clusters/member-choice";
 import { resolveTeamCluster } from "../clusters/roster";
 import { joinAppTunnel, leaveAppTunnel } from "../clusters/app-tunnel";
 import { placeAtLeaderFirst } from "../clusters/leader-sync";
+import { copyAhead, notCopiedAhead } from "../clusters/move-copy";
+import { moveEnded, moveStarted } from "../clusters/moves";
 import { leaveClusterZone } from "../domains/cluster-answer";
 import {
   canHostWorkloads,
@@ -137,24 +140,52 @@ export async function moveAppToCluster(
       environmentId: app.environmentId ?? null,
       limitMb,
       archs,
+      diskBytes: await appDataBytes(id),
     }));
-  await writeAppSource(
-    id,
-    {
-      source: app.source,
-      repo: app.repo,
-      dockerImage: app.dockerImage,
-      serverId: member,
-    },
-    { deploy: app.source !== "upload" || app.upload != null, cluster },
-  );
-  await recordPlacement({
-    clusterId: cluster.id,
-    kind: "app",
-    workloadId: id,
-    members: [member],
-    epoch: cluster.leaderEpoch,
-  });
+  const input = {
+    source: app.source,
+    repo: app.repo,
+    dockerImage: app.dockerImage,
+    serverId: member,
+  };
+  const move = {
+    deploy: app.source !== "upload" || app.upload != null,
+    cluster,
+  };
+  const who = await sourceWriter(id, input, move);
+  const go = async () => {
+    await applyAppSource(id, input, who, move);
+    // Between two members its start places it, once it has a lane there (c48).
+    if (on && move.deploy) return;
+    await recordPlacement({
+      clusterId: cluster.id,
+      kind: "app",
+      workloadId: id,
+      members: [member],
+      epoch: cluster.leaderEpoch,
+    });
+  };
+  // Between two members its data is copied while it runs: it moves once its new member's copy follows (c44).
+  if (on && !(await copyAhead(app, cluster, member, { within: 0 }))) {
+    moveStarted(id, member);
+    void (async () => {
+      try {
+        if (!(await copyAhead(app, cluster, member)))
+          throw new Error(await notCopiedAhead(app, member));
+        await go();
+      } catch (e) {
+        moveEnded(id);
+        await recordActivity(
+          "app",
+          `Moving ${app.name} did not start: ${messageOf(e)}`,
+          who.user.name,
+          id,
+        );
+      }
+    })();
+    return;
+  }
+  await go();
 }
 
 // A tunnel that could not be set up never blocks the move: the domains keep their address, and Activity says so.
@@ -197,6 +228,15 @@ async function writeAppSource(
   input: UpdateSourceInput,
   move?: { deploy: boolean; cluster?: Cluster },
 ): Promise<void> {
+  await applyAppSource(id, input, await sourceWriter(id, input, move), move);
+}
+
+/** The person's gates for one write, read while their request lasts: a move may apply it later. */
+async function sourceWriter(
+  id: string,
+  input: UpdateSourceInput,
+  move?: { deploy: boolean; cluster?: Cluster },
+): Promise<SourceWriter> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   const teamId = membership.teamId;
   const [at] = await getDb()
@@ -223,20 +263,15 @@ async function writeAppSource(
     const member = await getServerById(sid);
     if (member) servers.push(member);
   }
-  await applyAppSource(
-    id,
-    input,
-    {
-      teamId,
-      user: (await getCurrentUser())!,
-      servers,
-      // A move re-writes the stored repo, already scoped when it was saved.
-      repo: move ? input.repo : await scopeRepoCredentials(input.repo, teamId),
-      editReach,
-      traefikLabelsBy,
-    },
-    move,
-  );
+  return {
+    teamId,
+    user: (await getCurrentUser())!,
+    servers,
+    // A move re-writes the stored repo, already scoped when it was saved.
+    repo: move ? input.repo : await scopeRepoCredentials(input.repo, teamId),
+    editReach,
+    traefikLabelsBy,
+  };
 }
 
 // Ungated: the caller holds the gate, or is Deplo itself. No resolver reaches this but through writeAppSource.
@@ -489,8 +524,9 @@ async function applyAppSource(
     await leaveClusterZone(moved, user.name);
   }
 
-  // A move inside a cluster goes leader first: the new server's lease names the App before the deploy starts it.
-  if (after.moved && sameCluster && move?.cluster)
+  // A move inside a cluster goes leader first: the new server's lease names the App before it starts there. With a
+  // deploy, that deploy places it once it has a lane, so the old member runs it while it waits (c48).
+  if (after.moved && sameCluster && move?.cluster && !move.deploy)
     await placeAtLeaderFirst(move.cluster, "app", id, input.serverId!);
 
   if (after.moved && (move ? move.deploy : input.source !== "upload")) {
@@ -523,6 +559,8 @@ export async function relocateClusterApp(
   if (!app || app.clusterId !== cluster.id) throw new Error("App not found");
   assertNotMigrating("app", app.name, app.migrationRunId);
   const deploy = app.source !== "upload" || app.upload != null;
+  if (!(await copyAhead(app, cluster, serverId)))
+    throw new Error(await notCopiedAhead(app, serverId));
   await applyAppSource(
     id,
     {

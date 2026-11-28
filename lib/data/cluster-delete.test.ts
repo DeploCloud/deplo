@@ -49,6 +49,28 @@ import { moveClusterLeader } from "./clusters/leader-move";
 
 dissolveHarness();
 
+/** A move completes once the new leader says it leads (c44): this one leads every cluster it was handed. */
+function leadsWhatItTakes(serverId: string) {
+  const h = hosts[serverId];
+  const calls = h.leader;
+  const led = new Map<string, number>();
+  h.leader = (method, payload) => {
+    const body = payload.length
+      ? (JSON.parse(new TextDecoder().decode(payload)) as Record<string, never>)
+      : {};
+    if (method === "leader.roster") led.set(body.cluster, body.epoch);
+    if (method === "leader.forget") led.delete(body.cluster);
+    if (method !== "leader.snapshot") return calls(method, payload);
+    const clusters = [...led].map(([id, epoch]) => [
+      id,
+      { epoch, leads: true, superseded: false, members: [] },
+    ]);
+    return new TextEncoder().encode(
+      JSON.stringify({ head: 0, clusters: Object.fromEntries(clusters) }),
+    );
+  };
+}
+
 test("deleting a cluster leaves every workload where it runs, as an ordinary one, and nothing of the cluster behind", async () => {
   await runningApp("web", "srv_2");
   await runningApp("api", "srv_3", TEAM_B);
@@ -158,6 +180,7 @@ test("a leader on another server is uninstalled with its cluster, unless it lead
   leaderOn("srv_4", {
     status: { ...RUNNING, installed: false, running: false, relay: false },
   });
+  leadsWhatItTakes("srv_4");
   await asAdmin(() => moveClusterLeader(eu.id, "srv_4"));
   await asAdmin(() => moveClusterLeader(us.id, "srv_4"));
 
@@ -380,6 +403,7 @@ test("a leader that could not be taken off Deplo's machine with the last cluster
 test("a leader on a server that did not answer at delete is uninstalled once it does", async () => {
   const eu = await clusterOf("eu", ["srv_2"]);
   await clusterOf("us", ["srv_3"]);
+  leadsWhatItTakes("srv_4");
   await asAdmin(() => moveClusterLeader(eu.id, "srv_4"));
   hosts.srv_4.unreachable = true;
 

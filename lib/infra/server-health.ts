@@ -61,6 +61,7 @@ export function classifyServerHealth(
 
 export function unreachableMessage(err: unknown): string | null {
   if (!(err instanceof AgentUnreachableError)) return null;
+  if (err instanceof AgentOfflineError && err.outOfReach) return err.outOfReach;
   if (err.trust) return HEALTH_MESSAGES.untrusted;
   if (isCertValidityError(err)) return HEALTH_MESSAGES.certExpired;
   if (err.code === GrpcStatus.DEADLINE_EXCEEDED)

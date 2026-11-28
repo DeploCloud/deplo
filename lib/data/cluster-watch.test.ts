@@ -1,193 +1,42 @@
-import { __forgetGone } from "./clusters/gone";
-import { test, before, after, beforeEach, afterEach } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
-
-import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
-
-import { makeTestDb, type TestDb } from "../db/test-harness";
-import { __setTestDb, __resetTestDb } from "../db/client";
-import { runWithIdentity } from "../auth/request-context";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import {
-  seedApp,
-  seedServer,
-  SERVER_1,
-  TRUNCATE_PROJECT_GRAPH,
-} from "./app-graph-test-helpers";
-import { seedServerRow } from "./infra-test-helpers";
+import { USER_1 } from "./identity-test-helpers";
 import { activities } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  clusterMembers,
   clusters as clustersTable,
   workloadPlacements,
 } from "../db/schema/control-plane/clusters";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
-import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { __setClusterPinForTest } from "../infra/agent-client/cluster-host";
-import {
-  fakeClusterHosts,
-  type FakeClusterHost,
-} from "../infra/agent-client/cluster-test-helpers";
-import { __resetReleaseCacheForTests } from "../agent/release";
 import { invalidateFrozen } from "./deplo-move/freeze";
-import { createCluster } from "./clusters/manage";
-import { addClusterMember, listClusterMembers } from "./clusters/members";
 import { getClusterById } from "./clusters/roster";
-import {
-  forgetLeaderRoster,
-  placementEntries,
-  pushLeaderRoster,
-} from "./clusters/leader-sync";
+import { placementEntries, pushLeaderRoster } from "./clusters/leader-sync";
 import {
   applyLeaderEvent,
   parseWatchLine,
   watchClusterOnce,
 } from "./clusters/watch";
-import { turnOnExperiments } from "./experiments-test-helpers";
+import {
+  db,
+  pg,
+  leader,
+  rosterCalls,
+  rosterRefusal,
+  enc,
+  setSnapshot,
+  setRosterRefusal,
+  watchFixture,
+  eu,
+  inCluster,
+  stored,
+  states,
+  activityTexts,
+  watchUntil,
+} from "./cluster-watch-test-helpers";
 
-let db: TestDb;
-let pg: PGlite;
-let fleet: ReturnType<typeof fakeClusterHosts>;
-let leader: FakeClusterHost;
-let rosterCalls: Record<string, unknown>[];
-let snapshot: unknown;
-let rosterRefusal: string;
-const origIp = process.env.DEPLO_SERVER_IP;
-const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
-
-before(async () => {
-  ({ db, pg } = await makeTestDb());
-  __setTestDb(db);
-});
-
-after(async () => {
-  __resetTestDb();
-  await pg.close();
-});
-
-beforeEach(async () => {
-  await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table deplo_moves, clusters, activities, registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
-  await seedIdentity(db, {
-    users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_b", teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
-    ],
-  });
-  await turnOnExperiments(db, "clusters");
-  await seedServer(db, undefined, { deploHost: true });
-  process.env.DEPLO_SERVER_IP = "10.0.0.1";
-  for (const [i, id] of ["srv_2", "srv_3"].entries()) {
-    await seedServerRow(db, {
-      id,
-      ip: `10.0.0.${i + 2}`,
-      host: `10.0.0.${i + 2}`,
-    });
-    await db
-      .update(serversTable)
-      .set({ agentCertFingerprint: String(i + 2).repeat(64) })
-      .where(eq(serversTable.id, id));
-  }
-  await db
-    .update(serversTable)
-    .set({ agentCertFingerprint: "1".repeat(64) })
-    .where(eq(serversTable.id, SERVER_1));
-  invalidateFrozen();
-  forgetLeaderRoster();
-  rosterCalls = [];
-  snapshot = { head: 0, clusters: {} };
-  rosterRefusal = "";
-  fleet = fakeClusterHosts();
-  leader = fleet.host(SERVER_1, {
-    status: {
-      installed: true,
-      running: true,
-      version: "0.2.0",
-      relay: true,
-      member: false,
-      relayLinks: 0,
-    },
-    leader: (method, payload) => {
-      if (method === "leader.roster") {
-        if (rosterRefusal) throw new Error(rosterRefusal);
-        rosterCalls.push(JSON.parse(new TextDecoder().decode(payload)));
-        return enc({ ok: true });
-      }
-      if (method === "leader.snapshot") return enc(snapshot);
-      return payload;
-    },
-  });
-  for (const id of ["srv_2", "srv_3"]) fleet.host(id);
-  __setClusterPinForTest({ version: "0.2.0", min: "0.2.0" });
-  __resetReleaseCacheForTests();
-});
-
-afterEach(() => {
-  fleet.restore();
-  __setClusterPinForTest(null);
-  __resetReleaseCacheForTests();
-  if (origIp === undefined) delete process.env.DEPLO_SERVER_IP;
-  else process.env.DEPLO_SERVER_IP = origIp;
-});
-
-const asAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
-const asTeamB = <T>(fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId: "user_b", teamId: TEAM_B }, fn);
-
-async function eu(allTeams = true) {
-  const cluster = await asAdmin(() =>
-    createCluster("eu", { allTeams, teamIds: allTeams ? [] : [TEAM_A] }),
-  );
-  await asAdmin(() => addClusterMember(cluster.id, "srv_2"));
-  await asAdmin(() => addClusterMember(cluster.id, "srv_3"));
-  return cluster;
-}
-
-async function inCluster(clusterId: string, id: string, server: string) {
-  await seedApp(db, { id, serverId: server });
-  await db.update(appsTable).set({ clusterId }).where(eq(appsTable.id, id));
-}
-
-async function stored(clusterId: string) {
-  const c = await getClusterById(clusterId);
-  return { seq: c!.eventSeq, epoch: c!.leaderEpoch };
-}
-
-async function states(clusterId: string) {
-  return Object.fromEntries(
-    (await asAdmin(() => listClusterMembers(clusterId))).map((m) => [
-      m.serverId,
-      m.leaseState,
-    ]),
-  );
-}
-
-const activityTexts = async () =>
-  (
-    await db
-      .select()
-      .from(activities)
-      .orderBy(activities.createdAt, activities.seq)
-  )
-    .map((a) => a.message)
-    .filter((m) =>
-      /not responding|answers again|stopped responding|Too few servers/.test(m),
-    );
-
-/** Runs a watch until the stored sequence reaches `until`, then drops the leader's end of it. */
-async function watchUntil(clusterId: string, until: number) {
-  const done = watchClusterOnce(clusterId);
-  for (let i = 0; i < 200 && (await stored(clusterId)).seq < until; i++)
-    await new Promise((r) => setTimeout(r, 10));
-  // Let the reconcile that follows the last event finish before the leader hangs up.
-  for (let i = 0; i < 50 && rosterCalls.length === 0; i++)
-    await new Promise((r) => setTimeout(r, 10));
-  leader.watch.drop();
-  return done;
-}
+watchFixture();
 
 test("watch lines parse: hello, event, ping, and nonsense is dropped", () => {
   const line = (v: unknown) => parseWatchLine(enc(v));
@@ -262,70 +111,6 @@ test("events buffered while Deplo was away are applied once, in order, from the 
   assert.match(texts[1], /answers again in cluster eu\./);
 });
 
-test("a leader that hears too few servers is never read as each server going silent", async () => {
-  const cluster = await eu();
-  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
-  const said = (member: string, state: string) =>
-    leader.watch.push("member_state", cluster.id, { member, state });
-  // srv_2 stops; then srv_3 does, and the leader, left hearing one of three, stops counting on the last one too.
-  said("srv_2", "not_responding");
-  said("srv_3", "not_responding");
-  said(SERVER_1, "not_responding");
-  said(SERVER_1, "fenced");
-  await watchUntil(cluster.id, 4);
-
-  assert.deepEqual(await activityTexts(), [
-    "srv_2 is not responding in cluster eu.",
-    "Too few servers answer in cluster eu, so nothing moves and srv_3 no longer counts as answering.",
-    `Too few servers answer in cluster eu, so nothing moves and ${SERVER_1} no longer counts as answering.`,
-    `Too few servers answer in cluster eu. ${SERVER_1} runs no database or App that must never run twice, so nothing on it had to stop.`,
-  ]);
-});
-
-test("a leader that says it leads is never written as hearing too few, whatever the stored states say", async () => {
-  const cluster = await eu();
-  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
-  snapshot = { head: 0, clusters: { [cluster.id]: { epoch: 1, leads: true } } };
-  leader.watch.push("member_state", cluster.id, {
-    member: "srv_2",
-    state: "not_responding",
-  });
-  leader.watch.push("member_state", cluster.id, {
-    member: "srv_3",
-    state: "not_responding",
-  });
-  await watchUntil(cluster.id, 2);
-  assert.deepEqual(await activityTexts(), [
-    "srv_2 is not responding in cluster eu.",
-    "srv_3 is not responding in cluster eu.",
-  ]);
-});
-
-test("Deplo's machine standing in says which servers it hears, and that the others are off or cut off", async () => {
-  const cluster = await eu();
-  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
-  await db
-    .update(clustersTable)
-    .set({
-      leaderServerId: "srv_2",
-      leaderTakeoverAt: new Date().toISOString(),
-    })
-    .where(eq(clustersTable.id, cluster.id));
-  leader.watch.push("member_state", cluster.id, {
-    member: "srv_2",
-    state: "not_responding",
-  });
-  await watchUntil(cluster.id, 1);
-  const said = (await db.select().from(activities)).map((a) => a.message);
-  assert.ok(
-    said.includes(
-      `Deplo's machine, standing in as the leader of cluster eu, hears ${[SERVER_1, "srv_3"].sort().join(" and ")}: srv_2 is off, or cut off from it.`,
-    ),
-    said.join("\n"),
-  );
-  assert.ok(!said.some((m) => /not responding|Too few/.test(m)));
-});
-
 test("a second watch starts from the stored sequence and applies nothing twice", async () => {
   const cluster = await eu();
   leader.watch.push("member_state", cluster.id, {
@@ -376,6 +161,32 @@ test("an event at or below the stored sequence is skipped, whoever sends it", as
     srv_3: "ok",
   });
   assert.equal((await stored(cluster.id)).seq, 5);
+});
+
+// eu, 24 Nov 2026: "Moved lab-web to eu-3" was written twice at the same instant: when a new server led, a second
+// watch read the same event while the first still applied it, and a move moves the sequence only once it settles.
+test("one event read by two watches at once is said once", async () => {
+  const cluster = await eu();
+  const e = {
+    seq: 7,
+    type: "superseded",
+    cluster: cluster.id,
+    data: {},
+    at: new Date(Date.now() - 1000).toISOString(),
+  };
+  const both = await Promise.all([
+    applyLeaderEvent(cluster.id, e, { advance: false }),
+    applyLeaderEvent(cluster.id, e, { advance: false }),
+  ]);
+  assert.deepEqual(both.sort(), ["applied", "skipped"]);
+  assert.equal(
+    await applyLeaderEvent(cluster.id, e, { advance: false }),
+    "skipped",
+  );
+  const said = (await db.select().from(activities)).filter((a) =>
+    a.message.includes("leader stepped down"),
+  );
+  assert.equal(said.length, 1);
 });
 
 test("the stored epoch and sequence are in the database, so a restart keeps them", async () => {
@@ -451,15 +262,113 @@ test("a placement that names a server that left does not hold up what follows", 
   );
 });
 
-test("a leader that lost its buffer makes the stored sequence start over", async () => {
+const placedRow = async (id: string) => {
+  const [row] = await db
+    .select()
+    .from(workloadPlacements)
+    .where(eq(workloadPlacements.workloadId, id));
+  const [app] = await db.select().from(appsTable).where(eq(appsTable.id, id));
+  return { member: row.memberServerId, epoch: row.epoch, app: app.serverId };
+};
+
+async function placedAt(id: string, member: string, epoch: number) {
+  await db.insert(workloadPlacements).values({
+    kind: "app",
+    workloadId: id,
+    replica: 0,
+    memberServerId: member,
+    epoch,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+}
+
+test("a leader whose buffer is below the stored sequence is watched from its newest event, nothing in it replayed", async () => {
   const cluster = await eu();
+  await inCluster(cluster.id, "prj_web", "srv_2");
+  await placedAt("prj_web", "srv_2", 1);
   await db
     .update(clustersTable)
-    .set({ eventSeq: 40 })
+    .set({ eventSeq: 40, leaderEpoch: 1 })
     .where(eq(clustersTable.id, cluster.id));
-  leader.watch.push("epoch", cluster.id, { epoch: 1 });
+  leader.watch.push("placement", cluster.id, {
+    kind: "app",
+    workloadId: "prj_web",
+    members: ["srv_3"],
+    epoch: 1,
+  });
+  leader.watch.push("superseded", cluster.id, {});
   assert.equal(await watchClusterOnce(cluster.id), "reset");
-  assert.equal((await stored(cluster.id)).seq, 0);
+  assert.equal((await stored(cluster.id)).seq, 2);
+  assert.deepEqual(await placedRow("prj_web"), {
+    member: "srv_2",
+    epoch: 1,
+    app: "srv_2",
+  });
+  assert.ok(rosterCalls.length > 0, "the leader is told the roster");
+});
+
+test("a watch on the leader Deplo left applies nothing more, so the new leader's place holds (c43)", async () => {
+  const cluster = await eu();
+  await inCluster(cluster.id, "prj_web", "srv_2");
+  await placedAt("prj_web", "srv_2", 1);
+  leader.watch.push("member_state", cluster.id, {
+    member: "srv_2",
+    state: "ok",
+  });
+  const done = watchClusterOnce(cluster.id);
+  for (let i = 0; i < 200 && rosterCalls.length === 0; i++)
+    await new Promise((r) => setTimeout(r, 10));
+  assert.equal((await stored(cluster.id)).seq, 1);
+  // Deplo hands the cluster to srv_2 and watches its buffer from its newest event.
+  const { epoch } = await stored(cluster.id);
+  await db
+    .update(clustersTable)
+    .set({ leaderServerId: "srv_2", leaderEpoch: epoch + 1, eventSeq: 0 })
+    .where(eq(clustersTable.id, cluster.id));
+  // What the leader it left still says.
+  leader.watch.push("failed_over", cluster.id, {
+    kind: "app",
+    workloadId: "prj_web",
+    from: "srv_2",
+    to: "srv_3",
+  });
+  leader.watch.push("superseded", cluster.id, {});
+  await Promise.race([done, new Promise((r) => setTimeout(r, 2000))]);
+  leader.watch.drop();
+  assert.equal(await done, "moved");
+  assert.deepEqual(await stored(cluster.id), { seq: 0, epoch: epoch + 1 });
+  assert.equal((await placedRow("prj_web")).app, "srv_2");
+  const said = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(!said.some((m) => /stepped down/.test(m)), said.join("\n"));
+});
+
+test("a placement decided at an older epoch never takes Deplo's table back (c43)", async () => {
+  const cluster = await eu();
+  await inCluster(cluster.id, "prj_web", "srv_3");
+  await placedAt("prj_web", "srv_3", 5);
+  await db
+    .update(clustersTable)
+    .set({ leaderEpoch: 5 })
+    .where(eq(clustersTable.id, cluster.id));
+  const place = (seq: number, epoch: number) =>
+    applyLeaderEvent(cluster.id, {
+      seq,
+      type: "placement",
+      cluster: cluster.id,
+      data: { kind: "app", workloadId: "prj_web", members: ["srv_2"], epoch },
+    });
+  assert.equal(await place(1, 4), "applied");
+  assert.deepEqual(await placedRow("prj_web"), {
+    member: "srv_3",
+    epoch: 5,
+    app: "srv_3",
+  });
+  assert.equal(await place(2, 5), "applied");
+  assert.deepEqual(await placedRow("prj_web"), {
+    member: "srv_2",
+    epoch: 5,
+    app: "srv_2",
+  });
 });
 
 test("nothing is applied, and the sequence does not move, while a Deplo move freezes this instance", async () => {
@@ -499,7 +408,7 @@ test("after the replay the leader is told the roster and its answer corrects wha
     epoch: 1,
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  snapshot = {
+  setSnapshot({
     head: 0,
     clusters: {
       [cluster.id]: {
@@ -511,7 +420,7 @@ test("after the replay the leader is told the roster and its answer corrects wha
         ],
       },
     },
-  };
+  });
   assert.equal(await watchUntil(cluster.id, 0), "ended");
   assert.equal(rosterCalls.length, 1);
   const sent = rosterCalls[0] as {
@@ -537,6 +446,7 @@ test("after the replay the leader is told the roster and its answer corrects wha
       member: "srv_2",
       slug: "prj_web",
       singleWriter: false,
+      epoch: 1,
     },
   ]);
   assert.deepEqual(await states(cluster.id), {
@@ -566,12 +476,13 @@ test("a roster push is not repeated until something in it changes", async () => 
 
 test("a leader on a newer epoch is adopted, not fought", async () => {
   const cluster = await eu();
-  rosterRefusal =
-    "the leader refused leader.roster: the leader holds a newer epoch: 8";
-  snapshot = {
+  setRosterRefusal(
+    "the leader refused leader.roster: the leader holds a newer epoch: 8",
+  );
+  setSnapshot({
     head: 0,
     clusters: { [cluster.id]: { epoch: 8, superseded: false, members: [] } },
-  };
+  });
   const c = (await getClusterById(cluster.id))!;
   // The first push is refused; once the leader says 8, the retry is sent at 8.
   const refuseOnce = rosterRefusal;
@@ -588,7 +499,7 @@ test("a leader on a newer epoch is adopted, not fought", async () => {
     }
     return method(m, p);
   };
-  rosterRefusal = "";
+  setRosterRefusal("");
   await pushLeaderRoster(c);
   assert.equal((await stored(cluster.id)).epoch, 8);
   assert.equal((rosterCalls[0] as { epoch: number }).epoch, 8);
@@ -629,26 +540,6 @@ test("a database is single-writer, and so is an App with a volume; a plain App i
   );
 });
 
-test("the cluster card reads the not-responding state for an instance admin; a team the cluster is not shared with sees nothing", async () => {
-  const cluster = await eu(false);
-  await applyLeaderEvent(cluster.id, {
-    seq: 1,
-    type: "member_state",
-    cluster: cluster.id,
-    data: { member: "srv_3", state: "not_responding" },
-  });
-  assert.deepEqual(await states(cluster.id), {
-    srv_2: "ok",
-    srv_3: "not_responding",
-  });
-  assert.deepEqual(await asTeamB(() => listClusterMembers(cluster.id)), []);
-  const [row] = await db
-    .select()
-    .from(clusterMembers)
-    .where(eq(clusterMembers.serverId, "srv_3"));
-  assert.ok(row.leaseChangedAt, "it says when the state changed");
-});
-
 test("a server agent without the leader capability is named, and so is a leader that is not running", async () => {
   const cluster = await eu();
   leader.capabilities = ["hostops"];
@@ -669,63 +560,5 @@ test("a leader below the pinned floor is refused for the watch as for a call", a
   assert.deepEqual(leader.watch.opens, []);
 });
 
-test("a member gone past the grace no longer counts, so the next one to stop is not too few (ADR-0049)", async () => {
-  __forgetGone();
-  const cluster = await eu();
-  await asAdmin(() => addClusterMember(cluster.id, SERVER_1));
-  leader.watch.push("member_state", cluster.id, {
-    member: "srv_3",
-    state: "not_responding",
-  });
-  leader.watch.push("member_gone", cluster.id, { member: "srv_3" });
-  leader.watch.push("member_state", cluster.id, {
-    member: "srv_2",
-    state: "not_responding",
-  });
-  await watchUntil(cluster.id, 3);
-  // Two of three answer while srv_3 counts: with it gone, one of two is enough with Deplo's word.
-  const said = await activityTexts();
-  assert.ok(
-    said.includes("srv_2 is not responding in cluster eu."),
-    said.join(" | "),
-  );
-  assert.ok(!said.some((t) => t.startsWith("Too few")), said.join(" | "));
-  __forgetGone();
-});
-
 // eu, 23 Nov 2026: "eu-1 answers again" twice while eu-1 was off: a leader that just took over reports every server
 // "ok" until it hears it. Then the same leader's "not responding" took a fenced server back a step.
-test("a leader that has not heard a server never makes it answer again, nor a fenced one not responding", async () => {
-  const cluster = await eu();
-  await db
-    .update(clusterMembers)
-    .set({ leaseState: "fenced" })
-    .where(eq(clusterMembers.serverId, "srv_3"));
-  snapshot = {
-    head: 0,
-    clusters: {
-      [cluster.id]: {
-        epoch: 1,
-        superseded: false,
-        members: [
-          { id: "srv_2", state: "ok", heard: true },
-          { id: "srv_3", state: "ok", heard: false },
-        ],
-      },
-    },
-  };
-  await watchUntil(cluster.id, 0);
-  assert.equal((await states(cluster.id))["srv_3"], "fenced");
-  await applyLeaderEvent(cluster.id, {
-    seq: 1,
-    type: "member_state",
-    cluster: cluster.id,
-    data: { member: "srv_3", state: "not_responding" },
-  });
-  assert.equal((await states(cluster.id))["srv_3"], "fenced");
-  const said = await activityTexts();
-  assert.ok(
-    !said.some((t) => /answers again|not responding/.test(t)),
-    said.join(" | "),
-  );
-});

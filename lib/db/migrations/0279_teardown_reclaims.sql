@@ -1,0 +1,2 @@
+ALTER TABLE "pending_teardowns" ADD COLUMN "reclaim_volumes" text DEFAULT '[]' NOT NULL;--> statement-breakpoint
+ALTER TABLE "pending_teardowns" ADD COLUMN "drop_set_aside" boolean DEFAULT false NOT NULL;

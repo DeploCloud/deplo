@@ -119,10 +119,15 @@ async function holdLink(
   );
   watchdog.unref();
   let channel: AgentChannel | null = null;
-  ws.once("close", (code) => {
+  ws.once("close", (code, reason) => {
     clearInterval(watchdog);
     channel?.close();
-    if (link) linkEnded(link, `link closed (${code})`);
+    if (!link) return;
+    linkEnded(link, `link closed (${code})`);
+    // Who ended it, for the next one nobody can explain (c37: eu-4's, mid-move).
+    console.warn(
+      `[agent-link] ${serverId}: link ${id} ended after ${Math.round((Date.now() - openedAt) / 1000)} s: ${code} ${String(reason) || "(no reason)"}, last heard ${Date.now() - heard} ms ago`,
+    );
   });
 
   try {

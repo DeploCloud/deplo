@@ -197,9 +197,10 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   relay THROUGH the control plane (agents are a star, they cannot dial each other), as
   **ciphertext**: the age wrap happens in the SOURCE agent's pipeline next to gzip, so nothing
   here ever holds plaintext. `lib/data/backup-transport.ts` owns all three shapes.
-  **One artifact skips the control plane**: what a cluster member had left after a failover goes
-  to the destination's member over the cluster's private network (ADR-0047), so it is saved while
-  Deplo is down. Same ciphertext, and that server agent keeps only the file its leader named for that sender.
+  **Between two members of one cluster a backup skips the control plane**: it goes to the destination's
+  member over the cluster's private network (ADR-0047, `memberBackup`), Deplo relaying it only when no path
+  joins them, and the run records which (`backup_runs.path`). So does what a member had left after a failover,
+  saved while Deplo is down. Same ciphertext, and that server agent keeps only the file Deplo or its leader named for that sender.
 - Compose is rendered control-plane-side as **opaque YAML** and shipped to the agent:
   `renderCompose` (single-image) / `buildComposeStack` (multi) / `traefikRouterLabels` (the only
   Traefik label grammar) / `portFor` (ADR-0001, the only port reader). **Never port routing /
@@ -427,6 +428,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     nothing from the request) and
     `address`, which answers the caller's own address as text so a server agent learns where its traffic
     leaves from (ADR-0050) and reads nothing else, and
+    `agent/release/[file]`, which streams only the agent and leader binaries this Deplo pins from
+    their GitHub release, so a server that reaches GitHub slowly still updates (the agent checks
+    the release's own sha256), and
     `avatar/[style]/[preset]/[seed]`, which renders a deterministic picture from the path and
     reads nothing - onboarding shows the picker before an account exists. Its styles and presets
     are a FIXED list (`lib/apps/avatar-shared.ts`): four packs plus `initials`, each preset one

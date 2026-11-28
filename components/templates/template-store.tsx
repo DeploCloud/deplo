@@ -26,7 +26,6 @@ import {
 import { TemplateRail } from "@/components/templates/template-rail";
 import {
   COLLECTIONS,
-  FEATURED,
   MIN_COLLECTION_SIZE,
 } from "@/components/templates/collections";
 import { templatesHref, type OverviewPlacement } from "@/lib/overview-links";
@@ -48,6 +47,7 @@ interface Category {
 
 export function TemplateStore({
   templates,
+  featured,
   accents,
   canDeploy,
   placement = null,
@@ -55,6 +55,7 @@ export function TemplateStore({
   initialCategory,
 }: {
   templates: StoreTemplate[];
+  featured: StoreTemplate[];
   accents: Promise<Accents>;
   canDeploy: boolean;
   placement?: OverviewPlacement | null;
@@ -136,6 +137,7 @@ export function TemplateStore({
       <React.Suspense fallback={<StoreRailsSkeleton />}>
         <StoreResults
           templates={templates}
+          featured={featured}
           accents={accents}
           categories={categories}
           category={category}
@@ -185,6 +187,7 @@ function TemplateRefreshButton() {
 
 function StoreResults({
   templates,
+  featured,
   accents: pending,
   categories,
   category,
@@ -194,6 +197,7 @@ function StoreResults({
   onSelectCategory,
 }: {
   templates: StoreTemplate[];
+  featured: StoreTemplate[];
   accents: Promise<Accents>;
   categories: Category[];
   category: string;
@@ -258,9 +262,7 @@ function StoreResults({
       </section>
     );
 
-  const featured = FEATURED.map((slug) => bySlug.get(slug)).filter(
-    (t): t is StoreTemplate => Boolean(t),
-  );
+  const featuredSlugs = new Set(featured.map(({ slug }) => slug));
   const sorted = [...templates].sort(byName);
   const shown = showAll ? sorted : sorted.slice(0, GRID_LIMIT);
 
@@ -275,7 +277,7 @@ function StoreResults({
 
       {COLLECTIONS.map((collection) => {
         const picks = collection.slugs
-          .filter((slug) => !FEATURED.includes(slug))
+          .filter((slug) => !featuredSlugs.has(slug))
           .map((slug) => bySlug.get(slug))
           .filter((t): t is StoreTemplate => Boolean(t));
         if (picks.length < MIN_COLLECTION_SIZE) return null;

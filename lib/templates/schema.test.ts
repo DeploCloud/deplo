@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { apiTemplateVariantSchema } from "./schema";
+import { apiTemplateVariantSchema, templatesResponseSchema } from "./schema";
 
 const variant = {
   name: "Ghost",
@@ -46,4 +46,39 @@ test("an alert links over https or not at all", () => {
       }).success,
       false,
     );
+});
+
+test("catalog responses ignore new fields without changing known data", () => {
+  const entry = {
+    name: "Ghost",
+    slug: "ghost",
+    logo: null,
+    variants: [variant],
+  };
+  const pagination = { page: 1, limit: 20, total: 1, totalPages: 1 };
+  const response = { data: [entry], pagination };
+  assert.deepEqual(
+    templatesResponseSchema.parse({
+      ...response,
+      version: "new",
+      pagination: { ...pagination, cursor: "next" },
+      data: [
+        {
+          ...entry,
+          featured: true,
+          variants: [
+            {
+              ...variant,
+              downloadCount: 15,
+              category: { ...variant.category, color: "blue" },
+              developedBy: { ...variant.developedBy, avatar: "new" },
+              links: { ...variant.links, support: "https://example.com" },
+              files: { ...variant.files, readme: "new" },
+            },
+          ],
+        },
+      ],
+    }),
+    templatesResponseSchema.parse(response),
+  );
 });

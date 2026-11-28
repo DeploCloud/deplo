@@ -28,7 +28,8 @@ import { MemberDetailTabs } from "./member-detail-tabs";
 export async function generateMetadata(
   props: PageProps<"/[team]/settings/members/[id]">,
 ) {
-  if (!(await hasCapability("manage_members"))) return { title: "Settings" };
+  if (!(await hasCapability("manage_members").catch(() => false)))
+    return { title: "Settings" };
   const { id } = await props.params;
   const member = (await listMembers()).find((m) => m.userId === id);
   return {

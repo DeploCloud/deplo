@@ -20,6 +20,8 @@ export type ServerMemberState = {
   networkDown: boolean;
   /** It stops like a power cut when Deplo's machine does: a warning icon on its row and its page; empty otherwise. */
   relayWarning: string;
+  /** A copy of an App that does not fit on it: a warning icon on its row and its page; empty otherwise. */
+  copyWarning: string;
   /** 1 leads the cluster next, 2 after it, 0 not in the line. */
   nextInLine: number;
 };
@@ -56,6 +58,7 @@ export function memberState(m: ClusterMember): ServerMemberState {
     network: networkLine(m.network),
     networkDown: m.network.unreachable.length > 0,
     relayWarning: m.relayWarning,
+    copyWarning: m.copyWarning,
     nextInLine: m.nextInLine,
   };
 }

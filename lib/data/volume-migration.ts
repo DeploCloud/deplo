@@ -10,6 +10,8 @@ import type {
   DroppedEntries,
 } from "../infra/agent-client/connection";
 import { mapVolumeCopyUnsupported } from "../infra/agent-client/errors";
+import { VOLUME_COPY_MEMBER_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import { memberPair } from "./clusters/member-path";
 
 export async function stopStackOn(
   serverId: string,
@@ -138,6 +140,8 @@ async function droppedNote(
 
 export interface VolumeCopyResult {
   file?: boolean;
+  /** Between two members: "direct" or "relay", as the copy went; absent when Deplo carried it. */
+  path?: string;
   bytes: number;
   sha256: string;
   empty: boolean;
@@ -468,28 +472,76 @@ export async function copyImageBetween(
   return res.bytesWritten;
 }
 
+/**
+ * A volume moved between two members of one cluster goes between them over its private network (ADR-0047);
+ * null when either agent cannot or no path joins them, before anything was read, and Deplo carries it instead.
+ */
+async function memberVolumeCopy(
+  source: AgentConnection,
+  dest: AgentConnection,
+  volume: string,
+  pair: { from: string; to: string },
+): Promise<VolumeCopyResult | null> {
+  for (const conn of [source, dest])
+    if (
+      !(await conn.hello()).capabilities?.includes(
+        VOLUME_COPY_MEMBER_CAPABILITY,
+      )
+    )
+      return null;
+  await dest.expectClusterVolume(volume, true, pair.from);
+  const r = await source.sendClusterVolume(volume, pair.to);
+  if (r.missing) return { bytes: 0, sha256: "", empty: true, missing: true };
+  if (r.path === "none") return null;
+  return { bytes: r.bytes, sha256: r.sha256, empty: false, path: r.path };
+}
+
 export async function migrateWorkloadData(
   fromServerId: string,
   toServerId: string,
   opts: { volumeNames: string[]; filesSlug?: string },
-): Promise<{ missing: string[] }> {
+): Promise<{ missing: string[]; path?: "direct" | "relay" }> {
   const missing: string[] = [];
+  let path: "direct" | "relay" | undefined;
+  const pair = await memberPair(fromServerId, toServerId);
+  // Each step on connections of its own: a long copy outlives a link, and a connection opened before it would
+  // call the closed one (c37 `connect ENOENT`, c38 `Channel has been shut down`) though the copy landed.
+  for (const volume of opts.volumeNames) {
+    const res = await both(
+      fromServerId,
+      toServerId,
+      async (source, dest) =>
+        (pair && (await memberVolumeCopy(source, dest, volume, pair))) ??
+        (await copyVolumeBetween(source, dest, volume)),
+    );
+    if (res.missing) missing.push(volume);
+    // Between two members, any volume Deplo or a relay carried makes the move one that went through Deplo.
+    if (pair && !res.missing)
+      path = res.path === "direct" && path !== "relay" ? "direct" : "relay";
+  }
+  if (opts.filesSlug) {
+    const slug = opts.filesSlug;
+    await both(fromServerId, toServerId, (source, dest) =>
+      copyFilesBetween(source, dest, slug),
+    );
+  }
+  return { missing, ...(path ? { path } : {}) };
+}
+
+async function both<T>(
+  fromServerId: string,
+  toServerId: string,
+  fn: (source: AgentConnection, dest: AgentConnection) => Promise<T>,
+): Promise<T> {
   const source = await connectAgent(fromServerId);
   try {
     const dest = await connectAgent(toServerId);
     try {
-      for (const volume of opts.volumeNames) {
-        const res = await copyVolumeBetween(source, dest, volume);
-        if (res.missing) missing.push(volume);
-      }
-      if (opts.filesSlug) {
-        await copyFilesBetween(source, dest, opts.filesSlug);
-      }
+      return await fn(source, dest);
     } finally {
       dest.close();
     }
   } finally {
     source.close();
   }
-  return { missing };
 }

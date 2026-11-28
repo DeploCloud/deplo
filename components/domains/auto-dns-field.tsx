@@ -17,7 +17,8 @@ export function AutoDnsField({
   id: string;
   zone: string;
   tunnel: boolean;
-  onTunnel: (on: boolean) => void;
+  // Left out while the Tunnels experiment is off.
+  onTunnel?: (on: boolean) => void;
   proxied: boolean;
   onProxied: (on: boolean) => void;
 }) {
@@ -31,21 +32,23 @@ export function AutoDnsField({
           <DocsLink topic="domains.automaticDnsAdd" />
         </span>
       </p>
-      <div className="flex items-center justify-between gap-3">
-        <FieldLabel
-          htmlFor={`${id}-tunnel`}
-          className="cursor-pointer font-normal"
-          info="Cloudflare reaches this server over a connection it opens: no port to open, HTTPS included. The first one restarts the server's proxy briefly."
-          docs="domains.automaticDnsTunnel"
-        >
-          Use Cloudflare Tunnel
-        </FieldLabel>
-        <Switch
-          id={`${id}-tunnel`}
-          checked={tunnel}
-          onCheckedChange={onTunnel}
-        />
-      </div>
+      {onTunnel && (
+        <div className="flex items-center justify-between gap-3">
+          <FieldLabel
+            htmlFor={`${id}-tunnel`}
+            className="cursor-pointer font-normal"
+            info="Cloudflare reaches this server over a connection it opens: no port to open, HTTPS included. The first one restarts the server's proxy briefly."
+            docs="domains.automaticDnsTunnel"
+          >
+            Use Cloudflare Tunnel
+          </FieldLabel>
+          <Switch
+            id={`${id}-tunnel`}
+            checked={tunnel}
+            onCheckedChange={onTunnel}
+          />
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         <FieldLabel
           htmlFor={`${id}-proxied`}

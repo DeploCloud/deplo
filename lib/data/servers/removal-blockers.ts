@@ -195,19 +195,22 @@ export async function serverRemovalBlockers(
         note: "",
       })),
     ),
-    destinations: await Promise.all(
-      rows.destinations.map(async (d) => {
-        const impact = await removalImpactIn(d.teamId, d.id);
-        return {
-          id: d.id,
-          name: d.name,
-          teamName: d.teamName ?? "",
-          teamAvatarUrl: teamAvatarUrl(d.teamImage),
-          schedules: impact.schedules,
-          artifacts: impact.artifacts,
-        };
-      }),
-    ),
+    // One that keeps nothing goes with the server (removeServer).
+    destinations: (
+      await Promise.all(
+        rows.destinations.map(async (d) => {
+          const impact = await removalImpactIn(d.teamId, d.id);
+          return {
+            id: d.id,
+            name: d.name,
+            teamName: d.teamName ?? "",
+            teamAvatarUrl: teamAvatarUrl(d.teamImage),
+            schedules: impact.schedules,
+            artifacts: impact.artifacts,
+          };
+        }),
+      )
+    ).filter((d) => d.schedules + d.artifacts > 0),
     copying: copying.map((a) => a.name),
     online: server.status !== "offline",
   };

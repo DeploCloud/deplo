@@ -13,6 +13,12 @@ import { seedBackup, seedRun } from "../backup-test-helpers";
 import { asUser1, seedBase, USER_RESTORER } from "./backups-test-helpers";
 import { cancelBackupRun } from "./execute-backup";
 import { listBackupRuns } from "./run-listing";
+import {
+  __forgetTurns,
+  setReplicaTurns,
+  takeTurn,
+  turnWait,
+} from "../clusters/copy-turns";
 
 let db: TestDb;
 let pg: PGlite;
@@ -90,5 +96,46 @@ test("stopping a backup needs manage_backups", async () => {
   await asUser1(async () => {
     const [run] = await listBackupRuns({ appId: "prj_1" });
     assert.equal(run!.status, "running");
+  });
+});
+
+// A scheduled run starts in the scheduler's bundle, a cancel comes in through a request's: one map for both.
+test("a cancel reaches a run started in another bundle of the same process", async () => {
+  const { backupRunsInFlight } = await import("./execute-backup");
+  assert.equal(
+    (globalThis as Record<symbol, unknown>)[
+      Symbol.for("deplo.backups.in-flight")
+    ],
+    backupRunsInFlight,
+  );
+});
+
+test("a running backup that waits its turn says for what", async () => {
+  await asUser1(async () => {
+    await seedRun(db, {
+      id: "brun_wait",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "running",
+    });
+    turnWait.pollMs = 5;
+    setReplicaTurns(new Map([["srv_gone", "a copy of web"]]));
+    const stop = new AbortController();
+    const waiting = takeTurn(["srv_gone"], "a backup of prj_1", {
+      note: "brun_wait",
+      signal: stop.signal,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    const [run] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(
+      run!.queued,
+      "1st in line: Another server is busy with a copy of web",
+    );
+    stop.abort();
+    (await waiting)();
+    __forgetTurns();
+    const [after] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(after!.queued, undefined);
   });
 });

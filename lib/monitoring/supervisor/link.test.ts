@@ -23,12 +23,14 @@ import {
   stopAgentLinkListener,
 } from "../../infra/agent-link/listener";
 import { LINK_SETTLE_MS } from "../../infra/agent-link/protocol";
-import { onAgentLink } from "../../infra/agent-link/registry";
+import { connectMetricsStreamAgent } from "../../infra/agent-client/preflight";
+import { currentLink, onAgentLink } from "../../infra/agent-link/registry";
 import { HEALTH_MESSAGES } from "../../infra/server-health";
 import { AGENT_VERSION } from "../../version";
 import { getMetricsHistory } from "../history";
 import {
   __setMetricsConnectorForTest,
+  reconcileMetricsStreams,
   startMetricsStreams,
 } from "../supervisor";
 import { frame, setupSupervisor, waitFor } from "./supervisor-test-helpers";
@@ -48,8 +50,7 @@ afterEach(async () => {
 
 const h = setupSupervisor();
 
-beforeEach(async () => {
-  agent = await startFakeAgent({ capabilities: [METRICS_STREAM_CAPABILITY] });
+async function seedLinked(): Promise<void> {
   await seedServerRow(h.db, {
     id: SERVER,
     ip: "127.0.0.1",
@@ -63,6 +64,11 @@ beforeEach(async () => {
     // Linked before the panel started, as every server past the first update stop has.
     firstLinkedAt: "2026-10-29T00:00:00.000Z",
   });
+}
+
+beforeEach(async () => {
+  agent = await startFakeAgent({ capabilities: [METRICS_STREAM_CAPABILITY] });
+  await seedLinked();
   door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
 });
 
@@ -206,4 +212,48 @@ test("right after the panel starts, a server whose link has not come back is not
     "offline once the panel has settled",
   );
   assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
+});
+
+test("a server added after the panel started streams as soon as its agent links, not at the next round", async () => {
+  await h.pg.exec(`delete from servers where id = '${SERVER}'`);
+  startMetricsStreams();
+  await reconcileMetricsStreams();
+  await seedLinked();
+
+  await linkIn();
+  await streamed(1);
+});
+
+test("a server that links while its stream backs off streams at once, not after the backoff", async () => {
+  let tries = 0;
+  __setMetricsConnectorForTest(async (id) => {
+    if (currentLink(id)) return connectMetricsStreamAgent(id);
+    tries++;
+    throw new Error("no route to the agent");
+  });
+  startMetricsStreams();
+  // After four failures the stream sleeps at least 6.4 s.
+  await waitFor(() => tries >= 4, "four failed tries", 600);
+
+  await linkIn();
+  await waitFor(
+    () => {
+      agent.sample(frame());
+      return getMetricsHistory(SERVER).length >= 1;
+    },
+    "a frame within 2 s of the link",
+    100,
+  );
+});
+
+test("a stream waiting for its link says hello once when the link comes, not once per loop", async (t) => {
+  let hellos = 0;
+  t.after(onAgentHello((id) => void (id === SERVER && hellos++)));
+  startMetricsStreams();
+  await new Promise((r) => setTimeout(r, 300));
+
+  await linkIn();
+  await streamed(1);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(hellos, 1);
 });

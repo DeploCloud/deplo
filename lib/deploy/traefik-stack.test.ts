@@ -9,6 +9,7 @@ import {
   withAcmeEmail,
   withPanelRoute,
   traefikCertificates,
+  withEcdsaKeys,
   withTraefikCertificates,
 } from "./traefik-stack";
 import {
@@ -839,4 +840,27 @@ test("refuses a file that is not a Traefik stack, rather than writing one", () =
     () => withPanelRoute("{{ not yaml", PANEL_ROUTE),
     /Could not read/i,
   );
+});
+
+// c38: a new connection signed with Traefik's default RSA-4096 key took 11.6 ms of a one-core server, P-256 0.04 ms.
+test("every resolver orders ECDSA keys, once, and a key type someone set stays", () => {
+  const dns = INSTALLED.replace(
+    "      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json\n",
+    "      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json\n      - --certificatesresolvers.deplodns.acme.storage=/acme/acme.json\n",
+  );
+  const next = withEcdsaKeys(dns)!;
+  const command = (parse(next) as Doc).services.traefik.command as string[];
+  assert.deepEqual(
+    command.filter((c) => c.includes(".acme.keytype=")),
+    [
+      "--certificatesresolvers.letsencrypt.acme.keytype=EC256",
+      "--certificatesresolvers.deplodns.acme.keytype=EC256",
+    ],
+  );
+  assert.equal(withEcdsaKeys(next), null, "already ECDSA");
+  const rsa = INSTALLED.replace(
+    "      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json\n",
+    "      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json\n      - --certificatesresolvers.letsencrypt.acme.keytype=RSA2048\n",
+  );
+  assert.equal(withEcdsaKeys(rsa), null, "someone chose RSA2048");
 });

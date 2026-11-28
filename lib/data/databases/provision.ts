@@ -120,6 +120,7 @@ export async function createDatabase(input: {
           name,
           environmentId,
           limitMb: 0,
+          dataUnknown: true,
           archs: await imageArchs(
             effectiveDatabaseImage({
               type: input.type,

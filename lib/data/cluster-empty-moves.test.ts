@@ -94,7 +94,16 @@ test("Apps move one at a time, each team sees its own move, and the server ends 
   assert.deepEqual(await deploymentsOf("api"), [
     { serverId: "srv_3", status: "queued", creator: "Deplo" },
   ]);
-  assert.deepEqual(await placedOn("app", "api"), ["srv_3"]);
+  // c48: placed on srv_3 only once its start has a lane, so srv_2 runs it while the deploy waits.
+  assert.deepEqual(await placedOn("app", "api"), ["srv_2"]);
+  assert.ok(
+    !rosters.some((r) =>
+      (r as { placement?: { id: string; member: string }[] }).placement?.some(
+        (e) => e.id === "api" && e.member === "srv_3",
+      ),
+    ),
+    "the leader was never told it runs on srv_3 yet",
+  );
   assert.equal((await appRow("web")).serverId, "srv_2");
   assert.deepEqual((await card(cluster.id, "srv_2")).emptying, {
     since: (await member("srv_2")).emptyingSince,
