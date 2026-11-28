@@ -5,6 +5,7 @@ import { useOverviewAppStates } from "./overview-runtime";
 import { StaticGrid } from "./static-grid";
 import { SortableGrid } from "./sortable-grid";
 import type { AppsGridProps, GridProps } from "./grid-contract";
+import { useOverviewView } from "../overview-view";
 
 export function AppsGrid(props: AppsGridProps) {
   const [deleted, setDeleted] = React.useState<ReadonlySet<string>>(new Set());
@@ -22,8 +23,10 @@ export function AppsGrid(props: AppsGridProps) {
   }, []);
   const visibleServices = props.services.filter((p) => !deleted.has(p.id));
   const liveStates = useOverviewAppStates(visibleServices, props.initialStates);
+  const { view } = useOverviewView(props.view);
   const grid: GridProps = {
     ...props,
+    view,
     services: visibleServices,
     folders: props.folders.filter((f) => !deleted.has(f.id)),
     projects: props.projects.filter((p) => !deleted.has(p.id)),

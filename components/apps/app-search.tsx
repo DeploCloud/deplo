@@ -5,6 +5,7 @@ import { useRouter } from "@/lib/nav";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ViewToggle, type ListView } from "@/components/shared/view-toggle";
+import { useOverviewView } from "./overview-view";
 
 export type AppView = ListView;
 
@@ -28,7 +29,7 @@ export function AppSearch({
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
-  const [view, setView] = React.useState<AppView>(initialView);
+  const { view, setView } = useOverviewView(initialView);
 
   const buildHref = React.useCallback(
     (nextQ: string, nextView: AppView) => {

@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 
 import Link from "@/components/ui/link";
+import { useOverviewView } from "./overview-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -60,13 +61,14 @@ export function useShownRepos(repos: NewRepo[], teamId: string) {
 export function NewRepoCard({
   repos,
   teamId,
-  view,
+  view: initialView,
 }: {
   repos: NewRepo[];
   teamId: string;
   view: "grid" | "list";
 }) {
   const router = useRouter();
+  const { view } = useOverviewView(initialView);
   const { shown, hide } = useShownRepos(repos, teamId);
   if (!shown || shown.length === 0) return null;
 

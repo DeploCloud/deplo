@@ -28,6 +28,7 @@ import { getOverviewAppStates } from "@/lib/data/console";
 import { gridClass } from "@/components/apps/apps-grid/grid-contract";
 import { NewRepoCards } from "@/components/apps/new-repo-cards";
 import { SecurityOverviewNotice } from "@/components/security-updates/security-overview-notice";
+import { OverviewViewProvider } from "@/components/apps/overview-view";
 import { databaseSecurityCounts } from "@/lib/data/security-updates/read";
 import { securitySubjects } from "@/lib/security-updates/subjects";
 import { FolderTrail } from "@/components/apps/apps-grid/folder-trail";
@@ -231,7 +232,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     visibleFolders.length === 0 &&
     visibleProjects.length === 0;
   const gridKey = [
-    view,
     query,
     needsSecurity ? "needs-security" : "",
     openFolder?.id ?? "",
@@ -249,257 +249,261 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
   ].join("|");
 
   return (
-    <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_300px]">
-      <WelcomeCelebration
-        show={welcome === "1" || firstRun}
-        takeoverOf={takenOverFrom?.slice(0, 40) || null}
-      />
-      {canDeploy && (
-        <ArchiveDropZone href={newAppHref(placement, { source: "upload" })} />
-      )}
-      <div className="relative z-20 order-2 hidden space-y-6 2xl:block">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm lg:text-sm">
-              Recent activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activity.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                No recent activity.
-              </p>
-            )}
-            <ActivityTimeline
-              variant="compact"
-              showMark={false}
-              items={activity.map(toActivityItem)}
-              appLinks={Object.fromEntries(
-                services.map((s) => [
-                  s.id,
-                  { name: s.name, slug: s.slug, logo: s.logo },
-                ]),
+    <OverviewViewProvider initial={view}>
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <WelcomeCelebration
+          show={welcome === "1" || firstRun}
+          takeoverOf={takenOverFrom?.slice(0, 40) || null}
+        />
+        {canDeploy && (
+          <ArchiveDropZone href={newAppHref(placement, { source: "upload" })} />
+        )}
+        <div className="relative z-20 order-2 hidden space-y-6 2xl:block">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm lg:text-sm">
+                Recent activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activity.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No recent activity.
+                </p>
               )}
-              databaseLinks={Object.fromEntries(
-                activityDatabases.map((d) => [
-                  d.id,
-                  { name: d.name, logo: d.logo, type: d.type },
-                ]),
-              )}
-            />
-            <Button variant="outline" size="sm" className="w-full" asChild>
-              <Link href="/activity">View all activity</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="order-1 space-y-5">
-        <PageHeader
-          title="Overview"
-          actions={
-            <AddNewMenu
-              canCreateApp={canDeploy}
-              canCreateDatabase={canCreateDatabase}
-              canCreateFolder={canCreateFolder}
-              canCreateProject={canCreateProject}
-              parentFolder={
-                openFolder ? { id: openFolder.id, name: openFolder.name } : null
-              }
-              placement={placement}
-            />
-          }
-        />
-
-        <SecurityOverviewNotice
-          subjects={securityList}
-          filterActive={needsSecurity}
-          view={view}
-        />
-
-        {isAdmin && <NetworkSweepNotice failed={networkSweepFailed} />}
-
-        <AppSearch
-          initialQuery={query}
-          initialView={view}
-          initialFolder={openFolder?.id ?? ""}
-          initialProject={openProject?.id ?? ""}
-          initialEnv={openProject && selectedEnv ? selectedEnv.id : ""}
-          initialNeeds={needsSecurity ? "security" : ""}
-          environmentSwitcher={
-            openProject && selectedEnv ? (
-              <EnvironmentSwitcher
-                projectId={openProject.id}
-                view={view}
-                environments={environments.map((e) => ({
-                  id: e.id,
-                  name: e.name,
-                  isDefault: e.isDefault,
-                }))}
-                selectedId={selectedEnv.id}
-                canManage={
-                  (canDeploy || isAdmin) && !openProject.migrationRunId
-                }
+              <ActivityTimeline
+                variant="compact"
+                showMark={false}
+                items={activity.map(toActivityItem)}
+                appLinks={Object.fromEntries(
+                  services.map((s) => [
+                    s.id,
+                    { name: s.name, slug: s.slug, logo: s.logo },
+                  ]),
+                )}
+                databaseLinks={Object.fromEntries(
+                  activityDatabases.map((d) => [
+                    d.id,
+                    { name: d.name, logo: d.logo, type: d.type },
+                  ]),
+                )}
               />
-            ) : undefined
-          }
-        />
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link href="/activity">View all activity</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
 
-        {nothingToShow ? (
-          query || needsSecurity ? (
-            <EmptyState
-              icon={Rocket}
-              title={
-                query
-                  ? "No apps match your search"
-                  : "No app needs a security update"
-              }
-              description={
-                query
-                  ? "Try a different search, or clear it to see everything."
-                  : "Everything Deplo checked is up to date."
-              }
-            />
-          ) : openFolder ? (
-            <div className="space-y-6">
-              <div className="px-1 py-1">
-                <FolderTrail path={trailPath} view={view} />
-              </div>
-              <EmptyState
-                icon={Folder}
-                title="This folder is empty"
-                description={
-                  canDeploy
-                    ? "Create an app here, drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
-                    : noCreateAppsNote
+        <div className="order-1 space-y-5">
+          <PageHeader
+            title="Overview"
+            actions={
+              <AddNewMenu
+                canCreateApp={canDeploy}
+                canCreateDatabase={canCreateDatabase}
+                canCreateFolder={canCreateFolder}
+                canCreateProject={canCreateProject}
+                parentFolder={
+                  openFolder
+                    ? { id: openFolder.id, name: openFolder.name }
+                    : null
                 }
-                action={
-                  <div className="flex gap-2">
-                    {canDeploy && (
-                      <Button asChild>
-                        <Link href={newAppHref(placement)}>
-                          <Plus className="size-4" />
-                          New app
-                        </Link>
-                      </Button>
-                    )}
-                    <Button asChild variant="outline">
-                      <Link href={view === "list" ? "/?view=list" : "/"}>
-                        Back to overview
-                      </Link>
-                    </Button>
-                  </div>
-                }
+                placement={placement}
               />
-            </div>
-          ) : openProject ? (
-            <div className="space-y-6">
-              <div className="px-1 py-1">
-                <FolderTrail path={trailPath} view={view} />
-              </div>
+            }
+          />
+
+          <SecurityOverviewNotice
+            subjects={securityList}
+            filterActive={needsSecurity}
+            view={view}
+          />
+
+          {isAdmin && <NetworkSweepNotice failed={networkSweepFailed} />}
+
+          <AppSearch
+            initialQuery={query}
+            initialView={view}
+            initialFolder={openFolder?.id ?? ""}
+            initialProject={openProject?.id ?? ""}
+            initialEnv={openProject && selectedEnv ? selectedEnv.id : ""}
+            initialNeeds={needsSecurity ? "security" : ""}
+            environmentSwitcher={
+              openProject && selectedEnv ? (
+                <EnvironmentSwitcher
+                  projectId={openProject.id}
+                  view={view}
+                  environments={environments.map((e) => ({
+                    id: e.id,
+                    name: e.name,
+                    isDefault: e.isDefault,
+                  }))}
+                  selectedId={selectedEnv.id}
+                  canManage={
+                    (canDeploy || isAdmin) && !openProject.migrationRunId
+                  }
+                />
+              ) : undefined
+            }
+          />
+
+          {nothingToShow ? (
+            query || needsSecurity ? (
               <EmptyState
-                icon={Boxes}
+                icon={Rocket}
                 title={
-                  selectedEnv
-                    ? "No apps in this environment"
-                    : "This project is empty"
+                  query
+                    ? "No apps match your search"
+                    : "No app needs a security update"
                 }
                 description={
-                  canDeploy
-                    ? "Create an app here, drag apps onto this project from the Overview, or use an app’s “Move to folder” menu."
-                    : noCreateAppsNote
-                }
-                action={
-                  <div className="flex gap-2">
-                    {canDeploy && (
-                      <Button asChild>
-                        <Link href={newAppHref(placement)}>
-                          <Plus className="size-4" />
-                          New app
-                        </Link>
-                      </Button>
-                    )}
-                    <Button asChild variant="outline">
-                      <Link href={view === "list" ? "/?view=list" : "/"}>
-                        Back to overview
-                      </Link>
-                    </Button>
-                  </div>
+                  query
+                    ? "Try a different search, or clear it to see everything."
+                    : "Everything Deplo checked is up to date."
                 }
               />
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {newRepos(cn(gridClass(view), "empty:hidden"))}
-              <EmptyState
-                graphic={<AppsGraphic />}
-                title="No apps yet"
-                docs="deploy.sources"
-                description={
-                  canDeploy
-                    ? "Import a Git repository or start from a template to deploy your first app."
-                    : noCreateAppsNote
-                }
-                action={
-                  canDeploy ? (
+            ) : openFolder ? (
+              <div className="space-y-6">
+                <div className="px-1 py-1">
+                  <FolderTrail path={trailPath} view={view} />
+                </div>
+                <EmptyState
+                  icon={Folder}
+                  title="This folder is empty"
+                  description={
+                    canDeploy
+                      ? "Create an app here, drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
+                      : noCreateAppsNote
+                  }
+                  action={
                     <div className="flex gap-2">
-                      <Button asChild>
-                        <Link href={newAppHref(placement)}>
-                          <Plus className="size-4" />
-                          New app
-                        </Link>
-                      </Button>
+                      {canDeploy && (
+                        <Button asChild>
+                          <Link href={newAppHref(placement)}>
+                            <Plus className="size-4" />
+                            New app
+                          </Link>
+                        </Button>
+                      )}
                       <Button asChild variant="outline">
-                        <Link href={templatesHref(placement)}>
-                          Browse Templates
-                          <ArrowUpRight className="size-4" />
+                        <Link href={view === "list" ? "/?view=list" : "/"}>
+                          Back to overview
                         </Link>
                       </Button>
                     </div>
-                  ) : undefined
-                }
-              />
-            </div>
-          )
-        ) : (
-          <AppsGrid
-            key={gridKey}
-            services={visibleApps}
-            initialStates={initialStates}
-            allAppIds={allAppIds}
-            folders={enrichedFolders}
-            projects={enrichedProjects}
-            allFolders={allFolders}
-            openFolder={
-              openFolder
-                ? {
-                    id: openFolder.id,
-                    name: openFolder.name,
-                    parentId: openFolder.parentId ?? null,
                   }
-                : null
-            }
-            openProject={
-              openProject
-                ? { id: openProject.id, name: openProject.name }
-                : null
-            }
-            folderPath={trailPath}
-            view={view}
-            canReorder={canReorder}
-            canMoveApps={canMoveApps}
-            canCreateFolder={canCreateFolder}
-            canManageAllFolders={canManageAllFolders}
-            canManageProjects={isAdmin || canDeploy}
-            environments={
-              openProject
-                ? environments.map((e) => ({ id: e.id, name: e.name }))
-                : undefined
-            }
-            leading={!flat && !placement ? newRepos() : undefined}
-          />
-        )}
+                />
+              </div>
+            ) : openProject ? (
+              <div className="space-y-6">
+                <div className="px-1 py-1">
+                  <FolderTrail path={trailPath} view={view} />
+                </div>
+                <EmptyState
+                  icon={Boxes}
+                  title={
+                    selectedEnv
+                      ? "No apps in this environment"
+                      : "This project is empty"
+                  }
+                  description={
+                    canDeploy
+                      ? "Create an app here, drag apps onto this project from the Overview, or use an app’s “Move to folder” menu."
+                      : noCreateAppsNote
+                  }
+                  action={
+                    <div className="flex gap-2">
+                      {canDeploy && (
+                        <Button asChild>
+                          <Link href={newAppHref(placement)}>
+                            <Plus className="size-4" />
+                            New app
+                          </Link>
+                        </Button>
+                      )}
+                      <Button asChild variant="outline">
+                        <Link href={view === "list" ? "/?view=list" : "/"}>
+                          Back to overview
+                        </Link>
+                      </Button>
+                    </div>
+                  }
+                />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {newRepos(cn(gridClass(view), "empty:hidden"))}
+                <EmptyState
+                  graphic={<AppsGraphic />}
+                  title="No apps yet"
+                  docs="deploy.sources"
+                  description={
+                    canDeploy
+                      ? "Import a Git repository or start from a template to deploy your first app."
+                      : noCreateAppsNote
+                  }
+                  action={
+                    canDeploy ? (
+                      <div className="flex gap-2">
+                        <Button asChild>
+                          <Link href={newAppHref(placement)}>
+                            <Plus className="size-4" />
+                            New app
+                          </Link>
+                        </Button>
+                        <Button asChild variant="outline">
+                          <Link href={templatesHref(placement)}>
+                            Browse Templates
+                            <ArrowUpRight className="size-4" />
+                          </Link>
+                        </Button>
+                      </div>
+                    ) : undefined
+                  }
+                />
+              </div>
+            )
+          ) : (
+            <AppsGrid
+              key={gridKey}
+              services={visibleApps}
+              initialStates={initialStates}
+              allAppIds={allAppIds}
+              folders={enrichedFolders}
+              projects={enrichedProjects}
+              allFolders={allFolders}
+              openFolder={
+                openFolder
+                  ? {
+                      id: openFolder.id,
+                      name: openFolder.name,
+                      parentId: openFolder.parentId ?? null,
+                    }
+                  : null
+              }
+              openProject={
+                openProject
+                  ? { id: openProject.id, name: openProject.name }
+                  : null
+              }
+              folderPath={trailPath}
+              view={view}
+              canReorder={canReorder}
+              canMoveApps={canMoveApps}
+              canCreateFolder={canCreateFolder}
+              canManageAllFolders={canManageAllFolders}
+              canManageProjects={isAdmin || canDeploy}
+              environments={
+                openProject
+                  ? environments.map((e) => ({ id: e.id, name: e.name }))
+                  : undefined
+              }
+              leading={!flat && !placement ? newRepos() : undefined}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </OverviewViewProvider>
   );
 }
