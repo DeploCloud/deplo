@@ -11,6 +11,7 @@ import {
   Bot,
   Pencil,
 } from "lucide-react";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
@@ -58,6 +59,15 @@ export function TokensList({
     remove,
     restore,
   } = useOptimisticRemove(tokens, (t) => t.id);
+  const sorted = useTableSort(rows, {
+    name: (t: ApiTokenDTO) => t.name,
+    permissions: (t: ApiTokenDTO) =>
+      TOKEN_PRESETS.find((p) => p.id === presetIdFor(t.capabilities))?.name ??
+      "Custom",
+    access: (t: ApiTokenDTO) => scopeLabel(t, names).text,
+    lastUsed: (t: ApiTokenDTO) =>
+      t.lastUsedAt ? Date.parse(t.lastUsedAt) : null,
+  });
   const copyFor = (t: ApiTokenDTO) => ({
     teams: t.teamsReached,
     activeTeamId,
@@ -69,17 +79,41 @@ export function TokensList({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Permissions</TableHead>
-            <TableHead>Access</TableHead>
-            <TableHead>Last used</TableHead>
+            <SortableHead
+              column="name"
+              sort={sorted.sort}
+              onSort={sorted.toggle}
+            >
+              Name
+            </SortableHead>
+            <SortableHead
+              column="permissions"
+              sort={sorted.sort}
+              onSort={sorted.toggle}
+            >
+              Permissions
+            </SortableHead>
+            <SortableHead
+              column="access"
+              sort={sorted.sort}
+              onSort={sorted.toggle}
+            >
+              Access
+            </SortableHead>
+            <SortableHead
+              column="lastUsed"
+              sort={sorted.sort}
+              onSort={sorted.toggle}
+            >
+              Last used
+            </SortableHead>
             <TableHead className="text-right">
               <span className="max-md:sr-only">Actions</span>
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody inert={loading || undefined}>
-          {rows.map((t) => {
+          {sorted.rows.map((t) => {
             const presetId = presetIdFor(t.capabilities);
             const preset = TOKEN_PRESETS.find((p) => p.id === presetId);
             const Icon = presetId

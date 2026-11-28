@@ -21,6 +21,7 @@ import { RegisterUserWizard } from "@/components/settings/users/register-user-wi
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AccessDeltaBadge } from "@/components/members/access-delta-badge";
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
@@ -32,6 +33,14 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { countBy, inAny } from "@/components/shared/facet-filtering";
 import type { MemberDTO } from "@/lib/data/members/roster";
+
+const MEMBER_SORT = {
+  member: (m: MemberDTO) => m.username,
+  name: (m: MemberDTO) => (m.name && m.name !== m.username ? m.name : null),
+  role: (m: MemberDTO) =>
+    m.isPrimaryOwner ? "Primary owner" : (m.roleName ?? "Custom"),
+  access: (m: MemberDTO) => m.capabilities.filter((c) => c !== "view").length,
+};
 
 export function MembersManager({
   members,
@@ -66,6 +75,7 @@ export function MembersManager({
         m.username.toLowerCase().includes(q) ||
         m.name.toLowerCase().includes(q)),
   );
+  const sorted = useTableSort(shown, MEMBER_SORT);
   const actions = (isAdmin || canManage) && (
     <>
       {isAdmin && (
@@ -163,15 +173,39 @@ export function MembersManager({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Access</TableHead>
+                <SortableHead
+                  column="member"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Member
+                </SortableHead>
+                <SortableHead
+                  column="name"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Name
+                </SortableHead>
+                <SortableHead
+                  column="role"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Role
+                </SortableHead>
+                <SortableHead
+                  column="access"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Access
+                </SortableHead>
                 <TableHead className="text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shown.map((m) => (
+              {sorted.rows.map((m) => (
                 <MemberTableRow
                   key={m.userId}
                   member={m}

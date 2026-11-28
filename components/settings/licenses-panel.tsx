@@ -17,6 +17,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  SortableHead,
+  useTableSort,
+  type SortState,
+} from "@/components/ui/table-sort";
+import {
   Table,
   TableBody,
   TableCell,
@@ -74,13 +79,39 @@ function LicensesToolbar({
   );
 }
 
-function LicensesHead() {
+const NOTICE_SORT = {
+  name: (n: Notice) => n.name,
+  version: (n: Notice) => n.version,
+  license: (n: Notice) => n.license,
+};
+type NoticeColumn = keyof typeof NOTICE_SORT;
+
+function LicensesHead({
+  sort = null,
+  onSort,
+}: {
+  sort?: SortState<NoticeColumn>;
+  onSort?: (column: NoticeColumn) => void;
+}) {
+  const head = (column: NoticeColumn, label: string, className?: string) =>
+    onSort ? (
+      <SortableHead
+        column={column}
+        sort={sort}
+        onSort={onSort}
+        className={className}
+      >
+        {label}
+      </SortableHead>
+    ) : (
+      <TableHead className={className}>{label}</TableHead>
+    );
   return (
     <TableHeader>
       <TableRow>
-        <TableHead>Package</TableHead>
-        <TableHead className="hidden sm:table-cell">Version</TableHead>
-        <TableHead>License</TableHead>
+        {head("name", "Package")}
+        {head("version", "Version", "hidden sm:table-cell")}
+        {head("license", "License")}
         <TableHead className="hidden text-right sm:table-cell">
           Source
         </TableHead>
@@ -161,6 +192,7 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
       n.name.toLowerCase().includes(q) &&
       (picked.license.length === 0 || picked.license.includes(n.license)),
   );
+  const sorted = useTableSort(shown, NOTICE_SORT);
 
   function open(n: Notice) {
     setSelected(n);
@@ -197,9 +229,9 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <Table>
-            <LicensesHead />
+            <LicensesHead sort={sorted.sort} onSort={sorted.toggle} />
             <TableBody>
-              {shown.map((n) => (
+              {sorted.rows.map((n) => (
                 <TableRow
                   key={`${n.name}@${n.version}`}
                   className="cursor-pointer"

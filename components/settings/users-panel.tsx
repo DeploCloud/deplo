@@ -28,6 +28,7 @@ import {
   statusOf,
 } from "@/components/settings/users-filter";
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
@@ -64,6 +65,14 @@ import type { RegistrationLinkDTO } from "@/lib/data/members/registration-links"
 
 const FACETS = ["team", "access", "status"] as const;
 
+const USER_SORT = {
+  user: (u: GlobalUserDTO) => u.username,
+  name: (u: GlobalUserDTO) => (u.name && u.name !== u.username ? u.name : null),
+  teams: (u: GlobalUserDTO) => u.teamCount,
+  joined: (u: GlobalUserDTO) => Date.parse(u.createdAt),
+  status: (u: GlobalUserDTO) => (u.suspended ? "Suspended" : "Active"),
+};
+
 export function UsersPanel({
   users,
   links,
@@ -93,6 +102,7 @@ export function UsersPanel({
     statuses: picked.status,
   });
   const teams = teamFacetOptions(users.map((u) => u.teams));
+  const sorted = useTableSort(shown, USER_SORT);
   return (
     <div className="space-y-6">
       <UsersHeader
@@ -141,16 +151,46 @@ export function UsersPanel({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Teams</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead>Status</TableHead>
+                <SortableHead
+                  column="user"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  User
+                </SortableHead>
+                <SortableHead
+                  column="name"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Name
+                </SortableHead>
+                <SortableHead
+                  column="teams"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Teams
+                </SortableHead>
+                <SortableHead
+                  column="joined"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Joined
+                </SortableHead>
+                <SortableHead
+                  column="status"
+                  sort={sorted.sort}
+                  onSort={sorted.toggle}
+                >
+                  Status
+                </SortableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shown.map((u) => (
+              {sorted.rows.map((u) => (
                 <UserRow
                   key={u.userId}
                   user={u}

@@ -7,6 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
+  SortableHead,
+  useTableSort,
+  type SortState,
+} from "@/components/ui/table-sort";
+import {
   Table,
   TableBody,
   TableCell,
@@ -23,7 +28,16 @@ import { SOURCE_COPY, SourceMark } from "./sources";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 
+const RUN_SORT = {
+  source: (r: ImportRun) => r.orgName ?? r.sourceUrl,
+  team: (r: ImportRun) => r.teamName,
+  when: (r: ImportRun) => Date.parse(r.startedAt),
+  outcome: (r: ImportRun) => r.status,
+};
+type RunColumn = keyof typeof RUN_SORT;
+
 export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
+  const sorted = useTableSort(runs, RUN_SORT);
   const [open, setOpen] = React.useState<ImportRun | null>(null);
 
   if (runs.length === 0)
@@ -38,8 +52,8 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
 
   return (
     <>
-      <HistoryTable>
-        {runs.map((r) => (
+      <HistoryTable sort={sorted.sort} onSort={sorted.toggle}>
+        {sorted.rows.map((r) => (
           <TableRow key={r.id}>
             <TableCell className="max-w-[16rem]">
               <div className="flex items-center gap-2 font-medium">
@@ -113,16 +127,32 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
   );
 }
 
-function HistoryTable({ children }: { children: React.ReactNode }) {
+function HistoryTable({
+  sort = null,
+  onSort,
+  children,
+}: {
+  sort?: SortState<RunColumn>;
+  onSort?: (column: RunColumn) => void;
+  children: React.ReactNode;
+}) {
+  const head = (column: RunColumn, label: string) =>
+    onSort ? (
+      <SortableHead column={column} sort={sort} onSort={onSort}>
+        {label}
+      </SortableHead>
+    ) : (
+      <TableHead>{label}</TableHead>
+    );
   return (
     <div className="overflow-hidden rounded-xl border border-border">
       <Table className="min-w-[50rem]">
         <TableHeader>
           <TableRow>
-            <TableHead>Source</TableHead>
-            <TableHead>Team</TableHead>
-            <TableHead>When</TableHead>
-            <TableHead>Outcome</TableHead>
+            {head("source", "Source")}
+            {head("team", "Team")}
+            {head("when", "When")}
+            {head("outcome", "Outcome")}
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>

@@ -6,6 +6,12 @@ import { toast } from "sonner";
 import { LogOut, MonitorSmartphone } from "lucide-react";
 
 import {
+  ariaSort,
+  SortableHead,
+  SortButton,
+  useTableSort,
+} from "@/components/ui/table-sort";
+import {
   Table,
   TableBody,
   TableCell,
@@ -25,6 +31,13 @@ import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { UserSessionDTO } from "@/lib/data/sessions";
 
+const DEVICE_SORT = {
+  device: (s: UserSessionDTO) => s.label,
+  ip: (s: UserSessionDTO) => s.ipAddress,
+  lastSeen: (s: UserSessionDTO) => Date.parse(s.lastSeenAt),
+  signedIn: (s: UserSessionDTO) => Date.parse(s.createdAt),
+};
+
 export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
   const router = useRouter();
   const {
@@ -34,6 +47,7 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
   } = useOptimisticRemove(sessions, (s) => s.id);
   const current = rows.find((s) => s.current);
   const others = rows.filter((s) => !s.current);
+  const sorted = useTableSort(others, DEVICE_SORT);
 
   async function revoke(
     id: string,
@@ -133,23 +147,47 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Device</TableHead>
-                  <TableHead>IP address</TableHead>
-                  <TableHead>
+                  <SortableHead
+                    column="device"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Device
+                  </SortableHead>
+                  <SortableHead
+                    column="ip"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    IP address
+                  </SortableHead>
+                  <TableHead aria-sort={ariaSort(sorted.sort, "lastSeen")}>
                     <span className="inline-flex items-center gap-1">
-                      Last seen
+                      <SortButton
+                        column="lastSeen"
+                        sort={sorted.sort}
+                        onSort={sorted.toggle}
+                      >
+                        Last seen
+                      </SortButton>
                       <InfoTip
                         content="Sessions refresh as they are used, so this is accurate to about fifteen minutes rather than to the second."
                         docs="team.sessions"
                       />
                     </span>
                   </TableHead>
-                  <TableHead>Signed in</TableHead>
+                  <SortableHead
+                    column="signedIn"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Signed in
+                  </SortableHead>
                   <TableHead className="w-0" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {others.map((s) => (
+                {sorted.rows.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell>
                       <span className="flex items-center gap-3">

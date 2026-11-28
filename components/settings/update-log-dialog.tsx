@@ -21,11 +21,11 @@ import {
 } from "@/components/ui/dialog";
 import { DocsLink } from "@/components/ui/docs-link";
 import { TextLine } from "@/components/ui/skeleton";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -177,6 +177,13 @@ export function UpdateLogDialog({
   );
 }
 
+const ENTRY_SORT = {
+  when: (e: UpdateLogEntry) => Date.parse(e.at),
+  what: (e: UpdateLogEntry) => entrySentence(e),
+  version: (e: UpdateLogEntry) => e.toVersion,
+  by: (e: UpdateLogEntry) => updateLogActor(e),
+};
+
 function LogEntries({
   entries,
   tz,
@@ -185,20 +192,45 @@ function LogEntries({
   tz: string;
 }) {
   const now = new Date();
+  const sorted = useTableSort(entries, ENTRY_SORT);
   return (
     <>
       <div className="rounded-xl border border-border max-md:hidden">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>When</TableHead>
-              <TableHead>What happened</TableHead>
-              <TableHead>Version</TableHead>
-              <TableHead>By</TableHead>
+              <SortableHead
+                column="when"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+              >
+                When
+              </SortableHead>
+              <SortableHead
+                column="what"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+              >
+                What happened
+              </SortableHead>
+              <SortableHead
+                column="version"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+              >
+                Version
+              </SortableHead>
+              <SortableHead
+                column="by"
+                sort={sorted.sort}
+                onSort={sorted.toggle}
+              >
+                By
+              </SortableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {entries.map((e) => (
+            {sorted.rows.map((e) => (
               <TableRow key={e.id}>
                 <TableCell className="align-top text-muted-foreground">
                   {logWhen(e.at, tz, now)}
@@ -228,7 +260,7 @@ function LogEntries({
         </Table>
       </div>
       <ul className="divide-y divide-border rounded-xl border border-border bg-background md:hidden">
-        {entries.map((e) => (
+        {sorted.rows.map((e) => (
           <li key={e.id} className="flex gap-3 px-4 py-3">
             <span className="mt-0.5 shrink-0">{ICON[e.outcome]}</span>
             <div className="min-w-0 flex-1">

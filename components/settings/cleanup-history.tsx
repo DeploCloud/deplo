@@ -4,11 +4,11 @@ import * as React from "react";
 import { History, Loader2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SortableHead, useTableSort } from "@/components/ui/table-sort";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -24,6 +24,17 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
   failed: "Failed",
 };
 
+const CLEANUP_SORT = {
+  server: (r: CleanupRunDTO) => r.serverName,
+  trigger: (r: CleanupRunDTO) => r.trigger,
+  actor: (r: CleanupRunDTO) => r.actor,
+  status: (r: CleanupRunDTO) => STATUS_LABELS[r.status],
+  reclaimed: (r: CleanupRunDTO) =>
+    r.status === "running" ? null : r.reclaimedBytes,
+  when: (r: CleanupRunDTO) => Date.parse(r.startedAt),
+  details: (r: CleanupRunDTO) => r.error || cleanupSummary(r),
+};
+
 export function CleanupHistory({
   runs,
   hideServer,
@@ -31,6 +42,7 @@ export function CleanupHistory({
   runs: CleanupRunDTO[];
   hideServer?: boolean;
 }) {
+  const sorted = useTableSort(runs, CLEANUP_SORT);
   return (
     <Card>
       <CardHeader>
@@ -56,17 +68,62 @@ export function CleanupHistory({
             <Table>
               <TableHeader>
                 <TableRow>
-                  {hideServer ? null : <TableHead>Server</TableHead>}
-                  <TableHead>Trigger</TableHead>
-                  <TableHead>Actor</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Reclaimed</TableHead>
-                  <TableHead>When</TableHead>
-                  <TableHead>Details</TableHead>
+                  {hideServer ? null : (
+                    <SortableHead
+                      column="server"
+                      sort={sorted.sort}
+                      onSort={sorted.toggle}
+                    >
+                      Server
+                    </SortableHead>
+                  )}
+                  <SortableHead
+                    column="trigger"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Trigger
+                  </SortableHead>
+                  <SortableHead
+                    column="actor"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Actor
+                  </SortableHead>
+                  <SortableHead
+                    column="status"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Status
+                  </SortableHead>
+                  <SortableHead
+                    column="reclaimed"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                    align="right"
+                  >
+                    Reclaimed
+                  </SortableHead>
+                  <SortableHead
+                    column="when"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    When
+                  </SortableHead>
+                  <SortableHead
+                    column="details"
+                    sort={sorted.sort}
+                    onSort={sorted.toggle}
+                  >
+                    Details
+                  </SortableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {runs.map((run) => (
+                {sorted.rows.map((run) => (
                   <TableRow key={run.id}>
                     {hideServer ? null : (
                       <TableCell className="font-medium">
