@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search } from "lucide-react";
+import { Command, Search } from "lucide-react";
 
 import { describeUserAgent } from "@/lib/user-agent";
 import { cn } from "@/lib/utils";
@@ -22,11 +22,14 @@ export function PaletteKbd({ className }: { className?: string }) {
   return (
     <kbd
       className={cn(
-        "rounded border border-border bg-muted px-1.5 text-[10px] text-muted-foreground",
+        "inline-flex items-center gap-0.5 font-sans text-xs text-muted-foreground/70",
         className,
       )}
     >
-      {mac ? "⌘K" : "Ctrl K"}
+      <span className="sr-only">{mac ? "Command K" : "Control K"}</span>
+      <span aria-hidden className="inline-flex items-center gap-0.5">
+        {mac ? <Command className="size-3" /> : "⌃"}K
+      </span>
     </kbd>
   );
 }
@@ -53,7 +56,7 @@ export function SearchTrigger({
       <span className={cn(FADE, compact && "opacity-0")}>Search</span>
       <PaletteKbd
         className={cn(
-          "pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 lg:inline",
+          "pointer-events-none absolute top-1/2 right-3.5 hidden -translate-y-1/2 lg:inline-flex",
           FADE,
           compact && "opacity-0",
         )}

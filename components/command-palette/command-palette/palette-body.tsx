@@ -286,9 +286,7 @@ export function PaletteBody({
 function Hint({ chord, label }: { chord: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
-      <kbd className="rounded border border-border bg-muted px-1 text-[10px]">
-        {chord}
-      </kbd>
+      <kbd className="font-sans text-xs text-muted-foreground/70">{chord}</kbd>
       {label}
     </span>
   );

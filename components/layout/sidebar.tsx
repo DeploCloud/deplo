@@ -181,7 +181,7 @@ export function Sidebar({
                 <NavLabel hidden={rail}>Collapse</NavLabel>
                 <kbd
                   className={cn(
-                    "ml-auto rounded border border-border bg-muted px-1 text-[10px]",
+                    "ml-auto font-sans text-xs text-muted-foreground/70",
                     FADE,
                     rail && "opacity-0",
                   )}
@@ -192,7 +192,7 @@ export function Sidebar({
             </TooltipTrigger>
             <TooltipContent side="right">
               {rail ? "Expand sidebar" : "Collapse sidebar"}
-              <kbd className="ml-1.5 rounded border border-border bg-muted px-1 text-[10px]">
+              <kbd className="ml-1.5 font-sans text-xs text-muted-foreground/70">
                 [
               </kbd>
             </TooltipContent>
