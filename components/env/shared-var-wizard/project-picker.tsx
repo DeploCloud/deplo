@@ -132,7 +132,7 @@ export function ProjectsSection({
                           {envs.map((e) => (
                             <label
                               key={e.id}
-                              className="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1 text-sm hover:bg-accent"
+                              className="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm hover:bg-accent"
                             >
                               <Checkbox
                                 checked={scope.envIds.includes(e.id)}

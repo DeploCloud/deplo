@@ -7,6 +7,7 @@ import { ChevronsUpDown, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
 import { cn } from "@/lib/utils";
+import { MENU_MOTION, MENU_SURFACE } from "@/components/ui/menu-styles";
 
 export function Combobox<T>({
   items,
@@ -258,19 +259,23 @@ export function Combobox<T>({
               ref={menuRef}
               id={id ? `${id}-listbox` : undefined}
               role="listbox"
+              data-state="open"
               className={cn(
-                "z-[60] overflow-hidden rounded-md border border-border bg-popover shadow-md",
+                "z-[60] overflow-hidden",
+                MENU_MOTION,
+                MENU_SURFACE,
+                "p-0",
                 host === document.body ? "fixed" : "absolute",
                 rect.flipped && "-translate-y-full",
               )}
               style={{ left: rect.left, top: rect.top, width: rect.width }}
             >
               {filtered.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-muted-foreground">
+                <p className="px-4.5 py-3.5 text-xs text-muted-foreground">
                   {emptyLabel(items.length > 0)}
                 </p>
               ) : (
-                <ul className="max-h-72 overflow-auto p-1">
+                <ul className="max-h-72 overflow-auto p-1.5">
                   {filtered.map((item, i) => {
                     if (selectable && !selectable(item))
                       return (
@@ -292,7 +297,7 @@ export function Combobox<T>({
                             choose(item);
                           }}
                           className={cn(
-                            "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
+                            "w-full space-y-0.5 rounded-xl px-3 py-2 text-left",
                             trailing && "pr-9",
                             i === activeIndex
                               ? "bg-accent"
@@ -302,7 +307,7 @@ export function Combobox<T>({
                           {renderOption(item)}
                         </button>
                         {trailing ? (
-                          <span className="absolute top-1/2 right-1.5 -translate-y-1/2">
+                          <span className="absolute top-1/2 right-2 -translate-y-1/2">
                             {trailing}
                           </span>
                         ) : null}

@@ -95,7 +95,7 @@ export function TimelineMenu({
       disabled={disabled}
       aria-label="Time range"
       className={cn(
-        "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors",
+        "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-transparent bg-field px-3 text-sm transition-colors",
         "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "text-muted-foreground hover:text-foreground",
@@ -154,12 +154,9 @@ export function TimelineMenu({
         </div>
 
         {value.timestamps && (
-          <div className="flex items-center justify-between gap-2 px-2 pb-1.5 text-sm">
+          <div className="flex items-center justify-between gap-2 px-3 pb-1.5 text-sm">
             <span className="text-muted-foreground">Format</span>
-            <SlidingButtonGroup
-              className="rounded-md border-input"
-              aria-label="Timestamp format"
-            >
+            <SlidingButtonGroup aria-label="Timestamp format">
               {(["absolute", "relative"] as const).map((format) => (
                 <button
                   key={format}
@@ -167,7 +164,7 @@ export function TimelineMenu({
                   onClick={() => onChange({ ...value, format })}
                   aria-pressed={value.format === format}
                   className={cn(
-                    "cursor-pointer rounded px-2 py-0.5 text-xs capitalize",
+                    "cursor-pointer rounded-full px-2.5 py-0.5 text-xs capitalize",
                     value.format === format
                       ? "text-foreground"
                       : "text-muted-foreground hover:text-foreground",

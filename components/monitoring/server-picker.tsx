@@ -74,6 +74,7 @@ export function ServerPicker({
               return (
                 <CommandItem
                   key={s.id}
+                  className="h-auto gap-2.5 py-2"
                   value={`${s.name} ${s.ip}`}
                   onSelect={() => {
                     onSelect(s.id);

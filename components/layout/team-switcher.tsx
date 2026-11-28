@@ -97,7 +97,7 @@ export function TeamSwitcher({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm hover:bg-accent max-md:h-11 max-md:text-[15px]"
+            className="flex cursor-pointer items-center gap-2 rounded-full px-2.5 py-1.5 text-sm hover:bg-accent max-md:h-11 max-md:text-[15px]"
           >
             <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="md" />
             <TeamName name={team.name} />

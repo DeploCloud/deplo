@@ -148,7 +148,7 @@ function Block({
                 prefetch={false}
                 aria-current={on ? "true" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl px-2.5 py-1 text-sm font-medium hover:bg-accent max-md:min-h-11",
+                  "flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-medium hover:bg-accent max-md:min-h-11",
                   on && "bg-accent text-foreground",
                 )}
               >
@@ -170,7 +170,7 @@ function Block({
         <button
           type="button"
           onClick={() => setAll(!all)}
-          className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1 text-sm text-muted-foreground hover:bg-accent"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent"
         >
           {all ? (
             <ChevronUp className="size-4 shrink-0" />

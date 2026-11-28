@@ -525,7 +525,7 @@ export function TimeSeriesChart({
 
       {hoverInGap && hoverTs != null && width > 0 && (
         <div
-          className="pointer-events-none absolute z-10 rounded-xl border bg-popover px-2.5 py-2 text-xs shadow-md"
+          className="pointer-events-none absolute z-10 rounded-lg border bg-popover px-2.5 py-1.5 text-xs shadow-md"
           style={{
             left: xOf(hoverTs),
             top: M_TOP,
@@ -547,7 +547,7 @@ export function TimeSeriesChart({
 
       {hoverPoint && !hoverInGap && width > 0 && (
         <div
-          className="pointer-events-none absolute z-10 min-w-36 rounded-xl border bg-popover px-2.5 py-2 text-xs shadow-md"
+          className="pointer-events-none absolute z-10 min-w-36 rounded-lg border bg-popover px-2.5 py-1.5 text-xs shadow-md"
           style={{
             left: xOf(hoverPoint.ts),
             top: M_TOP,
