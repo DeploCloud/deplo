@@ -250,10 +250,10 @@ test("a new address for the leader's server moves the relay's door, and every me
   hosts.srv_4.proxy.yaml = TRAEFIK;
   await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
 
-  // Deplo found and proved the server's new address: its row, and the relay's door, follow.
+  // Deplo found and proved the server's new public address: its row, and the relay's door, follow.
   await db.insert(serverAddresses).values({
     serverId: "srv_4",
-    address: "10.0.0.44",
+    address: "203.0.113.44",
     origin: "machine",
     seenAt: nowIso(),
     checkedAt: nowIso(),
@@ -263,13 +263,13 @@ test("a new address for the leader's server moves the relay's door, and every me
 
   assert.match(
     hosts.srv_4.proxy.yaml,
-    /Host\(`10\.0\.0\.44`\) && Path\(`\/api\/cluster\/relay`\)/,
+    /Host\(`203\.0\.113\.44`\) && Path\(`\/api\/cluster\/relay`\)/,
   );
   assert.doesNotMatch(hosts.srv_4.proxy.yaml, /Host\(`10\.0\.0\.4`\)/);
   for (const id of ["srv_2", "srv_3"])
     assert.deepEqual(hosts[id].memberCalls.at(-1), {
       member: true,
-      relays: ["https://10.0.0.44"],
+      relays: ["https://203.0.113.44"],
     });
 });
 
